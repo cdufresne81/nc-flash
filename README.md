@@ -1,10 +1,20 @@
 # NC ROM Editor
 
+[![GitHub](https://img.shields.io/badge/GitHub-NCRomEditor-blue?logo=github)](https://github.com/cdufresne81/NCRomEditor)
+
 An open-source ROM editor for NC Miata (MX-5) ECUs, designed to replace the discontinued EcuFlash for ROM editing tasks.
 
 ## Overview
 
 NC ROM Editor is a desktop application that allows you to read, edit, and save ECU ROM files for NC generation Mazda MX-5 Miata vehicles. This tool focuses solely on ROM file manipulation and works in conjunction with RomDrop for actual ECU flashing.
+
+## Installation
+
+### Clone the Repository
+```bash
+git clone https://github.com/cdufresne81/NCRomEditor.git
+cd NCRomEditor
+```
 
 ## Quick Start
 
@@ -28,6 +38,7 @@ python main.py
 ## Features
 
 ### ✅ Working Now
+- ✓ Automatic ROM ID detection and XML definition matching
 - ✓ Read NC Miata ECU ROM binary files
 - ✓ Browse 511 calibration tables organized by category
 - ✓ View 1D, 2D, and 3D tables with proper axis labels
@@ -56,7 +67,8 @@ nc-rom-editor/
 │   ├── core/              # ROM parsing & binary reading
 │   │   ├── rom_definition.py      # Data structures
 │   │   ├── definition_parser.py   # XML parser
-│   │   └── rom_reader.py          # Binary ROM reader
+│   │   ├── rom_reader.py          # Binary ROM reader
+│   │   └── rom_detector.py        # Automatic ROM ID detection
 │   ├── ui/                # Qt GUI widgets
 │   │   ├── table_browser.py       # Category tree browser
 │   │   └── table_viewer.py        # Table data viewer
@@ -85,6 +97,7 @@ nc-rom-editor/
 **Current Version:** v0.1.0 - Alpha
 
 **Completed:**
+- ✅ Automatic ROM ID detection and XML matching
 - ✅ ROM definition XML parser (511 tables loaded)
 - ✅ Binary ROM reader with scaling conversions
 - ✅ Table browser UI with category organization
