@@ -92,6 +92,56 @@ nc-rom-editor/
 4. **Save ROM:** File → Save ROM or Save ROM As...
 5. **Flash to ECU:** Use RomDrop to flash the modified ROM
 
+## Development
+
+### Running Tests
+
+The project uses pytest for testing. All tests are located in the `tests/` directory.
+
+**Run all tests:**
+```bash
+# Activate virtual environment first
+source venv/bin/activate  # Linux/macOS
+# or
+venv\Scripts\activate  # Windows
+
+# Run tests
+pytest
+
+# Run with coverage report
+pytest --cov=src --cov-report=html
+
+# Run specific test file
+pytest tests/test_rom_detector.py
+
+# Run tests matching a pattern
+pytest -k "test_rom_id"
+```
+
+**Test Coverage:**
+- Core modules (parser, detector, reader): 86-96%
+- Overall: 70%
+
+View detailed coverage report: `htmlcov/index.html`
+
+### Code Quality
+
+**Format code with black:**
+```bash
+black src/ tests/
+```
+
+**Lint code with flake8:**
+```bash
+flake8 src/ tests/
+```
+
+### CI/CD
+
+Tests run automatically on GitHub Actions for:
+- Python 3.10, 3.11, 3.12
+- Ubuntu, Windows, macOS
+
 ## Development Status
 
 **Current Version:** v0.1.0 - Alpha
