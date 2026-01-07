@@ -107,6 +107,8 @@ class Table:
     level: int = 1  # Priority level (1-4)
     category: str = ""
     swapxy: bool = False
+    flipx: bool = False  # Reverse X axis order
+    flipy: bool = False  # Reverse Y axis order
 
     # Child tables (axes for 2D/3D tables)
     children: List['Table'] = field(default_factory=list)

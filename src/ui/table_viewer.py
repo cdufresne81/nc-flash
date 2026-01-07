@@ -132,18 +132,23 @@ class TableViewer(QWidget):
         y_fmt = self._get_axis_format(AxisType.Y_AXIS)
         value_fmt = self._get_value_format()
 
+        # Apply flip if needed
+        flipy = self.current_table.flipy if self.current_table else False
+        display_values = values[::-1] if flipy else values
+        display_y_axis = y_axis[::-1] if (y_axis is not None and flipy) else y_axis
+
         for i in range(num_values):
             # Y axis value
-            if y_axis is not None and i < len(y_axis):
-                y_item = QTableWidgetItem(self._format_value(y_axis[i], y_fmt))
+            if display_y_axis is not None and i < len(display_y_axis):
+                y_item = QTableWidgetItem(self._format_value(display_y_axis[i], y_fmt))
             else:
                 y_item = QTableWidgetItem(str(i))
             y_item.setFlags(y_item.flags() & ~Qt.ItemIsEditable)  # Read-only
             self.table_widget.setItem(i, 0, y_item)
 
             # Data value with gradient color
-            value_item = QTableWidgetItem(self._format_value(values[i], value_fmt))
-            color = self._get_cell_color(values[i], values, i, 0)
+            value_item = QTableWidgetItem(self._format_value(display_values[i], value_fmt))
+            color = self._get_cell_color(display_values[i], values, i, 0)
             value_item.setBackground(QBrush(color))
             self.table_widget.setItem(i, 1, value_item)
 
@@ -168,10 +173,23 @@ class TableViewer(QWidget):
         y_fmt = self._get_axis_format(AxisType.Y_AXIS)
         value_fmt = self._get_value_format()
 
+        # Apply flip flags if needed
+        flipx = self.current_table.flipx if self.current_table else False
+        flipy = self.current_table.flipy if self.current_table else False
+
+        # Flip axes and values as needed
+        display_x_axis = x_axis[::-1] if (x_axis is not None and flipx) else x_axis
+        display_y_axis = y_axis[::-1] if (y_axis is not None and flipy) else y_axis
+        display_values = values.copy()
+        if flipy:
+            display_values = display_values[::-1, :]
+        if flipx:
+            display_values = display_values[:, ::-1]
+
         # Set column headers (X axis values)
         headers = [y_label]  # Top-left cell shows Y axis label
-        if x_axis is not None and len(x_axis) == cols:
-            headers.extend([self._format_value(x, x_fmt) for x in x_axis])
+        if display_x_axis is not None and len(display_x_axis) == cols:
+            headers.extend([self._format_value(x, x_fmt) for x in display_x_axis])
         else:
             headers.extend([str(i) for i in range(cols)])
         self.table_widget.setHorizontalHeaderLabels(headers)
@@ -179,8 +197,8 @@ class TableViewer(QWidget):
         # Fill table
         for row in range(rows):
             # Y axis value in first column
-            if y_axis is not None and row < len(y_axis):
-                y_item = QTableWidgetItem(self._format_value(y_axis[row], y_fmt))
+            if display_y_axis is not None and row < len(display_y_axis):
+                y_item = QTableWidgetItem(self._format_value(display_y_axis[row], y_fmt))
             else:
                 y_item = QTableWidgetItem(str(row))
             y_item.setFlags(y_item.flags() & ~Qt.ItemIsEditable)  # Make read-only
@@ -188,8 +206,8 @@ class TableViewer(QWidget):
 
             # Data values with gradient coloring
             for col in range(cols):
-                value_item = QTableWidgetItem(self._format_value(values[row, col], value_fmt))
-                color = self._get_cell_color(values[row, col], values, row, col)
+                value_item = QTableWidgetItem(self._format_value(display_values[row, col], value_fmt))
+                color = self._get_cell_color(display_values[row, col], values, row, col)
                 value_item.setBackground(QBrush(color))
                 self.table_widget.setItem(row, col + 1, value_item)
 

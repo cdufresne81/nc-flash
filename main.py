@@ -539,6 +539,22 @@ class MainWindow(QMainWindow):
     def on_table_selected(self, table, rom_reader):
         """Handle table selection from browser - opens table in new window"""
         try:
+            # Get ROM path for duplicate detection
+            rom_path = rom_reader.rom_path
+
+            # Clean up closed windows from the list first
+            self.open_table_windows = [w for w in self.open_table_windows if w.isVisible()]
+
+            # Check if this table is already open for this ROM
+            for window in self.open_table_windows:
+                if window.rom_path == rom_path and window.table.name == table.name:
+                    # Window already exists - bring to focus
+                    window.raise_()
+                    window.activateWindow()
+                    logger.info(f"Table already open, bringing to focus: {table.name}")
+                    self.statusBar().showMessage(f"Table already open: {table.name}")
+                    return
+
             # Read table data from ROM
             logger.debug(f"User selected table: {table.name}")
             self.statusBar().showMessage(f"Loading table: {table.name}...")
@@ -547,15 +563,13 @@ class MainWindow(QMainWindow):
             if data:
                 # Create and show new table viewer window
                 viewer_window = TableViewerWindow(
-                    table, data, rom_reader.definition, parent=self
+                    table, data, rom_reader.definition,
+                    rom_path=rom_path, parent=self
                 )
                 viewer_window.show()
 
                 # Track the window
                 self.open_table_windows.append(viewer_window)
-
-                # Clean up closed windows from the list
-                self.open_table_windows = [w for w in self.open_table_windows if w.isVisible()]
 
                 # Log to console
                 logger.info(f"Opened table: {table.name}")

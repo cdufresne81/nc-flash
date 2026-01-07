@@ -241,6 +241,8 @@ class DefinitionParser:
             level=int(table_elem.get('level', '1')),
             category=table_elem.get('category', ''),
             swapxy=table_elem.get('swapxy', 'false').lower() == 'true',
+            flipx=table_elem.get('flipx', 'false').lower() == 'true',
+            flipy=table_elem.get('flipy', 'false').lower() == 'true',
             axis_type=axis_type,
         )
 
