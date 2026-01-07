@@ -69,11 +69,19 @@ class DefinitionParser:
             logger.error(f"Unexpected error parsing {self.xml_path}: {e}")
             raise DefinitionParseError(f"Failed to parse definition file: {e}")
 
-        # Parse ROM element (should be only one)
-        rom_element = root.find('.//rom')
-        if rom_element is None:
-            logger.error(f"No <rom> element found in {self.xml_path}")
-            raise InvalidDefinitionError("No <rom> element found in XML")
+        # Parse ROM element
+        # Handle two formats:
+        # 1. <roms><rom>...</rom></roms> (our format with wrapper)
+        # 2. <rom>...</rom> (standard RomDrop format)
+        if root.tag == 'rom':
+            # Root is the rom element (RomDrop format)
+            rom_element = root
+        else:
+            # Look for rom element inside wrapper (our format)
+            rom_element = root.find('.//rom')
+            if rom_element is None:
+                logger.error(f"No <rom> element found in {self.xml_path}")
+                raise InvalidDefinitionError("No <rom> element found in XML")
 
         # Parse ROM ID
         romid = self._parse_romid(rom_element)
