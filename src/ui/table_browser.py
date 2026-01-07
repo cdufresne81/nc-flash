@@ -27,7 +27,7 @@ class HtmlDelegate(QStyledItemDelegate):
 
     def paint(self, painter, option, index):
         """Paint the item with HTML support"""
-        from PySide6.QtGui import QTextDocument
+        from PySide6.QtGui import QTextDocument, QPalette
         from PySide6.QtCore import QRectF
 
         options = option
@@ -43,7 +43,14 @@ class HtmlDelegate(QStyledItemDelegate):
 
         # Create a text document for HTML rendering
         doc = QTextDocument()
-        doc.setHtml(options.text)
+
+        # Set default text color from the palette before setting HTML
+        palette = options.palette
+        text_color = palette.color(QPalette.Text)
+
+        # Wrap HTML in a div with default text color
+        wrapped_html = f'<div style="color: {text_color.name()};">{options.text}</div>'
+        doc.setHtml(wrapped_html)
         doc.setDefaultFont(options.font)
 
         # Clear the text so the default drawing doesn't happen
