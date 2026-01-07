@@ -6,6 +6,11 @@ import pytest
 from pathlib import Path
 from src.core.definition_parser import DefinitionParser, load_definition
 from src.core.rom_definition import RomDefinition, RomID, Scaling, Table, TableType
+from src.core.exceptions import (
+    DefinitionNotFoundError,
+    DefinitionParseError,
+    InvalidDefinitionError
+)
 
 
 class TestDefinitionParserInitialization:
@@ -19,7 +24,7 @@ class TestDefinitionParserInitialization:
 
     def test_init_with_nonexistent_file(self):
         """Test initialization with non-existent file raises error"""
-        with pytest.raises(FileNotFoundError):
+        with pytest.raises(DefinitionNotFoundError):
             DefinitionParser("nonexistent.xml")
 
 
@@ -258,7 +263,7 @@ class TestErrorHandling:
 
         parser = DefinitionParser(str(bad_xml))
 
-        with pytest.raises(Exception):  # lxml will raise some parsing exception
+        with pytest.raises(DefinitionParseError):
             parser.parse()
 
     def test_parse_xml_without_rom_element(self, tmp_path):
@@ -268,7 +273,7 @@ class TestErrorHandling:
 
         parser = DefinitionParser(str(no_rom_xml))
 
-        with pytest.raises(ValueError, match="No <rom> element found"):
+        with pytest.raises(InvalidDefinitionError, match="No <rom> element found"):
             parser.parse()
 
     def test_parse_xml_without_romid(self, tmp_path):
@@ -278,5 +283,5 @@ class TestErrorHandling:
 
         parser = DefinitionParser(str(no_romid_xml))
 
-        with pytest.raises(ValueError, match="No <romid> element found"):
+        with pytest.raises(InvalidDefinitionError, match="No <romid> element found"):
             parser.parse()

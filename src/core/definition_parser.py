@@ -7,6 +7,7 @@ Parses RomDrop-style XML definition files into RomDefinition objects.
 from lxml import etree
 from typing import Optional
 from pathlib import Path
+import logging
 
 from .rom_definition import (
     RomDefinition,
@@ -16,6 +17,13 @@ from .rom_definition import (
     TableType,
     AxisType
 )
+from .exceptions import (
+    DefinitionNotFoundError,
+    DefinitionParseError,
+    InvalidDefinitionError
+)
+
+logger = logging.getLogger(__name__)
 
 
 class DefinitionParser:
@@ -29,10 +37,14 @@ class DefinitionParser:
 
         Args:
             xml_path: Path to ROM definition XML file
+
+        Raises:
+            DefinitionNotFoundError: If definition file doesn't exist
         """
         self.xml_path = Path(xml_path)
         if not self.xml_path.exists():
-            raise FileNotFoundError(f"Definition file not found: {xml_path}")
+            logger.error(f"Definition file not found: {xml_path}")
+            raise DefinitionNotFoundError(f"Definition file not found: {xml_path}")
 
     def parse(self) -> RomDefinition:
         """
@@ -40,24 +52,41 @@ class DefinitionParser:
 
         Returns:
             RomDefinition: Complete ROM definition
+
+        Raises:
+            DefinitionParseError: If XML parsing fails
+            InvalidDefinitionError: If ROM definition structure is invalid
         """
-        tree = etree.parse(str(self.xml_path))
-        root = tree.getroot()
+        logger.info(f"Parsing ROM definition from {self.xml_path}")
+
+        try:
+            tree = etree.parse(str(self.xml_path))
+            root = tree.getroot()
+        except etree.XMLSyntaxError as e:
+            logger.error(f"XML syntax error in {self.xml_path}: {e}")
+            raise DefinitionParseError(f"Failed to parse XML file: {e}")
+        except Exception as e:
+            logger.error(f"Unexpected error parsing {self.xml_path}: {e}")
+            raise DefinitionParseError(f"Failed to parse definition file: {e}")
 
         # Parse ROM element (should be only one)
         rom_element = root.find('.//rom')
         if rom_element is None:
-            raise ValueError("No <rom> element found in XML")
+            logger.error(f"No <rom> element found in {self.xml_path}")
+            raise InvalidDefinitionError("No <rom> element found in XML")
 
         # Parse ROM ID
         romid = self._parse_romid(rom_element)
 
         # Parse all scaling definitions
         scalings = self._parse_scalings(rom_element)
+        logger.info(f"Parsed {len(scalings)} scaling definitions")
 
         # Parse all table definitions
         tables = self._parse_tables(rom_element)
+        logger.info(f"Parsed {len(tables)} table definitions")
 
+        logger.info(f"Successfully parsed ROM definition: {romid.xmlid}")
         return RomDefinition(
             romid=romid,
             scalings=scalings,
@@ -65,10 +94,22 @@ class DefinitionParser:
         )
 
     def _parse_romid(self, rom_element) -> RomID:
-        """Parse ROM identification section"""
+        """
+        Parse ROM identification section
+
+        Args:
+            rom_element: The <rom> XML element
+
+        Returns:
+            RomID: Parsed ROM identification
+
+        Raises:
+            InvalidDefinitionError: If <romid> element is missing
+        """
         romid_elem = rom_element.find('romid')
         if romid_elem is None:
-            raise ValueError("No <romid> element found")
+            logger.error("No <romid> element found in ROM definition")
+            raise InvalidDefinitionError("No <romid> element found")
 
         def get_text(tag: str, default: str = "") -> str:
             elem = romid_elem.find(tag)
@@ -91,28 +132,42 @@ class DefinitionParser:
         )
 
     def _parse_scalings(self, rom_element) -> dict:
-        """Parse all scaling definitions into a dictionary"""
+        """
+        Parse all scaling definitions into a dictionary
+
+        Args:
+            rom_element: The <rom> XML element
+
+        Returns:
+            dict: Dictionary mapping scaling names to Scaling objects
+        """
         scalings = {}
 
         for scaling_elem in rom_element.findall('.//scaling'):
             name = scaling_elem.get('name')
             if not name:
+                logger.debug("Skipping scaling element without name attribute")
                 continue  # Skip scalings without names
 
-            scaling = Scaling(
-                name=name,
-                units=scaling_elem.get('units', ''),
-                toexpr=scaling_elem.get('toexpr', 'x'),
-                frexpr=scaling_elem.get('frexpr', 'x'),
-                format=scaling_elem.get('format', '%0.2f'),
-                min=float(scaling_elem.get('min', '0')),
-                max=float(scaling_elem.get('max', '0')),
-                inc=float(scaling_elem.get('inc', '1')),
-                storagetype=scaling_elem.get('storagetype', 'float'),
-                endian=scaling_elem.get('endian', 'big'),
-            )
+            try:
+                scaling = Scaling(
+                    name=name,
+                    units=scaling_elem.get('units', ''),
+                    toexpr=scaling_elem.get('toexpr', 'x'),
+                    frexpr=scaling_elem.get('frexpr', 'x'),
+                    format=scaling_elem.get('format', '%0.2f'),
+                    min=float(scaling_elem.get('min', '0')),
+                    max=float(scaling_elem.get('max', '0')),
+                    inc=float(scaling_elem.get('inc', '1')),
+                    storagetype=scaling_elem.get('storagetype', 'float'),
+                    endian=scaling_elem.get('endian', 'big'),
+                )
 
-            scalings[name] = scaling
+                scalings[name] = scaling
+                logger.debug(f"Parsed scaling: {name}")
+            except (ValueError, TypeError) as e:
+                logger.warning(f"Failed to parse scaling '{name}': {e}")
+                continue
 
         return scalings
 
@@ -120,7 +175,11 @@ class DefinitionParser:
         """
         Parse all table definitions
 
-        Returns list of top-level tables (not axis children)
+        Args:
+            rom_element: The <rom> XML element
+
+        Returns:
+            list: List of top-level Table objects (not axis children)
         """
         tables = []
 
@@ -132,14 +191,24 @@ class DefinitionParser:
                 table = self._parse_table(table_elem)
                 if table:
                     tables.append(table)
+                    logger.debug(f"Parsed table: {table.name}")
 
         return tables
 
     def _parse_table(self, table_elem) -> Optional[Table]:
-        """Parse a single table element and its children"""
+        """
+        Parse a single table element and its children
+
+        Args:
+            table_elem: The <table> XML element
+
+        Returns:
+            Table object if successful, None if table is invalid
+        """
         # Get table type
         type_str = table_elem.get('type')
         if not type_str:
+            logger.debug("Skipping table element without type attribute")
             return None
 
         # Determine if this is an axis table
@@ -151,6 +220,7 @@ class DefinitionParser:
             try:
                 table_type = TableType(type_str)
             except ValueError:
+                logger.debug(f"Skipping table with unknown type: {type_str}")
                 return None  # Unknown type
 
         # Parse basic attributes

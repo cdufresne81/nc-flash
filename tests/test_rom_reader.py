@@ -8,6 +8,11 @@ from pathlib import Path
 from src.core.rom_reader import RomReader, ScalingConverter
 from src.core.rom_definition import Scaling, TableType
 from src.core.definition_parser import load_definition
+from src.core.exceptions import (
+    RomFileNotFoundError,
+    ScalingNotFoundError,
+    ScalingConversionError
+)
 
 
 class TestScalingConverter:
@@ -150,7 +155,7 @@ class TestRomReaderInitialization:
         """Test initialization with non-existent ROM file"""
         definition = load_definition(str(sample_xml_path))
 
-        with pytest.raises(FileNotFoundError):
+        with pytest.raises(RomFileNotFoundError):
             RomReader("nonexistent.bin", definition)
 
     def test_rom_data_loaded(self, sample_rom_path, sample_xml_path):
@@ -257,8 +262,8 @@ class TestTableDataReading:
             y_len = len(data['y_axis'])
             assert data['values'].shape == (y_len, x_len)
 
-    def test_read_table_returns_none_for_invalid_scaling(self, sample_rom_path, sample_xml_path):
-        """Test that reading table with invalid scaling returns None"""
+    def test_read_table_raises_error_for_invalid_scaling(self, sample_rom_path, sample_xml_path):
+        """Test that reading table with invalid scaling raises exception"""
         definition = load_definition(str(sample_xml_path))
         reader = RomReader(str(sample_rom_path), definition)
 
@@ -266,8 +271,8 @@ class TestTableDataReading:
         table = definition.tables[0]
         table.scaling = "INVALID_SCALING"
 
-        data = reader.read_table_data(table)
-        assert data is None
+        with pytest.raises(ScalingNotFoundError):
+            reader.read_table_data(table)
 
 
 class TestTableDataWriting:
@@ -292,9 +297,8 @@ class TestTableDataWriting:
         # Modify values
         modified_values = original_data['values'] + 1.0
 
-        # Write back
-        success = reader.write_table_data(table, modified_values)
-        assert success is True
+        # Write back (no return value, raises exception on error)
+        reader.write_table_data(table, modified_values)
 
         # Read again and verify change
         new_data = reader.read_table_data(table)
@@ -314,11 +318,10 @@ class TestTableDataWriting:
 
         data = reader.read_table_data(table)
 
-        # Modify and write back
+        # Modify and write back (no return value, raises exception on error)
         if isinstance(data['values'], np.ndarray) and data['values'].ndim == 2:
             modified = data['values'] + 0.5
-            success = reader.write_table_data(table, modified)
-            assert success is True
+            reader.write_table_data(table, modified)
 
 
 class TestRomSaving:

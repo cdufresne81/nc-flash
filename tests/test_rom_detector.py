@@ -5,6 +5,10 @@ Unit tests for ROM detector module
 import pytest
 from pathlib import Path
 from src.core.rom_detector import RomDetector, RomIdInfo
+from src.core.exceptions import (
+    MetadataDirectoryError,
+    RomFileNotFoundError
+)
 
 
 class TestRomDetectorInitialization:
@@ -19,7 +23,7 @@ class TestRomDetectorInitialization:
 
     def test_init_with_invalid_directory(self):
         """Test initialization with non-existent directory"""
-        with pytest.raises(FileNotFoundError):
+        with pytest.raises(MetadataDirectoryError):
             RomDetector("nonexistent_directory")
 
     def test_scans_xml_files_on_init(self, metadata_dir):
@@ -77,7 +81,7 @@ class TestRomIdDetection:
         """Test detecting ROM ID from non-existent file"""
         detector = RomDetector(str(metadata_dir))
 
-        with pytest.raises(FileNotFoundError):
+        with pytest.raises(RomFileNotFoundError):
             detector.detect_rom_id("nonexistent.bin")
 
     def test_detect_rom_id_returns_none_for_unknown_rom(self, metadata_dir, tmp_path):

@@ -9,9 +9,20 @@ import struct
 import numpy as np
 from pathlib import Path
 from typing import Optional, Union, List
+import logging
 from simpleeval import simple_eval
 
 from .rom_definition import RomDefinition, Table, Scaling, TableType
+from .exceptions import (
+    RomFileNotFoundError,
+    RomReadError,
+    RomWriteError,
+    ScalingConversionError,
+    ScalingNotFoundError,
+    InvalidRomFileError
+)
+
+logger = logging.getLogger(__name__)
 
 
 class ScalingConverter:
@@ -37,6 +48,9 @@ class ScalingConverter:
 
         Returns:
             Converted value or array
+
+        Raises:
+            ScalingConversionError: If conversion fails
         """
         try:
             # Use simpleeval for safe expression evaluation
@@ -45,8 +59,10 @@ class ScalingConverter:
             else:
                 return simple_eval(self.scaling.toexpr, names={'x': raw_value})
         except Exception as e:
-            print(f"Error converting to display with expr '{self.scaling.toexpr}': {e}")
-            return raw_value
+            logger.error(f"Error converting to display with expr '{self.scaling.toexpr}': {e}")
+            raise ScalingConversionError(
+                f"Failed to convert raw value to display using expression '{self.scaling.toexpr}': {e}"
+            )
 
     def from_display(self, display_value: Union[float, np.ndarray]) -> Union[float, np.ndarray]:
         """
@@ -57,6 +73,9 @@ class ScalingConverter:
 
         Returns:
             Raw value or array for writing to ROM
+
+        Raises:
+            ScalingConversionError: If conversion fails
         """
         try:
             if isinstance(display_value, np.ndarray):
@@ -64,8 +83,10 @@ class ScalingConverter:
             else:
                 return simple_eval(self.scaling.frexpr, names={'x': display_value})
         except Exception as e:
-            print(f"Error converting from display with expr '{self.scaling.frexpr}': {e}")
-            return display_value
+            logger.error(f"Error converting from display with expr '{self.scaling.frexpr}': {e}")
+            raise ScalingConversionError(
+                f"Failed to convert display value to raw using expression '{self.scaling.frexpr}': {e}"
+            )
 
 
 class RomReader:
@@ -80,21 +101,36 @@ class RomReader:
         Args:
             rom_path: Path to ROM binary file
             definition: ROM definition with table/scaling metadata
+
+        Raises:
+            RomFileNotFoundError: If ROM file doesn't exist
         """
         self.rom_path = Path(rom_path)
         if not self.rom_path.exists():
-            raise FileNotFoundError(f"ROM file not found: {rom_path}")
+            logger.error(f"ROM file not found: {rom_path}")
+            raise RomFileNotFoundError(f"ROM file not found: {rom_path}")
 
         self.definition = definition
         self.rom_data = None
 
+        logger.info(f"Initializing ROM reader for {rom_path}")
         # Load entire ROM into memory (they're < 1MB)
         self._load_rom()
 
     def _load_rom(self):
-        """Load ROM binary file into memory"""
-        with open(self.rom_path, 'rb') as f:
-            self.rom_data = f.read()
+        """
+        Load ROM binary file into memory
+
+        Raises:
+            RomReadError: If ROM file cannot be read
+        """
+        try:
+            with open(self.rom_path, 'rb') as f:
+                self.rom_data = f.read()
+            logger.info(f"Loaded {len(self.rom_data)} bytes from ROM file")
+        except IOError as e:
+            logger.error(f"Failed to read ROM file {self.rom_path}: {e}")
+            raise RomReadError(f"Failed to read ROM file: {e}")
 
     def verify_rom_id(self) -> bool:
         """
@@ -109,9 +145,16 @@ class RomReader:
             id_length = len(expected_id)
 
             actual_id = self.rom_data[address:address + id_length].decode('ascii', errors='ignore')
-            return actual_id == expected_id
+            match = actual_id == expected_id
+
+            if match:
+                logger.info(f"ROM ID verified: {actual_id}")
+            else:
+                logger.warning(f"ROM ID mismatch - Expected: {expected_id}, Found: {actual_id}")
+
+            return match
         except Exception as e:
-            print(f"Error verifying ROM ID: {e}")
+            logger.error(f"Error verifying ROM ID: {e}")
             return False
 
     def _read_raw_values(self, address: int, count: int, scaling: Scaling) -> np.ndarray:
@@ -153,10 +196,11 @@ class RomReader:
         # Unpack binary data
         try:
             values = struct.unpack(format_string, data_bytes)
+            logger.debug(f"Read {count} values from address {hex(address)}")
             return np.array(values)
         except struct.error as e:
-            print(f"Error unpacking data at address {hex(address)}: {e}")
-            return np.array([])
+            logger.error(f"Error unpacking data at address {hex(address)}: {e}")
+            raise RomReadError(f"Failed to unpack data at address {hex(address)}: {e}")
 
     def read_table_data(self, table: Table) -> Optional[dict]:
         """
@@ -171,12 +215,20 @@ class RomReader:
                 - 'x_axis': X axis values if 3D (scaled)
                 - 'y_axis': Y axis values if 2D/3D (scaled)
                 - 'raw_values': Raw unscaled main values
+
+        Raises:
+            ScalingNotFoundError: If scaling definition is not found
+            RomReadError: If reading table data fails
         """
+        logger.debug(f"Reading table data: {table.name}")
+
         # Get scaling for main table
         scaling = self.definition.get_scaling(table.scaling)
         if not scaling:
-            print(f"Scaling '{table.scaling}' not found for table '{table.name}'")
-            return None
+            logger.error(f"Scaling '{table.scaling}' not found for table '{table.name}'")
+            raise ScalingNotFoundError(
+                f"Scaling '{table.scaling}' not found for table '{table.name}'"
+            )
 
         # Read main table values
         raw_values = self._read_raw_values(
@@ -184,9 +236,6 @@ class RomReader:
             count=table.elements,
             scaling=scaling
         )
-
-        if len(raw_values) == 0:
-            return None
 
         # Convert to display values
         converter = ScalingConverter(scaling)
@@ -234,9 +283,10 @@ class RomReader:
                     # Reshape to (y_len, x_len) - rows are Y, columns are X
                     result['values'] = display_values.reshape((y_len, x_len))
 
+        logger.info(f"Successfully read table: {table.name} ({table.type.value})")
         return result
 
-    def write_table_data(self, table: Table, values: np.ndarray) -> bool:
+    def write_table_data(self, table: Table, values: np.ndarray) -> None:
         """
         Write modified table data back to ROM (in memory, not to file yet)
 
@@ -244,12 +294,18 @@ class RomReader:
             table: Table definition
             values: New values to write (in display units)
 
-        Returns:
-            True if successful
+        Raises:
+            ScalingNotFoundError: If scaling definition is not found
+            RomWriteError: If writing table data fails
         """
+        logger.debug(f"Writing table data: {table.name}")
+
         scaling = self.definition.get_scaling(table.scaling)
         if not scaling:
-            return False
+            logger.error(f"Scaling '{table.scaling}' not found for table '{table.name}'")
+            raise ScalingNotFoundError(
+                f"Scaling '{table.scaling}' not found for table '{table.name}'"
+            )
 
         # Convert display values back to raw
         converter = ScalingConverter(scaling)
@@ -282,10 +338,10 @@ class RomReader:
                 packed_data +
                 self.rom_data[address + len(packed_data):]
             )
-            return True
+            logger.info(f"Successfully wrote table data: {table.name}")
         except Exception as e:
-            print(f"Error writing table data: {e}")
-            return False
+            logger.error(f"Error writing table data for '{table.name}': {e}")
+            raise RomWriteError(f"Failed to write table data: {e}")
 
     def save_rom(self, output_path: Optional[str] = None):
         """
@@ -293,9 +349,19 @@ class RomReader:
 
         Args:
             output_path: Output file path, defaults to overwriting original
+
+        Raises:
+            RomWriteError: If writing ROM file fails
         """
         if output_path is None:
             output_path = self.rom_path
 
-        with open(output_path, 'wb') as f:
-            f.write(self.rom_data)
+        logger.info(f"Saving ROM to {output_path}")
+
+        try:
+            with open(output_path, 'wb') as f:
+                f.write(self.rom_data)
+            logger.info(f"Successfully saved {len(self.rom_data)} bytes to {output_path}")
+        except IOError as e:
+            logger.error(f"Failed to save ROM file to {output_path}: {e}")
+            raise RomWriteError(f"Failed to save ROM file: {e}")
