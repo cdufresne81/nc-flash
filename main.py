@@ -718,23 +718,27 @@ class MainWindow(QMainWindow):
         """
         from src.ui.table_viewer_window import TableViewerWindow
 
-        # Check all open table viewer windows
-        for window in self.table_viewer_windows.values():
-            if isinstance(window, TableViewerWindow):
-                if window.isActiveWindow() or window.hasFocus():
-                    return window.viewer
-                # Also check if the table widget inside has focus
-                if window.viewer.table_widget.hasFocus():
+        # First check open_table_windows (separate windows)
+        for window in self.open_table_windows:
+            if isinstance(window, TableViewerWindow) and window.isVisible():
+                if window.isActiveWindow():
+                    logger.debug(f"Found active table window: {window.table.name}")
                     return window.viewer
 
-        # If no window has focus, try to get the last active one
-        # by checking which window was most recently interacted with
-        if self.table_viewer_windows:
-            # Get the most recently created window as fallback
-            last_window = list(self.table_viewer_windows.values())[-1]
-            if isinstance(last_window, TableViewerWindow):
-                return last_window.viewer
+        # Check if any window has focus
+        for window in self.open_table_windows:
+            if isinstance(window, TableViewerWindow) and window.isVisible():
+                if window.hasFocus() or window.viewer.table_widget.hasFocus():
+                    logger.debug(f"Found focused table window: {window.table.name}")
+                    return window.viewer
 
+        # Fallback: get the most recently opened visible window
+        for window in reversed(self.open_table_windows):
+            if isinstance(window, TableViewerWindow) and window.isVisible():
+                logger.debug(f"Using most recent table window: {window.table.name}")
+                return window.viewer
+
+        logger.debug("No table viewer window found")
         return None
 
     def _increment_current_table(self):
@@ -754,12 +758,24 @@ class MainWindow(QMainWindow):
         viewer = self._get_focused_table_viewer()
         if viewer:
             viewer.add_to_selection()
+        else:
+            QMessageBox.information(
+                self,
+                "No Table Selected",
+                "Please open and focus on a table window first."
+            )
 
     def _multiply_current_table(self):
         """Multiply selected cells in focused table"""
         viewer = self._get_focused_table_viewer()
         if viewer:
             viewer.multiply_selection()
+        else:
+            QMessageBox.information(
+                self,
+                "No Table Selected",
+                "Please open and focus on a table window first."
+            )
 
     def _set_value_current_table(self):
         """Set selected cells to specific value in focused table"""

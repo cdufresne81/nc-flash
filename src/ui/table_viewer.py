@@ -1049,13 +1049,19 @@ class TableViewer(QWidget):
 
     def add_to_selection(self):
         """Add custom value to selected cells (dialog)"""
+        logger.debug("add_to_selection() called")
         if not self.current_table:
+            logger.debug("No current table, returning")
             return
 
         from .data_operation_dialogs import AddValueDialog
 
+        logger.debug("Creating AddValueDialog")
         dialog = AddValueDialog(self)
-        if dialog.exec() == QDialog.Accepted:
+        logger.debug("Showing dialog")
+        result = dialog.exec()
+        logger.debug(f"Dialog result: {result}")
+        if result == QDialog.Accepted:
             value = dialog.get_value()
 
             # Apply operation
@@ -1070,13 +1076,19 @@ class TableViewer(QWidget):
 
     def multiply_selection(self):
         """Multiply selected cells by factor (dialog)"""
+        logger.debug("multiply_selection() called")
         if not self.current_table:
+            logger.debug("No current table, returning")
             return
 
         from .data_operation_dialogs import MultiplyDialog
 
+        logger.debug("Creating MultiplyDialog")
         dialog = MultiplyDialog(self)
-        if dialog.exec() == QDialog.Accepted:
+        logger.debug("Showing dialog")
+        result = dialog.exec()
+        logger.debug(f"Dialog result: {result}")
+        if result == QDialog.Accepted:
             factor = dialog.get_factor()
 
             # Apply operation
