@@ -292,6 +292,7 @@ class MainWindow(QMainWindow):
         multiply_action.triggered.connect(self._multiply_current_table)
 
         set_action = data_submenu.addAction("Set Value...")
+        set_action.setShortcut("=")
         set_action.triggered.connect(self._set_value_current_table)
 
         data_submenu.addSeparator()

@@ -88,6 +88,10 @@ class TableViewer(QWidget):
         decrement_shortcut = QShortcut(QKeySequence("-"), self.table_widget)
         decrement_shortcut.activated.connect(self.decrement_selection)
 
+        # Set up set value shortcut
+        set_value_shortcut = QShortcut(QKeySequence("="), self.table_widget)
+        set_value_shortcut.activated.connect(self.set_value_selection)
+
         # Set up select all shortcut
         select_all_shortcut = QShortcut(QKeySequence.SelectAll, self.table_widget)
         select_all_shortcut.activated.connect(self.select_all_data)
