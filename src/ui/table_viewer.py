@@ -14,7 +14,8 @@ from PySide6.QtWidgets import (
     QHeaderView,
     QSizePolicy,
     QMessageBox,
-    QApplication
+    QApplication,
+    QDialog
 )
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QColor, QBrush, QKeySequence, QShortcut
@@ -34,6 +35,10 @@ class TableViewer(QWidget):
     # Signal emitted when a cell value changes
     # Args: table_name, row, col, old_value, new_value, old_raw, new_raw
     cell_changed = Signal(str, int, int, float, float, float, float)
+
+    # Signal emitted when bulk operation completes (for single undo)
+    # Args: list of (row, col, old_value, new_value, old_raw, new_raw) tuples
+    bulk_changes = Signal(list)
 
     def __init__(self, rom_definition: RomDefinition = None, parent=None):
         super().__init__(parent)
@@ -76,6 +81,24 @@ class TableViewer(QWidget):
         copy_shortcut.activated.connect(self.copy_selection)
         paste_shortcut = QShortcut(QKeySequence.Paste, self.table_widget)
         paste_shortcut.activated.connect(self.paste_selection)
+
+        # Set up increment/decrement shortcuts
+        increment_shortcut = QShortcut(QKeySequence("+"), self.table_widget)
+        increment_shortcut.activated.connect(self.increment_selection)
+        decrement_shortcut = QShortcut(QKeySequence("-"), self.table_widget)
+        decrement_shortcut.activated.connect(self.decrement_selection)
+
+        # Set up select all shortcut
+        select_all_shortcut = QShortcut(QKeySequence.SelectAll, self.table_widget)
+        select_all_shortcut.activated.connect(self.select_all_data)
+
+        # Set up interpolation shortcuts
+        v_shortcut = QShortcut(QKeySequence("V"), self.table_widget)
+        v_shortcut.activated.connect(self.interpolate_vertical)
+        h_shortcut = QShortcut(QKeySequence("H"), self.table_widget)
+        h_shortcut.activated.connect(self.interpolate_horizontal)
+        b_shortcut = QShortcut(QKeySequence("B"), self.table_widget)
+        b_shortcut.activated.connect(self.interpolate_2d)
 
         layout.addWidget(self.table_widget)
 
@@ -886,3 +909,503 @@ class TableViewer(QWidget):
 
         if changes_made:
             logger.debug(f"Pasted {len(changes_made)} cell(s)")
+
+    def _apply_bulk_operation(self, operation_fn, operation_name: str):
+        """
+        Apply an operation to all selected data cells
+
+        Args:
+            operation_fn: Function(old_value) -> new_value
+            operation_name: Description for logging
+
+        Returns:
+            List of (row, col, old_value, new_value, old_raw, new_raw) tuples
+        """
+        if self._read_only or not self.current_table or not self.current_data:
+            return []
+
+        # Get selected ranges
+        selected = self.table_widget.selectedRanges()
+        if not selected:
+            logger.debug(f"{operation_name}: No selection")
+            return []
+
+        # Get bounding rectangle of selection
+        min_row = min(r.topRow() for r in selected)
+        max_row = max(r.bottomRow() for r in selected)
+        min_col = min(r.leftColumn() for r in selected)
+        max_col = max(r.rightColumn() for r in selected)
+
+        changes_made = []
+
+        # Iterate through selection
+        for row in range(min_row, max_row + 1):
+            for col in range(min_col, max_col + 1):
+                item = self.table_widget.item(row, col)
+                if not item:
+                    continue
+
+                # Check if this is a data cell (not axis)
+                data_indices = item.data(Qt.UserRole)
+                if data_indices is None:
+                    continue  # Skip axis cells
+
+                data_row, data_col = data_indices
+
+                # Get current value
+                values = self.current_data['values']
+                if values.ndim == 1:
+                    old_value = float(values[data_row])
+                else:
+                    old_value = float(values[data_row, data_col])
+
+                # Apply operation
+                try:
+                    new_value = float(operation_fn(old_value))
+                except Exception as e:
+                    logger.warning(f"Operation failed for cell [{data_row},{data_col}]: {e}")
+                    continue
+
+                # Skip if no change
+                if abs(new_value - old_value) < 1e-10:
+                    continue
+
+                # Validate against scaling if available
+                if self.rom_definition and self.current_table.scaling:
+                    scaling = self.rom_definition.get_scaling(self.current_table.scaling)
+                    if scaling:
+                        if scaling.min is not None and new_value < scaling.min:
+                            logger.warning(f"Value {new_value} below minimum {scaling.min}, skipping")
+                            continue
+                        if scaling.max is not None and new_value > scaling.max:
+                            logger.warning(f"Value {new_value} above maximum {scaling.max}, skipping")
+                            continue
+
+                # Convert to raw values
+                old_raw = self._display_to_raw(old_value)
+                new_raw = self._display_to_raw(new_value)
+                if old_raw is None or new_raw is None:
+                    continue
+
+                # Update internal data
+                if values.ndim == 1:
+                    self.current_data['values'][data_row] = new_value
+                else:
+                    self.current_data['values'][data_row, data_col] = new_value
+
+                # Update cell display
+                self._editing_in_progress = True
+                try:
+                    value_fmt = self._get_value_format()
+                    item.setText(self._format_value(new_value, value_fmt))
+                    color = self._get_cell_color(new_value, self.current_data['values'], data_row, data_col)
+                    item.setBackground(QBrush(color))
+                finally:
+                    self._editing_in_progress = False
+
+                # Record change
+                changes_made.append((data_row, data_col, old_value, new_value, old_raw, new_raw))
+
+        logger.debug(f"{operation_name}: Modified {len(changes_made)} cell(s)")
+        return changes_made
+
+    def increment_selection(self):
+        """Increment selected cells by fixed amount"""
+        if not self.current_table:
+            return
+
+        # Get increment value (default: 1.0)
+        # TODO: Read from ROM metadata when implemented
+        increment = 1.0
+
+        # Apply operation
+        changes = self._apply_bulk_operation(
+            lambda v: v + increment,
+            f"Increment by {increment}"
+        )
+
+        # Emit bulk changes signal
+        if changes:
+            self.bulk_changes.emit(changes)
+
+    def decrement_selection(self):
+        """Decrement selected cells by fixed amount"""
+        if not self.current_table:
+            return
+
+        # Get decrement value (default: 1.0)
+        # TODO: Read from ROM metadata when implemented
+        decrement = 1.0
+
+        # Apply operation
+        changes = self._apply_bulk_operation(
+            lambda v: v - decrement,
+            f"Decrement by {decrement}"
+        )
+
+        # Emit bulk changes signal
+        if changes:
+            self.bulk_changes.emit(changes)
+
+    def add_to_selection(self):
+        """Add custom value to selected cells (dialog)"""
+        if not self.current_table:
+            return
+
+        from .data_operation_dialogs import AddValueDialog
+
+        dialog = AddValueDialog(self)
+        if dialog.exec() == QDialog.Accepted:
+            value = dialog.get_value()
+
+            # Apply operation
+            changes = self._apply_bulk_operation(
+                lambda v: v + value,
+                f"Add {value}"
+            )
+
+            # Emit bulk changes signal
+            if changes:
+                self.bulk_changes.emit(changes)
+
+    def multiply_selection(self):
+        """Multiply selected cells by factor (dialog)"""
+        if not self.current_table:
+            return
+
+        from .data_operation_dialogs import MultiplyDialog
+
+        dialog = MultiplyDialog(self)
+        if dialog.exec() == QDialog.Accepted:
+            factor = dialog.get_factor()
+
+            # Apply operation
+            changes = self._apply_bulk_operation(
+                lambda v: v * factor,
+                f"Multiply by {factor}"
+            )
+
+            # Emit bulk changes signal
+            if changes:
+                self.bulk_changes.emit(changes)
+
+    def set_value_selection(self):
+        """Set all selected cells to value (dialog)"""
+        if not self.current_table:
+            return
+
+        from .data_operation_dialogs import SetValueDialog
+
+        # Count selected cells for preview
+        selected = self.table_widget.selectedRanges()
+        if not selected:
+            return
+
+        cell_count = sum(
+            (r.bottomRow() - r.topRow() + 1) * (r.rightColumn() - r.leftColumn() + 1)
+            for r in selected
+        )
+
+        dialog = SetValueDialog(cell_count, self)
+        if dialog.exec() == QDialog.Accepted:
+            value = dialog.get_value()
+
+            # Apply operation
+            changes = self._apply_bulk_operation(
+                lambda v: value,
+                f"Set to {value}"
+            )
+
+            # Emit bulk changes signal
+            if changes:
+                self.bulk_changes.emit(changes)
+
+    def select_all_data(self):
+        """Select all data cells (excluding axes)"""
+        if not self.current_table:
+            return
+
+        from PySide6.QtWidgets import QTableWidgetSelectionRange
+
+        table_type = self.current_table.type
+
+        if table_type == TableType.ONE_D:
+            # Single cell at (0, 0)
+            selection = QTableWidgetSelectionRange(0, 0, 0, 0)
+            self.table_widget.setRangeSelected(selection, True)
+            self.table_widget.setCurrentCell(0, 0)
+
+        elif table_type == TableType.TWO_D:
+            # Select value column (skip Y axis in column 0)
+            num_rows = self.table_widget.rowCount()
+            if num_rows > 0:
+                # Column 1 is the value column
+                selection = QTableWidgetSelectionRange(0, 1, num_rows - 1, 1)
+                self.table_widget.setRangeSelected(selection, True)
+                self.table_widget.setCurrentCell(0, 1)
+
+        elif table_type == TableType.THREE_D:
+            # Select data region (skip X axis in row 0, Y axis in column 0)
+            num_rows = self.table_widget.rowCount()
+            num_cols = self.table_widget.columnCount()
+
+            if num_rows > 1 and num_cols > 1:
+                # Data starts at row 1, col 1
+                selection = QTableWidgetSelectionRange(1, 1, num_rows - 1, num_cols - 1)
+                self.table_widget.setRangeSelected(selection, True)
+                self.table_widget.setCurrentCell(1, 1)
+
+    def interpolate_vertical(self):
+        """Fill gaps vertically with linear interpolation (V key)"""
+        if not self.current_table or not self.current_data:
+            return
+
+        selected_ranges = self.table_widget.selectedRanges()
+        if not selected_ranges:
+            return
+
+        from PySide6.QtWidgets import QTableWidgetSelectionRange
+
+        all_changes = []
+
+        for sel_range in selected_ranges:
+            # For each column in the selection
+            for col in range(sel_range.leftColumn(), sel_range.rightColumn() + 1):
+                # Collect data cells in this column
+                cells = []
+                for row in range(sel_range.topRow(), sel_range.bottomRow() + 1):
+                    item = self.table_widget.item(row, col)
+                    if item and item.data(Qt.UserRole) is not None:
+                        # This is a data cell
+                        coords = item.data(Qt.UserRole)
+                        try:
+                            value = float(item.text())
+                            cells.append((row, value, coords))
+                        except ValueError:
+                            continue
+
+                # Need at least 2 cells to interpolate
+                if len(cells) < 2:
+                    continue
+
+                # Get first and last values
+                first_row, first_val, first_coords = cells[0]
+                last_row, last_val, last_coords = cells[-1]
+
+                # If only 2 cells, nothing to interpolate between them
+                if len(cells) == 2 and last_row - first_row == 1:
+                    continue
+
+                # Calculate linear interpolation for rows between first and last
+                if last_row == first_row:
+                    continue  # Same row, can't interpolate vertically
+
+                for i in range(1, len(cells) - 1):
+                    row, old_val, coords = cells[i]
+                    # Linear interpolation based on position
+                    t = (row - first_row) / (last_row - first_row)
+                    new_val = first_val + t * (last_val - first_val)
+
+                    if abs(new_val - old_val) > 1e-9:  # Only if changed
+                        # Update cell
+                        item = self.table_widget.item(row, col)
+                        old_raw = self.current_data['values'][coords]
+
+                        # Convert to raw and back to ensure consistency
+                        scaling = self.rom_definition.get_scaling(self.current_table.scaling)
+                        if scaling:
+                            from ..core.rom_reader import ScalingConverter
+                            converter = ScalingConverter(scaling)
+                            new_raw = converter.from_display(new_val)
+                            new_val = converter.to_display(new_raw)
+
+                            # Update display and data
+                            item.setText(f"{new_val:.{self._get_precision()}f}")
+                            self.current_data['values'][coords] = new_raw
+
+                            all_changes.append((coords[0], coords[1] if len(coords) > 1 else 0,
+                                              old_val, new_val, old_raw, new_raw))
+
+        if all_changes:
+            self.bulk_changes.emit(all_changes)
+
+    def interpolate_horizontal(self):
+        """Fill gaps horizontally with linear interpolation (H key)"""
+        if not self.current_table or not self.current_data:
+            return
+
+        selected_ranges = self.table_widget.selectedRanges()
+        if not selected_ranges:
+            return
+
+        from PySide6.QtWidgets import QTableWidgetSelectionRange
+
+        all_changes = []
+
+        for sel_range in selected_ranges:
+            # For each row in the selection
+            for row in range(sel_range.topRow(), sel_range.bottomRow() + 1):
+                # Collect data cells in this row
+                cells = []
+                for col in range(sel_range.leftColumn(), sel_range.rightColumn() + 1):
+                    item = self.table_widget.item(row, col)
+                    if item and item.data(Qt.UserRole) is not None:
+                        # This is a data cell
+                        coords = item.data(Qt.UserRole)
+                        try:
+                            value = float(item.text())
+                            cells.append((col, value, coords))
+                        except ValueError:
+                            continue
+
+                # Need at least 2 cells to interpolate
+                if len(cells) < 2:
+                    continue
+
+                # Get first and last values
+                first_col, first_val, first_coords = cells[0]
+                last_col, last_val, last_coords = cells[-1]
+
+                # If only 2 cells, nothing to interpolate between them
+                if len(cells) == 2 and last_col - first_col == 1:
+                    continue
+
+                # Calculate linear interpolation for columns between first and last
+                if last_col == first_col:
+                    continue  # Same column, can't interpolate horizontally
+
+                for i in range(1, len(cells) - 1):
+                    col, old_val, coords = cells[i]
+                    # Linear interpolation based on position
+                    t = (col - first_col) / (last_col - first_col)
+                    new_val = first_val + t * (last_val - first_val)
+
+                    if abs(new_val - old_val) > 1e-9:  # Only if changed
+                        # Update cell
+                        item = self.table_widget.item(row, col)
+                        old_raw = self.current_data['values'][coords]
+
+                        # Convert to raw and back to ensure consistency
+                        scaling = self.rom_definition.get_scaling(self.current_table.scaling)
+                        if scaling:
+                            from ..core.rom_reader import ScalingConverter
+                            converter = ScalingConverter(scaling)
+                            new_raw = converter.from_display(new_val)
+                            new_val = converter.to_display(new_raw)
+
+                            # Update display and data
+                            item.setText(f"{new_val:.{self._get_precision()}f}")
+                            self.current_data['values'][coords] = new_raw
+
+                            all_changes.append((coords[0], coords[1] if len(coords) > 1 else 0,
+                                              old_val, new_val, old_raw, new_raw))
+
+        if all_changes:
+            self.bulk_changes.emit(all_changes)
+
+    def interpolate_2d(self):
+        """2D bilinear interpolation for 3D tables (B key)"""
+        if not self.current_table or not self.current_data:
+            return
+
+        # Only works for 3D tables
+        if self.current_table.type != TableType.THREE_D:
+            QMessageBox.warning(
+                self,
+                "Invalid Operation",
+                "2D interpolation only works on 3D tables"
+            )
+            return
+
+        selected_ranges = self.table_widget.selectedRanges()
+        if not selected_ranges:
+            return
+
+        from PySide6.QtWidgets import QTableWidgetSelectionRange
+
+        all_changes = []
+
+        for sel_range in selected_ranges:
+            top_row = sel_range.topRow()
+            bottom_row = sel_range.bottomRow()
+            left_col = sel_range.leftColumn()
+            right_col = sel_range.rightColumn()
+
+            # Need at least 2x2 selection
+            if (bottom_row - top_row < 1) or (right_col - left_col < 1):
+                continue
+
+            # Get corner values
+            def get_corner_value(row, col):
+                item = self.table_widget.item(row, col)
+                if item and item.data(Qt.UserRole) is not None:
+                    try:
+                        return float(item.text())
+                    except ValueError:
+                        return None
+                return None
+
+            # Get all four corners
+            v00 = get_corner_value(top_row, left_col)      # Top-left
+            v10 = get_corner_value(top_row, right_col)     # Top-right
+            v01 = get_corner_value(bottom_row, left_col)   # Bottom-left
+            v11 = get_corner_value(bottom_row, right_col)  # Bottom-right
+
+            # All corners must have values
+            if None in (v00, v10, v01, v11):
+                continue
+
+            # Apply bilinear interpolation to all cells in the selection
+            for row in range(top_row, bottom_row + 1):
+                for col in range(left_col, right_col + 1):
+                    item = self.table_widget.item(row, col)
+                    if not item or item.data(Qt.UserRole) is None:
+                        continue
+
+                    coords = item.data(Qt.UserRole)
+
+                    # Normalize position to [0, 1] range
+                    if bottom_row == top_row:
+                        ty = 0.0
+                    else:
+                        ty = (row - top_row) / (bottom_row - top_row)
+
+                    if right_col == left_col:
+                        tx = 0.0
+                    else:
+                        tx = (col - left_col) / (right_col - left_col)
+
+                    # Bilinear interpolation formula
+                    # f(x,y) = (1-x)(1-y)f00 + x(1-y)f10 + (1-x)yf01 + xyf11
+                    new_val = (
+                        (1 - tx) * (1 - ty) * v00 +
+                        tx * (1 - ty) * v10 +
+                        (1 - tx) * ty * v01 +
+                        tx * ty * v11
+                    )
+
+                    try:
+                        old_val = float(item.text())
+                    except ValueError:
+                        continue
+
+                    if abs(new_val - old_val) > 1e-9:  # Only if changed
+                        old_raw = self.current_data['values'][coords]
+
+                        # Convert to raw and back to ensure consistency
+                        scaling = self.rom_definition.get_scaling(self.current_table.scaling)
+                        if scaling:
+                            from ..core.rom_reader import ScalingConverter
+                            converter = ScalingConverter(scaling)
+                            new_raw = converter.from_display(new_val)
+                            new_val = converter.to_display(new_raw)
+
+                            # Update display and data
+                            item.setText(f"{new_val:.{self._get_precision()}f}")
+                            self.current_data['values'][coords] = new_raw
+
+                            all_changes.append((coords[0], coords[1] if len(coords) > 1 else 0,
+                                              old_val, new_val, old_raw, new_raw))
+
+        if all_changes:
+            self.bulk_changes.emit(all_changes)

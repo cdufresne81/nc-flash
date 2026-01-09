@@ -4,12 +4,12 @@ Change Tracker
 Tracks pending changes and manages undo/redo stack for cell edits.
 """
 
-from typing import Optional, List, Dict, Callable
+from typing import Optional, List, Dict, Callable, Union
 from collections import deque
 from dataclasses import dataclass, field
 import logging
 
-from .version_models import CellChange, TableChanges, UndoableChange
+from .version_models import CellChange, TableChanges, UndoableChange, BulkChange
 from .rom_definition import Table
 
 logger = logging.getLogger(__name__)
@@ -75,8 +75,9 @@ class ChangeTracker:
         self._pending: Dict[str, PendingChanges] = {}
 
         # Global undo/redo stacks (across all tables)
-        self._undo_stack: deque[UndoableChange] = deque(maxlen=MAX_UNDO_STACK)
-        self._redo_stack: deque[UndoableChange] = deque(maxlen=MAX_UNDO_STACK)
+        # Can hold either single changes or bulk changes
+        self._undo_stack: deque[Union[UndoableChange, BulkChange]] = deque(maxlen=MAX_UNDO_STACK)
+        self._redo_stack: deque[Union[UndoableChange, BulkChange]] = deque(maxlen=MAX_UNDO_STACK)
 
         # Callbacks for UI updates
         self._change_callbacks: List[Callable] = []
@@ -126,93 +127,221 @@ class ChangeTracker:
 
         logger.debug(f"Recorded change: {table.name}[{row},{col}] {old_value} -> {new_value}")
 
-    def undo(self) -> Optional[CellChange]:
+    def record_bulk_changes(self, table: Table, changes: List[tuple], description: str):
         """
-        Undo the last change
+        Record multiple cell changes as a single undo operation
+
+        Args:
+            table: Table being edited
+            changes: List of (row, col, old_value, new_value, old_raw, new_raw) tuples
+            description: Description of the operation (e.g., "Multiply by 1.1")
+        """
+        if not changes:
+            return
+
+        cell_changes = []
+        for row, col, old_value, new_value, old_raw, new_raw in changes:
+            change = CellChange(
+                table_name=table.name,
+                table_address=table.address,
+                row=row,
+                col=col,
+                old_value=old_value,
+                new_value=new_value,
+                old_raw=old_raw,
+                new_raw=new_raw
+            )
+            cell_changes.append(change)
+
+            # Add to pending changes
+            if table.name not in self._pending:
+                self._pending[table.name] = PendingChanges(
+                    table_name=table.name,
+                    table_address=table.address
+                )
+            self._pending[table.name].add_change(change)
+
+        # Add as single bulk change to undo stack
+        bulk_change = BulkChange(
+            changes=cell_changes,
+            description=description
+        )
+        self._undo_stack.append(bulk_change)
+
+        # Clear redo stack (new change invalidates redo history)
+        self._redo_stack.clear()
+
+        # Notify listeners
+        self._notify_change()
+
+        logger.debug(f"Recorded bulk change: {description} ({len(changes)} cells in {table.name})")
+
+    def undo(self) -> Optional[Union[CellChange, List[CellChange]]]:
+        """
+        Undo the last change (single or bulk)
 
         Returns:
-            The change that was undone (with old/new swapped), or None if stack empty
+            The change(s) that was undone (with old/new swapped), or None if stack empty
+            Returns single CellChange for single undo, List[CellChange] for bulk undo
         """
         if not self._undo_stack:
             return None
 
-        undoable = self._undo_stack.pop()
-        change = undoable.cell_change
+        item = self._undo_stack.pop()
 
-        # Create reverse change for redo
-        reverse = CellChange(
-            table_name=change.table_name,
-            table_address=change.table_address,
-            row=change.row,
-            col=change.col,
-            old_value=change.new_value,  # Swap old/new
-            new_value=change.old_value,
-            old_raw=change.new_raw,
-            new_raw=change.old_raw
-        )
+        # Handle bulk changes
+        if isinstance(item, BulkChange):
+            reversed_changes = []
+            for change in item.changes:
+                # Create reverse change
+                reverse = CellChange(
+                    table_name=change.table_name,
+                    table_address=change.table_address,
+                    row=change.row,
+                    col=change.col,
+                    old_value=change.new_value,  # Swap old/new
+                    new_value=change.old_value,
+                    old_raw=change.new_raw,
+                    new_raw=change.old_raw
+                )
+                reversed_changes.append(reverse)
 
-        # Push to redo stack
-        self._redo_stack.append(UndoableChange(cell_change=reverse))
+                # Update pending changes
+                self._update_pending_for_undo(change)
 
-        # Update pending changes
-        self._update_pending_for_undo(change)
+            # Push reversed bulk to redo stack
+            reverse_bulk = BulkChange(
+                changes=reversed_changes,
+                description=item.description
+            )
+            self._redo_stack.append(reverse_bulk)
 
-        self._notify_change()
+            self._notify_change()
+            logger.debug(f"Undo bulk: {item.description} ({len(item.changes)} cells)")
 
-        logger.debug(f"Undo: {change.table_name}[{change.row},{change.col}]")
+            return reversed_changes
 
-        # Return the reverse change (what should be applied)
-        return reverse
+        # Handle single changes
+        else:
+            change = item.cell_change
 
-    def redo(self) -> Optional[CellChange]:
-        """
-        Redo the last undone change
-
-        Returns:
-            The change that was redone (with old/new swapped), or None if stack empty
-        """
-        if not self._redo_stack:
-            return None
-
-        undoable = self._redo_stack.pop()
-        change = undoable.cell_change
-
-        # Create reverse for undo again
-        reverse = CellChange(
-            table_name=change.table_name,
-            table_address=change.table_address,
-            row=change.row,
-            col=change.col,
-            old_value=change.new_value,
-            new_value=change.old_value,
-            old_raw=change.new_raw,
-            new_raw=change.old_raw
-        )
-
-        # Push back to undo stack
-        self._undo_stack.append(UndoableChange(cell_change=reverse))
-
-        # Update pending changes
-        if change.table_name in self._pending:
-            # Re-apply the change
-            reapply = CellChange(
+            # Create reverse change for redo
+            reverse = CellChange(
                 table_name=change.table_name,
                 table_address=change.table_address,
                 row=change.row,
                 col=change.col,
-                old_value=change.old_value,
-                new_value=change.new_value,
-                old_raw=change.old_raw,
-                new_raw=change.new_raw
+                old_value=change.new_value,  # Swap old/new
+                new_value=change.old_value,
+                old_raw=change.new_raw,
+                new_raw=change.old_raw
             )
-            self._pending[change.table_name].add_change(reapply)
 
-        self._notify_change()
+            # Push to redo stack
+            self._redo_stack.append(UndoableChange(cell_change=reverse))
 
-        logger.debug(f"Redo: {change.table_name}[{change.row},{change.col}]")
+            # Update pending changes
+            self._update_pending_for_undo(change)
 
-        # Return the change to apply
-        return change
+            self._notify_change()
+            logger.debug(f"Undo: {change.table_name}[{change.row},{change.col}]")
+
+            return reverse
+
+    def redo(self) -> Optional[Union[CellChange, List[CellChange]]]:
+        """
+        Redo the last undone change (single or bulk)
+
+        Returns:
+            The change(s) that was redone, or None if stack empty
+            Returns single CellChange for single redo, List[CellChange] for bulk redo
+        """
+        if not self._redo_stack:
+            return None
+
+        item = self._redo_stack.pop()
+
+        # Handle bulk changes
+        if isinstance(item, BulkChange):
+            reversed_changes = []
+            for change in item.changes:
+                # Create reverse for undo again
+                reverse = CellChange(
+                    table_name=change.table_name,
+                    table_address=change.table_address,
+                    row=change.row,
+                    col=change.col,
+                    old_value=change.new_value,
+                    new_value=change.old_value,
+                    old_raw=change.new_raw,
+                    new_raw=change.old_raw
+                )
+                reversed_changes.append(reverse)
+
+                # Re-apply to pending
+                if change.table_name in self._pending:
+                    reapply = CellChange(
+                        table_name=change.table_name,
+                        table_address=change.table_address,
+                        row=change.row,
+                        col=change.col,
+                        old_value=change.old_value,
+                        new_value=change.new_value,
+                        old_raw=change.old_raw,
+                        new_raw=change.new_raw
+                    )
+                    self._pending[change.table_name].add_change(reapply)
+
+            # Push reversed bulk back to undo stack
+            reverse_bulk = BulkChange(
+                changes=reversed_changes,
+                description=item.description
+            )
+            self._undo_stack.append(reverse_bulk)
+
+            self._notify_change()
+            logger.debug(f"Redo bulk: {item.description} ({len(item.changes)} cells)")
+
+            return item.changes
+
+        # Handle single changes
+        else:
+            change = item.cell_change
+
+            # Create reverse for undo again
+            reverse = CellChange(
+                table_name=change.table_name,
+                table_address=change.table_address,
+                row=change.row,
+                col=change.col,
+                old_value=change.new_value,
+                new_value=change.old_value,
+                old_raw=change.new_raw,
+                new_raw=change.old_raw
+            )
+
+            # Push back to undo stack
+            self._undo_stack.append(UndoableChange(cell_change=reverse))
+
+            # Update pending changes
+            if change.table_name in self._pending:
+                # Re-apply the change
+                reapply = CellChange(
+                    table_name=change.table_name,
+                    table_address=change.table_address,
+                    row=change.row,
+                    col=change.col,
+                    old_value=change.old_value,
+                    new_value=change.new_value,
+                    old_raw=change.old_raw,
+                    new_raw=change.new_raw
+                )
+                self._pending[change.table_name].add_change(reapply)
+
+            self._notify_change()
+            logger.debug(f"Redo: {change.table_name}[{change.row},{change.col}]")
+
+            return change
 
     def _update_pending_for_undo(self, change: CellChange):
         """Update pending changes when undoing"""

@@ -30,6 +30,10 @@ class TableViewerWindow(QMainWindow):
     # Args: table, row, col, old_value, new_value, old_raw, new_raw
     cell_changed = Signal(Table, int, int, float, float, float, float)
 
+    # Forward bulk_changes signal from viewer
+    # Args: table, list of (row, col, old_value, new_value, old_raw, new_raw) tuples
+    bulk_changes = Signal(Table, list)
+
     # Signals for undo/redo requests (forwarded to main window)
     undo_requested = Signal()
     redo_requested = Signal()
@@ -72,6 +76,9 @@ class TableViewerWindow(QMainWindow):
         # Connect cell_changed signal
         self.viewer.cell_changed.connect(self._on_cell_changed)
 
+        # Connect bulk_changes signal
+        self.viewer.bulk_changes.connect(self._on_bulk_changes)
+
         # Set up undo/redo shortcuts for this window
         undo_shortcut = QShortcut(QKeySequence.Undo, self)
         undo_shortcut.activated.connect(self.undo_requested.emit)
@@ -91,6 +98,10 @@ class TableViewerWindow(QMainWindow):
         self.cell_changed.emit(
             self.table, row, col, old_value, new_value, old_raw, new_raw
         )
+
+    def _on_bulk_changes(self, changes: list):
+        """Forward bulk changes signal with table object"""
+        self.bulk_changes.emit(self.table, changes)
 
     def _auto_size_window(self):
         """Auto-size window to fit table content - compact like ECUFlash"""

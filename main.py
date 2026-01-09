@@ -271,6 +271,45 @@ class MainWindow(QMainWindow):
 
         edit_menu.addSeparator()
 
+        # Data manipulation submenu
+        data_submenu = edit_menu.addMenu("Data Manipulation")
+
+        increment_action = data_submenu.addAction("Increment")
+        increment_action.setShortcut("+")
+        increment_action.triggered.connect(self._increment_current_table)
+
+        decrement_action = data_submenu.addAction("Decrement")
+        decrement_action.setShortcut("-")
+        decrement_action.triggered.connect(self._decrement_current_table)
+
+        data_submenu.addSeparator()
+
+        add_action = data_submenu.addAction("Add to Data...")
+        add_action.triggered.connect(self._add_to_current_table)
+
+        multiply_action = data_submenu.addAction("Multiply Data...")
+        multiply_action.setShortcut("*")
+        multiply_action.triggered.connect(self._multiply_current_table)
+
+        set_action = data_submenu.addAction("Set Value...")
+        set_action.triggered.connect(self._set_value_current_table)
+
+        data_submenu.addSeparator()
+
+        interp_v_action = data_submenu.addAction("Interpolate Vertically")
+        interp_v_action.setShortcut("V")
+        interp_v_action.triggered.connect(self._interpolate_v_current_table)
+
+        interp_h_action = data_submenu.addAction("Interpolate Horizontally")
+        interp_h_action.setShortcut("H")
+        interp_h_action.triggered.connect(self._interpolate_h_current_table)
+
+        interp_2d_action = data_submenu.addAction("Interpolate 2D")
+        interp_2d_action.setShortcut("B")
+        interp_2d_action.triggered.connect(self._interpolate_2d_current_table)
+
+        edit_menu.addSeparator()
+
         settings_action = edit_menu.addAction("Settings...")
         settings_action.triggered.connect(self.show_settings)
 
@@ -620,6 +659,9 @@ class MainWindow(QMainWindow):
                 # Connect cell_changed signal to change tracker
                 viewer_window.cell_changed.connect(self._on_table_cell_changed)
 
+                # Connect bulk_changes signal to change tracker
+                viewer_window.bulk_changes.connect(self._on_table_bulk_changes)
+
                 # Connect undo/redo signals
                 viewer_window.undo_requested.connect(self.undo)
                 viewer_window.redo_requested.connect(self.redo)
@@ -666,6 +708,82 @@ class MainWindow(QMainWindow):
             logger.info(f"Available ROM definitions: {len(definitions)}")
             for defn in definitions:
                 logger.info(f"  • {defn['xmlid']} - {defn['make']} {defn['model']}")
+
+    def _get_focused_table_viewer(self):
+        """
+        Get the currently focused table viewer window
+
+        Returns:
+            TableViewer widget or None if no table has focus
+        """
+        from src.ui.table_viewer_window import TableViewerWindow
+
+        # Check all open table viewer windows
+        for window in self.table_viewer_windows.values():
+            if isinstance(window, TableViewerWindow):
+                if window.isActiveWindow() or window.hasFocus():
+                    return window.viewer
+                # Also check if the table widget inside has focus
+                if window.viewer.table_widget.hasFocus():
+                    return window.viewer
+
+        # If no window has focus, try to get the last active one
+        # by checking which window was most recently interacted with
+        if self.table_viewer_windows:
+            # Get the most recently created window as fallback
+            last_window = list(self.table_viewer_windows.values())[-1]
+            if isinstance(last_window, TableViewerWindow):
+                return last_window.viewer
+
+        return None
+
+    def _increment_current_table(self):
+        """Increment selected cells in focused table"""
+        viewer = self._get_focused_table_viewer()
+        if viewer:
+            viewer.increment_selection()
+
+    def _decrement_current_table(self):
+        """Decrement selected cells in focused table"""
+        viewer = self._get_focused_table_viewer()
+        if viewer:
+            viewer.decrement_selection()
+
+    def _add_to_current_table(self):
+        """Add custom value to selected cells in focused table"""
+        viewer = self._get_focused_table_viewer()
+        if viewer:
+            viewer.add_to_selection()
+
+    def _multiply_current_table(self):
+        """Multiply selected cells in focused table"""
+        viewer = self._get_focused_table_viewer()
+        if viewer:
+            viewer.multiply_selection()
+
+    def _set_value_current_table(self):
+        """Set selected cells to specific value in focused table"""
+        viewer = self._get_focused_table_viewer()
+        if viewer:
+            viewer.set_value_selection()
+
+    def _interpolate_v_current_table(self):
+        """Interpolate vertically in focused table"""
+        viewer = self._get_focused_table_viewer()
+        if viewer:
+            viewer.interpolate_vertical()
+
+    def _interpolate_h_current_table(self):
+        """Interpolate horizontally in focused table"""
+        viewer = self._get_focused_table_viewer()
+        if viewer:
+            viewer.interpolate_horizontal()
+
+    def _interpolate_2d_current_table(self):
+        """Interpolate 2D in focused table"""
+        viewer = self._get_focused_table_viewer()
+        if viewer:
+            viewer.interpolate_2d()
 
     def show_settings(self):
         """Show settings dialog"""
@@ -869,22 +987,36 @@ class MainWindow(QMainWindow):
     # ========== Undo/Redo Methods ==========
 
     def undo(self):
-        """Undo last change"""
-        change = self.change_tracker.undo()
-        if change:
-            # Apply the undo to the table viewer
-            self._apply_cell_change(change)
+        """Undo last change (single or bulk)"""
+        result = self.change_tracker.undo()
+        if result:
+            # Handle both single and bulk changes
+            if isinstance(result, list):
+                # Bulk undo - apply all changes
+                for change in result:
+                    self._apply_cell_change(change)
+                logger.debug(f"Undo bulk: {len(result)} cells")
+            else:
+                # Single undo
+                self._apply_cell_change(result)
+                logger.debug(f"Undo: {result.table_name}[{result.row},{result.col}]")
             self._update_project_ui()
-            logger.debug(f"Undo: {change.table_name}[{change.row},{change.col}]")
 
     def redo(self):
-        """Redo last undone change"""
-        change = self.change_tracker.redo()
-        if change:
-            # Apply the redo to the table viewer
-            self._apply_cell_change(change)
+        """Redo last undone change (single or bulk)"""
+        result = self.change_tracker.redo()
+        if result:
+            # Handle both single and bulk changes
+            if isinstance(result, list):
+                # Bulk redo - apply all changes
+                for change in result:
+                    self._apply_cell_change(change)
+                logger.debug(f"Redo bulk: {len(result)} cells")
+            else:
+                # Single redo
+                self._apply_cell_change(result)
+                logger.debug(f"Redo: {result.table_name}[{result.row},{result.col}]")
             self._update_project_ui()
-            logger.debug(f"Redo: {change.table_name}[{change.row},{change.col}]")
 
     def _apply_cell_change(self, change):
         """Apply a cell change to open table viewers and ROM data"""
@@ -959,6 +1091,35 @@ class MainWindow(QMainWindow):
                     document.set_modified(True)
             except Exception as e:
                 logger.error(f"Failed to write cell value: {e}")
+
+    def _on_table_bulk_changes(self, table, changes: list):
+        """Handle bulk changes from table viewer window (data manipulation operations)"""
+        if not changes:
+            return
+
+        # Extract description from first change if available
+        # For now, use a generic description - the actual description will come from
+        # the operation that created these changes
+        operation_desc = "Bulk Operation"
+
+        # Record all changes as a single undo operation
+        self.change_tracker.record_bulk_changes(table, changes, operation_desc)
+
+        # Also update the ROM data in memory for all changes
+        document = self.get_current_document()
+        if document:
+            try:
+                for row, col, old_value, new_value, old_raw, new_raw in changes:
+                    # Write each cell change to ROM reader's in-memory data
+                    document.rom_reader.write_cell_value(table, row, col, new_raw)
+
+                # Mark document as modified
+                if not document.is_modified():
+                    document.set_modified(True)
+
+                logger.debug(f"Applied bulk changes: {len(changes)} cells in {table.name}")
+            except Exception as e:
+                logger.error(f"Failed to write bulk changes: {e}")
 
     def _update_tab_title(self, document):
         """Update tab title to show modified state"""

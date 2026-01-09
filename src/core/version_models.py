@@ -134,6 +134,14 @@ class UndoableChange:
 
 
 @dataclass
+class BulkChange:
+    """Multiple cell changes grouped as one undo operation"""
+    changes: List[CellChange]
+    description: str  # e.g., "Multiply by 1.1", "Interpolate Vertically"
+    timestamp: datetime = field(default_factory=datetime.now)
+
+
+@dataclass
 class OriginalRomInfo:
     """Metadata about the original ROM file"""
     filename: str
