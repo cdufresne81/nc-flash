@@ -22,6 +22,9 @@ logger = logging.getLogger(__name__)
 class TableDisplayHelper:
     """Helper class for table display and formatting operations"""
 
+    # Neutral gray color for axis cells (ECUFlash style)
+    AXIS_BACKGROUND_COLOR = QColor(220, 220, 220)
+
     def __init__(self, ctx: TableViewerContext):
         self.ctx = ctx
 
@@ -131,22 +134,11 @@ class TableDisplayHelper:
             display_values = values[::-1] if flipy else values
             display_y_axis = y_axis[::-1] if (y_axis is not None and flipy) else y_axis
 
-            # Calculate Y axis gradient range
-            if display_y_axis is not None and len(display_y_axis) > 0:
-                y_min, y_max = np.min(display_y_axis), np.max(display_y_axis)
-            else:
-                y_min, y_max = 0, num_values - 1
-
             for i in range(num_values):
-                # Y axis value with gradient
+                # Y axis value with neutral gray background (ECUFlash style)
                 if display_y_axis is not None and i < len(display_y_axis):
                     y_item = QTableWidgetItem(self.format_value(display_y_axis[i], y_fmt))
-                    # Apply gradient based on Y axis values
-                    if y_max != y_min:
-                        ratio = (display_y_axis[i] - y_min) / (y_max - y_min)
-                    else:
-                        ratio = 0.5
-                    y_item.setBackground(QBrush(self.ratio_to_color(ratio)))
+                    y_item.setBackground(QBrush(self.AXIS_BACKGROUND_COLOR))
                     # Store axis identification: ('y_axis', data_index)
                     # Account for flip when storing the actual data index
                     data_idx = (num_values - 1 - i) if flipy else i
@@ -155,7 +147,7 @@ class TableDisplayHelper:
                         y_item.setFlags(y_item.flags() & ~Qt.ItemIsEditable)
                 else:
                     y_item = QTableWidgetItem(str(i))
-                    y_item.setBackground(QBrush(QColor(240, 240, 240)))
+                    y_item.setBackground(QBrush(self.AXIS_BACKGROUND_COLOR))
                     y_item.setFlags(y_item.flags() & ~Qt.ItemIsEditable)  # No axis data, not editable
                 self.ctx.table_widget.setItem(i, 0, y_item)
 
@@ -218,17 +210,11 @@ class TableDisplayHelper:
             corner_item.setBackground(QBrush(QColor(240, 240, 240)))
             self.ctx.table_widget.setItem(0, 0, corner_item)
 
-            # Row 0: X axis values with gradient
+            # Row 0: X axis values with neutral gray background (ECUFlash style)
             if display_x_axis is not None and len(display_x_axis) == cols:
-                x_min, x_max = np.min(display_x_axis), np.max(display_x_axis)
                 for col in range(cols):
                     x_item = QTableWidgetItem(self.format_value(display_x_axis[col], x_fmt))
-                    # Apply gradient based on X axis values
-                    if x_max != x_min:
-                        ratio = (display_x_axis[col] - x_min) / (x_max - x_min)
-                    else:
-                        ratio = 0.5
-                    x_item.setBackground(QBrush(self.ratio_to_color(ratio)))
+                    x_item.setBackground(QBrush(self.AXIS_BACKGROUND_COLOR))
                     # Store axis identification: ('x_axis', data_index)
                     # Account for flip when storing the actual data index
                     data_idx = (cols - 1 - col) if flipx else col
@@ -240,20 +226,14 @@ class TableDisplayHelper:
                 for col in range(cols):
                     x_item = QTableWidgetItem(str(col))
                     x_item.setFlags(x_item.flags() & ~Qt.ItemIsEditable)  # No axis data, not editable
-                    x_item.setBackground(QBrush(QColor(240, 240, 240)))
+                    x_item.setBackground(QBrush(self.AXIS_BACKGROUND_COLOR))
                     self.ctx.table_widget.setItem(0, col + 1, x_item)
 
-            # Column 0: Y axis values with gradient (starting at row 1)
+            # Column 0: Y axis values with neutral gray background (ECUFlash style)
             if display_y_axis is not None and len(display_y_axis) == rows:
-                y_min, y_max = np.min(display_y_axis), np.max(display_y_axis)
                 for row in range(rows):
                     y_item = QTableWidgetItem(self.format_value(display_y_axis[row], y_fmt))
-                    # Apply gradient based on Y axis values
-                    if y_max != y_min:
-                        ratio = (display_y_axis[row] - y_min) / (y_max - y_min)
-                    else:
-                        ratio = 0.5
-                    y_item.setBackground(QBrush(self.ratio_to_color(ratio)))
+                    y_item.setBackground(QBrush(self.AXIS_BACKGROUND_COLOR))
                     # Store axis identification: ('y_axis', data_index)
                     # Account for flip when storing the actual data index
                     data_idx = (rows - 1 - row) if flipy else row
@@ -265,7 +245,7 @@ class TableDisplayHelper:
                 for row in range(rows):
                     y_item = QTableWidgetItem(str(row))
                     y_item.setFlags(y_item.flags() & ~Qt.ItemIsEditable)  # No axis data, not editable
-                    y_item.setBackground(QBrush(QColor(240, 240, 240)))
+                    y_item.setBackground(QBrush(self.AXIS_BACKGROUND_COLOR))
                     self.ctx.table_widget.setItem(row + 1, 0, y_item)
 
             # Fill data values (starting at row 1, col 1)
@@ -439,19 +419,8 @@ class TableDisplayHelper:
         return self._get_axis_format(axis_type)
 
     def get_axis_color(self, value: float, axis_values: np.ndarray) -> QColor:
-        """Calculate axis cell color based on value within axis range"""
-        if axis_values is None or len(axis_values) == 0:
-            return QColor(240, 240, 240)
-
-        min_val = np.min(axis_values)
-        max_val = np.max(axis_values)
-
-        if max_val == min_val:
-            ratio = 0.5
-        else:
-            ratio = (value - min_val) / (max_val - min_val)
-
-        return self.ratio_to_color(ratio)
+        """Return neutral gray color for axis cells (ECUFlash style)"""
+        return self.AXIS_BACKGROUND_COLOR
 
     def _get_neighbor_ratio(self, value: float, values: np.ndarray,
                             row: int, col: int) -> float:
