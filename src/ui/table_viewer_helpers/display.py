@@ -147,10 +147,16 @@ class TableDisplayHelper:
                     else:
                         ratio = 0.5
                     y_item.setBackground(QBrush(self.ratio_to_color(ratio)))
+                    # Store axis identification: ('y_axis', data_index)
+                    # Account for flip when storing the actual data index
+                    data_idx = (num_values - 1 - i) if flipy else i
+                    y_item.setData(Qt.UserRole, ('y_axis', data_idx))
+                    if self.ctx.read_only:
+                        y_item.setFlags(y_item.flags() & ~Qt.ItemIsEditable)
                 else:
                     y_item = QTableWidgetItem(str(i))
                     y_item.setBackground(QBrush(QColor(240, 240, 240)))
-                y_item.setFlags(y_item.flags() & ~Qt.ItemIsEditable)  # Axis always read-only
+                    y_item.setFlags(y_item.flags() & ~Qt.ItemIsEditable)  # No axis data, not editable
                 self.ctx.table_widget.setItem(i, 0, y_item)
 
                 # Data value with gradient color
@@ -217,18 +223,23 @@ class TableDisplayHelper:
                 x_min, x_max = np.min(display_x_axis), np.max(display_x_axis)
                 for col in range(cols):
                     x_item = QTableWidgetItem(self.format_value(display_x_axis[col], x_fmt))
-                    x_item.setFlags(x_item.flags() & ~Qt.ItemIsEditable)
                     # Apply gradient based on X axis values
                     if x_max != x_min:
                         ratio = (display_x_axis[col] - x_min) / (x_max - x_min)
                     else:
                         ratio = 0.5
                     x_item.setBackground(QBrush(self.ratio_to_color(ratio)))
+                    # Store axis identification: ('x_axis', data_index)
+                    # Account for flip when storing the actual data index
+                    data_idx = (cols - 1 - col) if flipx else col
+                    x_item.setData(Qt.UserRole, ('x_axis', data_idx))
+                    if self.ctx.read_only:
+                        x_item.setFlags(x_item.flags() & ~Qt.ItemIsEditable)
                     self.ctx.table_widget.setItem(0, col + 1, x_item)
             else:
                 for col in range(cols):
                     x_item = QTableWidgetItem(str(col))
-                    x_item.setFlags(x_item.flags() & ~Qt.ItemIsEditable)
+                    x_item.setFlags(x_item.flags() & ~Qt.ItemIsEditable)  # No axis data, not editable
                     x_item.setBackground(QBrush(QColor(240, 240, 240)))
                     self.ctx.table_widget.setItem(0, col + 1, x_item)
 
@@ -237,18 +248,23 @@ class TableDisplayHelper:
                 y_min, y_max = np.min(display_y_axis), np.max(display_y_axis)
                 for row in range(rows):
                     y_item = QTableWidgetItem(self.format_value(display_y_axis[row], y_fmt))
-                    y_item.setFlags(y_item.flags() & ~Qt.ItemIsEditable)
                     # Apply gradient based on Y axis values
                     if y_max != y_min:
                         ratio = (display_y_axis[row] - y_min) / (y_max - y_min)
                     else:
                         ratio = 0.5
                     y_item.setBackground(QBrush(self.ratio_to_color(ratio)))
+                    # Store axis identification: ('y_axis', data_index)
+                    # Account for flip when storing the actual data index
+                    data_idx = (rows - 1 - row) if flipy else row
+                    y_item.setData(Qt.UserRole, ('y_axis', data_idx))
+                    if self.ctx.read_only:
+                        y_item.setFlags(y_item.flags() & ~Qt.ItemIsEditable)
                     self.ctx.table_widget.setItem(row + 1, 0, y_item)
             else:
                 for row in range(rows):
                     y_item = QTableWidgetItem(str(row))
-                    y_item.setFlags(y_item.flags() & ~Qt.ItemIsEditable)
+                    y_item.setFlags(y_item.flags() & ~Qt.ItemIsEditable)  # No axis data, not editable
                     y_item.setBackground(QBrush(QColor(240, 240, 240)))
                     self.ctx.table_widget.setItem(row + 1, 0, y_item)
 
@@ -415,6 +431,25 @@ class TableDisplayHelper:
                 ratio = 0.5
             else:
                 ratio = (value - min_val) / (max_val - min_val)
+
+        return self.ratio_to_color(ratio)
+
+    def get_axis_format(self, axis_type: AxisType) -> str:
+        """Public method to get axis format (used by editing helper)"""
+        return self._get_axis_format(axis_type)
+
+    def get_axis_color(self, value: float, axis_values: np.ndarray) -> QColor:
+        """Calculate axis cell color based on value within axis range"""
+        if axis_values is None or len(axis_values) == 0:
+            return QColor(240, 240, 240)
+
+        min_val = np.min(axis_values)
+        max_val = np.max(axis_values)
+
+        if max_val == min_val:
+            ratio = 0.5
+        else:
+            ratio = (value - min_val) / (max_val - min_val)
 
         return self.ratio_to_color(ratio)
 

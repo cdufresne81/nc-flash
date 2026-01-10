@@ -11,7 +11,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtGui import QBrush
 from PySide6.QtWidgets import QMessageBox
 
-from ...core.rom_definition import TableType
+from ...core.rom_definition import TableType, AxisType
 from ...core.rom_reader import ScalingConverter
 from .context import TableViewerContext
 
@@ -44,26 +44,47 @@ class TableInterpolationHelper:
         logger.debug(f"Processing {len(selected_ranges)} selection range(s)")
 
         all_changes = []
+        axis_changes = []
 
         for sel_range in selected_ranges:
             logger.debug(f"Selection range: rows {sel_range.topRow()}-{sel_range.bottomRow()}, cols {sel_range.leftColumn()}-{sel_range.rightColumn()}")
 
             # For each column in the selection
             for col in range(sel_range.leftColumn(), sel_range.rightColumn() + 1):
-                # Collect data cells in this column
+                # Collect cells in this column (both data and axis)
                 cells = []
+                is_axis_column = None  # Will be set to axis type if all cells are axis cells
+
                 for row in range(sel_range.topRow(), sel_range.bottomRow() + 1):
                     item = self.ctx.table_widget.item(row, col)
                     if item and item.data(Qt.UserRole) is not None:
-                        # This is a data cell
                         coords = item.data(Qt.UserRole)
-                        try:
-                            value = float(item.text())
-                            cells.append((row, value, coords))
-                        except ValueError:
-                            continue
+                        # Check if this is an axis cell
+                        if isinstance(coords[0], str):
+                            # Axis cell: ('y_axis', index) - only Y axis can be vertical
+                            if coords[0] == 'y_axis':
+                                if is_axis_column is None:
+                                    is_axis_column = 'y_axis'
+                                elif is_axis_column != 'y_axis':
+                                    continue  # Mixed types, skip
+                                try:
+                                    value = float(item.text())
+                                    cells.append((row, value, coords))
+                                except ValueError:
+                                    continue
+                        else:
+                            # Data cell: (data_row, data_col)
+                            if is_axis_column is None:
+                                is_axis_column = False
+                            elif is_axis_column != False:
+                                continue  # Mixed types, skip
+                            try:
+                                value = float(item.text())
+                                cells.append((row, value, coords))
+                            except ValueError:
+                                continue
 
-                logger.debug(f"Column {col}: found {len(cells)} data cells")
+                logger.debug(f"Column {col}: found {len(cells)} cells (axis={is_axis_column})")
 
                 # Need at least 2 cells to interpolate
                 if len(cells) < 2:
@@ -109,48 +130,89 @@ class TableInterpolationHelper:
                     new_val = first_val + t * (last_val - first_val)
 
                     if abs(new_val - old_val) > 1e-9:  # Only if changed
-                        # Get old raw value - unpack coords for proper numpy indexing
-                        if len(coords) == 2:
-                            old_raw = self.ctx.current_data['values'][coords[0], coords[1]]
+                        if is_axis_column == 'y_axis':
+                            # Handle Y-axis cell interpolation
+                            axis_type = AxisType.Y_AXIS
+                            axis_table = self.ctx.current_table.get_axis(axis_type)
+                            if not axis_table:
+                                continue
+
+                            axis_key = 'y_axis'
+                            data_idx = coords[1]
+                            old_raw = float(self.ctx.current_data[axis_key][data_idx])
+
+                            # Convert to raw and back
+                            scaling = self.ctx.rom_definition.get_scaling(axis_table.scaling)
+                            if scaling:
+                                converter = ScalingConverter(scaling)
+                                new_raw = converter.from_display(new_val)
+                                new_val = converter.to_display(new_raw)
+
+                                # Update display and data
+                                self.ctx.editing_in_progress = True
+                                try:
+                                    axis_fmt = self.display.get_axis_format(axis_type)
+                                    item.setText(self.display.format_value(new_val, axis_fmt))
+                                    self.ctx.current_data[axis_key][data_idx] = new_val
+                                    color = self.display.get_axis_color(new_val, self.ctx.current_data[axis_key])
+                                    item.setBackground(QBrush(color))
+                                finally:
+                                    self.ctx.editing_in_progress = False
+
+                                # Record axis change
+                                change_tuple = (axis_key, data_idx,
+                                              float(old_val), float(new_val), float(old_raw), float(new_raw))
+                                axis_changes.append(change_tuple)
+                                cells_interpolated += 1
                         else:
-                            old_raw = self.ctx.current_data['values'][coords[0]]
+                            # Handle data cell interpolation
+                            # Get old raw value - unpack coords for proper numpy indexing
+                            if len(coords) == 2:
+                                old_raw = self.ctx.current_data['values'][coords[0], coords[1]]
+                            else:
+                                old_raw = self.ctx.current_data['values'][coords[0]]
 
-                        # Convert to raw and back to ensure consistency
-                        scaling = self.ctx.rom_definition.get_scaling(self.ctx.current_table.scaling)
-                        if scaling:
-                            converter = ScalingConverter(scaling)
-                            new_raw = converter.from_display(new_val)
-                            new_val = converter.to_display(new_raw)
+                            # Convert to raw and back to ensure consistency
+                            scaling = self.ctx.rom_definition.get_scaling(self.ctx.current_table.scaling)
+                            if scaling:
+                                converter = ScalingConverter(scaling)
+                                new_raw = converter.from_display(new_val)
+                                new_val = converter.to_display(new_raw)
 
-                            # Update display and data (disable cell_changed signal during bulk operation)
-                            self.ctx.editing_in_progress = True
-                            try:
-                                value_fmt = self.display.get_value_format()
-                                item.setText(self.display.format_value(new_val, value_fmt))
-                                # Update display value in values array - unpack coords for proper numpy indexing
-                                if len(coords) == 2:
-                                    self.ctx.current_data['values'][coords[0], coords[1]] = new_val
-                                else:
-                                    self.ctx.current_data['values'][coords[0]] = new_val
-                                # Update cell color
-                                color = self.display.get_cell_color(new_val, self.ctx.current_data['values'],
-                                                            coords[0], coords[1] if len(coords) > 1 else 0)
-                                item.setBackground(QBrush(color))
-                            finally:
-                                self.ctx.editing_in_progress = False
+                                # Update display and data (disable cell_changed signal during bulk operation)
+                                self.ctx.editing_in_progress = True
+                                try:
+                                    value_fmt = self.display.get_value_format()
+                                    item.setText(self.display.format_value(new_val, value_fmt))
+                                    # Update display value in values array - unpack coords for proper numpy indexing
+                                    if len(coords) == 2:
+                                        self.ctx.current_data['values'][coords[0], coords[1]] = new_val
+                                    else:
+                                        self.ctx.current_data['values'][coords[0]] = new_val
+                                    # Update cell color
+                                    color = self.display.get_cell_color(new_val, self.ctx.current_data['values'],
+                                                                coords[0], coords[1] if len(coords) > 1 else 0)
+                                    item.setBackground(QBrush(color))
+                                finally:
+                                    self.ctx.editing_in_progress = False
 
-                            # Convert numpy types to Python native types for undo/redo
-                            change_tuple = (coords[0], coords[1] if len(coords) > 1 else 0,
-                                          float(old_val), float(new_val), float(old_raw), float(new_raw))
-                            all_changes.append(change_tuple)
-                            cells_interpolated += 1
+                                # Convert numpy types to Python native types for undo/redo
+                                change_tuple = (coords[0], coords[1] if len(coords) > 1 else 0,
+                                              float(old_val), float(new_val), float(old_raw), float(new_raw))
+                                all_changes.append(change_tuple)
+                                cells_interpolated += 1
 
                 logger.debug(f"Column {col}: interpolated {cells_interpolated} cells")
 
         if all_changes:
-            logger.info(f"Vertical interpolation: updated {len(all_changes)} cells")
+            logger.info(f"Vertical interpolation: updated {len(all_changes)} data cells")
             self.ctx.viewer.bulk_changes.emit(all_changes)
-        else:
+
+        if axis_changes:
+            logger.info(f"Vertical interpolation: updated {len(axis_changes)} axis cells")
+            self.ctx.viewer.axis_bulk_changes.emit(axis_changes)
+
+        if not all_changes and not axis_changes:
             logger.debug("Vertical interpolation: no changes made")
 
     def interpolate_horizontal(self):
@@ -169,26 +231,47 @@ class TableInterpolationHelper:
         logger.debug(f"Processing {len(selected_ranges)} selection range(s)")
 
         all_changes = []
+        axis_changes = []
 
         for sel_range in selected_ranges:
             logger.debug(f"Selection range: rows {sel_range.topRow()}-{sel_range.bottomRow()}, cols {sel_range.leftColumn()}-{sel_range.rightColumn()}")
 
             # For each row in the selection
             for row in range(sel_range.topRow(), sel_range.bottomRow() + 1):
-                # Collect data cells in this row
+                # Collect cells in this row (both data and axis)
                 cells = []
+                is_axis_row = None  # Will be set to axis type if all cells are axis cells
+
                 for col in range(sel_range.leftColumn(), sel_range.rightColumn() + 1):
                     item = self.ctx.table_widget.item(row, col)
                     if item and item.data(Qt.UserRole) is not None:
-                        # This is a data cell
                         coords = item.data(Qt.UserRole)
-                        try:
-                            value = float(item.text())
-                            cells.append((col, value, coords))
-                        except ValueError:
-                            continue
+                        # Check if this is an axis cell
+                        if isinstance(coords[0], str):
+                            # Axis cell: ('x_axis', index) - only X axis can be horizontal
+                            if coords[0] == 'x_axis':
+                                if is_axis_row is None:
+                                    is_axis_row = 'x_axis'
+                                elif is_axis_row != 'x_axis':
+                                    continue  # Mixed types, skip
+                                try:
+                                    value = float(item.text())
+                                    cells.append((col, value, coords))
+                                except ValueError:
+                                    continue
+                        else:
+                            # Data cell: (data_row, data_col)
+                            if is_axis_row is None:
+                                is_axis_row = False
+                            elif is_axis_row != False:
+                                continue  # Mixed types, skip
+                            try:
+                                value = float(item.text())
+                                cells.append((col, value, coords))
+                            except ValueError:
+                                continue
 
-                logger.debug(f"Row {row}: found {len(cells)} data cells")
+                logger.debug(f"Row {row}: found {len(cells)} cells (axis={is_axis_row})")
 
                 # Need at least 2 cells to interpolate
                 if len(cells) < 2:
@@ -234,48 +317,89 @@ class TableInterpolationHelper:
                     new_val = first_val + t * (last_val - first_val)
 
                     if abs(new_val - old_val) > 1e-9:  # Only if changed
-                        # Get old raw value - unpack coords for proper numpy indexing
-                        if len(coords) == 2:
-                            old_raw = self.ctx.current_data['values'][coords[0], coords[1]]
+                        if is_axis_row == 'x_axis':
+                            # Handle X-axis cell interpolation
+                            axis_type = AxisType.X_AXIS
+                            axis_table = self.ctx.current_table.get_axis(axis_type)
+                            if not axis_table:
+                                continue
+
+                            axis_key = 'x_axis'
+                            data_idx = coords[1]
+                            old_raw = float(self.ctx.current_data[axis_key][data_idx])
+
+                            # Convert to raw and back
+                            scaling = self.ctx.rom_definition.get_scaling(axis_table.scaling)
+                            if scaling:
+                                converter = ScalingConverter(scaling)
+                                new_raw = converter.from_display(new_val)
+                                new_val = converter.to_display(new_raw)
+
+                                # Update display and data
+                                self.ctx.editing_in_progress = True
+                                try:
+                                    axis_fmt = self.display.get_axis_format(axis_type)
+                                    item.setText(self.display.format_value(new_val, axis_fmt))
+                                    self.ctx.current_data[axis_key][data_idx] = new_val
+                                    color = self.display.get_axis_color(new_val, self.ctx.current_data[axis_key])
+                                    item.setBackground(QBrush(color))
+                                finally:
+                                    self.ctx.editing_in_progress = False
+
+                                # Record axis change
+                                change_tuple = (axis_key, data_idx,
+                                              float(old_val), float(new_val), float(old_raw), float(new_raw))
+                                axis_changes.append(change_tuple)
+                                cells_interpolated += 1
                         else:
-                            old_raw = self.ctx.current_data['values'][coords[0]]
+                            # Handle data cell interpolation
+                            # Get old raw value - unpack coords for proper numpy indexing
+                            if len(coords) == 2:
+                                old_raw = self.ctx.current_data['values'][coords[0], coords[1]]
+                            else:
+                                old_raw = self.ctx.current_data['values'][coords[0]]
 
-                        # Convert to raw and back to ensure consistency
-                        scaling = self.ctx.rom_definition.get_scaling(self.ctx.current_table.scaling)
-                        if scaling:
-                            converter = ScalingConverter(scaling)
-                            new_raw = converter.from_display(new_val)
-                            new_val = converter.to_display(new_raw)
+                            # Convert to raw and back to ensure consistency
+                            scaling = self.ctx.rom_definition.get_scaling(self.ctx.current_table.scaling)
+                            if scaling:
+                                converter = ScalingConverter(scaling)
+                                new_raw = converter.from_display(new_val)
+                                new_val = converter.to_display(new_raw)
 
-                            # Update display and data (disable cell_changed signal during bulk operation)
-                            self.ctx.editing_in_progress = True
-                            try:
-                                value_fmt = self.display.get_value_format()
-                                item.setText(self.display.format_value(new_val, value_fmt))
-                                # Update display value in values array - unpack coords for proper numpy indexing
-                                if len(coords) == 2:
-                                    self.ctx.current_data['values'][coords[0], coords[1]] = new_val
-                                else:
-                                    self.ctx.current_data['values'][coords[0]] = new_val
-                                # Update cell color
-                                color = self.display.get_cell_color(new_val, self.ctx.current_data['values'],
-                                                            coords[0], coords[1] if len(coords) > 1 else 0)
-                                item.setBackground(QBrush(color))
-                            finally:
-                                self.ctx.editing_in_progress = False
+                                # Update display and data (disable cell_changed signal during bulk operation)
+                                self.ctx.editing_in_progress = True
+                                try:
+                                    value_fmt = self.display.get_value_format()
+                                    item.setText(self.display.format_value(new_val, value_fmt))
+                                    # Update display value in values array - unpack coords for proper numpy indexing
+                                    if len(coords) == 2:
+                                        self.ctx.current_data['values'][coords[0], coords[1]] = new_val
+                                    else:
+                                        self.ctx.current_data['values'][coords[0]] = new_val
+                                    # Update cell color
+                                    color = self.display.get_cell_color(new_val, self.ctx.current_data['values'],
+                                                                coords[0], coords[1] if len(coords) > 1 else 0)
+                                    item.setBackground(QBrush(color))
+                                finally:
+                                    self.ctx.editing_in_progress = False
 
-                            # Convert numpy types to Python native types for undo/redo
-                            change_tuple = (coords[0], coords[1] if len(coords) > 1 else 0,
-                                          float(old_val), float(new_val), float(old_raw), float(new_raw))
-                            all_changes.append(change_tuple)
-                            cells_interpolated += 1
+                                # Convert numpy types to Python native types for undo/redo
+                                change_tuple = (coords[0], coords[1] if len(coords) > 1 else 0,
+                                              float(old_val), float(new_val), float(old_raw), float(new_raw))
+                                all_changes.append(change_tuple)
+                                cells_interpolated += 1
 
                 logger.debug(f"Row {row}: interpolated {cells_interpolated} cells")
 
         if all_changes:
-            logger.info(f"Horizontal interpolation: updated {len(all_changes)} cells")
+            logger.info(f"Horizontal interpolation: updated {len(all_changes)} data cells")
             self.ctx.viewer.bulk_changes.emit(all_changes)
-        else:
+
+        if axis_changes:
+            logger.info(f"Horizontal interpolation: updated {len(axis_changes)} axis cells")
+            self.ctx.viewer.axis_bulk_changes.emit(axis_changes)
+
+        if not all_changes and not axis_changes:
             logger.debug("Horizontal interpolation: no changes made")
 
     def interpolate_2d(self):

@@ -439,6 +439,72 @@ class RomReader:
             logger.error(f"Error writing cell value: {e}")
             raise RomWriteError(f"Failed to write cell value: {e}")
 
+    def write_axis_value(self, table: Table, axis_type: str, index: int, raw_value: float) -> None:
+        """
+        Write a single axis value to ROM (in memory)
+
+        Args:
+            table: Table definition (parent table containing the axis)
+            axis_type: 'x_axis' or 'y_axis'
+            index: Index in the axis array
+            raw_value: Raw binary value to write
+
+        Raises:
+            ScalingNotFoundError: If scaling definition is not found
+            RomWriteError: If writing fails
+        """
+        # Get the axis table
+        if axis_type == 'x_axis':
+            axis_table = table.x_axis
+        elif axis_type == 'y_axis':
+            axis_table = table.y_axis
+        else:
+            raise RomWriteError(f"Invalid axis type: {axis_type}")
+
+        if not axis_table:
+            raise RomWriteError(f"Table '{table.name}' does not have {axis_type}")
+
+        scaling = self.definition.get_scaling(axis_table.scaling)
+        if not scaling:
+            raise ScalingNotFoundError(
+                f"Scaling '{axis_table.scaling}' not found for axis in table '{table.name}'"
+            )
+
+        # Calculate the byte offset
+        bytes_per_elem = scaling.bytes_per_element
+        address = axis_table.address_int + (index * bytes_per_elem)
+        endian_char = '>' if scaling.endian == 'big' else '<'
+
+        format_char = STORAGE_TYPE_FORMAT.get(scaling.storagetype.lower(), DEFAULT_FORMAT_CHAR)
+        format_string = f"{endian_char}{format_char}"
+
+        try:
+            # Convert to appropriate integer type if needed
+            if format_char in ('B', 'b', 'H', 'h', 'I', 'i'):
+                raw_value = int(round(raw_value))
+
+            packed_data = struct.pack(format_string, raw_value)
+
+            # Validate bounds
+            if address < 0 or address >= len(self.rom_data):
+                raise RomWriteError(f"Address out of bounds: {hex(address)}")
+            if address + len(packed_data) > len(self.rom_data):
+                raise RomWriteError(f"Write exceeds ROM bounds at {hex(address)}")
+
+            # Modify ROM data in memory
+            self.rom_data = (
+                self.rom_data[:address] +
+                packed_data +
+                self.rom_data[address + len(packed_data):]
+            )
+            logger.debug(f"Wrote axis [{axis_type}][{index}] = {raw_value} at {hex(address)}")
+
+        except RomWriteError:
+            raise
+        except Exception as e:
+            logger.error(f"Error writing axis value: {e}")
+            raise RomWriteError(f"Failed to write axis value: {e}")
+
     def save_rom(self, output_path: Optional[str] = None):
         """
         Save modified ROM to file

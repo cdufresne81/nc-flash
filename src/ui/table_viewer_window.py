@@ -34,6 +34,14 @@ class TableViewerWindow(QMainWindow):
     # Args: table, list of (row, col, old_value, new_value, old_raw, new_raw) tuples
     bulk_changes = Signal(Table, list)
 
+    # Forward axis_changed signal from viewer
+    # Args: table, axis_type ('x_axis' or 'y_axis'), index, old_value, new_value, old_raw, new_raw
+    axis_changed = Signal(Table, str, int, float, float, float, float)
+
+    # Forward axis_bulk_changes signal from viewer
+    # Args: table, list of (axis_type, index, old_value, new_value, old_raw, new_raw) tuples
+    axis_bulk_changes = Signal(Table, list)
+
     # Signals for undo/redo requests (forwarded to main window)
     undo_requested = Signal()
     redo_requested = Signal()
@@ -78,6 +86,12 @@ class TableViewerWindow(QMainWindow):
 
         # Connect bulk_changes signal
         self.viewer.bulk_changes.connect(self._on_bulk_changes)
+
+        # Connect axis_changed signal
+        self.viewer.axis_changed.connect(self._on_axis_changed)
+
+        # Connect axis_bulk_changes signal
+        self.viewer.axis_bulk_changes.connect(self._on_axis_bulk_changes)
 
         # Set up undo/redo shortcuts for this window
         undo_shortcut = QShortcut(QKeySequence.Undo, self)
@@ -151,6 +165,18 @@ class TableViewerWindow(QMainWindow):
     def _on_bulk_changes(self, changes: list):
         """Forward bulk changes signal with table object"""
         self.bulk_changes.emit(self.table, changes)
+
+    def _on_axis_changed(self, table_name: str, axis_type: str, index: int,
+                         old_value: float, new_value: float,
+                         old_raw: float, new_raw: float):
+        """Forward axis change signal with table object"""
+        self.axis_changed.emit(
+            self.table, axis_type, index, old_value, new_value, old_raw, new_raw
+        )
+
+    def _on_axis_bulk_changes(self, changes: list):
+        """Forward axis bulk changes signal with table object"""
+        self.axis_bulk_changes.emit(self.table, changes)
 
     def _auto_size_window(self):
         """Auto-size window to fit table content - compact like ECUFlash"""

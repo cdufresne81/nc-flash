@@ -52,6 +52,7 @@ from src.ui.commit_dialog import CommitDialog
 from src.ui.history_viewer import HistoryViewer
 from src.core.project_manager import ProjectManager
 from src.core.change_tracker import ChangeTracker
+from src.core.version_models import AxisChange
 
 logger = get_logger(__name__)
 
@@ -623,6 +624,12 @@ class MainWindow(QMainWindow):
                 # Connect bulk_changes signal to change tracker
                 viewer_window.bulk_changes.connect(self._on_table_bulk_changes)
 
+                # Connect axis_changed signal to change tracker
+                viewer_window.axis_changed.connect(self._on_table_axis_changed)
+
+                # Connect axis_bulk_changes signal to change tracker
+                viewer_window.axis_bulk_changes.connect(self._on_table_axis_bulk_changes)
+
                 # Connect undo/redo signals
                 viewer_window.undo_requested.connect(self.undo)
                 viewer_window.redo_requested.connect(self.redo)
@@ -872,33 +879,51 @@ class MainWindow(QMainWindow):
     # ========== Undo/Redo Methods ==========
 
     def undo(self):
-        """Undo last change (single or bulk)"""
+        """Undo last change (single or bulk, cell or axis)"""
         result = self.change_tracker.undo()
         if result:
             # Handle both single and bulk changes
             if isinstance(result, list):
-                # Bulk undo - apply all changes
-                for change in result:
-                    self._apply_cell_change(change)
-                logger.debug(f"Undo bulk: {len(result)} cells")
+                # Bulk undo - check if axis or cell changes
+                if result and isinstance(result[0], AxisChange):
+                    for change in result:
+                        self._apply_axis_change(change)
+                    logger.debug(f"Undo axis bulk: {len(result)} cells")
+                else:
+                    for change in result:
+                        self._apply_cell_change(change)
+                    logger.debug(f"Undo bulk: {len(result)} cells")
+            elif isinstance(result, AxisChange):
+                # Single axis undo
+                self._apply_axis_change(result)
+                logger.debug(f"Undo axis: {result.table_name}[{result.axis_type}][{result.index}]")
             else:
-                # Single undo
+                # Single cell undo
                 self._apply_cell_change(result)
                 logger.debug(f"Undo: {result.table_name}[{result.row},{result.col}]")
             self._update_project_ui()
 
     def redo(self):
-        """Redo last undone change (single or bulk)"""
+        """Redo last undone change (single or bulk, cell or axis)"""
         result = self.change_tracker.redo()
         if result:
             # Handle both single and bulk changes
             if isinstance(result, list):
-                # Bulk redo - apply all changes
-                for change in result:
-                    self._apply_cell_change(change)
-                logger.debug(f"Redo bulk: {len(result)} cells")
+                # Bulk redo - check if axis or cell changes
+                if result and isinstance(result[0], AxisChange):
+                    for change in result:
+                        self._apply_axis_change(change)
+                    logger.debug(f"Redo axis bulk: {len(result)} cells")
+                else:
+                    for change in result:
+                        self._apply_cell_change(change)
+                    logger.debug(f"Redo bulk: {len(result)} cells")
+            elif isinstance(result, AxisChange):
+                # Single axis redo
+                self._apply_axis_change(result)
+                logger.debug(f"Redo axis: {result.table_name}[{result.axis_type}][{result.index}]")
             else:
-                # Single redo
+                # Single cell redo
                 self._apply_cell_change(result)
                 logger.debug(f"Redo: {result.table_name}[{result.row},{result.col}]")
             self._update_project_ui()
@@ -922,6 +947,27 @@ class MainWindow(QMainWindow):
                         )
                     except Exception as e:
                         logger.error(f"Failed to write cell value during undo/redo: {e}")
+                break
+
+    def _apply_axis_change(self, change):
+        """Apply an axis change to open table viewers and ROM data"""
+        # Find open table viewer window for this table (use address for unique match)
+        for window in self.open_table_windows:
+            if window.isVisible() and window.table.address == change.table_address:
+                # Update the viewer display
+                window.viewer.update_axis_cell_value(
+                    change.axis_type, change.index, change.new_value
+                )
+
+                # Also update ROM data in memory
+                document = self.get_current_document()
+                if document:
+                    try:
+                        document.rom_reader.write_axis_value(
+                            window.table, change.axis_type, change.index, change.new_raw
+                        )
+                    except Exception as e:
+                        logger.error(f"Failed to write axis value during undo/redo: {e}")
                 break
 
     def _on_changes_updated(self):
@@ -1005,6 +1051,56 @@ class MainWindow(QMainWindow):
                 logger.debug(f"Applied bulk changes: {len(changes)} cells in {table.name}")
             except Exception as e:
                 logger.error(f"Failed to write bulk changes: {e}")
+
+    def _on_table_axis_changed(self, table, axis_type: str, index: int,
+                               old_value: float, new_value: float,
+                               old_raw: float, new_raw: float):
+        """Handle axis change from table viewer window"""
+        # Record the change
+        self.change_tracker.record_axis_change(
+            table, axis_type, index,
+            old_value, new_value,
+            old_raw, new_raw
+        )
+
+        # Also update the ROM data in memory
+        document = self.get_current_document()
+        if document:
+            try:
+                # Write the axis change to ROM reader's in-memory data
+                document.rom_reader.write_axis_value(table, axis_type, index, new_raw)
+
+                # Mark document as modified
+                if not document.is_modified():
+                    document.set_modified(True)
+            except Exception as e:
+                logger.error(f"Failed to write axis value: {e}")
+
+    def _on_table_axis_bulk_changes(self, table, changes: list):
+        """Handle axis bulk changes from table viewer window (interpolation, etc.)"""
+        if not changes:
+            return
+
+        operation_desc = "Axis Bulk Operation"
+
+        # Record all changes as a single undo operation
+        self.change_tracker.record_axis_bulk_changes(table, changes, operation_desc)
+
+        # Also update the ROM data in memory for all changes
+        document = self.get_current_document()
+        if document:
+            try:
+                for axis_type, index, old_value, new_value, old_raw, new_raw in changes:
+                    # Write each axis change to ROM reader's in-memory data
+                    document.rom_reader.write_axis_value(table, axis_type, index, new_raw)
+
+                # Mark document as modified
+                if not document.is_modified():
+                    document.set_modified(True)
+
+                logger.debug(f"Applied axis bulk changes: {len(changes)} cells in {table.name}")
+            except Exception as e:
+                logger.error(f"Failed to write axis bulk changes: {e}")
 
     def _update_tab_title(self, document):
         """Update tab title to show modified state"""

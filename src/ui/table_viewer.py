@@ -51,6 +51,14 @@ class TableViewer(QWidget):
     # Args: list of (row, col, old_value, new_value, old_raw, new_raw) tuples
     bulk_changes = Signal(list)
 
+    # Signal emitted when an axis cell value changes
+    # Args: table_name, axis_type ('x_axis' or 'y_axis'), index, old_value, new_value, old_raw, new_raw
+    axis_changed = Signal(str, str, int, float, float, float, float)
+
+    # Signal emitted when axis bulk operation completes (for single undo)
+    # Args: list of (axis_type, index, old_value, new_value, old_raw, new_raw) tuples
+    axis_bulk_changes = Signal(list)
+
     def __init__(self, rom_definition: RomDefinition = None, parent=None):
         super().__init__(parent)
         self.rom_definition = rom_definition
@@ -161,10 +169,8 @@ class TableViewer(QWidget):
                 padding: 0px 1px;
             }}
             QTableWidget::item:selected {{
-                background-color: rgba(255, 165, 0, 0.4);
-                border: 2px solid #FF8C00;
-                color: black;
-                font-weight: bold;
+                background-color: #0078D7;
+                color: white;
             }}
         """)
 
@@ -215,6 +221,10 @@ class TableViewer(QWidget):
     def update_cell_value(self, data_row: int, data_col: int, new_value: float):
         """Update a cell's value programmatically (for undo/redo)"""
         self._edit.update_cell_value(data_row, data_col, new_value)
+
+    def update_axis_cell_value(self, axis_type: str, data_idx: int, new_value: float):
+        """Update an axis cell's value programmatically (for undo/redo)"""
+        self._edit.update_axis_cell_value(axis_type, data_idx, new_value)
 
     def _data_to_ui_coords(self, data_row: int, data_col: int) -> tuple:
         """Convert data coordinates to UI table coordinates"""

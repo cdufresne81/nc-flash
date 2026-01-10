@@ -11,7 +11,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtGui import QBrush
 from PySide6.QtWidgets import QDialog, QTableWidgetSelectionRange
 
-from ...core.rom_definition import TableType
+from ...core.rom_definition import TableType, AxisType
 from .context import TableViewerContext
 
 if TYPE_CHECKING:
@@ -30,25 +30,27 @@ class TableOperationsHelper:
         self.edit = edit
 
     def apply_bulk_operation(self, operation_fn: Callable[[float], float],
-                             operation_name: str) -> List[Tuple]:
+                             operation_name: str) -> Tuple[List[Tuple], List[Tuple]]:
         """
-        Apply an operation to all selected data cells
+        Apply an operation to all selected cells (data and axis)
 
         Args:
             operation_fn: Function(old_value) -> new_value
             operation_name: Description for logging
 
         Returns:
-            List of (row, col, old_value, new_value, old_raw, new_raw) tuples
+            Tuple of (data_changes, axis_changes) where:
+            - data_changes: List of (row, col, old_value, new_value, old_raw, new_raw) tuples
+            - axis_changes: List of (axis_type, index, old_value, new_value, old_raw, new_raw) tuples
         """
         if self.ctx.read_only or not self.ctx.current_table or not self.ctx.current_data:
-            return []
+            return [], []
 
         # Get selected ranges
         selected = self.ctx.table_widget.selectedRanges()
         if not selected:
             logger.debug(f"{operation_name}: No selection")
-            return []
+            return [], []
 
         # Get bounding rectangle of selection
         min_row = min(r.topRow() for r in selected)
@@ -56,7 +58,8 @@ class TableOperationsHelper:
         min_col = min(r.leftColumn() for r in selected)
         max_col = max(r.rightColumn() for r in selected)
 
-        changes_made = []
+        data_changes = []
+        axis_changes = []
 
         # Iterate through selection
         for row in range(min_row, max_row + 1):
@@ -65,69 +68,134 @@ class TableOperationsHelper:
                 if not item:
                     continue
 
-                # Check if this is a data cell (not axis)
+                # Check cell type from UserRole data
                 data_indices = item.data(Qt.UserRole)
                 if data_indices is None:
-                    continue  # Skip axis cells
+                    continue  # No data associated with this cell
 
-                data_row, data_col = data_indices
+                # Check if this is an axis cell or data cell
+                if isinstance(data_indices[0], str):
+                    # Axis cell: ('x_axis', index) or ('y_axis', index)
+                    axis_type_str, data_idx = data_indices
+                    axis_type = AxisType.X_AXIS if axis_type_str == 'x_axis' else AxisType.Y_AXIS
 
-                # Get current value
-                values = self.ctx.current_data['values']
-                if values.ndim == 1:
-                    old_value = float(values[data_row])
+                    # Get axis table for scaling
+                    axis_table = self.ctx.current_table.get_axis(axis_type)
+                    if not axis_table:
+                        continue
+
+                    # Get current axis value
+                    axis_key = axis_type_str
+                    axis_data = self.ctx.current_data.get(axis_key)
+                    if axis_data is None:
+                        continue
+
+                    old_value = float(axis_data[data_idx])
+
+                    # Apply operation
+                    try:
+                        new_value = float(operation_fn(old_value))
+                    except Exception as e:
+                        logger.warning(f"Operation failed for axis cell [{axis_type_str}][{data_idx}]: {e}")
+                        continue
+
+                    # Skip if no change
+                    if abs(new_value - old_value) < 1e-10:
+                        continue
+
+                    # Validate against axis scaling if available
+                    if self.ctx.rom_definition and axis_table.scaling:
+                        scaling = self.ctx.rom_definition.get_scaling(axis_table.scaling)
+                        if scaling:
+                            if scaling.min is not None and new_value < scaling.min:
+                                logger.warning(f"Axis value {new_value} below minimum {scaling.min}, skipping")
+                                continue
+                            if scaling.max is not None and new_value > scaling.max:
+                                logger.warning(f"Axis value {new_value} above maximum {scaling.max}, skipping")
+                                continue
+
+                    # Convert to raw values using axis scaling
+                    old_raw = self.edit._axis_display_to_raw(old_value, axis_table)
+                    new_raw = self.edit._axis_display_to_raw(new_value, axis_table)
+                    if old_raw is None or new_raw is None:
+                        continue
+
+                    # Update internal axis data
+                    self.ctx.current_data[axis_key][data_idx] = new_value
+
+                    # Update cell display
+                    self.ctx.editing_in_progress = True
+                    try:
+                        axis_fmt = self.display.get_axis_format(axis_type)
+                        item.setText(self.display.format_value(new_value, axis_fmt))
+                        color = self.display.get_axis_color(new_value, self.ctx.current_data[axis_key])
+                        item.setBackground(QBrush(color))
+                    finally:
+                        self.ctx.editing_in_progress = False
+
+                    # Record axis change
+                    axis_changes.append((axis_type_str, data_idx, old_value, new_value, float(old_raw), float(new_raw)))
+
                 else:
-                    old_value = float(values[data_row, data_col])
+                    # Data cell: (data_row, data_col)
+                    data_row, data_col = data_indices
 
-                # Apply operation
-                try:
-                    new_value = float(operation_fn(old_value))
-                except Exception as e:
-                    logger.warning(f"Operation failed for cell [{data_row},{data_col}]: {e}")
-                    continue
+                    # Get current value
+                    values = self.ctx.current_data['values']
+                    if values.ndim == 1:
+                        old_value = float(values[data_row])
+                    else:
+                        old_value = float(values[data_row, data_col])
 
-                # Skip if no change
-                if abs(new_value - old_value) < 1e-10:
-                    continue
+                    # Apply operation
+                    try:
+                        new_value = float(operation_fn(old_value))
+                    except Exception as e:
+                        logger.warning(f"Operation failed for cell [{data_row},{data_col}]: {e}")
+                        continue
 
-                # Validate against scaling if available
-                if self.ctx.rom_definition and self.ctx.current_table.scaling:
-                    scaling = self.ctx.rom_definition.get_scaling(self.ctx.current_table.scaling)
-                    if scaling:
-                        if scaling.min is not None and new_value < scaling.min:
-                            logger.warning(f"Value {new_value} below minimum {scaling.min}, skipping")
-                            continue
-                        if scaling.max is not None and new_value > scaling.max:
-                            logger.warning(f"Value {new_value} above maximum {scaling.max}, skipping")
-                            continue
+                    # Skip if no change
+                    if abs(new_value - old_value) < 1e-10:
+                        continue
 
-                # Convert to raw values
-                old_raw = self.edit.display_to_raw(old_value)
-                new_raw = self.edit.display_to_raw(new_value)
-                if old_raw is None or new_raw is None:
-                    continue
+                    # Validate against scaling if available
+                    if self.ctx.rom_definition and self.ctx.current_table.scaling:
+                        scaling = self.ctx.rom_definition.get_scaling(self.ctx.current_table.scaling)
+                        if scaling:
+                            if scaling.min is not None and new_value < scaling.min:
+                                logger.warning(f"Value {new_value} below minimum {scaling.min}, skipping")
+                                continue
+                            if scaling.max is not None and new_value > scaling.max:
+                                logger.warning(f"Value {new_value} above maximum {scaling.max}, skipping")
+                                continue
 
-                # Update internal data
-                if values.ndim == 1:
-                    self.ctx.current_data['values'][data_row] = new_value
-                else:
-                    self.ctx.current_data['values'][data_row, data_col] = new_value
+                    # Convert to raw values
+                    old_raw = self.edit.display_to_raw(old_value)
+                    new_raw = self.edit.display_to_raw(new_value)
+                    if old_raw is None or new_raw is None:
+                        continue
 
-                # Update cell display
-                self.ctx.editing_in_progress = True
-                try:
-                    value_fmt = self.display.get_value_format()
-                    item.setText(self.display.format_value(new_value, value_fmt))
-                    color = self.display.get_cell_color(new_value, self.ctx.current_data['values'], data_row, data_col)
-                    item.setBackground(QBrush(color))
-                finally:
-                    self.ctx.editing_in_progress = False
+                    # Update internal data
+                    if values.ndim == 1:
+                        self.ctx.current_data['values'][data_row] = new_value
+                    else:
+                        self.ctx.current_data['values'][data_row, data_col] = new_value
 
-                # Record change
-                changes_made.append((data_row, data_col, old_value, new_value, old_raw, new_raw))
+                    # Update cell display
+                    self.ctx.editing_in_progress = True
+                    try:
+                        value_fmt = self.display.get_value_format()
+                        item.setText(self.display.format_value(new_value, value_fmt))
+                        color = self.display.get_cell_color(new_value, self.ctx.current_data['values'], data_row, data_col)
+                        item.setBackground(QBrush(color))
+                    finally:
+                        self.ctx.editing_in_progress = False
 
-        logger.debug(f"{operation_name}: Modified {len(changes_made)} cell(s)")
-        return changes_made
+                    # Record data change
+                    data_changes.append((data_row, data_col, old_value, new_value, old_raw, new_raw))
+
+        logger.debug(f"{operation_name}: Modified {len(data_changes)} data cell(s), {len(axis_changes)} axis cell(s)")
+        return data_changes, axis_changes
 
     def increment_selection(self):
         """Increment selected cells by fixed amount"""
@@ -142,14 +210,16 @@ class TableOperationsHelper:
                 increment = scaling.inc
 
         # Apply operation
-        changes = self.apply_bulk_operation(
+        data_changes, axis_changes = self.apply_bulk_operation(
             lambda v: v + increment,
             f"Increment by {increment}"
         )
 
-        # Emit bulk changes signal
-        if changes:
-            self.ctx.viewer.bulk_changes.emit(changes)
+        # Emit signals
+        if data_changes:
+            self.ctx.viewer.bulk_changes.emit(data_changes)
+        if axis_changes:
+            self.ctx.viewer.axis_bulk_changes.emit(axis_changes)
 
     def decrement_selection(self):
         """Decrement selected cells by fixed amount"""
@@ -164,14 +234,16 @@ class TableOperationsHelper:
                 decrement = scaling.inc
 
         # Apply operation
-        changes = self.apply_bulk_operation(
+        data_changes, axis_changes = self.apply_bulk_operation(
             lambda v: v - decrement,
             f"Decrement by {decrement}"
         )
 
-        # Emit bulk changes signal
-        if changes:
-            self.ctx.viewer.bulk_changes.emit(changes)
+        # Emit signals
+        if data_changes:
+            self.ctx.viewer.bulk_changes.emit(data_changes)
+        if axis_changes:
+            self.ctx.viewer.axis_bulk_changes.emit(axis_changes)
 
     def add_to_selection(self):
         """Add custom value to selected cells (dialog)"""
@@ -191,14 +263,16 @@ class TableOperationsHelper:
             value = dialog.get_value()
 
             # Apply operation
-            changes = self.apply_bulk_operation(
+            data_changes, axis_changes = self.apply_bulk_operation(
                 lambda v: v + value,
                 f"Add {value}"
             )
 
-            # Emit bulk changes signal
-            if changes:
-                self.ctx.viewer.bulk_changes.emit(changes)
+            # Emit signals
+            if data_changes:
+                self.ctx.viewer.bulk_changes.emit(data_changes)
+            if axis_changes:
+                self.ctx.viewer.axis_bulk_changes.emit(axis_changes)
 
     def multiply_selection(self):
         """Multiply selected cells by factor (dialog)"""
@@ -218,14 +292,16 @@ class TableOperationsHelper:
             factor = dialog.get_factor()
 
             # Apply operation
-            changes = self.apply_bulk_operation(
+            data_changes, axis_changes = self.apply_bulk_operation(
                 lambda v: v * factor,
                 f"Multiply by {factor}"
             )
 
-            # Emit bulk changes signal
-            if changes:
-                self.ctx.viewer.bulk_changes.emit(changes)
+            # Emit signals
+            if data_changes:
+                self.ctx.viewer.bulk_changes.emit(data_changes)
+            if axis_changes:
+                self.ctx.viewer.axis_bulk_changes.emit(axis_changes)
 
     def set_value_selection(self):
         """Set all selected cells to value (dialog)"""
@@ -249,14 +325,16 @@ class TableOperationsHelper:
             value = dialog.get_value()
 
             # Apply operation
-            changes = self.apply_bulk_operation(
+            data_changes, axis_changes = self.apply_bulk_operation(
                 lambda v: value,
                 f"Set to {value}"
             )
 
-            # Emit bulk changes signal
-            if changes:
-                self.ctx.viewer.bulk_changes.emit(changes)
+            # Emit signals
+            if data_changes:
+                self.ctx.viewer.bulk_changes.emit(data_changes)
+            if axis_changes:
+                self.ctx.viewer.axis_bulk_changes.emit(axis_changes)
 
     def select_all_data(self):
         """Select all data cells (excluding axes)"""

@@ -150,9 +150,56 @@ class Commit:
 
 
 @dataclass
+class AxisChange:
+    """Represents a single axis value change"""
+    table_name: str
+    table_address: str  # Hex address
+    axis_type: str  # 'x_axis' or 'y_axis'
+    index: int  # Index in the axis array
+    old_value: float  # Display value
+    new_value: float  # Display value
+    old_raw: float    # Raw binary value
+    new_raw: float    # Raw binary value
+
+    def to_dict(self) -> dict:
+        """Serialize to dictionary for JSON storage"""
+        return {
+            "table_name": self.table_name,
+            "table_address": self.table_address,
+            "axis_type": self.axis_type,
+            "index": self.index,
+            "old_value": self.old_value,
+            "new_value": self.new_value,
+            "old_raw": self.old_raw,
+            "new_raw": self.new_raw
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict) -> 'AxisChange':
+        """Deserialize from dictionary"""
+        return cls(
+            table_name=data["table_name"],
+            table_address=data["table_address"],
+            axis_type=data["axis_type"],
+            index=data["index"],
+            old_value=data["old_value"],
+            new_value=data["new_value"],
+            old_raw=data["old_raw"],
+            new_raw=data["new_raw"]
+        )
+
+
+@dataclass
 class UndoableChange:
     """Wrapper for changes in undo/redo stack"""
     cell_change: CellChange
+    timestamp: datetime = field(default_factory=datetime.now)
+
+
+@dataclass
+class UndoableAxisChange:
+    """Wrapper for axis changes in undo/redo stack"""
+    axis_change: AxisChange
     timestamp: datetime = field(default_factory=datetime.now)
 
 
@@ -161,6 +208,14 @@ class BulkChange:
     """Multiple cell changes grouped as one undo operation"""
     changes: List[CellChange]
     description: str  # e.g., "Multiply by 1.1", "Interpolate Vertically"
+    timestamp: datetime = field(default_factory=datetime.now)
+
+
+@dataclass
+class AxisBulkChange:
+    """Multiple axis changes grouped as one undo operation"""
+    changes: List[AxisChange]
+    description: str  # e.g., "Interpolate Y-Axis"
     timestamp: datetime = field(default_factory=datetime.now)
 
 
