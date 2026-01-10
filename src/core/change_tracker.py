@@ -302,7 +302,7 @@ class ChangeTracker:
             self._notify_change()
             logger.debug(f"Redo bulk: {item.description} ({len(item.changes)} cells)")
 
-            return item.changes
+            return reversed_changes
 
         # Handle single changes
         else:
@@ -341,7 +341,7 @@ class ChangeTracker:
             self._notify_change()
             logger.debug(f"Redo: {change.table_name}[{change.row},{change.col}]")
 
-            return change
+            return reverse
 
     def _update_pending_for_undo(self, change: CellChange):
         """Update pending changes when undoing"""

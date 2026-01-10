@@ -99,44 +99,44 @@ class TableViewerWindow(QMainWindow):
         self._auto_size_window()
 
     def _create_menu_bar(self):
-        """Create menu bar with Data Manipulation menu"""
+        """Create menu bar with Edit menu"""
         menubar = self.menuBar()
 
-        # Data Manipulation menu
-        data_menu = menubar.addMenu("Data")
+        # Edit menu
+        edit_menu = menubar.addMenu("Edit")
 
-        increment_action = data_menu.addAction("Increment")
+        increment_action = edit_menu.addAction("Increment")
         increment_action.setShortcut("+")
         increment_action.triggered.connect(self.viewer.increment_selection)
 
-        decrement_action = data_menu.addAction("Decrement")
+        decrement_action = edit_menu.addAction("Decrement")
         decrement_action.setShortcut("-")
         decrement_action.triggered.connect(self.viewer.decrement_selection)
 
-        data_menu.addSeparator()
+        edit_menu.addSeparator()
 
-        add_action = data_menu.addAction("Add to Data...")
+        add_action = edit_menu.addAction("Add to Data...")
         add_action.triggered.connect(self.viewer.add_to_selection)
 
-        multiply_action = data_menu.addAction("Multiply Data...")
+        multiply_action = edit_menu.addAction("Multiply Data...")
         multiply_action.setShortcut("*")
         multiply_action.triggered.connect(self.viewer.multiply_selection)
 
-        set_action = data_menu.addAction("Set Value...")
+        set_action = edit_menu.addAction("Set Value...")
         set_action.setShortcut("=")
         set_action.triggered.connect(self.viewer.set_value_selection)
 
-        data_menu.addSeparator()
+        edit_menu.addSeparator()
 
-        interp_v_action = data_menu.addAction("Interpolate Vertically")
+        interp_v_action = edit_menu.addAction("Interpolate Vertically")
         interp_v_action.setShortcut("V")
         interp_v_action.triggered.connect(self.viewer.interpolate_vertical)
 
-        interp_h_action = data_menu.addAction("Interpolate Horizontally")
+        interp_h_action = edit_menu.addAction("Interpolate Horizontally")
         interp_h_action.setShortcut("H")
         interp_h_action.triggered.connect(self.viewer.interpolate_horizontal)
 
-        interp_2d_action = data_menu.addAction("Interpolate 2D")
+        interp_2d_action = edit_menu.addAction("Interpolate 2D")
         interp_2d_action.setShortcut("B")
         interp_2d_action.triggered.connect(self.viewer.interpolate_2d)
 
@@ -179,6 +179,10 @@ class TableViewerWindow(QMainWindow):
 
         # Add info label height
         content_height += self.viewer.info_label.sizeHint().height()
+
+        # Add menu bar height
+        if self.menuBar():
+            content_height += self.menuBar().height()
 
         # Add window title bar (approximately)
         content_height += 30

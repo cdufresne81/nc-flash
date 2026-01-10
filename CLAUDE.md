@@ -1,12 +1,5 @@
 # Claude Code Instructions
 
-## Session Start
-
-1. **Refresh codebase snapshot** (if using repomix):
-   ```bash
-   repomix mix
-   ```
-
 ## Landing the Plane (Session Completion)
 
 When ending a work session, complete ALL steps below. Work is NOT complete until `git push` succeeds.
@@ -18,13 +11,7 @@ When ending a work session, complete ALL steps below. Work is NOT complete until
    pytest
    ```
 
-2. **Refresh Repomix** (if using):
-   ```bash
-   repomix mix
-   git add repomix-output.xml
-   ```
-
-3. **Commit and push**:
+2. **Commit and push**:
    ```bash
    git add -A
    git commit -m "Description of changes"
