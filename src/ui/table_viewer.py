@@ -163,10 +163,12 @@ class TableViewer(QWidget):
         main_layout.setSpacing(0)
         self.setLayout(main_layout)
 
-        # Table info label - compact, allow truncation
+        # Table info label - TEMPORARILY HIDDEN (user request)
+        # TODO: May want to restore this label later or make it toggleable
         self.info_label = QLabel("Select a table to view")
         self.info_label.setStyleSheet("font-size: 9px; padding: 1px 2px; background: #f0f0f0;")
         self.info_label.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Fixed)
+        self.info_label.setVisible(False)  # HIDDEN
         main_layout.addWidget(self.info_label)
 
         # X-axis label (horizontal, centered above table, initially hidden)

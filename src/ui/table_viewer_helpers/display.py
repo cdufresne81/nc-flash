@@ -61,14 +61,15 @@ class TableDisplayHelper:
         self.ctx.current_table = table
         self.ctx.current_data = data
 
-        # Update info label
-        info_text = (
-            f"{table.name} | "
-            f"Type: {table.type.value} | "
-            f"Category: {table.category} | "
-            f"Address: 0x{table.address}"
-        )
-        self.ctx.info_label.setText(info_text)
+        # Update info label - TEMPORARILY HIDDEN (user request)
+        # TODO: May want to restore this label later or make it toggleable
+        # info_text = (
+        #     f"{table.name} | "
+        #     f"Type: {table.type.value} | "
+        #     f"Category: {table.category} | "
+        #     f"Address: 0x{table.address}"
+        # )
+        # self.ctx.info_label.setText(info_text)
 
         values = data['values']
 
@@ -83,7 +84,7 @@ class TableDisplayHelper:
         """Clear the viewer"""
         self.ctx.current_table = None
         self.ctx.current_data = None
-        self.ctx.info_label.setText("Select a table to view")
+        # self.ctx.info_label.setText("Select a table to view")  # TEMPORARILY HIDDEN
         self.ctx.table_widget.setRowCount(0)
         self.ctx.table_widget.setColumnCount(0)
         # Hide axis labels

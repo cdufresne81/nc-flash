@@ -210,8 +210,8 @@ class TableViewerWindow(QMainWindow):
         if table_widget.horizontalHeader().isVisible():
             content_height += table_widget.horizontalHeader().height()
 
-        # Add info label height
-        content_height += self.viewer.info_label.sizeHint().height()
+        # Add info label height (TEMPORARILY HIDDEN - not adding height)
+        # content_height += self.viewer.info_label.sizeHint().height()
 
         # Add menu bar height
         if self.menuBar():
