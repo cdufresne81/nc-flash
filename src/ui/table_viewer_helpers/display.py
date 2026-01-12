@@ -189,11 +189,11 @@ class TableDisplayHelper:
                     value_item.setFlags(value_item.flags() & ~Qt.ItemIsEditable)
                 self.ctx.table_widget.setItem(i, 2, value_item)
 
-            # Set spacer column 1 to thin width (ECUFlash style)
+            # Set spacer column 1 to very thin width (barely visible line)
             header = self.ctx.table_widget.horizontalHeader()
             header.setSectionResizeMode(0, QHeaderView.ResizeToContents)
             header.setSectionResizeMode(1, QHeaderView.Fixed)
-            self.ctx.table_widget.setColumnWidth(1, 3)
+            self.ctx.table_widget.setColumnWidth(1, 1)
             header.setSectionResizeMode(2, QHeaderView.Stretch)
         finally:
             self.ctx.editing_in_progress = False
@@ -373,16 +373,16 @@ class TableDisplayHelper:
             header = self.ctx.table_widget.horizontalHeader()
             # Set column 0 (Y-axis values) to ResizeToContents
             header.setSectionResizeMode(0, QHeaderView.ResizeToContents)
-            # Set column 1 (spacer) to Fixed with thin width (ECUFlash style)
+            # Set column 1 (spacer) to Fixed with very thin width (barely visible line)
             header.setSectionResizeMode(1, QHeaderView.Fixed)
-            self.ctx.table_widget.setColumnWidth(1, 3)
+            self.ctx.table_widget.setColumnWidth(1, 1)
             # Set data columns (2+) to Fixed with uniform width
             for col in range(2, self.ctx.table_widget.columnCount()):
                 header.setSectionResizeMode(col, QHeaderView.Fixed)
                 self.ctx.table_widget.setColumnWidth(col, max_width)
 
-        # Set spacer row 1 to thin height (ECUFlash style)
-        self.ctx.table_widget.setRowHeight(1, 3)
+        # Set spacer row 1 to very thin height (barely visible line)
+        self.ctx.table_widget.setRowHeight(1, 1)
 
     def _get_axis_label(self, table: Table, axis_type: AxisType) -> str:
         """
