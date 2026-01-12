@@ -214,7 +214,7 @@ class TableEditHelper:
             rows, cols = values.shape
             ui_row = (rows - 1 - data_row) if flipy else data_row
             ui_col = (cols - 1 - data_col) if flipx else data_col
-            return ui_row + 1, ui_col + 1  # +1 for axis row/col
+            return ui_row + 2, ui_col + 1  # +2 for label row and X-axis row, +1 for Y-axis col
 
         return None, None
 
@@ -390,19 +390,19 @@ class TableEditHelper:
 
         elif table_type == TableType.THREE_D:
             if axis_type == 'x_axis':
-                # X axis is in row 0, columns 1+
+                # X axis is in row 1, columns 1+
                 x_axis = self.ctx.current_data.get('x_axis')
                 if x_axis is not None:
                     cols = len(x_axis)
                     ui_col = (cols - 1 - data_idx) if flipx else data_idx
-                    return 0, ui_col + 1
+                    return 1, ui_col + 1
             elif axis_type == 'y_axis':
-                # Y axis is in column 0, rows 1+
+                # Y axis is in column 0, rows 2+
                 y_axis = self.ctx.current_data.get('y_axis')
                 if y_axis is not None:
                     rows = len(y_axis)
                     ui_row = (rows - 1 - data_idx) if flipy else data_idx
-                    return ui_row + 1, 0
+                    return ui_row + 2, 0
             return None, None
 
         return None, None
