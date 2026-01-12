@@ -213,13 +213,13 @@ class TableEditHelper:
             values = self.ctx.current_data['values']
             num_values = len(values)
             ui_row = (num_values - 1 - data_row) if flipy else data_row
-            return ui_row, 1  # Column 1 is the value column
+            return ui_row, 2  # Column 2 is the value column (col 0 = Y-axis, col 1 = spacer)
         elif table_type == TableType.THREE_D:
             values = self.ctx.current_data['values']
             rows, cols = values.shape
             ui_row = (rows - 1 - data_row) if flipy else data_row
             ui_col = (cols - 1 - data_col) if flipx else data_col
-            return ui_row + 1, ui_col + 1  # +1 for X-axis row, +1 for Y-axis col
+            return ui_row + 2, ui_col + 2  # +2 for X-axis row and spacer row, +2 for Y-axis col and spacer col
 
         return None, None
 
@@ -400,19 +400,19 @@ class TableEditHelper:
 
         elif table_type == TableType.THREE_D:
             if axis_type == 'x_axis':
-                # X axis is in row 0, columns 1+
+                # X axis is in row 0, columns 2+ (skip Y-axis col and spacer col)
                 x_axis = self.ctx.current_data.get('x_axis')
                 if x_axis is not None:
                     cols = len(x_axis)
                     ui_col = (cols - 1 - data_idx) if flipx else data_idx
-                    return 0, ui_col + 1
+                    return 0, ui_col + 2
             elif axis_type == 'y_axis':
-                # Y axis is in column 0, rows 1+
+                # Y axis is in column 0, rows 2+ (skip X-axis row and spacer row)
                 y_axis = self.ctx.current_data.get('y_axis')
                 if y_axis is not None:
                     rows = len(y_axis)
                     ui_row = (rows - 1 - data_idx) if flipy else data_idx
-                    return ui_row + 1, 0
+                    return ui_row + 2, 0
             return None, None
 
         return None, None
