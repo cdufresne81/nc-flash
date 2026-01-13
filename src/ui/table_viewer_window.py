@@ -68,6 +68,14 @@ class TableViewerWindow(QMainWindow):
         self.rom_definition = rom_definition
         self.rom_path = rom_path
 
+        # Remove minimize/maximize buttons, keep only close button
+        self.setWindowFlags(
+            Qt.Window |
+            Qt.WindowCloseButtonHint |
+            Qt.CustomizeWindowHint |
+            Qt.WindowTitleHint
+        )
+
         # Set window properties
         self.setWindowTitle(f"{table.name} - {APP_NAME}")
 
@@ -202,8 +210,8 @@ class TableViewerWindow(QMainWindow):
         if self.viewer.y_axis_label.isVisible():
             content_width += self.viewer.y_axis_label.sizeHint().width()
 
-        # Margin for scrollbar/border/spacing
-        content_width += 10
+        # Margin for window border, scrollbar, and internal spacing
+        content_width += 35
 
         # Calculate content height
         content_height = 0

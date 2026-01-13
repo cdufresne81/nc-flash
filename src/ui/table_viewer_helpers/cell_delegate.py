@@ -8,6 +8,8 @@ from PySide6.QtWidgets import QStyledItemDelegate
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QPen, QColor
 
+from ...core.rom_definition import TableType
+
 
 class ModifiedCellDelegate(QStyledItemDelegate):
     """Delegate that draws gray borders around modified cells"""
@@ -26,17 +28,22 @@ class ModifiedCellDelegate(QStyledItemDelegate):
         # Check if this cell is an axis separator (needs border for visual separation)
         is_axis_separator = index.data(Qt.UserRole + 2) == 'axis_separator'
         if is_axis_separator:
-            # Determine border position based on row/column
+            # Determine border position based on row/column and table type
             # Use window background color for subtle separation
             bg_color = option.palette.window().color()
             pen = QPen(bg_color, 3)  # 3px border in window background color
             painter.setPen(pen)
 
-            # If row 0 (X-axis), draw bottom border
-            if index.row() == 0:
+            # Get current table type to determine which borders to draw
+            current_table = self.viewer.current_table
+            is_3d_table = current_table and current_table.type == TableType.THREE_D
+
+            # If row 0 AND 3D table (X-axis row), draw bottom border
+            # For 2D tables, row 0 is a data row, not an axis row
+            if index.row() == 0 and is_3d_table:
                 painter.drawLine(option.rect.bottomLeft(), option.rect.bottomRight())
 
-            # If column 0 (Y-axis), draw right border
+            # If column 0 (Y-axis), draw right border (both 2D and 3D tables have Y-axis)
             if index.column() == 0:
                 painter.drawLine(option.rect.topRight(), option.rect.bottomRight())
 

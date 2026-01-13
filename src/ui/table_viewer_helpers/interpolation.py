@@ -166,11 +166,14 @@ class TableInterpolationHelper:
                                 cells_interpolated += 1
                         else:
                             # Handle data cell interpolation
-                            # Get old raw value - unpack coords for proper numpy indexing
-                            if len(coords) == 2:
-                                old_raw = self.ctx.current_data['values'][coords[0], coords[1]]
+                            # Get old raw value - use correct indexing based on array dimensions
+                            values = self.ctx.current_data['values']
+                            if values.ndim == 2:
+                                # 3D table: 2D values array, use (row, col) indexing
+                                old_raw = values[coords[0], coords[1]]
                             else:
-                                old_raw = self.ctx.current_data['values'][coords[0]]
+                                # 1D/2D table: 1D values array, use single index
+                                old_raw = values[coords[0]]
 
                             # Convert to raw and back to ensure consistency
                             scaling = self.ctx.rom_definition.get_scaling(self.ctx.current_table.scaling)
@@ -184,14 +187,16 @@ class TableInterpolationHelper:
                                 try:
                                     value_fmt = self.display.get_value_format()
                                     item.setText(self.display.format_value(new_val, value_fmt))
-                                    # Update display value in values array - unpack coords for proper numpy indexing
-                                    if len(coords) == 2:
-                                        self.ctx.current_data['values'][coords[0], coords[1]] = new_val
+                                    # Update display value in values array - use correct indexing based on array dimensions
+                                    if values.ndim == 2:
+                                        # 3D table: 2D values array, use (row, col) indexing
+                                        values[coords[0], coords[1]] = new_val
                                     else:
-                                        self.ctx.current_data['values'][coords[0]] = new_val
+                                        # 1D/2D table: 1D values array, use single index
+                                        values[coords[0]] = new_val
                                     # Update cell color
-                                    color = self.display.get_cell_color(new_val, self.ctx.current_data['values'],
-                                                                coords[0], coords[1] if len(coords) > 1 else 0)
+                                    color = self.display.get_cell_color(new_val, values,
+                                                                coords[0], coords[1] if values.ndim == 2 else 0)
                                     item.setBackground(QBrush(color))
                                 finally:
                                     self.ctx.editing_in_progress = False
@@ -353,11 +358,14 @@ class TableInterpolationHelper:
                                 cells_interpolated += 1
                         else:
                             # Handle data cell interpolation
-                            # Get old raw value - unpack coords for proper numpy indexing
-                            if len(coords) == 2:
-                                old_raw = self.ctx.current_data['values'][coords[0], coords[1]]
+                            # Get old raw value - use correct indexing based on array dimensions
+                            values = self.ctx.current_data['values']
+                            if values.ndim == 2:
+                                # 3D table: 2D values array, use (row, col) indexing
+                                old_raw = values[coords[0], coords[1]]
                             else:
-                                old_raw = self.ctx.current_data['values'][coords[0]]
+                                # 1D/2D table: 1D values array, use single index
+                                old_raw = values[coords[0]]
 
                             # Convert to raw and back to ensure consistency
                             scaling = self.ctx.rom_definition.get_scaling(self.ctx.current_table.scaling)
@@ -371,14 +379,16 @@ class TableInterpolationHelper:
                                 try:
                                     value_fmt = self.display.get_value_format()
                                     item.setText(self.display.format_value(new_val, value_fmt))
-                                    # Update display value in values array - unpack coords for proper numpy indexing
-                                    if len(coords) == 2:
-                                        self.ctx.current_data['values'][coords[0], coords[1]] = new_val
+                                    # Update display value in values array - use correct indexing based on array dimensions
+                                    if values.ndim == 2:
+                                        # 3D table: 2D values array, use (row, col) indexing
+                                        values[coords[0], coords[1]] = new_val
                                     else:
-                                        self.ctx.current_data['values'][coords[0]] = new_val
+                                        # 1D/2D table: 1D values array, use single index
+                                        values[coords[0]] = new_val
                                     # Update cell color
-                                    color = self.display.get_cell_color(new_val, self.ctx.current_data['values'],
-                                                                coords[0], coords[1] if len(coords) > 1 else 0)
+                                    color = self.display.get_cell_color(new_val, values,
+                                                                coords[0], coords[1] if values.ndim == 2 else 0)
                                     item.setBackground(QBrush(color))
                                 finally:
                                     self.ctx.editing_in_progress = False
