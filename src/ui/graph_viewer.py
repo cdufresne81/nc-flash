@@ -12,7 +12,7 @@ from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
 from mpl_toolkits.mplot3d import Axes3D
 
-from ..core.rom_definition import Table, TableType
+from ..core.rom_definition import Table, TableType, RomDefinition, AxisType
 from ..utils.constants import APP_NAME
 
 
@@ -28,13 +28,15 @@ class GraphViewer(QMainWindow):
     - Color gradient matching table viewer
     """
 
-    def __init__(self, table: Table, data: dict, selected_cells: list = None, parent=None):
+    def __init__(self, table: Table, data: dict, rom_definition: RomDefinition = None,
+                 selected_cells: list = None, parent=None):
         """
         Initialize graph viewer
 
         Args:
             table: Table definition
             data: Table data dictionary
+            rom_definition: ROM definition containing scalings
             selected_cells: List of (row, col) tuples for selected cells
             parent: Parent widget
         """
@@ -42,6 +44,7 @@ class GraphViewer(QMainWindow):
 
         self.table = table
         self.data = data
+        self.rom_definition = rom_definition
         self.selected_cells = selected_cells or []
         self.ax_3d = None  # Store 3D axes for rotation control
 
@@ -117,8 +120,10 @@ class GraphViewer(QMainWindow):
                                antialiased=True, shade=False)
 
         # Labels
-        ax.set_xlabel('X Axis' if x_axis is not None else 'Column')
-        ax.set_ylabel('Y Axis' if y_axis is not None else 'Row')
+        x_label = self._get_axis_label(AxisType.X_AXIS) if x_axis is not None else 'Column'
+        y_label = self._get_axis_label(AxisType.Y_AXIS) if y_axis is not None else 'Row'
+        ax.set_xlabel(x_label)
+        ax.set_ylabel(y_label)
         ax.set_zlabel('Value')
         ax.set_title(f'{self.table.name}')
 
@@ -229,7 +234,8 @@ class GraphViewer(QMainWindow):
             if selected_x:
                 ax.scatter(selected_x, selected_y, color='blue', s=100, zorder=10, alpha=0.8)
 
-        ax.set_xlabel('Y Axis' if y_axis is not None else 'Index')
+        y_label = self._get_axis_label(AxisType.Y_AXIS) if y_axis is not None else 'Index'
+        ax.set_xlabel(y_label)
         ax.set_ylabel('Value')
         ax.set_title(f'{self.table.name}')
         ax.grid(True, alpha=0.3)
@@ -303,3 +309,30 @@ class GraphViewer(QMainWindow):
         """Convert ratio to matplotlib color (RGB tuple)"""
         rgba = self._ratio_to_rgba(ratio)
         return (rgba[0], rgba[1], rgba[2])
+
+    def _get_axis_label(self, axis_type: AxisType) -> str:
+        """
+        Get axis label with unit, e.g., 'Engine Speed (RPM)'
+
+        Args:
+            axis_type: AxisType.X_AXIS or AxisType.Y_AXIS
+
+        Returns:
+            Formatted axis label with unit if available
+        """
+        axis_table = self.table.get_axis(axis_type)
+        if not axis_table:
+            return "X Axis" if axis_type == AxisType.X_AXIS else "Y Axis"
+
+        name = axis_table.name
+        unit = ""
+
+        # Get unit from scaling if available
+        if self.rom_definition and axis_table.scaling:
+            scaling = self.rom_definition.get_scaling(axis_table.scaling)
+            if scaling and scaling.units:
+                unit = scaling.units
+
+        if unit:
+            return f"{name} ({unit})"
+        return name

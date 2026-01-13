@@ -211,7 +211,8 @@ class TableViewerWindow(QMainWindow):
         selected_cells = self._get_selected_data_cells()
 
         # Create and show graph viewer
-        self.graph_viewer = GraphViewer(self.table, self.data, selected_cells, self)
+        self.graph_viewer = GraphViewer(self.table, self.data, self.rom_definition,
+                                        selected_cells, self)
         self.graph_viewer.show()
 
         # Connect selection changed signal to update graph
