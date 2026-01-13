@@ -641,6 +641,66 @@ class TestRunner:
             self._process_events()
             time.sleep(0.01)
 
+    def cleanup_screenshots(self, pattern: str = None, max_age_hours: float = None) -> int:
+        """
+        Clean up screenshots from the screenshots directory
+
+        Args:
+            pattern: Optional glob pattern to match (e.g., "demo_*", "test_*")
+                    If None, cleans all auto-generated screenshots
+            max_age_hours: Optional max age in hours. Only delete files older than this.
+                          If None, deletes all matching files.
+
+        Returns:
+            Number of files deleted
+        """
+        deleted = 0
+
+        # Default patterns for auto-generated screenshots
+        if pattern is None:
+            patterns = ["demo_*.png", "dm_*.png", "test_*.png", "screenshot_*.png"]
+        else:
+            patterns = [pattern if pattern.endswith('.png') else f"{pattern}.png"]
+
+        now = datetime.now()
+
+        for pat in patterns:
+            for filepath in self.screenshots_dir.glob(pat):
+                # Check age if specified
+                if max_age_hours is not None:
+                    file_age_hours = (now - datetime.fromtimestamp(filepath.stat().st_mtime)).total_seconds() / 3600
+                    if file_age_hours < max_age_hours:
+                        continue
+
+                try:
+                    filepath.unlink()
+                    deleted += 1
+                    self._log(f"Deleted: {filepath.name}")
+                except Exception as e:
+                    self._log(f"ERROR deleting {filepath.name}: {e}")
+
+        self._log(f"Cleanup complete: {deleted} file(s) deleted")
+        return deleted
+
+    def list_screenshots(self) -> list:
+        """
+        List all screenshots in the screenshots directory
+
+        Returns:
+            List of screenshot filenames
+        """
+        screenshots = sorted(self.screenshots_dir.glob("*.png"))
+        for s in screenshots:
+            # Get file size and age
+            stat = s.stat()
+            size_kb = stat.st_size / 1024
+            age = datetime.now() - datetime.fromtimestamp(stat.st_mtime)
+            age_str = f"{age.total_seconds() / 3600:.1f}h" if age.total_seconds() > 3600 else f"{age.total_seconds() / 60:.0f}m"
+            print(f"  {s.name} ({size_kb:.1f}KB, {age_str} ago)")
+
+        self._log(f"Total: {len(screenshots)} screenshot(s)")
+        return [s.name for s in screenshots]
+
     def _process_events(self):
         """Process pending Qt events"""
         if self.app:
@@ -784,6 +844,16 @@ class TestRunner:
                 self.wait(int(args[0]))
                 return True
 
+            elif cmd == "cleanup":
+                pattern = args[0] if args else None
+                max_age = float(args[1]) if len(args) > 1 else None
+                self.cleanup_screenshots(pattern, max_age)
+                return True
+
+            elif cmd == "list_screenshots":
+                self.list_screenshots()
+                return True
+
             else:
                 self._log(f"Unknown command: {cmd}")
                 return False
@@ -852,6 +922,8 @@ class TestRunner:
         print("  add <value>              - Add to selection")
         print("  open_graph / close_graph - Toggle graph viewer")
         print("  screenshot [name] [target] - Take screenshot")
+        print("  list_screenshots         - List all screenshots")
+        print("  cleanup [pattern] [hours] - Delete screenshots")
         print("  undo / redo              - Undo/redo last change")
         print("  wait <ms>                - Wait milliseconds")
         print("  close_table              - Close current table")
@@ -899,6 +971,15 @@ Examples:
 
   # Quick test: load ROM and open a table
   python tools/test_runner.py --rom examples/lf9veb.bin --table "APP to TP Desired"
+
+  # List all screenshots
+  python tools/test_runner.py --list-screenshots
+
+  # Clean up all auto-generated screenshots
+  python tools/test_runner.py --cleanup
+
+  # Clean up screenshots matching pattern, older than 24 hours
+  python tools/test_runner.py --cleanup --cleanup-pattern "demo_*" --cleanup-age 24
 """
     )
 
@@ -916,11 +997,28 @@ Examples:
                         help='Suppress non-essential output')
     parser.add_argument('--screenshot',
                         help='Take screenshot and save with this name')
+    parser.add_argument('--cleanup', action='store_true',
+                        help='Clean up auto-generated screenshots')
+    parser.add_argument('--cleanup-pattern',
+                        help='Pattern for cleanup (e.g., "demo_*")')
+    parser.add_argument('--cleanup-age', type=float,
+                        help='Only delete screenshots older than N hours')
+    parser.add_argument('--list-screenshots', action='store_true',
+                        help='List all screenshots')
 
     args = parser.parse_args()
 
     # Create test runner
     runner = TestRunner(metadata_dir=args.metadata, quiet=args.quiet)
+
+    # Handle cleanup/list screenshots (no app needed)
+    if args.list_screenshots:
+        runner.list_screenshots()
+        sys.exit(0)
+
+    if args.cleanup:
+        runner.cleanup_screenshots(args.cleanup_pattern, args.cleanup_age)
+        sys.exit(0)
 
     # Handle script mode
     if args.script:
