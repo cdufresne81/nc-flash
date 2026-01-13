@@ -27,7 +27,7 @@ class ModifiedCellDelegate(QStyledItemDelegate):
         is_axis_separator = index.data(Qt.UserRole + 2) == 'axis_separator'
         if is_axis_separator:
             # Determine border position based on row/column
-            pen = QPen(QColor(150, 150, 150), 1)  # 1px gray border for separation
+            pen = QPen(QColor(150, 150, 150), 3)  # 3px gray border for separation
             painter.setPen(pen)
 
             # If row 0 (X-axis), draw bottom border
