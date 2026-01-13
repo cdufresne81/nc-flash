@@ -305,5 +305,9 @@ class TableViewerWindow(QMainWindow):
 
     def closeEvent(self, event):
         """Handle window close event"""
+        # Close associated graph viewer if open
+        if self.graph_viewer and not self.graph_viewer.isHidden():
+            self.graph_viewer.close()
+
         # Clean up if needed
         event.accept()

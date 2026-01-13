@@ -96,16 +96,35 @@ class GraphViewer(QMainWindow):
 
         rows, cols = values.shape
 
-        # Create meshgrid
-        if x_axis is not None and y_axis is not None:
-            X, Y = np.meshgrid(x_axis, y_axis)
-        else:
-            X, Y = np.meshgrid(np.arange(cols), np.arange(rows))
+        # For plot_surface with facecolors, we need vertices at cell corners
+        # If we have NxM data cells, we need (N+1)x(M+1) vertices
+        # The colors array represents faces (NxM), not vertices
 
-        Z = values
+        # Extend axes by one point (extrapolate with same spacing)
+        if x_axis is not None and y_axis is not None:
+            # Calculate axis spacing
+            x_step = x_axis[1] - x_axis[0] if len(x_axis) > 1 else 1
+            y_step = y_axis[1] - y_axis[0] if len(y_axis) > 1 else 1
+
+            # Extend axes
+            x_extended = np.append(x_axis, x_axis[-1] + x_step)
+            y_extended = np.append(y_axis, y_axis[-1] + y_step)
+
+            X, Y = np.meshgrid(x_extended, y_extended)
+        else:
+            X, Y = np.meshgrid(np.arange(cols + 1), np.arange(rows + 1))
+
+        # Extend Z values by duplicating last row and column
+        Z_extended = np.zeros((rows + 1, cols + 1))
+        Z_extended[:rows, :cols] = values
+        Z_extended[rows, :cols] = values[-1, :]  # Duplicate last row
+        Z_extended[:rows, cols] = values[:, -1]  # Duplicate last column
+        Z_extended[rows, cols] = values[-1, -1]  # Corner value
+        Z = Z_extended
 
         # Calculate colors based on gradient (matching table viewer)
-        colors = self._calculate_colors(Z)
+        # Colors represent faces (original data size), not vertices
+        colors = self._calculate_colors(values)
 
         # Override colors for selected cells with blue
         if self.selected_cells:
