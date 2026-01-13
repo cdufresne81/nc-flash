@@ -128,15 +128,8 @@ class TableViewerWindow(QMainWindow):
         self._auto_size_window()
 
     def _create_menu_bar(self):
-        """Create menu bar with View and Edit menus"""
+        """Create menu bar with Edit and View menus"""
         menubar = self.menuBar()
-
-        # View menu
-        view_menu = menubar.addMenu("View")
-
-        graph_action = view_menu.addAction("View Graph...")
-        graph_action.setShortcut("G")
-        graph_action.triggered.connect(self._open_graph_viewer)
 
         # Edit menu
         edit_menu = menubar.addMenu("Edit")
@@ -176,6 +169,13 @@ class TableViewerWindow(QMainWindow):
         interp_2d_action.setShortcut("B")
         interp_2d_action.triggered.connect(self.viewer.interpolate_2d)
 
+        # View menu (after Edit menu)
+        view_menu = menubar.addMenu("View")
+
+        graph_action = view_menu.addAction("View Graph...")
+        graph_action.setShortcut("G")
+        graph_action.triggered.connect(self._open_graph_viewer)
+
     def _open_graph_viewer(self):
         """Open graph viewer window with current table data and selection"""
         from .graph_viewer import GraphViewer
@@ -192,7 +192,15 @@ class TableViewerWindow(QMainWindow):
                         coords = item.data(Qt.UserRole)
                         # Only include data cells (not axis cells)
                         if not isinstance(coords[0], str):
-                            selected_cells.append((coords[0], coords[1] if len(coords) > 1 else 0))
+                            # Store as (data_row, data_col) tuples
+                            data_row = coords[0]
+                            data_col = coords[1] if len(coords) > 1 else 0
+                            selected_cells.append((data_row, data_col))
+
+        # Debug: print selection info
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.info(f"Opening graph viewer with {len(selected_cells)} selected cells: {selected_cells[:10]}")
 
         # Create and show graph viewer
         self.graph_viewer = GraphViewer(self.table, self.data, selected_cells, self)

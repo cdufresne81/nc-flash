@@ -43,6 +43,7 @@ class GraphViewer(QMainWindow):
         self.table = table
         self.data = data
         self.selected_cells = selected_cells or []
+        self.ax_3d = None  # Store 3D axes for rotation control
 
         # Set window properties
         self.setWindowTitle(f"{table.name} - Graph View - {APP_NAME}")
@@ -120,6 +121,39 @@ class GraphViewer(QMainWindow):
 
         # Enable rotation with mouse
         ax.mouse_init()
+
+        # Store axes for keyboard rotation
+        self.ax_3d = ax
+
+    def keyPressEvent(self, event):
+        """Handle arrow key presses for graph rotation"""
+        if self.ax_3d is None:
+            return
+
+        # Get current view angles
+        elev = self.ax_3d.elev
+        azim = self.ax_3d.azim
+
+        # Rotation step size (degrees)
+        step = 10
+
+        # Update angles based on arrow keys
+        if event.key() == Qt.Key_Left:
+            azim -= step
+        elif event.key() == Qt.Key_Right:
+            azim += step
+        elif event.key() == Qt.Key_Up:
+            elev += step
+        elif event.key() == Qt.Key_Down:
+            elev -= step
+        else:
+            # Not an arrow key, pass to parent
+            super().keyPressEvent(event)
+            return
+
+        # Apply new view angles
+        self.ax_3d.view_init(elev=elev, azim=azim)
+        self.canvas.draw()
 
     def _plot_2d(self):
         """Plot 2D table as line/surface"""
@@ -220,15 +254,36 @@ class GraphViewer(QMainWindow):
 
     def _highlight_selected_3d(self, ax, X, Y, Z):
         """Highlight selected cells in 3D plot"""
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.info(f"Highlighting {len(self.selected_cells)} cells in 3D plot")
+        logger.info(f"Z shape: {Z.shape}, X shape: {X.shape}, Y shape: {Y.shape}")
+
         for row, col in self.selected_cells:
+            logger.info(f"  Trying to highlight cell ({row}, {col})")
             if row < Z.shape[0] and col < Z.shape[1]:
                 # Draw a marker at the selected position
-                ax.scatter([X[row, col]], [Y[row, col]], [Z[row, col]],
-                          color='black', s=100, marker='o', edgecolor='white', linewidth=2, zorder=10)
+                x_val = X[row, col]
+                y_val = Y[row, col]
+                z_val = Z[row, col]
+                logger.info(f"    Drawing marker at ({x_val}, {y_val}, {z_val})")
+                ax.scatter([x_val], [y_val], [z_val],
+                          color='black', s=200, marker='o', edgecolor='yellow', linewidth=3, zorder=10)
+            else:
+                logger.warning(f"    Cell ({row}, {col}) out of bounds for Z shape {Z.shape}")
 
     def _highlight_selected_2d(self, ax, x, values):
         """Highlight selected cells in 2D plot"""
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.info(f"Highlighting {len(self.selected_cells)} cells in 2D plot")
+        logger.info(f"Values length: {len(values)}, x length: {len(x)}")
+
         for row, col in self.selected_cells:
+            logger.info(f"  Trying to highlight cell ({row}, {col})")
             if row < len(values):
+                logger.info(f"    Drawing marker at ({x[row]}, {values[row]})")
                 ax.scatter([x[row]], [values[row]],
-                          color='black', s=100, marker='o', edgecolor='white', linewidth=2, zorder=10)
+                          color='black', s=200, marker='o', edgecolor='yellow', linewidth=3, zorder=10)
+            else:
+                logger.warning(f"    Cell row {row} out of bounds for values length {len(values)}")
