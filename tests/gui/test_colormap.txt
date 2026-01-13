@@ -1,0 +1,15 @@
+# Test colormap in both table and graph views
+load_rom examples/lf9veb.bin
+open_table "APP to TP Desired - 2nd Gear"
+wait 300
+
+# Screenshot table view
+screenshot colormap_table table
+
+# Open graph and screenshot
+open_graph
+wait 500
+screenshot colormap_graph graph
+
+close_graph
+close_table

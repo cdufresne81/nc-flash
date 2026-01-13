@@ -14,6 +14,7 @@ from PySide6.QtGui import QColor, QBrush
 
 from ...core.rom_definition import Table, TableType, AxisType
 from ...utils.settings import get_settings
+from ...utils.colormap import get_colormap
 from .context import TableViewerContext
 
 logger = logging.getLogger(__name__)
@@ -432,24 +433,9 @@ class TableDisplayHelper:
 
     def ratio_to_color(self, ratio: float) -> QColor:
         """
-        Convert 0-1 ratio to thermal/rainbow gradient (blue -> cyan -> green -> yellow -> red)
+        Convert 0-1 ratio to color using the configured color map
         """
-        ratio = max(0.0, min(1.0, ratio))
-
-        if ratio <= 0.25:
-            t = ratio / 0.25
-            r, g, b = 0, int(t * 255), 255
-        elif ratio <= 0.5:
-            t = (ratio - 0.25) / 0.25
-            r, g, b = 0, 255, int(255 * (1 - t))
-        elif ratio <= 0.75:
-            t = (ratio - 0.5) / 0.25
-            r, g, b = int(t * 255), 255, 0
-        else:
-            t = (ratio - 0.75) / 0.25
-            r, g, b = 255, int(255 * (1 - t)), 0
-
-        return QColor(r, g, b)
+        return get_colormap().ratio_to_color(ratio)
 
     def get_cell_color(self, value: float, values: np.ndarray,
                        row: int, col: int) -> QColor:

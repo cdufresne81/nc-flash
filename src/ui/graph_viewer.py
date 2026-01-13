@@ -14,6 +14,7 @@ from mpl_toolkits.mplot3d import Axes3D
 
 from ..core.rom_definition import Table, TableType, RomDefinition, AxisType
 from ..utils.constants import APP_NAME
+from ..utils.colormap import get_colormap
 
 
 class GraphViewer(QMainWindow):
@@ -306,23 +307,8 @@ class GraphViewer(QMainWindow):
         return colors
 
     def _ratio_to_rgba(self, ratio: float):
-        """Convert ratio to RGBA tuple (matching table viewer gradient)"""
-        ratio = max(0.0, min(1.0, ratio))
-
-        if ratio <= 0.25:
-            t = ratio / 0.25
-            r, g, b = 0, t, 1.0
-        elif ratio <= 0.5:
-            t = (ratio - 0.25) / 0.25
-            r, g, b = 0, 1.0, 1.0 - t
-        elif ratio <= 0.75:
-            t = (ratio - 0.5) / 0.25
-            r, g, b = t, 1.0, 0
-        else:
-            t = (ratio - 0.75) / 0.25
-            r, g, b = 1.0, 1.0 - t, 0
-
-        return (r, g, b, 1.0)
+        """Convert ratio to RGBA tuple using the configured color map"""
+        return get_colormap().ratio_to_rgba_float(ratio)
 
     def _ratio_to_color(self, ratio: float):
         """Convert ratio to matplotlib color (RGB tuple)"""

@@ -24,6 +24,7 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt, Signal
 
 from ..utils.settings import get_settings
+from ..utils.colormap import reload_colormap
 
 
 class SettingsDialog(QDialog):
@@ -119,12 +120,37 @@ class SettingsDialog(QDialog):
         self.gradient_mode_combo.addItem("Relative to neighbors", "neighbors")
         table_layout.addRow("Cell gradient coloring:", self.gradient_mode_combo)
 
+        layout.addWidget(table_group)
+
+        # Color map group
+        colormap_group = QGroupBox("Color Map")
+        colormap_layout = QFormLayout()
+        colormap_group.setLayout(colormap_layout)
+
+        # Color map file selection
+        colormap_file_layout = QHBoxLayout()
+        self.colormap_path_edit = QLineEdit()
+        self.colormap_path_edit.setPlaceholderText("Path to .map file (or empty for built-in)")
+        colormap_file_layout.addWidget(self.colormap_path_edit)
+
+        browse_colormap_button = QPushButton("Browse...")
+        browse_colormap_button.clicked.connect(self.browse_colormap_file)
+        colormap_file_layout.addWidget(browse_colormap_button)
+
+        colormap_layout.addRow("Color map file:", colormap_file_layout)
+
+        # Help text for colormap
+        colormap_help = QLabel("256-entry RGB color map file (.map format)")
+        colormap_help.setStyleSheet("color: gray; font-size: 10px;")
+        colormap_layout.addRow("", colormap_help)
+
+        layout.addWidget(colormap_group)
+
         # Help text
         help_label = QLabel("Note: Changes take effect on newly opened tables")
         help_label.setStyleSheet("color: gray; font-size: 10px;")
-        table_layout.addRow("", help_label)
+        layout.addWidget(help_label)
 
-        layout.addWidget(table_group)
         layout.addStretch()
 
         self.tabs.addTab(tab, "Appearance")
@@ -160,6 +186,10 @@ class SettingsDialog(QDialog):
         font_size = self.settings.get_table_font_size()
         self.font_size_spin.setValue(font_size)
 
+        # Load colormap path
+        colormap_path = self.settings.get_colormap_path()
+        self.colormap_path_edit.setText(colormap_path)
+
     def browse_metadata_directory(self):
         """Open directory browser for metadata directory"""
         current_path = self.metadata_path_edit.text()
@@ -176,6 +206,23 @@ class SettingsDialog(QDialog):
         if directory:
             self.metadata_path_edit.setText(directory)
 
+    def browse_colormap_file(self):
+        """Open file browser for color map file"""
+        current_path = self.colormap_path_edit.text()
+        if not current_path:
+            # Default to colormap directory in project
+            current_path = str(Path(__file__).parent.parent.parent / "colormap")
+
+        file_path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Select Color Map File",
+            current_path,
+            "Color Map Files (*.map);;All Files (*)"
+        )
+
+        if file_path:
+            self.colormap_path_edit.setText(file_path)
+
     def apply_settings(self):
         """Apply settings without closing the dialog"""
         # Save metadata directory
@@ -190,6 +237,11 @@ class SettingsDialog(QDialog):
         # Save font size
         font_size = self.font_size_spin.value()
         self.settings.set_table_font_size(font_size)
+
+        # Save colormap path and reload
+        colormap_path = self.colormap_path_edit.text().strip()
+        self.settings.set_colormap_path(colormap_path)
+        reload_colormap()
 
         # Emit signal that settings changed
         self.settings_changed.emit()

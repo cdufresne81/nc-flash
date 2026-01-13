@@ -161,6 +161,47 @@ class AppSettings:
         self.settings.setValue("display/table_font_size", size)
         self.settings.sync()
 
+    def get_colormap_path(self) -> str:
+        """
+        Get the configured color map file path
+
+        Returns:
+            str: Path to .map file, or empty string for built-in gradient
+        """
+        # Default to the built-in default.map in the colormap directory
+        default_path = str(Path(__file__).parent.parent.parent / "colormap" / "default.map")
+        return self.settings.value("display/colormap_path", default_path)
+
+    def set_colormap_path(self, path: str):
+        """
+        Set the color map file path
+
+        Args:
+            path: Path to .map file, or empty string for built-in gradient
+        """
+        self.settings.setValue("display/colormap_path", path)
+        self.settings.sync()
+
+    def get_colormap_directory(self) -> str:
+        """
+        Get the configured color map directory path
+
+        Returns:
+            str: Path to directory containing .map files
+        """
+        default_path = str(Path(__file__).parent.parent.parent / "colormap")
+        return self.settings.value("paths/colormap_directory", default_path)
+
+    def set_colormap_directory(self, path: str):
+        """
+        Set the color map directory path
+
+        Args:
+            path: Path to directory containing .map files
+        """
+        self.settings.setValue("paths/colormap_directory", path)
+        self.settings.sync()
+
 
 # Global settings instance
 _settings = None
