@@ -422,12 +422,10 @@ class TestRunner:
             return False
 
         try:
-            # We need to bypass the dialog for automation
+            # Use the viewer's bulk operation method which handles change tracking
             viewer = self.current_table_window.viewer
             operation_fn = lambda v: value
-            changes = viewer._apply_bulk_operation(operation_fn, f"Set to {value}")
-            if changes:
-                viewer.bulk_changes.emit(changes)
+            viewer._apply_bulk_operation(operation_fn, f"Set to {value}")
             self._process_events()
             self._log(f"Set selection to {value}")
             return True
@@ -450,12 +448,10 @@ class TestRunner:
             return False
 
         try:
-            # Bypass the dialog for automation
+            # Use the viewer's bulk operation method which handles change tracking
             viewer = self.current_table_window.viewer
             operation_fn = lambda v: v * factor
-            changes = viewer._apply_bulk_operation(operation_fn, f"Multiply by {factor}")
-            if changes:
-                viewer.bulk_changes.emit(changes)
+            viewer._apply_bulk_operation(operation_fn, f"Multiply by {factor}")
             self._process_events()
             self._log(f"Multiplied selection by {factor}")
             return True
@@ -478,12 +474,10 @@ class TestRunner:
             return False
 
         try:
-            # Bypass the dialog for automation
+            # Use the viewer's bulk operation method which handles change tracking
             viewer = self.current_table_window.viewer
             operation_fn = lambda v: v + value
-            changes = viewer._apply_bulk_operation(operation_fn, f"Add {value}")
-            if changes:
-                viewer.bulk_changes.emit(changes)
+            viewer._apply_bulk_operation(operation_fn, f"Add {value}")
             self._process_events()
             self._log(f"Added {value} to selection")
             return True

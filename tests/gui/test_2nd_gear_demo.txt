@@ -1,0 +1,36 @@
+# Demo test: APP to TP Desired - 2nd Gear
+# Load ROM and modify cells, take screenshots
+
+load_rom examples/lf9veb.bin
+open_table "APP to TP Desired - 2nd Gear"
+wait 300
+
+# Screenshot: initial state
+screenshot demo_01_initial table
+
+# Select a region in the middle
+select 5 5 8 8
+wait 100
+screenshot demo_02_selected table
+
+# Multiply the selection by 1.2 (20% increase)
+multiply 1.2
+wait 100
+screenshot demo_03_after_multiply table
+
+# Select another region and apply vertical interpolation
+select 2 3 9 3
+wait 100
+screenshot demo_04_interp_selection table
+
+interpolate_v
+wait 100
+screenshot demo_05_after_interpolate table
+
+# Open graph view
+open_graph
+wait 500
+screenshot demo_06_graph graph
+
+close_graph
+close_table
