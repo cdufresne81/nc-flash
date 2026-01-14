@@ -548,6 +548,40 @@ class TestRunner:
             self._log(f"ERROR: {e}")
             return False
 
+    def get_window_size(self) -> tuple:
+        """
+        Get current table window size
+
+        Returns:
+            Tuple of (width, height) or (0, 0) if no window
+        """
+        if self.current_table_window is None:
+            return (0, 0)
+        return (self.current_table_window.width(), self.current_table_window.height())
+
+    def assert_window_width(self, expected: int, tolerance: int = 5) -> bool:
+        """
+        Assert that window width matches expected value within tolerance
+
+        Args:
+            expected: Expected width in pixels
+            tolerance: Allowed deviation (default 5px)
+
+        Returns:
+            True if assertion passes
+        """
+        if self.current_table_window is None:
+            self._log("ASSERT FAILED: No table window open")
+            return False
+
+        actual = self.current_table_window.width()
+        if abs(actual - expected) <= tolerance:
+            self._log(f"ASSERT PASSED: Window width {actual} == {expected} (tolerance {tolerance})")
+            return True
+        else:
+            self._log(f"ASSERT FAILED: Window width {actual} != {expected} (tolerance {tolerance})")
+            return False
+
     def set_level_filter(self, level: int) -> bool:
         """
         Set the user level filter in the table browser
@@ -891,6 +925,31 @@ class TestRunner:
 
             elif cmd == "set_level" and len(args) >= 1:
                 return self.set_level_filter(int(args[0]))
+
+            elif cmd == "store_width":
+                # Store current window width for later comparison
+                width, _ = self.get_window_size()
+                self._stored_width = width
+                self._log(f"Stored window width: {width}")
+                return True
+
+            elif cmd == "assert_width":
+                # Assert window width equals specific value
+                if len(args) >= 1:
+                    expected = int(args[0])
+                    tolerance = int(args[1]) if len(args) > 1 else 5
+                    return self.assert_window_width(expected, tolerance)
+                else:
+                    self._log("ERROR: assert_width requires expected value")
+                    return False
+
+            elif cmd == "assert_width_restored":
+                # Assert window width matches previously stored width
+                tolerance = int(args[0]) if args else 5
+                if not hasattr(self, '_stored_width'):
+                    self._log("ASSERT FAILED: No stored width (call store_width first)")
+                    return False
+                return self.assert_window_width(self._stored_width, tolerance)
 
             else:
                 self._log(f"Unknown command: {cmd}")

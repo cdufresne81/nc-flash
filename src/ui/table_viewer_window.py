@@ -97,6 +97,7 @@ class TableViewerWindow(QMainWindow):
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
 
+        # Main layout
         layout = QHBoxLayout()
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
@@ -258,22 +259,30 @@ class TableViewerWindow(QMainWindow):
         if self._graph_visible:
             # Hide graph
             self._graph_visible = False
+
+            # Force graph widget to zero size (hidden widgets still affect splitter sizing)
+            self.graph_widget.setMinimumWidth(0)
+            self.graph_widget.setMaximumWidth(0)
             self.graph_widget.hide()
             self.graph_action.setChecked(False)
 
-            # Restore window to table-only size
+            # Process events to ensure hide is complete
+            QApplication.processEvents()
+
+            # Resize window back to table-only size
             if self._table_only_size:
                 self.resize(self._table_only_size)
-                # Reset splitter to give all space to table
-                self.splitter.setSizes([self._table_only_size.width(), 0])
+
         else:
-            # Only save table-only size the first time (when None)
-            # This prevents the size from growing on each toggle
+            # Show graph
+            # Save table-only size the first time (when None)
             if self._table_only_size is None:
                 self._table_only_size = self.size()
 
-            # Show graph
             self._graph_visible = True
+            # Reset size constraints before showing
+            self.graph_widget.setMinimumWidth(0)
+            self.graph_widget.setMaximumWidth(16777215)  # QWIDGETSIZE_MAX
             self.graph_widget.show()
             self.graph_action.setChecked(True)
 
@@ -386,5 +395,4 @@ class TableViewerWindow(QMainWindow):
 
     def closeEvent(self, event):
         """Handle window close event"""
-        # Clean up if needed
         event.accept()

@@ -1,5 +1,6 @@
-# Test: 2D table graph artifact when reopening
-# This test captures what happens when opening/closing/reopening graph on a 2D table
+# Test: 2D table graph toggle - window should shrink back to original size
+# This test verifies that opening/closing the graph on a 2D table
+# properly restores the window to its original width (no blank space artifact)
 
 load_rom examples/lf9veb.bin
 
@@ -7,33 +8,33 @@ load_rom examples/lf9veb.bin
 open_table "APP to TP Desired - Max"
 wait 300
 
+# Store the initial window width before opening graph
+store_width
+
 # Screenshot table without graph
-screenshot 2d_artifact_01_initial table
+screenshot 2d_graph_01_initial table
 
 # Open graph first time
 open_graph
 wait 500
-screenshot 2d_artifact_02_graph_open_1 table
-screenshot 2d_artifact_02b_graph_only_1 graph
+screenshot 2d_graph_02_with_graph table
 
-# Close graph
+# Close graph - window should shrink back to original width
 close_graph
 wait 300
-screenshot 2d_artifact_03_graph_closed table
+screenshot 2d_graph_03_closed table
 
-# Reopen graph (this is where artifact might appear)
+# Assert window width is restored to original
+assert_width_restored
+
+# Test toggle cycle again to make sure it's repeatable
 open_graph
-wait 500
-screenshot 2d_artifact_04_graph_open_2 table
-screenshot 2d_artifact_04b_graph_only_2 graph
-
-# Close and reopen one more time
+wait 300
 close_graph
 wait 300
-open_graph
-wait 500
-screenshot 2d_artifact_05_graph_open_3 table
-screenshot 2d_artifact_05b_graph_only_3 graph
+assert_width_restored
 
-close_graph
+# Final screenshot to confirm no artifact
+screenshot 2d_graph_04_final table
+
 close_table
