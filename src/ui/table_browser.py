@@ -319,10 +319,10 @@ class TableBrowser(QWidget):
             # Show category if it has visible children
             category_item.setHidden(not category_has_visible)
 
-            # Expand categories that have visible items when filtering
-            if category_has_visible and (search_text or level_filter > 0):
+            # Only auto-expand categories when searching (not when changing level filter)
+            if category_has_visible and search_text:
                 category_item.setExpanded(True)
-            elif not search_text and level_filter == 0:
+            elif not search_text:
                 category_item.setExpanded(False)
 
     def _show_all_items(self):
