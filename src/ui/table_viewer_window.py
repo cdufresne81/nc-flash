@@ -48,7 +48,8 @@ class TableViewerWindow(QMainWindow):
 
     def __init__(self, table: Table, data: dict, rom_definition: RomDefinition,
                  rom_path: str = None, parent=None,
-                 modified_cells_dict: dict = None, original_values_dict: dict = None):
+                 modified_cells_dict: dict = None, original_values_dict: dict = None,
+                 diff_mode: bool = False, diff_base_data: dict = None):
         """
         Initialize table viewer window
 
@@ -60,6 +61,8 @@ class TableViewerWindow(QMainWindow):
             parent: Parent widget (optional)
             modified_cells_dict: Shared dict for tracking modified cells (persists across window instances)
             original_values_dict: Shared dict with original table values (for smart border removal)
+            diff_mode: If True, show diff highlighting (read-only viewing)
+            diff_base_data: Base version data to compare against in diff mode
         """
         super().__init__(parent)
 
@@ -68,6 +71,7 @@ class TableViewerWindow(QMainWindow):
         self.rom_definition = rom_definition
         self.rom_path = rom_path
         self.graph_viewer = None  # Reference to graph viewer window
+        self._diff_mode = diff_mode
 
         # Remove minimize/maximize buttons, keep only close button
         self.setWindowFlags(
@@ -78,7 +82,10 @@ class TableViewerWindow(QMainWindow):
         )
 
         # Set window properties
-        self.setWindowTitle(f"{table.name} - {APP_NAME}")
+        title = f"{table.name} - {APP_NAME}"
+        if diff_mode:
+            title = f"{table.name} (Changes) - {APP_NAME}"
+        self.setWindowTitle(title)
 
         # Create central widget with minimal margins
         central_widget = QWidget()
@@ -93,8 +100,15 @@ class TableViewerWindow(QMainWindow):
         self.viewer = TableViewer(
             rom_definition,
             modified_cells_dict=modified_cells_dict,
-            original_values_dict=original_values_dict
+            original_values_dict=original_values_dict,
+            diff_mode=diff_mode,
+            diff_base_data=diff_base_data
         )
+
+        # In diff mode, make the table read-only
+        if diff_mode:
+            self.viewer.set_read_only(True)
+
         layout.addWidget(self.viewer)
 
         # Connect cell_changed signal
@@ -176,6 +190,21 @@ class TableViewerWindow(QMainWindow):
         graph_action = view_menu.addAction("View Graph...")
         graph_action.setShortcut("G")
         graph_action.triggered.connect(self._open_graph_viewer)
+
+        # Add diff toggle when in diff mode
+        if self._diff_mode:
+            view_menu.addSeparator()
+
+            self.toggle_diff_action = view_menu.addAction("Show Change Highlights")
+            self.toggle_diff_action.setCheckable(True)
+            self.toggle_diff_action.setChecked(True)
+            self.toggle_diff_action.setShortcut("D")
+            self.toggle_diff_action.triggered.connect(self._on_toggle_diff_highlights)
+
+    def _on_toggle_diff_highlights(self):
+        """Toggle diff highlighting visibility"""
+        self.viewer.toggle_diff_highlights()
+        self.toggle_diff_action.setChecked(self.viewer.show_diff_highlights())
 
     def _get_selected_data_cells(self):
         """Get list of selected data cells as (row, col) tuples"""

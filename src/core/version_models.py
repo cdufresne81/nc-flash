@@ -100,6 +100,7 @@ class TableChanges:
 class Commit:
     """Represents a single commit (save point)"""
     id: str
+    version: int  # Linear version number (0, 1, 2...)
     parent_id: Optional[str]
     message: str
     timestamp: datetime
@@ -107,45 +108,61 @@ class Commit:
     tables_modified: List[str]
     changes: List[TableChanges]
     has_snapshot: bool = False
+    snapshot_filename: Optional[str] = None  # Custom filename like v1_LF9VEB_stage1.bin
 
     @classmethod
     def create(cls, message: str, changes: List[TableChanges],
-               parent_id: Optional[str] = None, author: str = "User") -> 'Commit':
+               version: int = 0,
+               parent_id: Optional[str] = None, author: str = "User",
+               snapshot_filename: Optional[str] = None) -> 'Commit':
         """Factory method to create a new commit"""
         return cls(
             id=str(uuid.uuid4())[:12],
+            version=version,
             parent_id=parent_id,
             message=message,
             timestamp=datetime.now(),
             author=author,
             tables_modified=list(set(tc.table_name for tc in changes)),
             changes=changes,
-            has_snapshot=False
+            has_snapshot=snapshot_filename is not None,
+            snapshot_filename=snapshot_filename
         )
 
     def to_dict(self) -> dict:
         return {
             "id": self.id,
+            "version": self.version,
             "parent_id": self.parent_id,
             "message": self.message,
             "timestamp": self.timestamp.isoformat(),
             "author": self.author,
             "tables_modified": self.tables_modified,
             "changes": [c.to_dict() for c in self.changes],
-            "has_snapshot": self.has_snapshot
+            "has_snapshot": self.has_snapshot,
+            "snapshot_filename": self.snapshot_filename
         }
 
     @classmethod
-    def from_dict(cls, data: dict) -> 'Commit':
+    def from_dict(cls, data: dict, fallback_version: int = 0) -> 'Commit':
+        """
+        Deserialize from dictionary.
+
+        Args:
+            data: Dictionary containing commit data
+            fallback_version: Version to use if not present (for backward compatibility)
+        """
         return cls(
             id=data["id"],
+            version=data.get("version", fallback_version),  # Backward compatibility
             parent_id=data["parent_id"],
             message=data["message"],
             timestamp=datetime.fromisoformat(data["timestamp"]),
             author=data["author"],
             tables_modified=data["tables_modified"],
             changes=[TableChanges.from_dict(c) for c in data["changes"]],
-            has_snapshot=data.get("has_snapshot", False)
+            has_snapshot=data.get("has_snapshot", False),
+            snapshot_filename=data.get("snapshot_filename")  # Backward compatibility
         )
 
 
@@ -266,6 +283,8 @@ class Project:
     working_rom: str
     head_commit_id: Optional[str]
     project_path: str  # Path to project folder
+    head_version: int = 0  # Current version number
+    last_suffix: str = ""  # Last user-entered suffix for filename suggestions
     settings: Dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict:
@@ -278,6 +297,8 @@ class Project:
             "original_rom": self.original_rom.to_dict(),
             "working_rom": self.working_rom,
             "head_commit_id": self.head_commit_id,
+            "head_version": self.head_version,
+            "last_suffix": self.last_suffix,
             "settings": self.settings
         }
 
@@ -293,6 +314,8 @@ class Project:
             working_rom=data["working_rom"],
             head_commit_id=data.get("head_commit_id"),
             project_path=project_path,
+            head_version=data.get("head_version", 0),  # Backward compatibility
+            last_suffix=data.get("last_suffix", ""),  # Backward compatibility
             settings=data.get("settings", {})
         )
 

@@ -93,6 +93,7 @@ class ProjectManager:
 
             # Create project
             now = datetime.now()
+            rom_id = rom_definition.romid.internalidstring
             project = Project(
                 version=PROJECT_VERSION,
                 name=project_name,
@@ -103,6 +104,8 @@ class ProjectManager:
                 working_rom="modified.bin",
                 head_commit_id=None,
                 project_path=str(project_dir),
+                head_version=0,
+                last_suffix="original",
                 settings={"auto_snapshot_interval": 10}
             )
 
@@ -112,22 +115,25 @@ class ProjectManager:
             # Initialize empty commit history
             self._save_commits([], project)
 
-            # Create initial commit
+            # Create initial commit (version 0 = original)
+            snapshot_filename = f"v0_{rom_id}_original.bin"
             initial_commit = Commit.create(
-                message="Initial import",
+                message="Original ROM",
                 changes=[],
-                parent_id=None
+                version=0,
+                parent_id=None,
+                snapshot_filename=snapshot_filename
             )
-            initial_commit.has_snapshot = True
             self.commits = [initial_commit]
             self._save_commits(self.commits, project)
 
-            # Create initial snapshot
-            snapshot_path = project_dir / "history" / "snapshots" / f"commit_{initial_commit.id}.bin"
+            # Create initial snapshot with new naming
+            snapshot_path = project_dir / "history" / "snapshots" / snapshot_filename
             shutil.copy2(original_path, snapshot_path)
 
             # Update project head
             project.head_commit_id = initial_commit.id
+            project.head_version = 0
             self._save_project_file(project)
 
             self.current_project = project
@@ -202,7 +208,8 @@ class ProjectManager:
         self,
         message: str,
         changes: List[TableChanges],
-        create_snapshot: bool = False
+        create_snapshot: bool = False,
+        snapshot_suffix: str = ""
     ) -> Commit:
         """
         Create a new commit with pending changes
@@ -211,6 +218,7 @@ class ProjectManager:
             message: Commit message
             changes: List of table changes
             create_snapshot: Whether to create a full ROM snapshot
+            snapshot_suffix: User-provided suffix for snapshot filename
 
         Returns:
             Created Commit object
@@ -222,35 +230,48 @@ class ProjectManager:
             raise ProjectError("No project is currently open")
 
         try:
-            # Create commit
+            # Calculate next version
+            next_version = self.get_next_version()
+            rom_id = self.current_project.original_rom.rom_id
+
+            # Generate snapshot filename if creating snapshot
+            snapshot_filename = None
+            if create_snapshot and snapshot_suffix:
+                snapshot_filename = f"v{next_version}_{rom_id}_{snapshot_suffix}.bin"
+
+            # Create commit with version
             commit = Commit.create(
                 message=message,
                 changes=changes,
-                parent_id=self.current_project.head_commit_id
+                version=next_version,
+                parent_id=self.current_project.head_commit_id,
+                snapshot_filename=snapshot_filename
             )
 
             # Optionally create snapshot
-            if create_snapshot:
-                commit.has_snapshot = True
+            if create_snapshot and snapshot_filename:
                 project_dir = Path(self.current_project.project_path)
                 working_path = project_dir / self.current_project.working_rom
-                snapshot_path = project_dir / "history" / "snapshots" / f"commit_{commit.id}.bin"
+                snapshot_path = project_dir / "history" / "snapshots" / snapshot_filename
                 shutil.copy2(working_path, snapshot_path)
-                logger.debug(f"Created snapshot for commit {commit.id}")
+                logger.debug(f"Created snapshot: {snapshot_filename}")
 
             # Add to history
             self.commits.append(commit)
             self._save_commits(self.commits, self.current_project)
 
-            # Update project head
+            # Update project head and version
             self.current_project.head_commit_id = commit.id
+            self.current_project.head_version = next_version
+            if snapshot_suffix:
+                self.current_project.last_suffix = snapshot_suffix
             self.save_project()
 
             tables_str = ", ".join(commit.tables_modified[:3])
             if len(commit.tables_modified) > 3:
                 tables_str += f" (+{len(commit.tables_modified) - 3} more)"
 
-            logger.info(f"Committed: {message[:50]}... ({len(changes)} tables: {tables_str})")
+            logger.info(f"Committed v{next_version}: {message[:50]}... ({len(changes)} tables: {tables_str})")
 
             return commit
 
@@ -279,6 +300,71 @@ class ProjectManager:
             c for c in self.commits
             if table_name in c.tables_modified
         ]
+
+    def get_next_version(self) -> int:
+        """Get the next version number for a new commit"""
+        if not self.current_project:
+            return 0
+        return self.current_project.head_version + 1
+
+    def get_commit_by_version(self, version: int) -> Optional[Commit]:
+        """Get a commit by its version number"""
+        for commit in self.commits:
+            if commit.version == version:
+                return commit
+        return None
+
+    def get_snapshot_path(self, version: int) -> Optional[Path]:
+        """
+        Find snapshot file path by version number
+
+        Args:
+            version: Version number to find
+
+        Returns:
+            Path to snapshot file, or None if not found
+        """
+        if not self.current_project:
+            return None
+
+        project_dir = Path(self.current_project.project_path)
+
+        # For version 0, use original.bin
+        if version == 0:
+            original_path = project_dir / "original.bin"
+            if original_path.exists():
+                return original_path
+
+        # Try new naming pattern: v{version}_*.bin
+        snapshots_dir = project_dir / "history" / "snapshots"
+        if snapshots_dir.exists():
+            for f in snapshots_dir.glob(f"v{version}_*.bin"):
+                return f
+
+        # Fall back to old naming pattern: commit_{uuid}.bin
+        commit = self.get_commit_by_version(version)
+        if commit:
+            old_path = snapshots_dir / f"commit_{commit.id}.bin"
+            if old_path.exists():
+                return old_path
+
+        return None
+
+    def load_version_data(self, version: int) -> Optional[bytes]:
+        """
+        Load ROM data from a specific version
+
+        Args:
+            version: Version number to load
+
+        Returns:
+            ROM data as bytes, or None if not found
+        """
+        snapshot_path = self.get_snapshot_path(version)
+        if snapshot_path and snapshot_path.exists():
+            with open(snapshot_path, 'rb') as f:
+                return f.read()
+        return None
 
     def close_project(self):
         """Close the current project"""
@@ -316,14 +402,22 @@ class ProjectManager:
             raise ProjectSaveError(f"Failed to save commits file: {e}")
 
     def _load_commits(self, project_dir: Path) -> List[Commit]:
-        """Load commits from history file"""
+        """Load commits from history file with backward compatibility"""
         commits_file = project_dir / COMMITS_FILE
         if not commits_file.exists():
             return []
         try:
             with open(commits_file, 'r') as f:
                 data = json.load(f)
-            return [Commit.from_dict(c) for c in data.get("commits", [])]
+
+            commits = []
+            for i, c in enumerate(data.get("commits", [])):
+                # Pass fallback_version for backward compatibility
+                # Old commits without version field get sequential numbers
+                commit = Commit.from_dict(c, fallback_version=i)
+                commits.append(commit)
+
+            return commits
         except Exception as e:
             logger.warning(f"Failed to load commits: {e}")
             return []

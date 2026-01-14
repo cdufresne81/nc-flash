@@ -7,7 +7,7 @@ Displays commit history with ability to view details.
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QSplitter,
     QTreeWidget, QTreeWidgetItem, QTextEdit, QLabel,
-    QTableWidget, QTableWidgetItem, QGroupBox, QHeaderView,
+    QListWidget, QListWidgetItem, QGroupBox, QHeaderView,
     QDialog, QPushButton, QLineEdit
 )
 from PySide6.QtCore import Qt, Signal
@@ -21,11 +21,12 @@ class HistoryViewer(QDialog):
     """Dialog for browsing commit history"""
 
     commit_selected = Signal(str)  # Emits commit ID
+    view_table_diff = Signal(str, object)  # Emits (table_name, Commit)
 
     def __init__(self, project_manager: ProjectManager, parent=None):
         super().__init__(parent)
         self.project_manager = project_manager
-        self.setWindowTitle("Commit History")
+        self.setWindowTitle("Version History")
         self.setMinimumSize(900, 600)
         self._init_ui()
         self.refresh()
@@ -38,7 +39,7 @@ class HistoryViewer(QDialog):
         search_layout = QHBoxLayout()
         search_layout.addWidget(QLabel("Search:"))
         self.search_edit = QLineEdit()
-        self.search_edit.setPlaceholderText("Filter commits by message...")
+        self.search_edit.setPlaceholderText("Filter by message or table name...")
         self.search_edit.textChanged.connect(self._filter_commits)
         search_layout.addWidget(self.search_edit)
         layout.addLayout(search_layout)
@@ -53,12 +54,13 @@ class HistoryViewer(QDialog):
         left_layout.setContentsMargins(0, 0, 0, 0)
         left_widget.setLayout(left_layout)
 
-        left_layout.addWidget(QLabel("<b>Commits</b> (newest first)"))
+        left_layout.addWidget(QLabel("<b>Versions</b> (newest first)"))
 
         self.commit_tree = QTreeWidget()
-        self.commit_tree.setHeaderLabels(["Message", "Date", "Tables"])
-        self.commit_tree.setColumnWidth(0, 250)
-        self.commit_tree.setColumnWidth(1, 120)
+        self.commit_tree.setHeaderLabels(["Version", "Message", "Date", "Tables"])
+        self.commit_tree.setColumnWidth(0, 60)
+        self.commit_tree.setColumnWidth(1, 200)
+        self.commit_tree.setColumnWidth(2, 100)
         self.commit_tree.setRootIsDecorated(False)
         self.commit_tree.itemClicked.connect(self._on_commit_selected)
         left_layout.addWidget(self.commit_tree)
@@ -71,14 +73,15 @@ class HistoryViewer(QDialog):
         right_layout.setContentsMargins(0, 0, 0, 0)
         right_widget.setLayout(right_layout)
 
-        right_layout.addWidget(QLabel("<b>Commit Details</b>"))
+        right_layout.addWidget(QLabel("<b>Version Details</b>"))
 
         # Details area
         self.details_widget = CommitDetailsWidget()
+        self.details_widget.view_table_requested.connect(self._on_view_table_requested)
         right_layout.addWidget(self.details_widget)
 
         splitter.addWidget(right_widget)
-        splitter.setSizes([350, 550])
+        splitter.setSizes([400, 500])
 
         # Close button
         button_layout = QHBoxLayout()
@@ -100,28 +103,37 @@ class HistoryViewer(QDialog):
 
     def _add_commit_item(self, commit: Commit):
         """Add a commit to the tree"""
+        version_str = f"v{commit.version}"
         date_str = commit.timestamp.strftime("%Y-%m-%d %H:%M")
 
-        tables_str = ", ".join(commit.tables_modified[:2])
-        if len(commit.tables_modified) > 2:
-            tables_str += f" +{len(commit.tables_modified) - 2}"
-        elif not commit.tables_modified:
-            tables_str = "(initial)"
+        tables_count = len(commit.tables_modified)
+        if tables_count == 0:
+            tables_str = "(original)"
+        else:
+            tables_str = str(tables_count)
 
         # Truncate message for display
         msg = commit.message.split('\n')[0]  # First line only
-        if len(msg) > 40:
-            msg = msg[:37] + "..."
+        if len(msg) > 35:
+            msg = msg[:32] + "..."
 
-        item = QTreeWidgetItem([msg, date_str, tables_str])
+        item = QTreeWidgetItem([version_str, msg, date_str, tables_str])
         item.setData(0, Qt.UserRole, commit.id)
-        item.setToolTip(0, commit.message)
+        item.setData(0, Qt.UserRole + 1, commit)  # Store commit object
+        item.setToolTip(1, commit.message)
 
-        # Style initial commit differently
-        if commit.parent_id is None:
-            item.setForeground(0, Qt.gray)
+        # Style initial commit (v0) differently
+        if commit.version == 0:
+            for col in range(4):
+                item.setForeground(col, Qt.gray)
 
         self.commit_tree.addTopLevelItem(item)
+
+    def _on_view_table_requested(self, table_name: str):
+        """Handle request to view table diff"""
+        commit = self.details_widget.current_commit
+        if commit:
+            self.view_table_diff.emit(table_name, commit)
 
     def _filter_commits(self, text: str):
         """Filter commits by search text"""
@@ -153,8 +165,11 @@ class HistoryViewer(QDialog):
 class CommitDetailsWidget(QWidget):
     """Shows detailed information about a single commit"""
 
+    view_table_requested = Signal(str)  # Emits table name
+
     def __init__(self, parent=None):
         super().__init__(parent)
+        self.current_commit = None
         self._init_ui()
 
     def _init_ui(self):
@@ -169,40 +184,45 @@ class CommitDetailsWidget(QWidget):
 
         self.info_text = QTextEdit()
         self.info_text.setReadOnly(True)
-        self.info_text.setMaximumHeight(140)
+        self.info_text.setMaximumHeight(160)
         info_layout.addWidget(self.info_text)
 
         layout.addWidget(info_group)
 
-        # Changes table
-        changes_group = QGroupBox("Cell Changes")
-        changes_layout = QVBoxLayout()
-        changes_group.setLayout(changes_layout)
+        # Modified tables list (simple, no cell details)
+        tables_group = QGroupBox("Modified Tables")
+        tables_layout = QVBoxLayout()
+        tables_group.setLayout(tables_layout)
 
-        self.changes_table = QTableWidget()
-        self.changes_table.setColumnCount(5)
-        self.changes_table.setHorizontalHeaderLabels([
-            "Table", "Row", "Col", "Old Value", "New Value"
-        ])
-        self.changes_table.horizontalHeader().setSectionResizeMode(
-            0, QHeaderView.Stretch
-        )
-        self.changes_table.setAlternatingRowColors(True)
-        changes_layout.addWidget(self.changes_table)
+        self.tables_list = QListWidget()
+        self.tables_list.setAlternatingRowColors(True)
+        self.tables_list.itemDoubleClicked.connect(self._on_table_double_clicked)
+        tables_layout.addWidget(self.tables_list)
 
-        layout.addWidget(changes_group)
+        # View button
+        view_btn_layout = QHBoxLayout()
+        view_btn_layout.addStretch()
+        self.view_diff_btn = QPushButton("View Table Changes...")
+        self.view_diff_btn.setEnabled(False)
+        self.view_diff_btn.clicked.connect(self._on_view_diff_clicked)
+        view_btn_layout.addWidget(self.view_diff_btn)
+        tables_layout.addLayout(view_btn_layout)
 
-        # Stats label
-        self.stats_label = QLabel("")
-        self.stats_label.setStyleSheet("color: #666; font-size: 11px;")
-        layout.addWidget(self.stats_label)
+        layout.addWidget(tables_group)
+
+        # Help text
+        help_label = QLabel("Double-click a table to view changes")
+        help_label.setStyleSheet("color: #666; font-size: 11px;")
+        layout.addWidget(help_label)
 
     def show_commit(self, commit: Commit):
         """Display commit details"""
-        # Show info
-        snapshot_str = "Yes" if commit.has_snapshot else "No"
+        self.current_commit = commit
+
+        # Show info with version number
+        snapshot_str = commit.snapshot_filename if commit.snapshot_filename else "No"
         info = (
-            f"<b>Commit:</b> {commit.id}<br>"
+            f"<b>Version:</b> v{commit.version}<br>"
             f"<b>Date:</b> {commit.timestamp.strftime('%Y-%m-%d %H:%M:%S')}<br>"
             f"<b>Author:</b> {commit.author}<br>"
             f"<b>Snapshot:</b> {snapshot_str}<br>"
@@ -211,42 +231,49 @@ class CommitDetailsWidget(QWidget):
         )
         self.info_text.setHtml(info)
 
-        # Show changes
-        self.changes_table.setRowCount(0)
+        # Show modified tables (simple list)
+        self.tables_list.clear()
 
-        total_cells = 0
-        row = 0
-        for table_change in commit.changes:
-            for cell in table_change.cell_changes:
-                self.changes_table.insertRow(row)
-                self.changes_table.setItem(row, 0, QTableWidgetItem(cell.table_name))
-                self.changes_table.setItem(row, 1, QTableWidgetItem(str(cell.row)))
-                self.changes_table.setItem(row, 2, QTableWidgetItem(str(cell.col)))
+        if not commit.tables_modified:
+            item = QListWidgetItem("(Original ROM - no changes)")
+            item.setForeground(Qt.gray)
+            self.tables_list.addItem(item)
+            self.view_diff_btn.setEnabled(False)
+        else:
+            for table_name in commit.tables_modified:
+                # Find cell count for this table
+                cell_count = 0
+                for tc in commit.changes:
+                    if tc.table_name == table_name:
+                        cell_count = len(tc.cell_changes)
+                        break
 
-                old_item = QTableWidgetItem(f"{cell.old_value:.4g}")
-                new_item = QTableWidgetItem(f"{cell.new_value:.4g}")
+                item = QListWidgetItem(f"{table_name} ({cell_count} cells)")
+                item.setData(Qt.UserRole, table_name)
+                self.tables_list.addItem(item)
 
-                # Color code changes
-                if cell.new_value > cell.old_value:
-                    new_item.setForeground(Qt.darkGreen)
-                elif cell.new_value < cell.old_value:
-                    new_item.setForeground(Qt.darkRed)
+            self.view_diff_btn.setEnabled(True)
 
-                self.changes_table.setItem(row, 3, old_item)
-                self.changes_table.setItem(row, 4, new_item)
-                row += 1
-                total_cells += 1
+    def _on_table_double_clicked(self, item: QListWidgetItem):
+        """Handle double-click on table"""
+        table_name = item.data(Qt.UserRole)
+        if table_name:
+            self.view_table_requested.emit(table_name)
 
-        # Update stats
-        self.stats_label.setText(
-            f"{len(commit.tables_modified)} table(s), {total_cells} cell change(s)"
-        )
+    def _on_view_diff_clicked(self):
+        """Handle view diff button click"""
+        current_item = self.tables_list.currentItem()
+        if current_item:
+            table_name = current_item.data(Qt.UserRole)
+            if table_name:
+                self.view_table_requested.emit(table_name)
 
     def clear(self):
         """Clear the details view"""
         self.info_text.clear()
-        self.changes_table.setRowCount(0)
-        self.stats_label.setText("")
+        self.tables_list.clear()
+        self.current_commit = None
+        self.view_diff_btn.setEnabled(False)
 
 
 class HistoryPanel(QWidget):
@@ -265,7 +292,7 @@ class HistoryPanel(QWidget):
         self.setLayout(layout)
 
         # Header
-        header = QLabel("<b>Recent Commits</b>")
+        header = QLabel("<b>Recent Versions</b>")
         layout.addWidget(header)
 
         # Commit list
@@ -283,11 +310,16 @@ class HistoryPanel(QWidget):
 
         for commit in commits:
             date_str = commit.timestamp.strftime("%m/%d %H:%M")
-            msg = commit.message.split('\n')[0][:30]
+            msg = commit.message.split('\n')[0][:25]
 
-            item = QTreeWidgetItem([f"{date_str} - {msg}"])
+            item = QTreeWidgetItem([f"v{commit.version} - {date_str} - {msg}"])
             item.setData(0, Qt.UserRole, commit.id)
             item.setToolTip(0, commit.message)
+
+            # Style v0 differently
+            if commit.version == 0:
+                item.setForeground(0, Qt.gray)
+
             self.commit_list.addTopLevelItem(item)
 
     def _on_commit_clicked(self, item, column):

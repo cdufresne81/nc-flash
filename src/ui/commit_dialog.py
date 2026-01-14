@@ -6,8 +6,8 @@ Dialog for entering commit message when saving changes.
 
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel,
-    QTextEdit, QDialogButtonBox, QTreeWidget, QTreeWidgetItem,
-    QGroupBox, QCheckBox
+    QTextEdit, QDialogButtonBox, QListWidget,
+    QGroupBox, QCheckBox, QLineEdit, QFrame
 )
 from PySide6.QtCore import Qt
 from typing import List
@@ -18,14 +18,25 @@ from ..core.version_models import TableChanges
 class CommitDialog(QDialog):
     """Dialog for committing changes with a message"""
 
-    def __init__(self, pending_changes: List[TableChanges], parent=None):
+    def __init__(
+        self,
+        pending_changes: List[TableChanges],
+        next_version: int = 1,
+        rom_id: str = "",
+        suggested_suffix: str = "",
+        parent=None
+    ):
         super().__init__(parent)
-        self.setWindowTitle("Commit Changes")
-        self.setMinimumSize(500, 400)
+        self.setWindowTitle("Save Changes")
+        self.setMinimumSize(500, 450)
 
         self.pending_changes = pending_changes
+        self.next_version = next_version
+        self.rom_id = rom_id
+        self.suggested_suffix = suggested_suffix
         self.commit_message = ""
         self.create_snapshot = False
+        self.snapshot_suffix = ""
 
         self._init_ui()
 
@@ -33,50 +44,13 @@ class CommitDialog(QDialog):
         layout = QVBoxLayout()
         self.setLayout(layout)
 
-        # Summary label
-        total_cells = sum(len(tc.cell_changes) for tc in self.pending_changes)
-        summary_label = QLabel(
-            f"<b>{len(self.pending_changes)} table(s)</b> modified with "
-            f"<b>{total_cells} cell change(s)</b>"
-        )
-        layout.addWidget(summary_label)
+        # Version info at top
+        version_label = QLabel(f"<b>Creating version {self.next_version}</b>")
+        version_label.setStyleSheet("font-size: 14px; padding: 5px;")
+        layout.addWidget(version_label)
 
-        # Modified tables tree
-        tables_group = QGroupBox("Changes to Commit")
-        tables_layout = QVBoxLayout()
-        tables_group.setLayout(tables_layout)
-
-        self.tables_tree = QTreeWidget()
-        self.tables_tree.setHeaderLabels(["Table / Change", "Details"])
-        self.tables_tree.setColumnWidth(0, 250)
-        self.tables_tree.setRootIsDecorated(True)
-
-        # Populate tree with changes
-        for table_change in self.pending_changes:
-            table_item = QTreeWidgetItem([
-                table_change.table_name,
-                f"{len(table_change.cell_changes)} cell(s)"
-            ])
-            table_item.setFlags(table_item.flags() | Qt.ItemIsUserCheckable)
-            table_item.setCheckState(0, Qt.Checked)
-
-            # Add cell changes as children
-            for cell in table_change.cell_changes:
-                cell_item = QTreeWidgetItem([
-                    f"[{cell.row}, {cell.col}]",
-                    f"{cell.old_value:.4g} -> {cell.new_value:.4g}"
-                ])
-                table_item.addChild(cell_item)
-
-            self.tables_tree.addTopLevelItem(table_item)
-
-        self.tables_tree.expandAll()
-        tables_layout.addWidget(self.tables_tree)
-
-        layout.addWidget(tables_group)
-
-        # Commit message
-        msg_group = QGroupBox("Commit Message")
+        # Commit message (prominent, at top)
+        msg_group = QGroupBox("Commit Message (required)")
         msg_layout = QVBoxLayout()
         msg_group.setLayout(msg_layout)
 
@@ -88,21 +62,62 @@ class CommitDialog(QDialog):
             "- Adjusted timing for 91 octane fuel\n"
             "- Disabled closed-loop fuel correction"
         )
-        self.message_edit.setMaximumHeight(120)
+        self.message_edit.setMinimumHeight(100)
         msg_layout.addWidget(self.message_edit)
 
         layout.addWidget(msg_group)
 
-        # Options
-        options_layout = QHBoxLayout()
-        self.snapshot_checkbox = QCheckBox("Create ROM snapshot (for reverting later)")
+        # Modified tables list (simple, no cell details)
+        tables_group = QGroupBox(f"Modified Tables ({len(self.pending_changes)})")
+        tables_layout = QVBoxLayout()
+        tables_group.setLayout(tables_layout)
+
+        self.tables_list = QListWidget()
+        self.tables_list.setMaximumHeight(100)
+        for table_change in self.pending_changes:
+            cell_count = len(table_change.cell_changes)
+            self.tables_list.addItem(f"{table_change.table_name} ({cell_count} cells)")
+
+        tables_layout.addWidget(self.tables_list)
+        layout.addWidget(tables_group)
+
+        # Snapshot section
+        snapshot_group = QGroupBox("ROM Snapshot")
+        snapshot_layout = QVBoxLayout()
+        snapshot_group.setLayout(snapshot_layout)
+
+        self.snapshot_checkbox = QCheckBox("Save ROM snapshot (recommended for major changes)")
         self.snapshot_checkbox.setToolTip(
-            "Creates a full copy of the ROM at this commit point.\n"
-            "Useful for major changes you might want to revert to."
+            "Creates a full copy of the ROM at this version.\n"
+            "Allows you to revert to this exact state later."
         )
-        options_layout.addWidget(self.snapshot_checkbox)
-        options_layout.addStretch()
-        layout.addLayout(options_layout)
+        self.snapshot_checkbox.toggled.connect(self._on_snapshot_toggled)
+        snapshot_layout.addWidget(self.snapshot_checkbox)
+
+        # Suffix input (only enabled when snapshot checked)
+        suffix_layout = QHBoxLayout()
+        suffix_label = QLabel("Filename suffix:")
+        suffix_layout.addWidget(suffix_label)
+
+        self.suffix_edit = QLineEdit()
+        self.suffix_edit.setPlaceholderText("e.g., timing_fix, stage1, fuel_tune")
+        self.suffix_edit.setText(self.suggested_suffix)
+        self.suffix_edit.setEnabled(False)
+        self.suffix_edit.textChanged.connect(self._update_filename_preview)
+        suffix_layout.addWidget(self.suffix_edit)
+
+        snapshot_layout.addLayout(suffix_layout)
+
+        # Filename preview
+        self.filename_preview = QLabel()
+        self.filename_preview.setStyleSheet("color: gray; font-style: italic;")
+        self._update_filename_preview()
+        snapshot_layout.addWidget(self.filename_preview)
+
+        layout.addWidget(snapshot_group)
+
+        # Spacer
+        layout.addStretch()
 
         # Buttons
         button_box = QDialogButtonBox(
@@ -113,13 +128,40 @@ class CommitDialog(QDialog):
         button_box.rejected.connect(self.reject)
         layout.addWidget(button_box)
 
+    def _on_snapshot_toggled(self, checked: bool):
+        """Handle snapshot checkbox toggle"""
+        self.suffix_edit.setEnabled(checked)
+        self._update_filename_preview()
+
+    def _update_filename_preview(self):
+        """Update the filename preview label"""
+        if self.snapshot_checkbox.isChecked():
+            suffix = self.suffix_edit.text().strip()
+            if suffix:
+                filename = f"v{self.next_version}_{self.rom_id}_{suffix}.bin"
+                self.filename_preview.setText(f"File: {filename}")
+            else:
+                self.filename_preview.setText("Enter a suffix for the filename")
+        else:
+            self.filename_preview.setText("No snapshot will be created")
+
     def _on_accept(self):
         """Validate and accept"""
+        # Validate message
         message = self.message_edit.toPlainText().strip()
         if not message:
             self.message_edit.setFocus()
             self.message_edit.setStyleSheet("border: 2px solid red;")
             return
+
+        # Validate suffix if snapshot is checked
+        if self.snapshot_checkbox.isChecked():
+            suffix = self.suffix_edit.text().strip()
+            if not suffix:
+                self.suffix_edit.setFocus()
+                self.suffix_edit.setStyleSheet("border: 2px solid red;")
+                return
+            self.snapshot_suffix = suffix
 
         self.commit_message = message
         self.create_snapshot = self.snapshot_checkbox.isChecked()
@@ -133,14 +175,9 @@ class CommitDialog(QDialog):
         """Get whether to create a snapshot"""
         return self.create_snapshot
 
-    def get_selected_tables(self) -> List[str]:
-        """Get list of selected table names"""
-        selected = []
-        for i in range(self.tables_tree.topLevelItemCount()):
-            item = self.tables_tree.topLevelItem(i)
-            if item.checkState(0) == Qt.Checked:
-                selected.append(item.text(0))
-        return selected
+    def get_snapshot_suffix(self) -> str:
+        """Get the user-entered snapshot suffix"""
+        return self.snapshot_suffix
 
 
 class QuickCommitDialog(QDialog):

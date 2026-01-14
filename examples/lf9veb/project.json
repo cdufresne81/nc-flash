@@ -1,0 +1,21 @@
+{
+  "version": "1.0",
+  "name": "lf9veb",
+  "description": "",
+  "created_at": "2026-01-14T11:35:12.835194",
+  "updated_at": "2026-01-14T11:35:12.835194",
+  "original_rom": {
+    "filename": "original.bin",
+    "size": 1048576,
+    "checksum_sha256": "073ebc7b7af83e4db5566eb30e1cc25e0644bb4b922fc9092ba083f24209fe50",
+    "rom_id": "LF9VEB",
+    "definition_xmlid": "LF9VEB",
+    "make": "Mazda",
+    "model": "MX5"
+  },
+  "working_rom": "modified.bin",
+  "head_commit_id": "e4cf66f4-ad0",
+  "settings": {
+    "auto_snapshot_interval": 10
+  }
+}

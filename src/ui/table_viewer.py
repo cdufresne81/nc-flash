@@ -101,7 +101,8 @@ class TableViewer(QWidget):
     axis_bulk_changes = Signal(list)
 
     def __init__(self, rom_definition: RomDefinition = None, parent=None,
-                 modified_cells_dict: dict = None, original_values_dict: dict = None):
+                 modified_cells_dict: dict = None, original_values_dict: dict = None,
+                 diff_mode: bool = False, diff_base_data: dict = None):
         super().__init__(parent)
         self.rom_definition = rom_definition
         self._editing_in_progress = False
@@ -110,6 +111,10 @@ class TableViewer(QWidget):
         # If not provided, create local dict (for testing/standalone usage)
         self._modified_cells = modified_cells_dict if modified_cells_dict is not None else {}
         self._original_values = original_values_dict if original_values_dict is not None else {}
+        # Diff mode for viewing historical changes
+        self._diff_mode = diff_mode
+        self._diff_base_data = diff_base_data  # Data from previous version to compare against
+        self._show_diff_highlights = True  # Toggle for diff highlighting
         self.init_ui()
 
         # Create context and helpers
@@ -232,6 +237,75 @@ class TableViewer(QWidget):
         """Set whether the table is read-only"""
         self._read_only = read_only
 
+    # --- Diff Mode Methods ---
+
+    def is_diff_mode(self) -> bool:
+        """Check if viewer is in diff mode"""
+        return self._diff_mode
+
+    def is_cell_changed_from_base(self, data_row: int, data_col: int) -> bool:
+        """
+        Check if a cell value differs from the base version
+
+        Args:
+            data_row: Row index in data array
+            data_col: Column index in data array
+
+        Returns:
+            True if cell value differs from base
+        """
+        if not self._diff_mode or self._diff_base_data is None:
+            return False
+
+        if self.current_data is None:
+            return False
+
+        try:
+            current_values = self.current_data.get("values")
+            base_values = self._diff_base_data.get("values")
+
+            if current_values is None or base_values is None:
+                return False
+
+            current_value = current_values[data_row, data_col]
+            base_value = base_values[data_row, data_col]
+
+            # Compare with tolerance for floating point
+            return abs(current_value - base_value) >= 1e-10
+        except (IndexError, TypeError):
+            return False
+
+    def get_base_value(self, data_row: int, data_col: int) -> float:
+        """
+        Get the value from the base version for a cell
+
+        Args:
+            data_row: Row index in data array
+            data_col: Column index in data array
+
+        Returns:
+            Base value, or None if not available
+        """
+        if self._diff_base_data is None:
+            return None
+
+        try:
+            base_values = self._diff_base_data.get("values")
+            if base_values is not None:
+                return base_values[data_row, data_col]
+        except (IndexError, TypeError):
+            pass
+        return None
+
+    def toggle_diff_highlights(self):
+        """Toggle visibility of diff highlighting"""
+        self._show_diff_highlights = not self._show_diff_highlights
+        self.table_widget.viewport().update()
+
+    def show_diff_highlights(self) -> bool:
+        """Check if diff highlights should be shown"""
+        return self._diff_mode and self._show_diff_highlights
+
     def _apply_table_style(self):
         """Apply table styling - delegates to helper if available"""
         if hasattr(self, '_display'):
@@ -270,6 +344,41 @@ class TableViewer(QWidget):
             data: Dictionary with 'values', 'x_axis', 'y_axis' from RomReader
         """
         self._display.display_table(table, data)
+
+        # Apply diff tooltips if in diff mode
+        if self._diff_mode and self._diff_base_data is not None:
+            self._apply_diff_tooltips()
+
+    def _apply_diff_tooltips(self):
+        """Apply tooltips to cells that differ from base version"""
+        if not self._diff_mode or self._diff_base_data is None:
+            return
+
+        value_fmt = self._display.get_value_format()
+
+        # Iterate through all cells
+        for row in range(self.table_widget.rowCount()):
+            for col in range(self.table_widget.columnCount()):
+                item = self.table_widget.item(row, col)
+                if item is None:
+                    continue
+
+                # Get data coordinates
+                data_coords = item.data(Qt.UserRole)
+                if data_coords is None:
+                    continue
+
+                # Skip axis cells (stored as tuple with string)
+                if isinstance(data_coords[0], str):
+                    continue
+
+                data_row, data_col = data_coords
+
+                # Check if cell differs from base
+                if self.is_cell_changed_from_base(data_row, data_col):
+                    base_value = self.get_base_value(data_row, data_col)
+                    if base_value is not None:
+                        item.setToolTip(f"Previous: {self._display.format_value(base_value, value_fmt)}")
 
     def clear(self):
         """Clear the viewer"""

@@ -857,24 +857,36 @@ class MainWindow(QMainWindow):
         # Get pending changes
         pending = self.change_tracker.get_pending_changes()
 
-        # Show commit dialog
-        dialog = CommitDialog(pending, self)
+        # Get version info for dialog
+        next_version = self.project_manager.get_next_version()
+        rom_id = self.project_manager.current_project.original_rom.rom_id
+        suggested_suffix = self.project_manager.current_project.last_suffix
+
+        # Show commit dialog with version info
+        dialog = CommitDialog(
+            pending,
+            next_version=next_version,
+            rom_id=rom_id,
+            suggested_suffix=suggested_suffix,
+            parent=self
+        )
         if dialog.exec() == QDialog.Accepted:
             try:
-                # Get selected tables (for now, commit all)
                 message = dialog.get_commit_message()
                 create_snapshot = dialog.get_create_snapshot()
+                snapshot_suffix = dialog.get_snapshot_suffix()
 
                 # Save changes to working ROM file first
                 document = self.get_current_document()
                 if document:
                     document.rom_reader.save_rom()
 
-                # Create commit
+                # Create commit with version numbering
                 commit = self.project_manager.commit_changes(
                     message=message,
                     changes=pending,
-                    create_snapshot=create_snapshot
+                    create_snapshot=create_snapshot,
+                    snapshot_suffix=snapshot_suffix
                 )
 
                 # Clear pending changes
@@ -883,8 +895,8 @@ class MainWindow(QMainWindow):
                 # Update UI
                 self._update_project_ui()
 
-                logger.info(f"Committed: {message[:50]}...")
-                self.statusBar().showMessage(f"Committed: {commit.id}")
+                logger.info(f"Committed v{commit.version}: {message[:50]}...")
+                self.statusBar().showMessage(f"Saved version {commit.version}")
 
             except Exception as e:
                 handle_rom_operation_error(self, "commit changes", e)
@@ -900,7 +912,83 @@ class MainWindow(QMainWindow):
             return
 
         dialog = HistoryViewer(self.project_manager, self)
+        dialog.view_table_diff.connect(self._on_view_table_diff)
         dialog.exec()
+
+    def _on_view_table_diff(self, table_name: str, commit):
+        """
+        Open a table viewer showing changes from a specific commit
+
+        Args:
+            table_name: Name of the table to view
+            commit: Commit object containing the changes
+        """
+        document = self.get_current_document()
+        if not document:
+            return
+
+        # Find the table definition
+        table = document.rom_definition.get_table_by_name(table_name)
+        if not table:
+            QMessageBox.warning(
+                self,
+                "Table Not Found",
+                f"Could not find table: {table_name}"
+            )
+            return
+
+        try:
+            # Load base version data (previous version)
+            base_version = commit.version - 1 if commit.version > 0 else 0
+            base_rom_data = self.project_manager.load_version_data(base_version)
+
+            if base_rom_data is None:
+                QMessageBox.warning(
+                    self,
+                    "Version Not Found",
+                    f"Could not load base version {base_version} data."
+                )
+                return
+
+            # Create a temporary RomReader to read base version table data
+            from src.core.rom_reader import RomReader
+            import tempfile
+            import os
+
+            # Write base ROM to temp file and read table data
+            with tempfile.NamedTemporaryFile(delete=False, suffix='.bin') as tmp:
+                tmp.write(base_rom_data)
+                tmp_path = tmp.name
+
+            try:
+                base_reader = RomReader(tmp_path, document.rom_definition)
+                base_data = base_reader.read_table_data(table)
+            finally:
+                os.unlink(tmp_path)
+
+            # Read current version table data
+            current_data = document.rom_reader.read_table_data(table)
+
+            # Open diff viewer
+            viewer_window = TableViewerWindow(
+                table,
+                current_data,
+                document.rom_definition,
+                rom_path=document.rom_path,
+                parent=self,
+                diff_mode=True,
+                diff_base_data=base_data
+            )
+            viewer_window.setWindowTitle(f"{table_name} (v{base_version} → v{commit.version})")
+            viewer_window.show()
+
+        except Exception as e:
+            logger.error(f"Failed to open diff view: {e}")
+            QMessageBox.warning(
+                self,
+                "Error",
+                f"Failed to open diff view: {e}"
+            )
 
     # ========== Undo/Redo Methods ==========
 
