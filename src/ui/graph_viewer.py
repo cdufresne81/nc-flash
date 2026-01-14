@@ -177,7 +177,6 @@ class GraphWidget(QWidget):
         ax.set_xlabel(x_label)
         ax.set_ylabel(y_label)
         ax.set_zlabel('Value')
-        ax.set_title(f'{self.table.name}')
 
         ax.mouse_init()
         self.ax_3d = ax
@@ -213,7 +212,6 @@ class GraphWidget(QWidget):
         y_label = self._get_axis_label(AxisType.Y_AXIS) if y_axis is not None else 'Index'
         ax.set_xlabel(y_label)
         ax.set_ylabel('Value')
-        ax.set_title(f'{self.table.name}')
         ax.grid(True, alpha=0.3)
 
     def _plot_1d(self):
@@ -223,7 +221,6 @@ class GraphWidget(QWidget):
         color = self._ratio_to_color(0.5)
         ax.bar([0], [values[0]], color=color, width=0.5)
         ax.set_ylabel('Value')
-        ax.set_title(f'{self.table.name}')
         ax.set_xticks([])
 
     def _calculate_colors(self, values: np.ndarray):

@@ -264,9 +264,13 @@ class TableViewerWindow(QMainWindow):
             # Restore window to table-only size
             if self._table_only_size:
                 self.resize(self._table_only_size)
+                # Reset splitter to give all space to table
+                self.splitter.setSizes([self._table_only_size.width(), 0])
         else:
-            # Save current size before showing graph
-            self._table_only_size = self.size()
+            # Only save table-only size the first time (when None)
+            # This prevents the size from growing on each toggle
+            if self._table_only_size is None:
+                self._table_only_size = self.size()
 
             # Show graph
             self._graph_visible = True
@@ -279,10 +283,10 @@ class TableViewerWindow(QMainWindow):
                 self.table, self.data, self.rom_definition, selected_cells
             )
 
-            # Expand window to accommodate graph
-            current_width = self.width()
+            # Calculate new width based on saved table-only size
+            table_width = self._table_only_size.width()
             graph_width = 550  # Default graph panel width
-            new_width = current_width + graph_width
+            new_width = table_width + graph_width
 
             # Limit to screen size
             screen = QApplication.primaryScreen()
@@ -292,8 +296,8 @@ class TableViewerWindow(QMainWindow):
 
             self.resize(new_width, self.height())
 
-            # Set splitter proportions (table takes ~50%, graph takes ~50%)
-            self.splitter.setSizes([int(new_width * 0.5), int(new_width * 0.5)])
+            # Set splitter proportions - table keeps its size, graph gets the rest
+            self.splitter.setSizes([table_width, graph_width])
 
     def _on_cell_changed(self, table_name: str, row: int, col: int,
                          old_value: float, new_value: float,

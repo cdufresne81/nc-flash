@@ -3,8 +3,8 @@
 
 load_rom examples/lf9veb.bin
 
-# Find a 2D table - Coolant Temp Scaling is typically 2D
-open_table "Coolant Temp Scaling"
+# Use a 2D table from the ROM definition
+open_table "APP to TP Desired - Max"
 wait 300
 
 # Screenshot table without graph
