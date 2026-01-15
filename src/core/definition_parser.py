@@ -98,7 +98,8 @@ class DefinitionParser:
         return RomDefinition(
             romid=romid,
             scalings=scalings,
-            tables=tables
+            tables=tables,
+            xml_path=str(self.xml_path)
         )
 
     def _parse_romid(self, rom_element) -> RomID:

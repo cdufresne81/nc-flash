@@ -6,9 +6,11 @@ Allows opening multiple tables simultaneously for comparison.
 Features an embedded graph panel that can be toggled with G key.
 """
 
+from pathlib import Path
+
 from PySide6.QtWidgets import (
     QMainWindow, QVBoxLayout, QHBoxLayout, QWidget, QApplication,
-    QSplitter, QFrame
+    QSplitter, QFrame, QMessageBox
 )
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QKeySequence, QShortcut
@@ -16,7 +18,9 @@ from PySide6.QtGui import QKeySequence, QShortcut
 from ..utils.constants import APP_NAME
 from .table_viewer import TableViewer
 from .graph_viewer import GraphWidget
+from .scaling_edit_dialog import ScalingEditDialog
 from ..core.rom_definition import Table, RomDefinition
+from ..core.metadata_writer import update_scaling
 
 
 class TableViewerWindow(QMainWindow):
@@ -166,8 +170,8 @@ class TableViewerWindow(QMainWindow):
         """Create menu bar with Edit and View menus"""
         menubar = self.menuBar()
 
-        # Edit menu
-        edit_menu = menubar.addMenu("Edit")
+        # Edit menu (Alt+E)
+        edit_menu = menubar.addMenu("&Edit")
 
         increment_action = edit_menu.addAction("Increment")
         increment_action.setShortcut("+")
@@ -204,8 +208,26 @@ class TableViewerWindow(QMainWindow):
         interp_2d_action.setShortcut("B")
         interp_2d_action.triggered.connect(self.viewer.interpolate_2d)
 
-        # View menu (after Edit menu)
-        view_menu = menubar.addMenu("View")
+        edit_menu.addSeparator()
+
+        # Edit Scaling submenu
+        scaling_menu = edit_menu.addMenu("Edit Scaling")
+
+        edit_data_scaling = scaling_menu.addAction("Data Scaling...")
+        edit_data_scaling.triggered.connect(lambda: self._edit_scaling('data'))
+
+        # Add axis scaling options based on table type
+        from ..core.rom_definition import TableType
+        if self.table.type == TableType.THREE_D:
+            edit_x_scaling = scaling_menu.addAction("X Axis Scaling...")
+            edit_x_scaling.triggered.connect(lambda: self._edit_scaling('x_axis'))
+
+        if self.table.type in (TableType.TWO_D, TableType.THREE_D):
+            edit_y_scaling = scaling_menu.addAction("Y Axis Scaling...")
+            edit_y_scaling.triggered.connect(lambda: self._edit_scaling('y_axis'))
+
+        # View menu (Alt+V)
+        view_menu = menubar.addMenu("&View")
 
         self.graph_action = view_menu.addAction("Show Graph")
         self.graph_action.setShortcut("G")
@@ -308,6 +330,9 @@ class TableViewerWindow(QMainWindow):
             # Set splitter proportions - table keeps its size, graph gets the rest
             self.splitter.setSizes([table_width, graph_width])
 
+            # Set focus on graph so arrow keys work immediately
+            self.graph_widget.setFocus()
+
     def _on_cell_changed(self, table_name: str, row: int, col: int,
                          old_value: float, new_value: float,
                          old_raw: float, new_raw: float):
@@ -392,6 +417,96 @@ class TableViewerWindow(QMainWindow):
         final_height = max(min_height, min(content_height, max_height))
 
         self.resize(final_width, final_height)
+
+    def _edit_scaling(self, target: str = 'data'):
+        """
+        Open dialog to edit scaling
+
+        Args:
+            target: Which scaling to edit - 'data', 'x_axis', or 'y_axis'
+        """
+        # Get the appropriate scaling name based on target
+        if target == 'data':
+            scaling_name = self.table.scaling
+            display_name = "Data"
+        elif target == 'x_axis':
+            x_axis = self.table.x_axis
+            if not x_axis:
+                QMessageBox.information(self, "No X Axis", "This table has no X axis.")
+                return
+            scaling_name = x_axis.scaling
+            display_name = f"X Axis ({x_axis.name})"
+        elif target == 'y_axis':
+            y_axis = self.table.y_axis
+            if not y_axis:
+                QMessageBox.information(self, "No Y Axis", "This table has no Y axis.")
+                return
+            scaling_name = y_axis.scaling
+            display_name = f"Y Axis ({y_axis.name})"
+        else:
+            return
+
+        if not scaling_name:
+            QMessageBox.information(
+                self, "No Scaling",
+                f"{display_name} has no scaling defined."
+            )
+            return
+
+        scaling = self.rom_definition.get_scaling(scaling_name)
+        if not scaling:
+            QMessageBox.warning(
+                self, "Scaling Not Found",
+                f"Could not find scaling '{scaling_name}' in ROM definition."
+            )
+            return
+
+        # Check if we have the XML path
+        if not self.rom_definition.xml_path:
+            QMessageBox.warning(
+                self, "No XML Path",
+                "Cannot edit scaling: XML path not available."
+            )
+            return
+
+        dialog = ScalingEditDialog(scaling, scaling_name, self)
+        dialog.setWindowTitle(f"Edit Scaling: {display_name}")
+        if dialog.exec():
+            updates = dialog.get_values()
+
+            # Update XML file
+            xml_path = Path(self.rom_definition.xml_path)
+            if update_scaling(xml_path, scaling_name, updates):
+                # Update in-memory scaling
+                self._apply_scaling_updates(scaling, updates)
+
+                # Refresh display to show updated format/units
+                self.viewer.display_table(self.table, self.data)
+
+                QMessageBox.information(
+                    self, "Scaling Updated",
+                    f"{display_name} scaling has been updated.\n"
+                    "Changes are saved to the metadata file."
+                )
+            else:
+                QMessageBox.critical(
+                    self, "Update Failed",
+                    "Failed to update scaling in metadata file.\n"
+                    "Check the log for details."
+                )
+
+    def _apply_scaling_updates(self, scaling, updates: dict):
+        """Apply updates to in-memory scaling object"""
+        if 'min' in updates:
+            scaling.min = float(updates['min']) if updates['min'] else None
+        if 'max' in updates:
+            scaling.max = float(updates['max']) if updates['max'] else None
+        if 'units' in updates:
+            scaling.units = updates['units'] or ""
+        if 'format' in updates:
+            scaling.format = updates['format'] or "%0.2f"
+        if 'inc' in updates:
+            scaling.inc = float(updates['inc']) if updates['inc'] else None
 
     def closeEvent(self, event):
         """Handle window close event"""

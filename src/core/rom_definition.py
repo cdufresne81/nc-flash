@@ -142,6 +142,7 @@ class RomDefinition:
     romid: RomID
     scalings: Dict[str, Scaling] = field(default_factory=dict)
     tables: List[Table] = field(default_factory=list)
+    xml_path: Optional[str] = None  # Path to source XML file
 
     def get_scaling(self, name: str) -> Optional[Scaling]:
         """Get scaling definition by name"""

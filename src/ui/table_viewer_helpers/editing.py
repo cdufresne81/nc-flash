@@ -74,20 +74,6 @@ class TableEditHelper:
         if abs(new_value - old_value) < 1e-10:
             return
 
-        # Validate against scaling min/max if available
-        if self.ctx.rom_definition and self.ctx.current_table.scaling:
-            scaling = self.ctx.rom_definition.get_scaling(self.ctx.current_table.scaling)
-            if scaling:
-                # Check min/max bounds
-                if scaling.min is not None and new_value < scaling.min:
-                    logger.warning(f"Value {new_value} below minimum {scaling.min}")
-                    self._revert_cell(row, col, data_row, data_col)
-                    return
-                if scaling.max is not None and new_value > scaling.max:
-                    logger.warning(f"Value {new_value} above maximum {scaling.max}")
-                    self._revert_cell(row, col, data_row, data_col)
-                    return
-
         # Convert display values to raw values
         old_raw = self.display_to_raw(old_value)
         new_raw = self.display_to_raw(new_value)
@@ -255,19 +241,6 @@ class TableEditHelper:
         # Skip if no change
         if abs(new_value - old_value) < 1e-10:
             return
-
-        # Validate against scaling min/max if available
-        if self.ctx.rom_definition and axis_table.scaling:
-            scaling = self.ctx.rom_definition.get_scaling(axis_table.scaling)
-            if scaling:
-                if scaling.min is not None and new_value < scaling.min:
-                    logger.warning(f"Axis value {new_value} below minimum {scaling.min}")
-                    self._revert_axis_cell(row, col, axis_type, data_idx)
-                    return
-                if scaling.max is not None and new_value > scaling.max:
-                    logger.warning(f"Axis value {new_value} above maximum {scaling.max}")
-                    self._revert_axis_cell(row, col, axis_type, data_idx)
-                    return
 
         # Convert display values to raw values
         old_raw = self._axis_display_to_raw(old_value, axis_table)

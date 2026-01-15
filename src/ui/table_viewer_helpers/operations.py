@@ -103,17 +103,6 @@ class TableOperationsHelper:
                     if abs(new_value - old_value) < 1e-10:
                         continue
 
-                    # Validate against axis scaling if available
-                    if self.ctx.rom_definition and axis_table.scaling:
-                        scaling = self.ctx.rom_definition.get_scaling(axis_table.scaling)
-                        if scaling:
-                            if scaling.min is not None and new_value < scaling.min:
-                                logger.warning(f"Axis value {new_value} below minimum {scaling.min}, skipping")
-                                continue
-                            if scaling.max is not None and new_value > scaling.max:
-                                logger.warning(f"Axis value {new_value} above maximum {scaling.max}, skipping")
-                                continue
-
                     # Convert to raw values using axis scaling
                     old_raw = self.edit._axis_display_to_raw(old_value, axis_table)
                     new_raw = self.edit._axis_display_to_raw(new_value, axis_table)
@@ -157,17 +146,6 @@ class TableOperationsHelper:
                     # Skip if no change
                     if abs(new_value - old_value) < 1e-10:
                         continue
-
-                    # Validate against scaling if available
-                    if self.ctx.rom_definition and self.ctx.current_table.scaling:
-                        scaling = self.ctx.rom_definition.get_scaling(self.ctx.current_table.scaling)
-                        if scaling:
-                            if scaling.min is not None and new_value < scaling.min:
-                                logger.warning(f"Value {new_value} below minimum {scaling.min}, skipping")
-                                continue
-                            if scaling.max is not None and new_value > scaling.max:
-                                logger.warning(f"Value {new_value} above maximum {scaling.max}, skipping")
-                                continue
 
                     # Convert to raw values
                     old_raw = self.edit.display_to_raw(old_value)
