@@ -18,7 +18,7 @@ from PySide6.QtWidgets import (
     QComboBox,
 )
 from PySide6.QtCore import Signal, Qt, QRect
-from PySide6.QtGui import QShortcut, QKeySequence, QColor, QPainter, QBrush, QPen
+from PySide6.QtGui import QShortcut, QKeySequence, QColor, QPen
 
 from ..utils.constants import TABLE_BROWSER_COLUMN_WIDTH
 from ..core.rom_definition import RomDefinition, Table

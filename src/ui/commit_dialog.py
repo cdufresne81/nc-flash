@@ -7,9 +7,8 @@ Dialog for entering commit message when saving changes.
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel,
     QTextEdit, QDialogButtonBox, QListWidget,
-    QGroupBox, QCheckBox, QLineEdit, QFrame
+    QGroupBox, QCheckBox, QLineEdit
 )
-from PySide6.QtCore import Qt
 from typing import List
 
 from ..core.version_models import TableChanges

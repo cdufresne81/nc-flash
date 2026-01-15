@@ -19,8 +19,7 @@ from .exceptions import (
     RomReadError,
     RomWriteError,
     ScalingConversionError,
-    ScalingNotFoundError,
-    InvalidRomFileError
+    ScalingNotFoundError
 )
 
 logger = logging.getLogger(__name__)

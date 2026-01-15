@@ -8,10 +8,9 @@ Each ROM is displayed in its own tab.
 from pathlib import Path
 from PySide6.QtWidgets import (
     QWidget,
-    QSplitter,
     QHBoxLayout
 )
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import Signal
 
 from .table_browser import TableBrowser
 from ..core.rom_definition import RomDefinition, Table

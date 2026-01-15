@@ -14,7 +14,6 @@ from .exceptions import (
     MetadataDirectoryError,
     DefinitionParseError,
     RomFileNotFoundError,
-    NoMatchingDefinitionError,
     AddressConversionError
 )
 

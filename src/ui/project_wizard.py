@@ -9,7 +9,6 @@ from PySide6.QtWidgets import (
     QLabel, QLineEdit, QTextEdit, QPushButton,
     QFileDialog, QMessageBox, QGroupBox
 )
-from PySide6.QtCore import Qt
 from pathlib import Path
 import logging
 

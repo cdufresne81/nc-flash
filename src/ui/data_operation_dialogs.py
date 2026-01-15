@@ -9,7 +9,6 @@ from PySide6.QtWidgets import (
     QLineEdit, QDialogButtonBox
 )
 from PySide6.QtGui import QDoubleValidator
-from PySide6.QtCore import Qt
 
 
 class AddValueDialog(QDialog):

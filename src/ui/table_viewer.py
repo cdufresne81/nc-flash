@@ -600,7 +600,6 @@ class TableViewer(QWidget):
         if table_name not in self._original_values:
             return
 
-        import numpy as np
         original_data = self._original_values[table_name]
         original_values = original_data.get("values")
         if original_values is None:
@@ -646,7 +645,6 @@ class TableViewer(QWidget):
         if table_name not in self._original_values:
             return
 
-        import numpy as np
         original_data = self._original_values[table_name]
         original_axis = original_data.get(axis_type)
         if original_axis is None or data_idx >= len(original_axis):

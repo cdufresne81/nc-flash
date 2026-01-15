@@ -7,11 +7,10 @@ Displays commit history with ability to view details.
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QSplitter,
     QTreeWidget, QTreeWidgetItem, QTextEdit, QLabel,
-    QListWidget, QListWidgetItem, QGroupBox, QHeaderView,
+    QListWidget, QListWidgetItem, QGroupBox,
     QDialog, QPushButton, QLineEdit
 )
 from PySide6.QtCore import Qt, Signal
-from typing import Optional, List
 
 from ..core.version_models import Commit
 from ..core.project_manager import ProjectManager

@@ -18,7 +18,7 @@ from PySide6.QtGui import QKeySequence, QShortcut
 from ..utils.constants import APP_NAME
 from .table_viewer import TableViewer
 from .graph_viewer import GraphWidget
-from .scaling_edit_dialog import ScalingEditDialog
+from .scaling_edit_dialog import TableScalingDialog
 from ..core.rom_definition import Table, RomDefinition
 from ..core.metadata_writer import update_scaling
 
@@ -210,21 +210,8 @@ class TableViewerWindow(QMainWindow):
 
         edit_menu.addSeparator()
 
-        # Edit Scaling submenu
-        scaling_menu = edit_menu.addMenu("Edit Scaling")
-
-        edit_data_scaling = scaling_menu.addAction("Data Scaling...")
-        edit_data_scaling.triggered.connect(lambda: self._edit_scaling('data'))
-
-        # Add axis scaling options based on table type
-        from ..core.rom_definition import TableType
-        if self.table.type == TableType.THREE_D:
-            edit_x_scaling = scaling_menu.addAction("X Axis Scaling...")
-            edit_x_scaling.triggered.connect(lambda: self._edit_scaling('x_axis'))
-
-        if self.table.type in (TableType.TWO_D, TableType.THREE_D):
-            edit_y_scaling = scaling_menu.addAction("Y Axis Scaling...")
-            edit_y_scaling.triggered.connect(lambda: self._edit_scaling('y_axis'))
+        edit_scaling_action = edit_menu.addAction("Edit Scaling...")
+        edit_scaling_action.triggered.connect(self._edit_scaling)
 
         # View menu (Alt+V)
         view_menu = menubar.addMenu("&View")
@@ -418,49 +405,8 @@ class TableViewerWindow(QMainWindow):
 
         self.resize(final_width, final_height)
 
-    def _edit_scaling(self, target: str = 'data'):
-        """
-        Open dialog to edit scaling
-
-        Args:
-            target: Which scaling to edit - 'data', 'x_axis', or 'y_axis'
-        """
-        # Get the appropriate scaling name based on target
-        if target == 'data':
-            scaling_name = self.table.scaling
-            display_name = "Data"
-        elif target == 'x_axis':
-            x_axis = self.table.x_axis
-            if not x_axis:
-                QMessageBox.information(self, "No X Axis", "This table has no X axis.")
-                return
-            scaling_name = x_axis.scaling
-            display_name = f"X Axis ({x_axis.name})"
-        elif target == 'y_axis':
-            y_axis = self.table.y_axis
-            if not y_axis:
-                QMessageBox.information(self, "No Y Axis", "This table has no Y axis.")
-                return
-            scaling_name = y_axis.scaling
-            display_name = f"Y Axis ({y_axis.name})"
-        else:
-            return
-
-        if not scaling_name:
-            QMessageBox.information(
-                self, "No Scaling",
-                f"{display_name} has no scaling defined."
-            )
-            return
-
-        scaling = self.rom_definition.get_scaling(scaling_name)
-        if not scaling:
-            QMessageBox.warning(
-                self, "Scaling Not Found",
-                f"Could not find scaling '{scaling_name}' in ROM definition."
-            )
-            return
-
+    def _edit_scaling(self):
+        """Open dialog to edit all scalings for this table"""
         # Check if we have the XML path
         if not self.rom_definition.xml_path:
             QMessageBox.warning(
@@ -469,29 +415,37 @@ class TableViewerWindow(QMainWindow):
             )
             return
 
-        dialog = ScalingEditDialog(scaling, scaling_name, self)
-        dialog.setWindowTitle(f"Edit Scaling: {display_name}")
+        dialog = TableScalingDialog(self.table, self.rom_definition, self)
         if dialog.exec():
-            updates = dialog.get_values()
+            all_updates = dialog.get_all_updates()
 
-            # Update XML file
+            # Update each scaling in XML and memory
             xml_path = Path(self.rom_definition.xml_path)
-            if update_scaling(xml_path, scaling_name, updates):
-                # Update in-memory scaling
-                self._apply_scaling_updates(scaling, updates)
+            success_count = 0
+            for scaling_name, (updates, scaling) in all_updates.items():
+                if update_scaling(xml_path, scaling_name, updates):
+                    self._apply_scaling_updates(scaling, updates)
+                    success_count += 1
 
-                # Refresh display to show updated format/units
-                self.viewer.display_table(self.table, self.data)
+            # Refresh display to show updated format/units
+            self.viewer.display_table(self.table, self.data)
 
+            if success_count == len(all_updates):
                 QMessageBox.information(
-                    self, "Scaling Updated",
-                    f"{display_name} scaling has been updated.\n"
+                    self, "Scalings Updated",
+                    f"All scalings have been updated.\n"
                     "Changes are saved to the metadata file."
+                )
+            elif success_count > 0:
+                QMessageBox.warning(
+                    self, "Partial Update",
+                    f"Only {success_count} of {len(all_updates)} scalings were updated.\n"
+                    "Check the log for details."
                 )
             else:
                 QMessageBox.critical(
                     self, "Update Failed",
-                    "Failed to update scaling in metadata file.\n"
+                    "Failed to update scalings in metadata file.\n"
                     "Check the log for details."
                 )
 

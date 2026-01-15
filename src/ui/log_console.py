@@ -18,12 +18,10 @@ from PySide6.QtWidgets import (
     QTextEdit,
     QLabel,
     QPushButton,
-    QHBoxLayout,
-    QComboBox
+    QHBoxLayout
 )
-from ..utils.settings import get_settings
 from PySide6.QtGui import QTextCursor, QFont
-from PySide6.QtCore import Qt, Signal, QObject
+from PySide6.QtCore import Signal, QObject
 
 
 class QtLogHandler(logging.Handler, QObject):
@@ -58,18 +56,11 @@ class LogConsole(QWidget):
         super().__init__(parent)
         self.max_lines = LOG_CONSOLE_MAX_LINES
         self.log_handler = None
-        self.settings = get_settings()
-        self.min_level = self._get_saved_log_level()
+        self.min_level = logging.INFO  # Show INFO and above
         self.init_ui()
 
         if auto_register:
             self.setup_logging()
-
-    def _get_saved_log_level(self) -> int:
-        """Get saved log level from settings"""
-        level_name = self.settings.settings.value("display/log_level", "INFO")
-        levels = {"DEBUG": logging.DEBUG, "INFO": logging.INFO, "WARNING": logging.WARNING}
-        return levels.get(level_name, logging.INFO)
 
     def init_ui(self):
         """Initialize the user interface"""
@@ -85,20 +76,6 @@ class LogConsole(QWidget):
         header_layout.addWidget(title_label)
 
         header_layout.addStretch()
-
-        # Log level selector
-        level_label = QLabel("Level:")
-        level_label.setStyleSheet("font-size: 11px;")
-        header_layout.addWidget(level_label)
-
-        self.level_combo = QComboBox()
-        self.level_combo.addItem("DEBUG", logging.DEBUG)
-        self.level_combo.addItem("INFO", logging.INFO)
-        self.level_combo.addItem("WARNING", logging.WARNING)
-        self.level_combo.setCurrentText(logging.getLevelName(self.min_level))
-        self.level_combo.currentIndexChanged.connect(self._on_level_changed)
-        self.level_combo.setMaximumWidth(80)
-        header_layout.addWidget(self.level_combo)
 
         # Clear button
         clear_button = QPushButton("Clear")
@@ -128,13 +105,6 @@ class LogConsole(QWidget):
 
         layout.addWidget(self.console)
 
-        # Status bar at bottom
-        self.status_label = QLabel("Ready")
-        self.status_label.setStyleSheet(
-            "padding: 4px; background-color: #2d2d2d; color: #888;"
-        )
-        layout.addWidget(self.status_label)
-
     def setup_logging(self):
         """
         Setup custom logging handler to display logs in console
@@ -160,13 +130,6 @@ class LogConsole(QWidget):
         if self.log_handler is not None:
             logging.getLogger().removeHandler(self.log_handler)
             self.log_handler = None
-
-    def _on_level_changed(self, index: int):
-        """Handle log level combo box change"""
-        self.min_level = self.level_combo.currentData()
-        level_name = logging.getLevelName(self.min_level)
-        self.settings.settings.setValue("display/log_level", level_name)
-        self.settings.settings.sync()
 
     def append_log(self, message: str, level: int):
         """
@@ -234,10 +197,6 @@ class LogConsole(QWidget):
         """Clear the console"""
         self.console.clear()
         self.log_info("Console cleared")
-
-    def update_status(self, message: str):
-        """Update the status bar at the bottom"""
-        self.status_label.setText(message)
 
     def closeEvent(self, event):
         """Remove log handler when widget is closed"""

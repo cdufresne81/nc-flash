@@ -7,11 +7,10 @@ Provides both a standalone window (GraphViewer) and embeddable widget (GraphWidg
 
 import numpy as np
 from PySide6.QtWidgets import QMainWindow, QVBoxLayout, QWidget, QSizePolicy
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import Qt
 
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
-from mpl_toolkits.mplot3d import Axes3D
 
 from ..core.rom_definition import Table, TableType, RomDefinition, AxisType
 from ..utils.constants import APP_NAME
