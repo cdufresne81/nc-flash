@@ -527,6 +527,48 @@ class TestRunner:
             self._log(f"ERROR: {e}")
             return False
 
+    def rotate_graph(self, elevation: float = None, azimuth: float = None) -> bool:
+        """
+        Set graph rotation (3D view angle)
+
+        Args:
+            elevation: Vertical angle in degrees (0-90, looking from side to top)
+            azimuth: Horizontal angle in degrees (0-360, rotating around z-axis)
+
+        Returns:
+            True if successful
+        """
+        if self.current_table_window is None:
+            self._log("ERROR: No table open")
+            return False
+
+        if not self.current_table_window._graph_visible:
+            self._log("ERROR: Graph not visible")
+            return False
+
+        try:
+            graph_widget = self.current_table_window.graph_widget
+            if graph_widget.ax_3d is None:
+                self._log("ERROR: No 3D axis available (table may be 2D)")
+                return False
+
+            # Get current values if not specified
+            current_elev = graph_widget.ax_3d.elev
+            current_azim = graph_widget.ax_3d.azim
+
+            new_elev = elevation if elevation is not None else current_elev
+            new_azim = azimuth if azimuth is not None else current_azim
+
+            graph_widget.ax_3d.view_init(elev=new_elev, azim=new_azim)
+            graph_widget.canvas.draw()
+            self._process_events()
+
+            self._log(f"Graph rotated: elevation={new_elev}, azimuth={new_azim}")
+            return True
+        except Exception as e:
+            self._log(f"ERROR: {e}")
+            return False
+
     def close_table(self) -> bool:
         """
         Close current table window
@@ -895,6 +937,11 @@ class TestRunner:
             elif cmd == "close_graph":
                 return self.close_graph()
 
+            elif cmd == "rotate_graph":
+                elev = float(args[0]) if len(args) > 0 else None
+                azim = float(args[1]) if len(args) > 1 else None
+                return self.rotate_graph(elev, azim)
+
             elif cmd == "close_table":
                 return self.close_table()
 
@@ -1018,6 +1065,7 @@ class TestRunner:
         print("  multiply <factor>        - Multiply selection")
         print("  add <value>              - Add to selection")
         print("  open_graph / close_graph - Toggle graph viewer")
+        print("  rotate_graph <elev> <azim> - Rotate 3D graph view")
         print("  screenshot [name] [target] - Take screenshot")
         print("  list_screenshots         - List all screenshots")
         print("  cleanup [pattern] [hours] - Delete screenshots")

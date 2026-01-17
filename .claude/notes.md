@@ -10,7 +10,6 @@
 - **Focus/highlight selected table** - When clicking a table viewer (e.g., "Load Scaling"), highlight and focus that table in the tree (gray background like manual selection)
 
 ### Housekeeping
-- **Identify debugging tools** - Document visualization/debugging tools in CLAUDE.md
 - **Standardize directory naming** - Choose singular or plural convention and apply consistently. Current state:
   - Plural: `docs/`, `examples/`, `projects/`, `tests/`, `tools/`
   - Singular: `colormap/`, `metadata/`, `src/`
@@ -23,6 +22,14 @@
 
 ### Distribution
 - **Windows packaging** - Use PyInstaller to package as standalone .exe, test on clean Windows system
+
+## Environment Notes
+- Use `python3` not `python` (WSL2 environment lacks symlink)
+
+## Recent Completed Work (Jan 17, 2026)
+- Documented UI testing tools in `docs/UI_TESTING.md`
+- Added UI Testing section to `CLAUDE.md` with rules for screenshot/testing scenarios
+- Added `rotate_graph <elev> <azim>` command to test_runner.py
 
 ## Recent Completed Work (Jan 16, 2026)
 - Added Copy Table to Clipboard (Ctrl+Shift+C) and Export to CSV (Ctrl+E)

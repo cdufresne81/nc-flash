@@ -18,8 +18,39 @@ Update this file when ending a session with any important notes for next time.
 Reference these before modifying related functionality:
 - `docs/LOGGING.md` - Logging configuration and exception hierarchy
 - `docs/ROM_DEFINITION_FORMAT.md` - XML format for ROM definitions
+- `docs/UI_TESTING.md` - GUI test runner, screenshots, and test scripts
 
 **Rule:** When creating new documentation in `docs/`, add it to this list with a brief description of when to reference it.
+
+## UI Testing & Screenshots
+
+**Tool:** `tools/test_runner.py` - Automated GUI testing with screenshot capabilities
+
+**When to use:**
+- User asks to take a screenshot or view the UI
+- Debugging or verifying a visual/UI issue
+- Testing UI behavior after code changes
+- Creating documentation images
+
+**Quick Commands:**
+```bash
+# Take screenshot of a specific table
+python tools/test_runner.py --rom examples/lf9veb.bin --table "Table Name" --screenshot name
+
+# Run a GUI test script
+python tools/test_runner.py --script tests/gui/test_name.txt
+
+# Interactive mode for exploration
+python tools/test_runner.py --interactive
+```
+
+**Screenshot output:** `docs/screenshots/`
+
+**Rules:**
+1. When asked to test or screenshot the UI, use `test_runner.py` - do NOT manually automate Qt
+2. For visual bug investigation, take screenshots to capture the problematic state
+3. Test scripts live in `tests/gui/*.txt` - create new ones for reproducible test cases
+4. See `docs/UI_TESTING.md` for full command reference
 
 ## Landing the Plane (Session Completion)
 
