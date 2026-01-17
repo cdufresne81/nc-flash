@@ -40,7 +40,8 @@ class GraphWidget(QWidget):
         self.ax_3d = None
 
         # Create matplotlib figure and canvas
-        self.figure = Figure(figsize=(8, 6))
+        # Use constrained_layout for stable sizing (avoids resizing on redraws)
+        self.figure = Figure(figsize=(8, 6), layout='constrained')
         self.canvas = FigureCanvas(self.figure)
 
         # Set up layout
@@ -118,12 +119,6 @@ class GraphWidget(QWidget):
             self._plot_2d()
         else:
             self._plot_1d()
-
-        # Ensure proper layout after plotting
-        try:
-            self.figure.tight_layout()
-        except Exception:
-            pass  # tight_layout can fail in some edge cases
 
         self.canvas.draw()
 

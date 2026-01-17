@@ -1,0 +1,21 @@
+# Test graph behavior with cell click
+load_rom examples/lf9veb.bin
+open_table "TP Commanded Limit - Max"
+wait 300
+
+# Open graph panel
+open_graph
+wait 500
+
+# Screenshot 1: Full window without click
+screenshot window_no_click table
+
+# Click on a cell in the value column (row 4, col 0 = value column)
+click 4 0
+wait 300
+
+# Screenshot 2: Full window after clicking cell
+screenshot window_with_click table
+
+close_graph
+close_table

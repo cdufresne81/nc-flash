@@ -27,7 +27,9 @@ project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
 from PySide6.QtWidgets import QApplication
-from PySide6.QtCore import Qt, QTimer
+from PySide6.QtCore import Qt, QTimer, QPoint
+from PySide6.QtGui import QMouseEvent
+from PySide6.QtTest import QTest
 
 
 class TestRunner:
@@ -281,6 +283,64 @@ class TestRunner:
             self._process_events()
 
             self._log(f"Selected cells: ({start_row},{start_col}) to ({end_row},{end_col})")
+            return True
+
+        except Exception as e:
+            self._log(f"ERROR: {e}")
+            return False
+
+    def click_cell(self, row: int, col: int) -> bool:
+        """
+        Simulate a mouse click on a cell in the current table
+
+        Args:
+            row: Row (0-indexed, relative to data area)
+            col: Column (0-indexed, relative to data area)
+
+        Returns:
+            True if successful
+        """
+        if self.current_table_window is None:
+            self._log("ERROR: No table open")
+            return False
+
+        try:
+            viewer = self.current_table_window.viewer
+            table_widget = viewer.table_widget
+
+            # Calculate actual widget row/col (accounting for axis rows)
+            from src.core.rom_definition import TableType
+            table = self.current_table_window.table
+
+            # Determine row offset based on table type
+            if table.type == TableType.THREE_D:
+                row_offset = 1  # X-axis row
+                col_offset = 1  # Y-axis column
+            elif table.type == TableType.TWO_D:
+                row_offset = 0  # No X-axis row
+                col_offset = 1  # Y-axis column
+            else:
+                row_offset = 0
+                col_offset = 0
+
+            # Convert to widget coordinates
+            widget_row = row + row_offset
+            widget_col = col + col_offset
+
+            # Get the cell's visual rectangle
+            cell_rect = table_widget.visualRect(
+                table_widget.model().index(widget_row, widget_col)
+            )
+
+            # Calculate center point of the cell
+            center = cell_rect.center()
+
+            # Simulate mouse click using QTest
+            viewport = table_widget.viewport()
+            QTest.mouseClick(viewport, Qt.LeftButton, Qt.NoModifier, center)
+            self._process_events()
+
+            self._log(f"Clicked cell: ({row},{col}) at position ({center.x()},{center.y()})")
             return True
 
         except Exception as e:
@@ -903,6 +963,11 @@ class TestRunner:
                 end_row = int(args[2]) if len(args) > 2 else None
                 end_col = int(args[3]) if len(args) > 3 else None
                 return self.select_cells(start_row, start_col, end_row, end_col)
+
+            elif cmd == "click" and len(args) >= 2:
+                row = int(args[0])
+                col = int(args[1])
+                return self.click_cell(row, col)
 
             elif cmd == "select_all":
                 return self.select_all_data()
