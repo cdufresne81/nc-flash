@@ -4,8 +4,6 @@ PySide6~=6.6.0
 # Data manipulation and visualization
 numpy~=1.24.0
 matplotlib~=3.7.0
-pyqtgraph>=0.13.0
-PyOpenGL>=3.1.0
 
 # XML parsing for ROM definitions
 lxml~=4.9.0

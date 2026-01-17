@@ -222,32 +222,6 @@ class AppSettings:
         self.settings.setValue("paths/projects_directory", path)
         self.settings.sync()
 
-    def get_graph_renderer(self) -> str:
-        """
-        Get the graph renderer backend
-
-        Returns:
-            str: 'pyqtgraph' (default, OpenGL accelerated) or 'matplotlib'
-        """
-        import os
-        # Environment variable override takes precedence
-        env_renderer = os.environ.get('NCROM_GRAPH_RENDERER', '').lower()
-        if env_renderer in ('pyqtgraph', 'matplotlib'):
-            return env_renderer
-        return self.settings.value("display/graph_renderer", "pyqtgraph")
-
-    def set_graph_renderer(self, renderer: str):
-        """
-        Set the graph renderer backend
-
-        Args:
-            renderer: 'pyqtgraph' or 'matplotlib'
-        """
-        if renderer not in ('pyqtgraph', 'matplotlib'):
-            renderer = 'pyqtgraph'
-        self.settings.setValue("display/graph_renderer", renderer)
-        self.settings.sync()
-
 
 # Global settings instance
 _settings = None

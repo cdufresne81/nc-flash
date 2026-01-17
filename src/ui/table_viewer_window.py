@@ -16,19 +16,9 @@ from PySide6.QtCore import Qt, Signal, QTimer
 from PySide6.QtGui import QKeySequence, QShortcut
 
 from ..utils.constants import APP_NAME
-from ..utils.settings import get_settings
 from .table_viewer import TableViewer
+from .graph_viewer import GraphWidget
 from .scaling_edit_dialog import TableScalingDialog
-
-
-def _get_graph_widget_class():
-    """Get the GraphWidget class based on renderer setting"""
-    renderer = get_settings().get_graph_renderer()
-    if renderer == 'matplotlib':
-        from .graph_viewer import GraphWidget
-    else:
-        from .graph_viewer_pyqtgraph import GraphWidget
-    return GraphWidget
 from ..core.rom_definition import Table, RomDefinition
 from ..core.metadata_writer import update_scaling
 
@@ -140,7 +130,6 @@ class TableViewerWindow(QMainWindow):
         # Create graph widget only for 2D and 3D tables (initially hidden)
         from ..core.rom_definition import TableType
         if table.type != TableType.ONE_D:
-            GraphWidget = _get_graph_widget_class()
             self.graph_widget = GraphWidget()
             self.splitter.addWidget(self.graph_widget)
             self.graph_widget.hide()
