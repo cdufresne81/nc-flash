@@ -12,7 +12,7 @@ from PySide6.QtWidgets import (
     QMainWindow, QVBoxLayout, QHBoxLayout, QWidget, QApplication,
     QSplitter, QFrame, QMessageBox
 )
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import Qt, Signal, QTimer
 from PySide6.QtGui import QKeySequence, QShortcut
 
 from ..utils.constants import APP_NAME
@@ -151,8 +151,14 @@ class TableViewerWindow(QMainWindow):
         # Connect selection changed to update graph
         self.viewer.table_widget.itemSelectionChanged.connect(self._on_table_selection_changed)
 
-        # Connect data_updated signal to refresh graph (for undo/redo)
-        self.viewer.data_updated.connect(self._refresh_graph)
+        # Set up debounce timer for graph refresh (prevents multiple refreshes during undo/redo)
+        self._refresh_timer = QTimer()
+        self._refresh_timer.setSingleShot(True)
+        self._refresh_timer.setInterval(50)  # 50ms debounce
+        self._refresh_timer.timeout.connect(self._refresh_graph)
+
+        # Connect data_updated signal to debounced refresh (for undo/redo)
+        self.viewer.data_updated.connect(self._schedule_graph_refresh)
 
         # Set up undo/redo shortcuts for this window
         undo_shortcut = QShortcut(QKeySequence.Undo, self)
@@ -384,6 +390,10 @@ class TableViewerWindow(QMainWindow):
             self.graph_widget.set_data(
                 self.table, self.data, self.rom_definition, selected_cells
             )
+
+    def _schedule_graph_refresh(self):
+        """Schedule a debounced graph refresh (restarts timer on each call)"""
+        self._refresh_timer.start()
 
     def _on_axis_changed(self, table_name: str, axis_type: str, index: int,
                          old_value: float, new_value: float,
