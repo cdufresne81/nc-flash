@@ -38,8 +38,8 @@ if errorlevel 1 (
     exit /b 1
 )
 
-REM Check if dependencies are installed (check for PySide6)
-python -c "import PySide6" >nul 2>&1
+REM Check if dependencies are installed (check for PySide6 and pyqtgraph)
+python -c "import PySide6; import pyqtgraph" >nul 2>&1
 if errorlevel 1 (
     echo Installing dependencies...
     pip install -r requirements.txt

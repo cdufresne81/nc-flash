@@ -38,8 +38,8 @@ if [ $? -ne 0 ]; then
     exit 1
 fi
 
-# Check if dependencies are installed (check for PySide6)
-python3 -c "import PySide6" 2>/dev/null
+# Check if dependencies are installed (check for PySide6 and pyqtgraph)
+python3 -c "import PySide6; import pyqtgraph" 2>/dev/null
 if [ $? -ne 0 ]; then
     echo "Installing dependencies..."
     pip install -r requirements.txt
