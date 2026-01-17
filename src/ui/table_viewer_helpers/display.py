@@ -100,11 +100,10 @@ class TableDisplayHelper:
 
         self.ctx.editing_in_progress = True
         try:
-            self.ctx.table_widget.horizontalHeader().setVisible(True)
+            # Hide header for 1D tables - no need for "Value" label
+            self.ctx.table_widget.horizontalHeader().setVisible(False)
             self.ctx.table_widget.setRowCount(1)
             self.ctx.table_widget.setColumnCount(1)
-            self.ctx.table_widget.setHorizontalHeaderLabels(["Value"])
-            self.ctx.table_widget.setVerticalHeaderLabels([""])
 
             value_fmt = self.get_value_format()
             item = QTableWidgetItem(self.format_value(values[0], value_fmt))

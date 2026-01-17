@@ -232,29 +232,35 @@ class TableViewerWindow(QMainWindow):
         edit_scaling_action = edit_menu.addAction("Edit Scaling...")
         edit_scaling_action.triggered.connect(self._edit_scaling)
 
-        # View menu (Alt+V)
-        view_menu = menubar.addMenu("&View")
-
-        # Only show graph option for 2D and 3D tables
+        # View menu (Alt+V) - only for 2D/3D tables or diff mode
         from ..core.rom_definition import TableType
-        if self.table.type != TableType.ONE_D:
-            self.graph_action = view_menu.addAction("Show Graph")
-            self.graph_action.setShortcut("G")
-            self.graph_action.setCheckable(True)
-            self.graph_action.setChecked(False)
-            self.graph_action.triggered.connect(self._toggle_graph)
+        has_view_options = self.table.type != TableType.ONE_D or self._diff_mode
+
+        if has_view_options:
+            view_menu = menubar.addMenu("&View")
+
+            # Only show graph option for 2D and 3D tables
+            if self.table.type != TableType.ONE_D:
+                self.graph_action = view_menu.addAction("Show Graph")
+                self.graph_action.setShortcut("G")
+                self.graph_action.setCheckable(True)
+                self.graph_action.setChecked(False)
+                self.graph_action.triggered.connect(self._toggle_graph)
+            else:
+                self.graph_action = None
+
+            # Add diff toggle when in diff mode
+            if self._diff_mode:
+                if self.table.type != TableType.ONE_D:
+                    view_menu.addSeparator()
+
+                self.toggle_diff_action = view_menu.addAction("Show Change Highlights")
+                self.toggle_diff_action.setCheckable(True)
+                self.toggle_diff_action.setChecked(True)
+                self.toggle_diff_action.setShortcut("D")
+                self.toggle_diff_action.triggered.connect(self._on_toggle_diff_highlights)
         else:
             self.graph_action = None
-
-        # Add diff toggle when in diff mode
-        if self._diff_mode:
-            view_menu.addSeparator()
-
-            self.toggle_diff_action = view_menu.addAction("Show Change Highlights")
-            self.toggle_diff_action.setCheckable(True)
-            self.toggle_diff_action.setChecked(True)
-            self.toggle_diff_action.setShortcut("D")
-            self.toggle_diff_action.triggered.connect(self._on_toggle_diff_highlights)
 
     def _on_toggle_diff_highlights(self):
         """Toggle diff highlighting visibility"""
@@ -359,10 +365,22 @@ class TableViewerWindow(QMainWindow):
         self.cell_changed.emit(
             self.table, row, col, old_value, new_value, old_raw, new_raw
         )
+        # Refresh graph to show updated data
+        self._refresh_graph()
 
     def _on_bulk_changes(self, changes: list):
         """Forward bulk changes signal with table object"""
         self.bulk_changes.emit(self.table, changes)
+        # Refresh graph to show updated data
+        self._refresh_graph()
+
+    def _refresh_graph(self):
+        """Refresh graph display if visible"""
+        if self._graph_visible and self.graph_widget:
+            selected_cells = self._get_selected_data_cells()
+            self.graph_widget.set_data(
+                self.table, self.data, self.rom_definition, selected_cells
+            )
 
     def _on_axis_changed(self, table_name: str, axis_type: str, index: int,
                          old_value: float, new_value: float,
@@ -371,10 +389,14 @@ class TableViewerWindow(QMainWindow):
         self.axis_changed.emit(
             self.table, axis_type, index, old_value, new_value, old_raw, new_raw
         )
+        # Refresh graph to show updated axis
+        self._refresh_graph()
 
     def _on_axis_bulk_changes(self, changes: list):
         """Forward axis bulk changes signal with table object"""
         self.axis_bulk_changes.emit(self.table, changes)
+        # Refresh graph to show updated axis
+        self._refresh_graph()
 
     def _auto_size_window(self):
         """Auto-size window to fit table content - compact like ECUFlash"""
