@@ -2,9 +2,6 @@
 
 ## Next Tasks
 
-### Performance & UI
-- **Focus/highlight selected table** - When clicking a table viewer (e.g., "Load Scaling"), highlight and focus that table in the tree (gray background like manual selection)
-
 ### Housekeeping
 - Directory naming standardized to plural convention (see Recent Completed Work)
 
@@ -21,6 +18,7 @@
 - Use `python3` not `python` (WSL2 environment lacks symlink)
 
 ## Recent Completed Work (Jan 17, 2026)
+- Added focus/highlight selected table feature: clicking a table viewer window now highlights and scrolls to that table in the tree view
 - Standardized directory naming to plural convention: `colormap/` -> `colormaps/`, `metadata/` -> `definitions/` (kept `src/` as-is per Python convention)
 - Fixed logging handler MRO conflict in `log_console.py` (QObject.emit vs logging.Handler.emit)
 - Attempted PyQtGraph migration but reverted - OpenGL requires desktop environment, creating two implementations wasn't worth the maintenance burden
