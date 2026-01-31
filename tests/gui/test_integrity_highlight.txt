@@ -1,0 +1,16 @@
+load_rom examples/lf9veb.bin
+# Step 1: Open table 0xc92cc (DBW - Throttle Position > APP to TP Desired - 2nd Gear)
+open_table_by_category "APP to TP Desired - 2nd Gear" "DBW - Throttle Position"
+wait 300
+# Close it - this expands the category
+close_table
+wait 300
+# Step 2: Open table 0xf8618 (DBW - Throttle Position (Data Integrity) > APP to TP Desired - 2nd Gear)
+open_table_by_category "APP to TP Desired - 2nd Gear" "DBW - Throttle Position (Data Integrity)"
+wait 300
+# Modify a cell in table 0xf8618
+select 5 0
+set 99
+wait 500
+# Take screenshot - bug: 0xc92cc is highlighted pink instead of 0xf8618
+screenshot integrity_highlight_bug_163500 main

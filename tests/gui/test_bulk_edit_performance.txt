@@ -1,0 +1,16 @@
+# Test script for bulk edit performance issue
+# Opens table f929c, selects all cells with value 22, sets them to 44
+
+# Open the table
+open_table f929c
+
+# Wait for table to load
+wait 0.5
+
+# Take initial screenshot
+screenshot bulk_edit_before
+
+# Select all cells with value 22 and change to 44
+# This simulates the user's workflow
+
+# Close (for now, manual test will be needed)

@@ -1047,46 +1047,74 @@ class MainWindow(QMainWindow):
             self._update_project_ui()
 
     def _apply_cell_change(self, change):
-        """Apply a cell change to open table viewers and ROM data"""
-        # Find open table viewer window for this table (use address for unique match)
-        for window in self.open_table_windows:
-            if window.isVisible() and window.table.address == change.table_address:
-                # Update the viewer display
-                window.viewer.update_cell_value(
-                    change.row, change.col, change.new_value
-                )
+        """Apply a cell change to open table viewers and ROM data
 
-                # Also update ROM data in memory
-                document = self.get_current_document()
-                if document:
-                    try:
-                        document.rom_reader.write_cell_value(
-                            window.table, change.row, change.col, change.new_raw
-                        )
-                    except Exception as e:
-                        logger.error(f"Failed to write cell value during undo/redo: {e}")
+        Only applies to the currently focused/active table viewer window.
+        """
+        # Find the active table viewer window with matching table address
+        active_window = None
+        for window in self.open_table_windows:
+            if (window.isVisible() and
+                window.table.address == change.table_address and
+                window.isActiveWindow()):
+                active_window = window
                 break
+
+        # If no active window found, don't apply the change
+        # (user might have multiple windows open and undo/redo should only affect the focused one)
+        if not active_window:
+            logger.debug(f"Undo/redo skipped: no active window for table {change.table_address}")
+            return
+
+        # Update the viewer display
+        active_window.viewer.update_cell_value(
+            change.row, change.col, change.new_value
+        )
+
+        # Also update ROM data in memory
+        document = self.get_current_document()
+        if document:
+            try:
+                document.rom_reader.write_cell_value(
+                    active_window.table, change.row, change.col, change.new_raw
+                )
+            except Exception as e:
+                logger.error(f"Failed to write cell value during undo/redo: {e}")
 
     def _apply_axis_change(self, change):
-        """Apply an axis change to open table viewers and ROM data"""
-        # Find open table viewer window for this table (use address for unique match)
-        for window in self.open_table_windows:
-            if window.isVisible() and window.table.address == change.table_address:
-                # Update the viewer display
-                window.viewer.update_axis_cell_value(
-                    change.axis_type, change.index, change.new_value
-                )
+        """Apply an axis change to open table viewers and ROM data
 
-                # Also update ROM data in memory
-                document = self.get_current_document()
-                if document:
-                    try:
-                        document.rom_reader.write_axis_value(
-                            window.table, change.axis_type, change.index, change.new_raw
-                        )
-                    except Exception as e:
-                        logger.error(f"Failed to write axis value during undo/redo: {e}")
+        Only applies to the currently focused/active table viewer window.
+        """
+        # Find the active table viewer window with matching table address
+        active_window = None
+        for window in self.open_table_windows:
+            if (window.isVisible() and
+                window.table.address == change.table_address and
+                window.isActiveWindow()):
+                active_window = window
                 break
+
+        # If no active window found, don't apply the change
+        # (user might have multiple windows open and undo/redo should only affect the focused one)
+        if not active_window:
+            logger.debug(f"Undo/redo skipped: no active window for table {change.table_address}")
+            return
+
+        # Update the viewer display
+        active_window.viewer.update_axis_cell_value(
+            change.axis_type, change.index, change.new_value
+        )
+
+        # Also update ROM data in memory
+        document = self.get_current_document()
+        if document:
+            try:
+                document.rom_reader.write_axis_value(
+                    active_window.table, change.axis_type, change.index, change.new_raw
+                )
+            except Exception as e:
+                logger.error(f"Failed to write axis value during undo/redo: {e}")
 
     def _on_changes_updated(self):
         """Called when change tracker state changes"""

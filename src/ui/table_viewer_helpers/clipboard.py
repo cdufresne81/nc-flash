@@ -88,90 +88,98 @@ class TableClipboardHelper:
 
         # Paste values
         changes_made = []
-        for row_offset, row_values in enumerate(rows_data):
-            for col_offset, value_text in enumerate(row_values):
-                target_row = start_row + row_offset
-                target_col = start_col + col_offset
 
-                # Check bounds
-                if target_row >= self.ctx.table_widget.rowCount():
-                    continue
-                if target_col >= self.ctx.table_widget.columnCount():
-                    continue
+        # Disable widget updates during bulk paste to prevent repaints on every cell
+        self.ctx.table_widget.setUpdatesEnabled(False)
+        try:
+            for row_offset, row_values in enumerate(rows_data):
+                for col_offset, value_text in enumerate(row_values):
+                    target_row = start_row + row_offset
+                    target_col = start_col + col_offset
 
-                item = self.ctx.table_widget.item(target_row, target_col)
-                if not item:
-                    continue
+                    # Check bounds
+                    if target_row >= self.ctx.table_widget.rowCount():
+                        continue
+                    if target_col >= self.ctx.table_widget.columnCount():
+                        continue
 
-                # Check if this is a data cell (not axis)
-                data_indices = item.data(Qt.UserRole)
-                if data_indices is None:
-                    continue  # Skip axis cells
+                    item = self.ctx.table_widget.item(target_row, target_col)
+                    if not item:
+                        continue
 
-                # Try to parse value
-                try:
-                    new_value = float(value_text.strip())
-                except ValueError:
-                    continue  # Skip non-numeric values
+                    # Check if this is a data cell (not axis)
+                    data_indices = item.data(Qt.UserRole)
+                    if data_indices is None:
+                        continue  # Skip axis cells
 
-                data_row, data_col = data_indices
+                    # Try to parse value
+                    try:
+                        new_value = float(value_text.strip())
+                    except ValueError:
+                        continue  # Skip non-numeric values
 
-                # Get old value
-                values = self.ctx.current_data['values']
-                if values.ndim == 1:
-                    old_value = float(values[data_row])
-                else:
-                    old_value = float(values[data_row, data_col])
+                    data_row, data_col = data_indices
 
-                # Skip if no change
-                if abs(new_value - old_value) < 1e-10:
-                    continue
+                    # Get old value
+                    values = self.ctx.current_data['values']
+                    if values.ndim == 1:
+                        old_value = float(values[data_row])
+                    else:
+                        old_value = float(values[data_row, data_col])
 
-                # Validate against scaling if available
-                if self.ctx.rom_definition and self.ctx.current_table.scaling:
-                    scaling = self.ctx.rom_definition.get_scaling(self.ctx.current_table.scaling)
-                    if scaling:
-                        if scaling.min is not None and new_value < scaling.min:
-                            continue
-                        if scaling.max is not None and new_value > scaling.max:
-                            continue
+                    # Skip if no change
+                    if abs(new_value - old_value) < 1e-10:
+                        continue
 
-                # Convert to raw values
-                old_raw = self.edit.display_to_raw(old_value)
-                new_raw = self.edit.display_to_raw(new_value)
-                if old_raw is None or new_raw is None:
-                    continue
+                    # Validate against scaling if available
+                    if self.ctx.rom_definition and self.ctx.current_table.scaling:
+                        scaling = self.ctx.rom_definition.get_scaling(self.ctx.current_table.scaling)
+                        if scaling:
+                            if scaling.min is not None and new_value < scaling.min:
+                                continue
+                            if scaling.max is not None and new_value > scaling.max:
+                                continue
 
-                # Update the internal data
-                if values.ndim == 1:
-                    self.ctx.current_data['values'][data_row] = new_value
-                else:
-                    self.ctx.current_data['values'][data_row, data_col] = new_value
+                    # Convert to raw values
+                    old_raw = self.edit.display_to_raw(old_value)
+                    new_raw = self.edit.display_to_raw(new_value)
+                    if old_raw is None or new_raw is None:
+                        continue
 
-                # Update cell display
-                self.ctx.editing_in_progress = True
-                try:
-                    value_fmt = self.display.get_value_format()
-                    item.setText(self.display.format_value(new_value, value_fmt))
-                    color = self.display.get_cell_color(new_value, self.ctx.current_data['values'], data_row, data_col)
-                    item.setBackground(QBrush(color))
-                finally:
-                    self.ctx.editing_in_progress = False
+                    # Update the internal data
+                    if values.ndim == 1:
+                        self.ctx.current_data['values'][data_row] = new_value
+                    else:
+                        self.ctx.current_data['values'][data_row, data_col] = new_value
 
-                # Record change for signaling
-                changes_made.append((data_row, data_col, old_value, new_value, old_raw, new_raw))
+                    # Update cell display
+                    self.ctx.editing_in_progress = True
+                    try:
+                        value_fmt = self.display.get_value_format()
+                        item.setText(self.display.format_value(new_value, value_fmt))
+                        color = self.display.get_cell_color(new_value, self.ctx.current_data['values'], data_row, data_col)
+                        item.setBackground(QBrush(color))
+                    finally:
+                        self.ctx.editing_in_progress = False
 
-        # Emit signals for all changes (use address as unique identifier)
-        for data_row, data_col, old_value, new_value, old_raw, new_raw in changes_made:
-            self.ctx.viewer.cell_changed.emit(
-                self.ctx.current_table.address,
-                data_row, data_col,
-                old_value, new_value,
-                old_raw, new_raw
-            )
+                        # Record change for signaling
+                        changes_made.append((data_row, data_col, old_value, new_value, old_raw, new_raw))
 
-        if changes_made:
-            logger.debug(f"Pasted {len(changes_made)} cell(s)")
+            # Emit signals for all changes (use address as unique identifier)
+            for data_row, data_col, old_value, new_value, old_raw, new_raw in changes_made:
+                self.ctx.viewer.cell_changed.emit(
+                    self.ctx.current_table.address,
+                    data_row, data_col,
+                    old_value, new_value,
+                    old_raw, new_raw
+                )
+
+            if changes_made:
+                logger.debug(f"Pasted {len(changes_made)} cell(s)")
+        finally:
+            # Re-enable updates and trigger a single repaint
+            self.ctx.table_widget.setUpdatesEnabled(True)
+            self.ctx.table_widget.viewport().update()
 
     def copy_table_to_clipboard(self):
         """Copy entire table to clipboard as tab-separated values (for Excel)"""
