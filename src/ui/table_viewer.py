@@ -85,7 +85,7 @@ class TableViewer(QWidget):
     """Widget for viewing and editing table data with gradient coloring"""
 
     # Signal emitted when a cell value changes
-    # Args: table_name, row, col, old_value, new_value, old_raw, new_raw
+    # Args: table_address, row, col, old_value, new_value, old_raw, new_raw
     cell_changed = Signal(str, int, int, float, float, float, float)
 
     # Signal emitted when bulk operation completes (for single undo)
@@ -93,7 +93,7 @@ class TableViewer(QWidget):
     bulk_changes = Signal(list)
 
     # Signal emitted when an axis cell value changes
-    # Args: table_name, axis_type ('x_axis' or 'y_axis'), index, old_value, new_value, old_raw, new_raw
+    # Args: table_address, axis_type ('x_axis' or 'y_axis'), index, old_value, new_value, old_raw, new_raw
     axis_changed = Signal(str, str, int, float, float, float, float)
 
     # Signal emitted when axis bulk operation completes (for single undo)
@@ -518,53 +518,53 @@ class TableViewer(QWidget):
         if isinstance(data_indices[0], str):
             # Axis cells: ('x_axis', index) or ('y_axis', index)
             axis_type, data_idx = data_indices
-            axis_key = f"{self.current_table.name}:{axis_type}"
+            axis_key = f"{self.current_table.address}:{axis_type}"
             return axis_key in self._modified_cells and data_idx in self._modified_cells[axis_key]
 
         # Data cell: (data_row, data_col)
         data_row, data_col = data_indices
-        table_name = self.current_table.name
+        table_address = self.current_table.address
 
         # Check if this cell is in the modified set
-        if table_name in self._modified_cells:
-            return (data_row, data_col) in self._modified_cells[table_name]
+        if table_address in self._modified_cells:
+            return (data_row, data_col) in self._modified_cells[table_address]
 
         return False
 
-    def mark_cell_modified(self, table_name: str, data_row: int, data_col: int):
+    def mark_cell_modified(self, table_address: str, data_row: int, data_col: int):
         """
         Mark a cell as modified
 
         Args:
-            table_name: Name of the table
+            table_address: Address of the table (unique identifier)
             data_row: Data row index
             data_col: Data column index
         """
-        if table_name not in self._modified_cells:
-            self._modified_cells[table_name] = set()
+        if table_address not in self._modified_cells:
+            self._modified_cells[table_address] = set()
 
-        self._modified_cells[table_name].add((data_row, data_col))
+        self._modified_cells[table_address].add((data_row, data_col))
 
-    def mark_axis_cell_modified(self, table_name: str, axis_type: str, data_idx: int):
+    def mark_axis_cell_modified(self, table_address: str, axis_type: str, data_idx: int):
         """
         Mark an axis cell as modified
 
         Args:
-            table_name: Name of the table
+            table_address: Address of the table (unique identifier)
             axis_type: 'x_axis' or 'y_axis'
             data_idx: Index in the axis array
         """
-        axis_key = f"{table_name}:{axis_type}"
+        axis_key = f"{table_address}:{axis_type}"
         if axis_key not in self._modified_cells:
             self._modified_cells[axis_key] = set()
 
         self._modified_cells[axis_key].add(data_idx)
 
-    def _on_cell_changed_track_modifications(self, table_name: str, data_row: int, data_col: int,
+    def _on_cell_changed_track_modifications(self, table_address: str, data_row: int, data_col: int,
                                              old_value: float, new_value: float,
                                              old_raw: float, new_raw: float):
         """Track cell modifications from cell_changed signal"""
-        self.mark_cell_modified(table_name, data_row, data_col)
+        self.mark_cell_modified(table_address, data_row, data_col)
         # Force repaint to show border
         self.table_widget.viewport().update()
 
@@ -578,16 +578,16 @@ class TableViewer(QWidget):
             # Most operations emit: (row, col, old_value, new_value, old_raw, new_raw)
             if len(change) >= 2:
                 data_row, data_col = change[0], change[1]
-                self.mark_cell_modified(self.current_table.name, data_row, data_col)
+                self.mark_cell_modified(self.current_table.address, data_row, data_col)
 
         # Force repaint to show borders
         self.table_widget.viewport().update()
 
-    def _on_axis_changed_track_modifications(self, table_name: str, axis_type: str, data_idx: int,
+    def _on_axis_changed_track_modifications(self, table_address: str, axis_type: str, data_idx: int,
                                              old_value: float, new_value: float,
                                              old_raw: float, new_raw: float):
         """Track axis cell modifications from axis_changed signal"""
-        self.mark_axis_cell_modified(table_name, axis_type, data_idx)
+        self.mark_axis_cell_modified(table_address, axis_type, data_idx)
         # Force repaint to show border
         self.table_widget.viewport().update()
 
@@ -600,25 +600,25 @@ class TableViewer(QWidget):
             # Axis bulk changes: (axis_type, index, old_value, new_value, old_raw, new_raw)
             if len(change) >= 2:
                 axis_type, data_idx = change[0], change[1]
-                self.mark_axis_cell_modified(self.current_table.name, axis_type, data_idx)
+                self.mark_axis_cell_modified(self.current_table.address, axis_type, data_idx)
 
         # Force repaint to show borders
         self.table_widget.viewport().update()
 
-    def _check_and_remove_border_if_original(self, table_name: str, data_row: int, data_col: int, current_value: float):
+    def _check_and_remove_border_if_original(self, table_address: str, data_row: int, data_col: int, current_value: float):
         """
         Sync border with original value: remove if matches, add if differs
 
         Args:
-            table_name: Name of the table
+            table_address: Address of the table (unique identifier)
             data_row: Data row index
             data_col: Data column index
             current_value: Current cell value
         """
-        if table_name not in self._original_values:
+        if table_address not in self._original_values:
             return
 
-        original_data = self._original_values[table_name]
+        original_data = self._original_values[table_address]
         original_values = original_data.get("values")
         if original_values is None:
             return
@@ -641,29 +641,29 @@ class TableViewer(QWidget):
 
         if is_modified:
             # Value differs from original - ensure border is present
-            self.mark_cell_modified(table_name, data_row, data_col)
+            self.mark_cell_modified(table_address, data_row, data_col)
         else:
             # Value matches original - ensure border is removed
-            if table_name in self._modified_cells:
-                self._modified_cells[table_name].discard((data_row, data_col))
+            if table_address in self._modified_cells:
+                self._modified_cells[table_address].discard((data_row, data_col))
 
         # Force repaint to update border
         self.table_widget.viewport().update()
 
-    def _check_and_remove_axis_border_if_original(self, table_name: str, axis_type: str, data_idx: int, current_value: float):
+    def _check_and_remove_axis_border_if_original(self, table_address: str, axis_type: str, data_idx: int, current_value: float):
         """
         Sync axis border with original value: remove if matches, add if differs
 
         Args:
-            table_name: Name of the table
+            table_address: Address of the table (unique identifier)
             axis_type: 'x_axis' or 'y_axis'
             data_idx: Index in the axis array
             current_value: Current axis cell value
         """
-        if table_name not in self._original_values:
+        if table_address not in self._original_values:
             return
 
-        original_data = self._original_values[table_name]
+        original_data = self._original_values[table_address]
         original_axis = original_data.get(axis_type)
         if original_axis is None or data_idx >= len(original_axis):
             return
@@ -675,10 +675,10 @@ class TableViewer(QWidget):
 
         if is_modified:
             # Value differs from original - ensure border is present
-            self.mark_axis_cell_modified(table_name, axis_type, data_idx)
+            self.mark_axis_cell_modified(table_address, axis_type, data_idx)
         else:
             # Value matches original - ensure border is removed
-            axis_key = f"{table_name}:{axis_type}"
+            axis_key = f"{table_address}:{axis_type}"
             if axis_key in self._modified_cells:
                 self._modified_cells[axis_key].discard(data_idx)
 

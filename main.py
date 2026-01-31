@@ -621,12 +621,13 @@ class MainWindow(QMainWindow):
 
             if data:
                 # Store original table values if this is the first time loading this table
+                # Use table.address as the key since table names are not unique
                 if rom_path not in self.original_table_values:
                     self.original_table_values[rom_path] = {}
-                if table.name not in self.original_table_values[rom_path]:
+                if table.address not in self.original_table_values[rom_path]:
                     import numpy as np
                     # Deep copy the original values
-                    self.original_table_values[rom_path][table.name] = {
+                    self.original_table_values[rom_path][table.address] = {
                         "values": np.copy(data["values"]),
                         "x_axis": np.copy(data["x_axis"]) if data.get("x_axis") is not None else None,
                         "y_axis": np.copy(data["y_axis"]) if data.get("y_axis") is not None else None,
@@ -669,7 +670,7 @@ class MainWindow(QMainWindow):
                 self.open_table_windows.append(viewer_window)
 
                 # Log to console
-                logger.info(f"Opened table: {table.name}")
+                logger.info(f"Opened table: {table.name} ({table.address})")
                 logger.debug(f"  Category: {table.category}")
                 logger.debug(f"  Type: {table.type.value}")
                 logger.debug(f"  Address: {table.address}")
@@ -1119,14 +1120,14 @@ class MainWindow(QMainWindow):
 
     def _update_modified_table_colors(self):
         """Update table browser to show modified tables in pink"""
-        # Get list of modified tables from change tracker
-        modified_tables = self.change_tracker.get_modified_tables()
+        # Get list of modified table addresses from change tracker
+        modified_addresses = self.change_tracker.get_modified_table_addresses()
 
         # Update all open ROM documents' table browsers
         for i in range(self.tab_widget.count()):
             document = self.tab_widget.widget(i)
             if hasattr(document, 'table_browser'):
-                document.table_browser.update_modified_tables(modified_tables)
+                document.table_browser.update_modified_tables_by_address(modified_addresses)
 
     def _on_table_cell_changed(self, table, row: int, col: int,
                                old_value: float, new_value: float,

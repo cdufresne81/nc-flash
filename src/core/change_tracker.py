@@ -111,13 +111,13 @@ class ChangeTracker:
             new_raw=new_raw
         )
 
-        # Add to pending changes
-        if table.name not in self._pending:
-            self._pending[table.name] = PendingChanges(
+        # Add to pending changes (keyed by address to handle tables with same name)
+        if table.address not in self._pending:
+            self._pending[table.address] = PendingChanges(
                 table_name=table.name,
                 table_address=table.address
             )
-        self._pending[table.name].add_change(change)
+        self._pending[table.address].add_change(change)
 
         # Add to undo stack
         self._undo_stack.append(UndoableChange(cell_change=change))
@@ -156,13 +156,13 @@ class ChangeTracker:
             )
             cell_changes.append(change)
 
-            # Add to pending changes
-            if table.name not in self._pending:
-                self._pending[table.name] = PendingChanges(
+            # Add to pending changes (keyed by address to handle tables with same name)
+            if table.address not in self._pending:
+                self._pending[table.address] = PendingChanges(
                     table_name=table.name,
                     table_address=table.address
                 )
-            self._pending[table.name].add_change(change)
+            self._pending[table.address].add_change(change)
 
         # Add as single bulk change to undo stack
         bulk_change = BulkChange(
@@ -441,8 +441,8 @@ class ChangeTracker:
                 )
                 reversed_changes.append(reverse)
 
-                # Re-apply to pending
-                if change.table_name in self._pending:
+                # Re-apply to pending (keyed by address)
+                if change.table_address in self._pending:
                     reapply = CellChange(
                         table_name=change.table_name,
                         table_address=change.table_address,
@@ -453,7 +453,7 @@ class ChangeTracker:
                         old_raw=change.old_raw,
                         new_raw=change.new_raw
                     )
-                    self._pending[change.table_name].add_change(reapply)
+                    self._pending[change.table_address].add_change(reapply)
 
             # Push reversed bulk back to undo stack
             reverse_bulk = BulkChange(
@@ -510,8 +510,8 @@ class ChangeTracker:
             # Push back to undo stack
             self._undo_stack.append(UndoableChange(cell_change=reverse))
 
-            # Update pending changes
-            if change.table_name in self._pending:
+            # Update pending changes (keyed by address)
+            if change.table_address in self._pending:
                 # Re-apply the change
                 reapply = CellChange(
                     table_name=change.table_name,
@@ -523,7 +523,7 @@ class ChangeTracker:
                     old_raw=change.old_raw,
                     new_raw=change.new_raw
                 )
-                self._pending[change.table_name].add_change(reapply)
+                self._pending[change.table_address].add_change(reapply)
 
             self._notify_change()
             logger.debug(f"Redo: {change.table_name}[{change.row},{change.col}]")
@@ -532,10 +532,10 @@ class ChangeTracker:
 
     def _update_pending_for_undo(self, change: CellChange):
         """Update pending changes when undoing"""
-        if change.table_name not in self._pending:
+        if change.table_address not in self._pending:
             return
 
-        pending = self._pending[change.table_name]
+        pending = self._pending[change.table_address]
         key = (change.row, change.col)
 
         if key in pending.changes:
@@ -566,8 +566,12 @@ class ChangeTracker:
         return [p.to_table_changes() for p in self._pending.values() if p.has_changes()]
 
     def get_modified_tables(self) -> List[str]:
-        """Get list of tables with pending changes"""
-        return [name for name, p in self._pending.items() if p.has_changes()]
+        """Get list of table names with pending changes (deprecated - use get_modified_table_addresses)"""
+        return [p.table_name for p in self._pending.values() if p.has_changes()]
+
+    def get_modified_table_addresses(self) -> List[str]:
+        """Get list of table addresses with pending changes"""
+        return [p.table_address for p in self._pending.values() if p.has_changes()]
 
     def get_pending_change_count(self) -> int:
         """Get total number of pending cell changes"""

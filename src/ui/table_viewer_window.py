@@ -96,9 +96,9 @@ class TableViewerWindow(QMainWindow):
         )
 
         # Set window properties
-        title = f"{table.name} - {APP_NAME}"
+        title = f"{table.name} ({table.address}) - {APP_NAME}"
         if diff_mode:
-            title = f"{table.name} (Changes) - {APP_NAME}"
+            title = f"{table.name} ({table.address}) (Changes) - {APP_NAME}"
         self.setWindowTitle(title)
 
         # Create central widget with minimal margins

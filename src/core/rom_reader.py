@@ -308,7 +308,7 @@ class RomReader:
                     order = 'F' if table.swapxy else 'C'
                     result['values'] = display_values.reshape((y_len, x_len), order=order)
 
-        logger.info(f"Successfully read table: {table.name} ({table.type.value})")
+        logger.info(f"Successfully read table: {table.name} ({table.address}) ({table.type.value})")
         return result
 
     def write_table_data(self, table: Table, values: np.ndarray) -> None:

@@ -161,10 +161,10 @@ class TableClipboardHelper:
                 # Record change for signaling
                 changes_made.append((data_row, data_col, old_value, new_value, old_raw, new_raw))
 
-        # Emit signals for all changes
+        # Emit signals for all changes (use address as unique identifier)
         for data_row, data_col, old_value, new_value, old_raw, new_raw in changes_made:
             self.ctx.viewer.cell_changed.emit(
-                self.ctx.current_table.name,
+                self.ctx.current_table.address,
                 data_row, data_col,
                 old_value, new_value,
                 old_raw, new_raw

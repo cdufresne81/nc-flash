@@ -100,9 +100,9 @@ class TableEditHelper:
         finally:
             self.ctx.editing_in_progress = False
 
-        # Emit the change signal
+        # Emit the change signal (use address as unique identifier)
         self.ctx.viewer.cell_changed.emit(
-            self.ctx.current_table.name,
+            self.ctx.current_table.address,
             data_row, data_col,
             old_value, new_value,
             old_raw, new_raw
@@ -181,7 +181,7 @@ class TableEditHelper:
 
         # Check if value matches original and remove border if so (smart border removal on undo)
         self.ctx.viewer._check_and_remove_border_if_original(
-            self.ctx.current_table.name, data_row, data_col, new_value
+            self.ctx.current_table.address, data_row, data_col, new_value
         )
 
     def data_to_ui_coords(self, data_row: int, data_col: int) -> Tuple[Optional[int], Optional[int]]:
@@ -265,9 +265,9 @@ class TableEditHelper:
         finally:
             self.ctx.editing_in_progress = False
 
-        # Emit the axis change signal
+        # Emit the axis change signal (use address as unique identifier)
         self.ctx.viewer.axis_changed.emit(
-            self.ctx.current_table.name,
+            self.ctx.current_table.address,
             axis_type_str,
             data_idx,
             old_value, new_value,
@@ -350,7 +350,7 @@ class TableEditHelper:
 
         # Check if value matches original and remove border if so (smart border removal on undo)
         self.ctx.viewer._check_and_remove_axis_border_if_original(
-            self.ctx.current_table.name, axis_type, data_idx, new_value
+            self.ctx.current_table.address, axis_type, data_idx, new_value
         )
 
     def _axis_data_to_ui_coords(self, axis_type: str, data_idx: int) -> Tuple[Optional[int], Optional[int]]:

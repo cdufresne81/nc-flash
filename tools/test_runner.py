@@ -224,6 +224,101 @@ class TestRunner:
             self._log(f"ERROR: {e}")
             return False
 
+    def open_table_by_category(self, table_name: str, category: str) -> bool:
+        """
+        Open a table by name and category
+
+        Args:
+            table_name: Name of the table to open
+            category: Category the table belongs to
+
+        Returns:
+            True if successful
+        """
+        if self.rom_definition is None or self.rom_reader is None:
+            self._log("ERROR: No ROM loaded")
+            return False
+
+        # Find the table matching both name and category
+        table = None
+        for t in self.rom_definition.tables:
+            if t.name == table_name and t.category == category:
+                table = t
+                break
+
+        if table is None:
+            self._log(f"ERROR: Table not found: {table_name} in category {category}")
+            # Show tables with same name
+            same_name = [(t.name, t.category) for t in self.rom_definition.tables
+                        if t.name == table_name]
+            if same_name:
+                self._log(f"  Tables with same name: {same_name}")
+            return False
+
+        try:
+            self._log(f"Opening table: {table_name} (category: {category}, address: {table.address})")
+
+            # Trigger table selection
+            self.main_window.on_table_selected(table, self.rom_reader)
+            self._process_events()
+
+            # Find the opened table window - match by address since name may not be unique
+            for window in self.main_window.open_table_windows:
+                if window.table.address == table.address:
+                    self.current_table_window = window
+                    break
+
+            if self.current_table_window:
+                self._log(f"Table opened: {table_name}")
+                return True
+            else:
+                self._log("ERROR: Failed to open table window")
+                return False
+
+        except Exception as e:
+            self._log(f"ERROR: {e}")
+            return False
+
+    def expand_category(self, category: str) -> bool:
+        """
+        Expand a category in the table browser tree
+
+        Args:
+            category: Name of the category to expand
+
+        Returns:
+            True if successful
+        """
+        if self.main_window is None:
+            self._log("ERROR: Application not started")
+            return False
+
+        try:
+            # Get current document's table browser
+            document = self.main_window.get_current_document()
+            if not document or not hasattr(document, 'table_browser'):
+                self._log("ERROR: No document with table browser")
+                return False
+
+            tree = document.table_browser.tree
+            root = tree.invisibleRootItem()
+
+            # Find and expand the category
+            for i in range(root.childCount()):
+                item = root.child(i)
+                if item.text(0) == category:
+                    tree.expandItem(item)
+                    self._process_events()
+                    self._log(f"Expanded category: {category}")
+                    return True
+
+            self._log(f"ERROR: Category not found: {category}")
+            return False
+
+        except Exception as e:
+            self._log(f"ERROR: {e}")
+            return False
+
     def select_cells(self, start_row: int, start_col: int,
                      end_row: int = None, end_col: int = None) -> bool:
         """
@@ -727,9 +822,12 @@ class TestRunner:
         Returns:
             Path to saved screenshot, or empty string on failure
         """
+        # Always append timestamp to ensure unique filenames
+        timestamp = datetime.now().strftime("%H%M%S")
         if name is None:
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             name = f"screenshot_{timestamp}"
+        else:
+            name = f"{name}_{timestamp}"
 
         try:
             self._process_events()
@@ -956,6 +1054,12 @@ class TestRunner:
 
             elif cmd == "open_table" and len(args) >= 1:
                 return self.open_table(args[0])
+
+            elif cmd == "open_table_by_category" and len(args) >= 2:
+                return self.open_table_by_category(args[0], args[1])
+
+            elif cmd == "expand_category" and len(args) >= 1:
+                return self.expand_category(args[0])
 
             elif cmd == "select" and len(args) >= 2:
                 start_row = int(args[0])
