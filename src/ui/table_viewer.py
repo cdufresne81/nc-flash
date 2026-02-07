@@ -27,7 +27,7 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QColor, QKeySequence, QShortcut
 
-from ..core.rom_definition import Table, RomDefinition
+from ..core.rom_definition import Table, TableType, RomDefinition
 from ..utils.settings import get_settings
 from .table_viewer_helpers import (
     TableViewerContext,
@@ -348,6 +348,14 @@ class TableViewer(QWidget):
             data: Dictionary with 'values', 'x_axis', 'y_axis' from RomReader
         """
         self._display.display_table(table, data)
+
+        # Select the first data cell so the table is ready for keyboard navigation
+        if table.type == TableType.THREE_D:
+            self.table_widget.setCurrentCell(1, 1)
+        elif table.type == TableType.TWO_D:
+            self.table_widget.setCurrentCell(0, 1)
+        else:
+            self.table_widget.setCurrentCell(0, 0)
 
         # Apply diff tooltips if in diff mode
         if self._diff_mode and self._diff_base_data is not None:

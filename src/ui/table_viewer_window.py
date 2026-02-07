@@ -368,12 +368,6 @@ class TableViewerWindow(QMainWindow):
                 self.table, self.data, self.rom_definition, selected_cells
             )
 
-            # Qt may still have pending layout events after processEvents(),
-            # so the canvas.draw() above may render at a not-yet-final size.
-            # Schedule one more redraw after the event loop settles to prevent
-            # a visible reframing snap on first user interaction.
-            QTimer.singleShot(0, self.graph_widget.canvas.draw)
-
             # Set focus on graph so arrow keys work immediately
             self.graph_widget.setFocus()
 

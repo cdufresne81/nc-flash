@@ -7,7 +7,7 @@ Provides both a standalone window (GraphViewer) and embeddable widget (GraphWidg
 
 import numpy as np
 from PySide6.QtWidgets import QMainWindow, QVBoxLayout, QWidget, QSizePolicy
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QTimer
 
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
@@ -137,6 +137,10 @@ class GraphWidget(QWidget):
             self._plot_1d()
 
         self.canvas.draw()
+        # Qt may still have pending layout/resize events that change the canvas
+        # size after this draw. Schedule one more redraw after the event loop
+        # settles to prevent a visible reframing snap on next user interaction.
+        QTimer.singleShot(0, self.canvas.draw)
 
     def _plot_3d(self):
         """Plot 3D table as surface with uniform cell sizes"""
