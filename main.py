@@ -581,8 +581,14 @@ class MainWindow(QMainWindow):
                 f"({len(rom_definition.tables)} tables)"
             )
 
-        except (DetectionError, RomFileError, DefinitionError, Exception) as e:
+        except (DetectionError, RomFileError, DefinitionError) as e:
             handle_rom_operation_error(self, "open ROM file", e)
+        except Exception as e:
+            logger.error(f"Unexpected error opening ROM file: {type(e).__name__}: {e}", exc_info=True)
+            QMessageBox.critical(
+                self, "Error",
+                f"Unexpected error opening ROM file:\n{type(e).__name__}: {e}"
+            )
 
     def save_rom(self):
         """Save the current ROM file"""
@@ -610,8 +616,14 @@ class MainWindow(QMainWindow):
                 "Success",
                 f"ROM saved successfully to:\n{document.rom_path}"
             )
-        except (RomFileError, Exception) as e:
+        except RomFileError as e:
             handle_rom_operation_error(self, "save ROM file", e)
+        except Exception as e:
+            logger.error(f"Unexpected error saving ROM file: {type(e).__name__}: {e}", exc_info=True)
+            QMessageBox.critical(
+                self, "Error",
+                f"Unexpected error saving ROM file:\n{type(e).__name__}: {e}"
+            )
 
     def save_rom_as(self):
         """Save the ROM to a new file"""
@@ -651,8 +663,14 @@ class MainWindow(QMainWindow):
                     "Success",
                     f"ROM saved successfully to:\n{file_path}"
                 )
-            except (RomFileError, Exception) as e:
+            except RomFileError as e:
                 handle_rom_operation_error(self, "save ROM file", e)
+            except Exception as e:
+                logger.error(f"Unexpected error saving ROM file: {type(e).__name__}: {e}", exc_info=True)
+                QMessageBox.critical(
+                    self, "Error",
+                    f"Unexpected error saving ROM file:\n{type(e).__name__}: {e}"
+                )
 
     def on_table_selected(self, table, rom_reader):
         """Handle table selection from browser - opens table in new window"""
@@ -741,8 +759,14 @@ class MainWindow(QMainWindow):
                     f"Failed to read table data for: {table.name}"
                 )
 
-        except (ScalingNotFoundError, RomReadError, Exception) as e:
+        except (ScalingNotFoundError, RomReadError) as e:
             handle_rom_operation_error(self, "load table", e)
+        except Exception as e:
+            logger.error(f"Unexpected error loading table: {type(e).__name__}: {e}", exc_info=True)
+            QMessageBox.critical(
+                self, "Error",
+                f"Unexpected error loading table:\n{type(e).__name__}: {e}"
+            )
 
     def log_startup_message(self):
         """Log application startup message to console"""

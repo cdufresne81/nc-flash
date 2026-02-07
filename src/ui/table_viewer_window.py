@@ -336,9 +336,6 @@ class TableViewerWindow(QMainWindow):
             self.graph_widget.hide()
             self.graph_action.setChecked(False)
 
-            # Process events to ensure hide is complete
-            QApplication.processEvents()
-
             # Resize window back to table-only size
             if self._table_only_size:
                 self.resize(self._table_only_size)
@@ -372,18 +369,28 @@ class TableViewerWindow(QMainWindow):
             # Set splitter proportions - table keeps its size, graph gets the rest
             self.splitter.setSizes([table_width, graph_width])
 
-            # Process events to ensure layout is complete before drawing
-            # This prevents matplotlib's constrained_layout from failing with zero width
-            QApplication.processEvents()
+            # Defer graph initialization to the next event-loop iteration so
+            # the splitter/resize layout is fully resolved before matplotlib's
+            # constrained_layout measures widget dimensions.  Using
+            # QTimer.singleShot(0, ...) is the safe alternative to the
+            # re-entrant QApplication.processEvents() anti-pattern.
+            QTimer.singleShot(0, self._init_graph_after_layout)
 
-            # Initialize graph with current data and selection AFTER resize is complete
-            selected_cells = self._get_selected_data_cells()
-            self.graph_widget.set_data(
-                self.table, self.data, self.rom_definition, selected_cells
-            )
+    def _init_graph_after_layout(self):
+        """Initialize graph after layout has settled (deferred from _toggle_graph).
 
-            # Set focus on graph so arrow keys work immediately
-            self.graph_widget.setFocus()
+        Called via QTimer.singleShot(0, ...) so that the splitter resize is
+        fully processed before matplotlib's constrained_layout measures the
+        canvas dimensions.
+        """
+        if not self._graph_visible or not self.graph_widget:
+            return
+        selected_cells = self._get_selected_data_cells()
+        self.graph_widget.set_data(
+            self.table, self.data, self.rom_definition, selected_cells
+        )
+        # Set focus on graph so arrow keys work immediately
+        self.graph_widget.setFocus()
 
     def _on_cell_changed(self, table_name: str, row: int, col: int,
                          old_value: float, new_value: float,
