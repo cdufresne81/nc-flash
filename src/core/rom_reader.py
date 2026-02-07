@@ -142,7 +142,7 @@ class RomReader:
         """
         try:
             with open(self.rom_path, 'rb') as f:
-                self.rom_data = f.read()
+                self.rom_data = bytearray(f.read())
             logger.info(f"Loaded {len(self.rom_data)} bytes from ROM file")
         except IOError as e:
             logger.error(f"Failed to read ROM file {self.rom_path}: {e}")
@@ -367,12 +367,8 @@ class RomReader:
                     f"(ROM size: {len(self.rom_data)} bytes)"
                 )
 
-            # Modify ROM data in memory
-            self.rom_data = (
-                self.rom_data[:address] +
-                packed_data +
-                self.rom_data[address + len(packed_data):]
-            )
+            # Modify ROM data in memory (in-place)
+            self.rom_data[address:address + len(packed_data)] = packed_data
             logger.info(f"Successfully wrote table data: {table.name}")
         except RomWriteError:
             # Re-raise our own exceptions
@@ -440,12 +436,8 @@ class RomReader:
             if address + len(packed_data) > len(self.rom_data):
                 raise RomWriteError(f"Write exceeds ROM bounds at {hex(address)}")
 
-            # Modify ROM data in memory
-            self.rom_data = (
-                self.rom_data[:address] +
-                packed_data +
-                self.rom_data[address + len(packed_data):]
-            )
+            # Modify ROM data in memory (in-place)
+            self.rom_data[address:address + len(packed_data)] = packed_data
             logger.debug(f"Wrote cell [{row},{col}] = {raw_value} at {hex(address)}")
 
         except RomWriteError:
@@ -506,12 +498,8 @@ class RomReader:
             if address + len(packed_data) > len(self.rom_data):
                 raise RomWriteError(f"Write exceeds ROM bounds at {hex(address)}")
 
-            # Modify ROM data in memory
-            self.rom_data = (
-                self.rom_data[:address] +
-                packed_data +
-                self.rom_data[address + len(packed_data):]
-            )
+            # Modify ROM data in memory (in-place)
+            self.rom_data[address:address + len(packed_data)] = packed_data
             logger.debug(f"Wrote axis [{axis_type}][{index}] = {raw_value} at {hex(address)}")
 
         except RomWriteError:

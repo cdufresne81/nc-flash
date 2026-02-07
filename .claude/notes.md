@@ -14,6 +14,28 @@
 ## Environment Notes
 - Use `python3` not `python` (WSL2 environment lacks symlink)
 
+## Recent Completed Work (Feb 7, 2026)
+- Fixed undo/redo performance: ROM data writes were O(N*ROM_size) per operation due to immutable `bytes` concatenation. Changed `rom_data` to `bytearray` for O(1) in-place writes.
+- Fixed CTRL+Z not working in newly opened table viewer: `set_active_stack()` failed to create the undo stack on first window focus, so the stack was never activated until the window was closed and reopened.
+
+## Recent Completed Work (Feb 1, 2026)
+- Fixed undo/redo performance for bulk operations (matching increment/decrement speed)
+  - Root cause: Bulk undo/redo called per-cell updates without batching optimizations
+  - Added `begin_bulk_update()` / `end_bulk_update()` methods to TableViewer and TableDisplayHelper
+  - These methods disable widget updates, block signals, disable ResizeToContents headers, and cache min/max for color calculations
+  - Updated `BulkCellEditCommand` and `BulkAxisEditCommand` to call bulk callbacks before/after applying changes
+  - Files modified: `display.py`, `table_viewer.py`, `table_undo_manager.py`, `undo_commands.py`, `main.py`
+- Implemented per-table undo/redo using Qt's QUndoGroup pattern
+  - Each table now has its own undo stack (undo in Table A only affects Table A)
+  - Created `src/core/undo_commands.py` - QUndoCommand subclasses (CellEditCommand, BulkCellEditCommand, AxisEditCommand, BulkAxisEditCommand)
+  - Created `src/core/table_undo_manager.py` - Manages QUndoGroup and per-table QUndoStacks
+  - Refactored `src/core/change_tracker.py` - Now only handles pending changes for commit tracking
+  - Updated `main.py` - Integrated TableUndoManager, QUndoGroup-based menu actions
+  - Updated `table_viewer_window.py` - Shortcuts route to main window's undo group
+  - Added `focus_table` command to test_runner.py for switching between open tables
+  - Added `tests/test_table_undo_manager.py` - 11 unit tests for per-table undo
+  - Added `tests/gui/test_per_table_undo.txt` - GUI test script
+
 ## Recent Completed Work (Jan 31, 2026)
 - Fixed major performance issue with bulk cell editing - operations that changed hundreds of cells were slow due to widget repainting on every cell update
   - Wrapped all bulk operations with `setUpdatesEnabled(False)` before processing and `setUpdatesEnabled(True)` with single `viewport().update()` after
