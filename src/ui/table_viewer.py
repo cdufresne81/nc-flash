@@ -23,6 +23,7 @@ from PySide6.QtWidgets import (
     QTableWidget,
     QHeaderView,
     QSizePolicy,
+    QFrame,
 )
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QColor, QKeySequence, QShortcut
@@ -236,6 +237,104 @@ class TableViewer(QWidget):
 
         table_layout.addWidget(self.table_widget)
         main_layout.addLayout(table_layout)
+
+        # Toggle switch container (for binary ON/OFF categories like DTC flags)
+        self._init_toggle_ui(main_layout)
+
+    def _init_toggle_ui(self, parent_layout: QVBoxLayout):
+        """Initialize the toggle switch container (hidden by default)"""
+        from .widgets.toggle_switch import ToggleSwitch
+
+        self.toggle_container = QFrame()
+        self.toggle_container.setVisible(False)
+
+        toggle_layout = QVBoxLayout()
+        toggle_layout.setAlignment(Qt.AlignCenter)
+        toggle_layout.setContentsMargins(10, 10, 10, 10)
+        toggle_layout.setSpacing(8)
+        self.toggle_container.setLayout(toggle_layout)
+
+        # Toggle switch
+        self.toggle_switch = ToggleSwitch()
+        toggle_switch_row = QHBoxLayout()
+        toggle_switch_row.setAlignment(Qt.AlignCenter)
+        toggle_switch_row.addWidget(self.toggle_switch)
+        toggle_layout.addLayout(toggle_switch_row)
+
+        # Status label ("ON" / "OFF")
+        self.toggle_label = QLabel("OFF")
+        self.toggle_label.setAlignment(Qt.AlignCenter)
+        font = self.toggle_label.font()
+        font.setBold(True)
+        font.setPointSize(12)
+        self.toggle_label.setFont(font)
+        toggle_layout.addWidget(self.toggle_label)
+
+        parent_layout.addWidget(self.toggle_container)
+
+        # Track the original non-zero value for restoring on toggle ON
+        # (e.g., P1260 stores 3 instead of 1)
+        self._toggle_original_nonzero_value = 1.0
+
+        # Connect toggle signal
+        self.toggle_switch.toggled.connect(self._on_toggle_changed)
+
+    def _on_toggle_changed(self, checked: bool):
+        """Handle toggle switch state change from user interaction"""
+        if self._editing_in_progress or self._read_only:
+            return
+        if not self._ctx.current_table or not self._ctx.current_data:
+            return
+
+        values = self._ctx.current_data['values']
+        old_value = float(values[0])
+
+        if checked:
+            new_value = self._toggle_original_nonzero_value if self._toggle_original_nonzero_value != 0 else 1.0
+        else:
+            new_value = 0.0
+
+        if abs(new_value - old_value) < 1e-10:
+            return
+
+        # Convert display values to raw
+        old_raw = self._edit.display_to_raw(old_value)
+        new_raw = self._edit.display_to_raw(new_value)
+        if old_raw is None or new_raw is None:
+            return
+
+        # Update internal data
+        self._ctx.current_data['values'][0] = new_value
+
+        # Update the hidden table item for consistency
+        self._editing_in_progress = True
+        try:
+            item = self.table_widget.item(0, 0)
+            if item:
+                value_fmt = self._display.get_value_format()
+                item.setText(self._display.format_value(new_value, value_fmt))
+            self._update_toggle_label(checked)
+        finally:
+            self._editing_in_progress = False
+
+        # Emit change signal
+        self.cell_changed.emit(
+            self._ctx.current_table.address,
+            0, 0,
+            old_value, new_value,
+            old_raw, new_raw
+        )
+
+        logger.debug(f"Toggle changed: {self._ctx.current_table.name} {old_value} -> {new_value}")
+
+    def _update_toggle_label(self, checked: bool):
+        """Update the toggle status label text and color"""
+        if checked:
+            self.toggle_label.setText("ON")
+            self.toggle_label.setStyleSheet("color: #4CAF50;")
+        else:
+            self.toggle_label.setText("OFF")
+            self.toggle_label.setStyleSheet("color: #B0B0B0;")
 
     def set_read_only(self, read_only: bool):
         """Set whether the table is read-only"""

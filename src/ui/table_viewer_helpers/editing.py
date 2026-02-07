@@ -176,6 +176,13 @@ class TableEditHelper:
                 item.setText(self.display.format_value(new_value, value_fmt))
                 color = self.display.get_cell_color(new_value, values, data_row, data_col)
                 item.setBackground(QBrush(color))
+
+            # Sync toggle switch if visible (undo/redo for toggle categories)
+            viewer = self.ctx.viewer
+            if viewer.toggle_container.isVisible():
+                checked = new_value != 0
+                viewer.toggle_switch.setChecked(checked)
+                viewer._update_toggle_label(checked)
         finally:
             self.ctx.editing_in_progress = False
 

@@ -222,6 +222,33 @@ class AppSettings:
         self.settings.setValue("paths/projects_directory", path)
         self.settings.sync()
 
+    _DEFAULT_TOGGLE_CATEGORIES = ["DTC - Activation Flags"]
+
+    def get_toggle_categories(self) -> list:
+        """
+        Get list of category names that display as toggle switches.
+
+        Returns:
+            list: Category names where 1D tables use toggle ON/OFF display
+        """
+        value = self.settings.value("display/toggle_categories",
+                                    self._DEFAULT_TOGGLE_CATEGORIES)
+        if value is None:
+            return list(self._DEFAULT_TOGGLE_CATEGORIES)
+        if isinstance(value, str):
+            return [value] if value else []
+        return list(value)
+
+    def set_toggle_categories(self, categories: list):
+        """
+        Set list of category names that display as toggle switches.
+
+        Args:
+            categories: List of category name strings
+        """
+        self.settings.setValue("display/toggle_categories", categories)
+        self.settings.sync()
+
 
 # Global settings instance
 _settings = None

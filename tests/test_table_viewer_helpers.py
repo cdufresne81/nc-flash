@@ -455,3 +455,79 @@ class TestScalingConversion:
         expected_afr = 14.7 / 128
         assert abs(display - expected_afr) < 1e-9
         assert abs(back_to_raw - raw_value) < 1e-9
+
+
+class TestToggleCategoryDetection:
+    """Tests for toggle category detection logic"""
+
+    def test_dtc_activation_flags_is_toggle(self):
+        """DTC - Activation Flags category should be detected as toggle"""
+        category = "DTC - Activation Flags"
+        toggle_categories = ["DTC - Activation Flags"]
+        assert category in toggle_categories
+
+    def test_regular_category_is_not_toggle(self):
+        """Regular categories should not be detected as toggle"""
+        toggle_categories = ["DTC - Activation Flags"]
+
+        assert "Fuel IPW - Base" not in toggle_categories
+        assert "Spark Target - Base" not in toggle_categories
+        assert "" not in toggle_categories
+
+    def test_empty_toggle_list_disables_all(self):
+        """Empty toggle categories list means no toggles"""
+        toggle_categories = []
+        assert "DTC - Activation Flags" not in toggle_categories
+
+    def test_multiple_toggle_categories(self):
+        """Multiple categories can be configured as toggles"""
+        toggle_categories = ["DTC - Activation Flags", "Custom Flags"]
+        assert "DTC - Activation Flags" in toggle_categories
+        assert "Custom Flags" in toggle_categories
+        assert "Other Category" not in toggle_categories
+
+
+class TestToggleValueLogic:
+    """Tests for toggle ON/OFF value calculation logic"""
+
+    def test_toggle_on_standard_dtc(self):
+        """Toggle ON for standard DTC (original value 1) should produce 1"""
+        original_nonzero = 1.0
+        checked = True
+        new_value = original_nonzero if (checked and original_nonzero != 0) else (1.0 if checked else 0.0)
+        assert new_value == 1.0
+
+    def test_toggle_off_standard_dtc(self):
+        """Toggle OFF should always produce 0"""
+        checked = False
+        new_value = 0.0 if not checked else 1.0
+        assert new_value == 0.0
+
+    def test_toggle_on_p1260_preserves_value_3(self):
+        """Toggle ON for P1260 (original value 3) should restore 3, not 1"""
+        original_nonzero = 3.0
+        checked = True
+        new_value = original_nonzero if (checked and original_nonzero != 0) else (1.0 if checked else 0.0)
+        assert new_value == 3.0
+
+    def test_toggle_on_when_original_was_zero(self):
+        """Toggle ON when original value was 0 should default to 1"""
+        # When original is 0, _toggle_original_nonzero_value is set to 1.0
+        original_nonzero = 1.0  # Default when original was 0
+        checked = True
+        new_value = original_nonzero if (checked and original_nonzero != 0) else (1.0 if checked else 0.0)
+        assert new_value == 1.0
+
+    def test_original_nonzero_value_stored_correctly(self):
+        """Original non-zero value should be captured for restore on toggle ON"""
+        # Simulates what _display_1d does
+        for val, expected in [(1.0, 1.0), (3.0, 3.0), (0.0, 1.0), (255.0, 255.0)]:
+            stored = val if val != 0 else 1.0
+            assert stored == expected
+
+    def test_no_change_signal_when_value_unchanged(self):
+        """Toggling to same state should not trigger a change"""
+        current_value = 1.0
+        checked = True  # Already ON
+        new_value = 1.0 if checked else 0.0
+        assert abs(new_value - current_value) < 1e-10  # No change

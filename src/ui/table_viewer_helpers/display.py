@@ -158,11 +158,21 @@ class TableDisplayHelper:
         self.ctx.viewer.x_axis_label.setVisible(False)
         self.ctx.viewer.y_axis_label.setVisible(False)
 
+    def _is_toggle_category(self) -> bool:
+        """Check if the current table's category should use toggle display"""
+        if not self.ctx.current_table:
+            return False
+        category = self.ctx.current_table.category or ""
+        toggle_categories = get_settings().get_toggle_categories()
+        return category in toggle_categories
+
     def _display_1d(self, values: np.ndarray):
         """Display 1D table (single value)"""
         # Hide axis labels (not used for 1D tables)
         self.ctx.viewer.x_axis_label.setVisible(False)
         self.ctx.viewer.y_axis_label.setVisible(False)
+
+        use_toggle = self._is_toggle_category()
 
         self.ctx.editing_in_progress = True
         try:
@@ -180,6 +190,27 @@ class TableDisplayHelper:
             if self.ctx.read_only:
                 item.setFlags(item.flags() & ~Qt.ItemIsEditable)
             self.ctx.table_widget.setItem(0, 0, item)
+
+            if use_toggle:
+                # Toggle mode: hide table grid, show toggle switch
+                self.ctx.table_widget.setVisible(False)
+                viewer = self.ctx.viewer
+                viewer.toggle_container.setVisible(True)
+
+                # Store original non-zero value for restoring on toggle ON
+                val = float(values[0])
+                viewer._toggle_original_nonzero_value = val if val != 0 else 1.0
+
+                checked = val != 0
+                viewer.toggle_switch.setChecked(checked)
+                viewer._update_toggle_label(checked)
+
+                if self.ctx.read_only:
+                    viewer.toggle_switch.setEnabled(False)
+            else:
+                # Normal mode: show table grid, hide toggle
+                self.ctx.table_widget.setVisible(True)
+                self.ctx.viewer.toggle_container.setVisible(False)
         finally:
             self.ctx.editing_in_progress = False
 
