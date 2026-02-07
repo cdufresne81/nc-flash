@@ -25,6 +25,9 @@
 - **Debounced graph selection updates** — arrow key navigation no longer triggers full 3D re-render per key press (100ms debounce timer)
 - **Eliminated double-draw** in graph widget — `canvas.draw_idle()` + deferred redraw only on first plot
 
+## Recent Completed Work (Feb 7, 2026) - Audit Fix #11
+- **Deduplicated GraphWidget and GraphViewer** (~700 lines → ~350 lines) — extracted `_GraphPlotMixin` with 14 shared methods (plotting, colors, axis labels, keyboard rotation/zoom). Both classes now inherit from the mixin, keeping only their unique setup logic. Also fixed minor bug: GraphViewer was not resetting `ax_3d = None` on figure clear, and removed dead `tick_positions` variable in GraphWidget._plot_3d.
+
 ## Recent Completed Work (Feb 7, 2026) - Audit Fixes
 - **Atomic file writes** for `save_rom`, `_save_project_file`, `_save_commits` — write-to-temp + `os.replace()` prevents corruption on crash
 - **Fixed swapxy flatten bug** in `write_table_data` — was using C order instead of F order for swapxy tables, causing silent data corruption on bulk write

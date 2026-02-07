@@ -17,85 +17,15 @@ from ..utils.constants import APP_NAME
 from ..utils.colormap import get_colormap
 
 
-class GraphWidget(QWidget):
-    """
-    Embeddable graph widget for table data visualization
+class _GraphPlotMixin:
+    """Shared plotting logic for graph widgets.
 
-    Features:
-    - 3D surface plot for 3D tables
-    - 2D plot for 2D tables
-    - Interactive rotation with mouse
-    - Highlight selected cells
-    - Color gradient matching table viewer
+    Subclasses must provide these attributes:
+        table, data, rom_definition, selected_cells,
+        _scaling_range, ax_3d, figure, canvas
     """
 
-    def __init__(self, parent=None):
-        """Initialize graph widget without data (set later with set_data)"""
-        super().__init__(parent)
-
-        self.table = None
-        self.data = None
-        self.rom_definition = None
-        self._scaling_range = None  # Cached (min, max) from scaling
-        self.selected_cells = []
-        self.ax_3d = None
-        self._first_plot = True  # Track first plot for deferred redraw
-
-        # Create matplotlib figure and canvas
-        # Use constrained_layout for stable sizing (avoids resizing on redraws)
-        self.figure = Figure(figsize=(8, 6), layout='constrained')
-        self.canvas = FigureCanvas(self.figure)
-
-        # Set up layout
-        layout = QVBoxLayout()
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.addWidget(self.canvas)
-        self.setLayout(layout)
-
-        # Set size policy to expand
-        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-        self.setMinimumWidth(300)
-
-        # Enable focus for keyboard handling
-        self.setFocusPolicy(Qt.StrongFocus)
-
-        # Connect canvas mouse press to grab focus
-        self.canvas.mpl_connect('button_press_event', self._on_canvas_click)
-
-    def set_data(self, table: Table, data: dict, rom_definition: RomDefinition = None,
-                 selected_cells: list = None):
-        """
-        Set or update the graph data
-
-        Args:
-            table: Table definition
-            data: Table data dictionary
-            rom_definition: ROM definition containing scalings
-            selected_cells: List of (row, col) tuples for selected cells
-        """
-        self.table = table
-        self.data = data
-        self.rom_definition = rom_definition
-        self.selected_cells = selected_cells or []
-        # Cache scaling range for color calculations
-        self._scaling_range = self._get_scaling_range()
-        self._plot_data()
-
-    def update_selection(self, selected_cells: list):
-        """Update the selected cells and redraw the graph"""
-        self.selected_cells = selected_cells
-        if self.table is not None:
-            self._plot_data()
-
-    def _on_canvas_click(self, event):
-        """Handle canvas click - grab focus for keyboard events"""
-        self.setFocus()
-
-    def update_data(self, data: dict):
-        """Update just the data values (e.g., after cell edit)"""
-        self.data = data
-        if self.table is not None:
-            self._plot_data()
+    _show_plot_title = False
 
     def _get_scaling_range(self):
         """Get min/max from the table's scaling definition, or None."""
@@ -110,10 +40,14 @@ class GraphWidget(QWidget):
             return None
         return (scaling.min, scaling.max)
 
-    def _plot_data(self):
-        """Plot the table data based on table type"""
+    def _do_plot(self):
+        """Core plot logic: save angles, clear, plot by type, restore angles.
+
+        Does NOT call canvas.draw — subclasses handle that in _plot_data().
+        Returns False if there was nothing to plot.
+        """
         if self.table is None or self.data is None:
-            return
+            return False
 
         # Save current view angles before clearing (for 3D plots)
         saved_elev = None
@@ -123,8 +57,6 @@ class GraphWidget(QWidget):
             saved_azim = self.ax_3d.azim
 
         self.figure.clear()
-
-        # Reset ax_3d for non-3D plots
         self.ax_3d = None
 
         if self.table.type == TableType.THREE_D:
@@ -137,13 +69,7 @@ class GraphWidget(QWidget):
         else:
             self._plot_1d()
 
-        self.canvas.draw_idle()
-        # On first plot, Qt may still have pending layout/resize events that
-        # change the canvas size. Schedule one more redraw to prevent a visible
-        # reframing snap. Skip on subsequent plots to avoid double-rendering.
-        if self._first_plot:
-            self._first_plot = False
-            QTimer.singleShot(0, self.canvas.draw_idle)
+        return True
 
     def _plot_3d(self):
         """Plot 3D table as surface with uniform cell sizes"""
@@ -177,14 +103,12 @@ class GraphWidget(QWidget):
                     colors[row, col] = blue_color
 
         # Plot surface
-        surf = ax.plot_surface(X, Y, Z, facecolors=colors,
-                               linewidth=0.5, edgecolor='gray',
-                               antialiased=True, shade=False)
+        ax.plot_surface(X, Y, Z, facecolors=colors,
+                        linewidth=0.5, edgecolor='gray',
+                        antialiased=True, shade=False)
 
         # Set tick labels to actual axis values
         if x_axis is not None:
-            tick_positions = np.arange(cols) + 0.5  # Center of each cell
-            # Limit to ~6 ticks for readability
             if len(x_axis) > 6:
                 step = max(1, len(x_axis) // 6)
                 tick_idx = np.arange(0, len(x_axis), step)
@@ -208,6 +132,8 @@ class GraphWidget(QWidget):
         ax.set_xlabel(x_label)
         ax.set_ylabel(y_label)
         ax.set_zlabel('Value')
+        if self._show_plot_title:
+            ax.set_title(f'{self.table.name}')
 
         ax.mouse_init()
         self.ax_3d = ax
@@ -243,6 +169,8 @@ class GraphWidget(QWidget):
         y_label = self._get_axis_label(AxisType.Y_AXIS) if y_axis is not None else 'Index'
         ax.set_xlabel(y_label)
         ax.set_ylabel('Value')
+        if self._show_plot_title:
+            ax.set_title(f'{self.table.name}')
         ax.grid(True, alpha=0.3)
 
     def _plot_1d(self):
@@ -252,6 +180,8 @@ class GraphWidget(QWidget):
         color = self._ratio_to_color(0.5)
         ax.bar([0], [values[0]], color=color, width=0.5)
         ax.set_ylabel('Value')
+        if self._show_plot_title:
+            ax.set_title(f'{self.table.name}')
         ax.set_xticks([])
 
     def _calculate_colors(self, values: np.ndarray):
@@ -302,7 +232,7 @@ class GraphWidget(QWidget):
         return (rgba[0], rgba[1], rgba[2])
 
     def _get_axis_label(self, axis_type: AxisType) -> str:
-        """Get axis label with unit"""
+        """Get axis label with unit, e.g., 'Engine Speed (RPM)'"""
         axis_table = self.table.get_axis(axis_type)
         if not axis_table:
             return "X Axis" if axis_type == AxisType.X_AXIS else "Y Axis"
@@ -319,11 +249,10 @@ class GraphWidget(QWidget):
             return f"{name} ({unit})"
         return name
 
-    def keyPressEvent(self, event):
-        """Handle key presses for graph rotation and zoom"""
+    def _handle_graph_key(self, event) -> bool:
+        """Handle graph rotation/zoom keys. Returns True if handled."""
         if self.ax_3d is None:
-            super().keyPressEvent(event)
-            return
+            return False
 
         elev = self.ax_3d.elev
         azim = self.ax_3d.azim
@@ -350,7 +279,8 @@ class GraphWidget(QWidget):
         elif event.key() == Qt.Key_Minus:
             self._zoom(0.9)
         else:
-            super().keyPressEvent(event)
+            return False
+        return True
 
     def _zoom(self, factor):
         """Zoom in or out by adjusting axis limits"""
@@ -375,10 +305,16 @@ class GraphWidget(QWidget):
 
         self.canvas.draw()
 
+    def update_selection(self, selected_cells: list):
+        """Update the selected cells and redraw the graph"""
+        self.selected_cells = selected_cells
+        if self.table is not None:
+            self._plot_data()
 
-class GraphViewer(QMainWindow):
+
+class GraphWidget(_GraphPlotMixin, QWidget):
     """
-    3D Graph viewer for table data
+    Embeddable graph widget for table data visualization
 
     Features:
     - 3D surface plot for 3D tables
@@ -388,25 +324,100 @@ class GraphViewer(QMainWindow):
     - Color gradient matching table viewer
     """
 
+    def __init__(self, parent=None):
+        """Initialize graph widget without data (set later with set_data)"""
+        super().__init__(parent)
+
+        self.table = None
+        self.data = None
+        self.rom_definition = None
+        self._scaling_range = None
+        self.selected_cells = []
+        self.ax_3d = None
+        self._first_plot = True
+
+        # Create matplotlib figure and canvas
+        # Use constrained_layout for stable sizing (avoids resizing on redraws)
+        self.figure = Figure(figsize=(8, 6), layout='constrained')
+        self.canvas = FigureCanvas(self.figure)
+
+        # Set up layout
+        layout = QVBoxLayout()
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.addWidget(self.canvas)
+        self.setLayout(layout)
+
+        # Set size policy to expand
+        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        self.setMinimumWidth(300)
+
+        # Enable focus for keyboard handling
+        self.setFocusPolicy(Qt.StrongFocus)
+
+        # Connect canvas mouse press to grab focus
+        self.canvas.mpl_connect('button_press_event', self._on_canvas_click)
+
+    def set_data(self, table: Table, data: dict, rom_definition: RomDefinition = None,
+                 selected_cells: list = None):
+        """Set or update the graph data"""
+        self.table = table
+        self.data = data
+        self.rom_definition = rom_definition
+        self.selected_cells = selected_cells or []
+        self._scaling_range = self._get_scaling_range()
+        self._plot_data()
+
+    def _on_canvas_click(self, event):
+        """Handle canvas click - grab focus for keyboard events"""
+        self.setFocus()
+
+    def update_data(self, data: dict):
+        """Update just the data values (e.g., after cell edit)"""
+        self.data = data
+        if self.table is not None:
+            self._plot_data()
+
+    def _plot_data(self):
+        """Plot the table data and schedule canvas redraw"""
+        if not self._do_plot():
+            return
+        self.canvas.draw_idle()
+        # On first plot, Qt may still have pending layout/resize events that
+        # change the canvas size. Schedule one more redraw to prevent a visible
+        # reframing snap. Skip on subsequent plots to avoid double-rendering.
+        if self._first_plot:
+            self._first_plot = False
+            QTimer.singleShot(0, self.canvas.draw_idle)
+
+    def keyPressEvent(self, event):
+        """Handle key presses for graph rotation and zoom"""
+        if not self._handle_graph_key(event):
+            super().keyPressEvent(event)
+
+
+class GraphViewer(_GraphPlotMixin, QMainWindow):
+    """
+    Standalone graph viewer window for table data
+
+    Features:
+    - 3D surface plot for 3D tables
+    - 2D plot for 2D tables
+    - Interactive rotation with mouse
+    - Highlight selected cells
+    - Color gradient matching table viewer
+    """
+
+    _show_plot_title = True
+
     def __init__(self, table: Table, data: dict, rom_definition: RomDefinition = None,
                  selected_cells: list = None, parent=None):
-        """
-        Initialize graph viewer
-
-        Args:
-            table: Table definition
-            data: Table data dictionary
-            rom_definition: ROM definition containing scalings
-            selected_cells: List of (row, col) tuples for selected cells
-            parent: Parent widget
-        """
         super().__init__(parent)
 
         self.table = table
         self.data = data
         self.rom_definition = rom_definition
         self.selected_cells = selected_cells or []
-        self.ax_3d = None  # Store 3D axes for rotation control
+        self.ax_3d = None
         self._scaling_range = self._get_scaling_range()
 
         # Set window properties
@@ -441,304 +452,12 @@ class GraphViewer(QMainWindow):
         plt.close(self.figure)
         event.accept()
 
-    def _get_scaling_range(self):
-        """Get min/max from the table's scaling definition, or None."""
-        if not self.rom_definition or not self.table or not self.table.scaling:
-            return None
-        scaling = self.rom_definition.get_scaling(self.table.scaling)
-        if not scaling:
-            return None
-        if scaling.min == 0 and scaling.max == 0:
-            return None
-        if scaling.min == scaling.max:
-            return None
-        return (scaling.min, scaling.max)
-
     def _plot_data(self):
-        """Plot the table data based on table type"""
-        # Save current view angles before clearing (for 3D plots)
-        saved_elev = None
-        saved_azim = None
-        if self.ax_3d is not None:
-            saved_elev = self.ax_3d.elev
-            saved_azim = self.ax_3d.azim
-
-        self.figure.clear()
-
-        if self.table.type == TableType.THREE_D:
-            self._plot_3d()
-            # Restore view angles if we had them
-            if saved_elev is not None and saved_azim is not None and self.ax_3d is not None:
-                self.ax_3d.view_init(elev=saved_elev, azim=saved_azim)
-        elif self.table.type == TableType.TWO_D:
-            self._plot_2d()
-        else:
-            self._plot_1d()
-
+        """Plot the table data and redraw canvas"""
+        self._do_plot()
         self.canvas.draw()
-
-    def _plot_3d(self):
-        """Plot 3D table as surface with uniform cell sizes"""
-        ax = self.figure.add_subplot(111, projection='3d')
-
-        values = self.data['values']
-        x_axis = self.data.get('x_axis')
-        y_axis = self.data.get('y_axis')
-
-        rows, cols = values.shape
-
-        # Use uniform indices so all cells are the same size
-        X, Y = np.meshgrid(np.arange(cols + 1), np.arange(rows + 1))
-
-        # Extend Z values by duplicating last row and column
-        Z_extended = np.zeros((rows + 1, cols + 1))
-        Z_extended[:rows, :cols] = values
-        Z_extended[rows, :cols] = values[-1, :]
-        Z_extended[:rows, cols] = values[:, -1]
-        Z_extended[rows, cols] = values[-1, -1]
-        Z = Z_extended
-
-        # Calculate colors based on gradient (matching table viewer)
-        colors = self._calculate_colors(values)
-
-        # Override colors for selected cells with blue
-        if self.selected_cells:
-            blue_color = (0.0, 0.5, 1.0, 1.0)
-            for row, col in self.selected_cells:
-                if row < colors.shape[0] and col < colors.shape[1]:
-                    colors[row, col] = blue_color
-
-        # Plot surface
-        surf = ax.plot_surface(X, Y, Z, facecolors=colors,
-                               linewidth=0.5, edgecolor='gray',
-                               antialiased=True, shade=False)
-
-        # Set tick labels to actual axis values
-        if x_axis is not None:
-            if len(x_axis) > 6:
-                step = max(1, len(x_axis) // 6)
-                tick_idx = np.arange(0, len(x_axis), step)
-            else:
-                tick_idx = np.arange(len(x_axis))
-            ax.set_xticks(tick_idx + 0.5)
-            ax.set_xticklabels([f'{x_axis[i]:.4g}' for i in tick_idx])
-
-        if y_axis is not None:
-            if len(y_axis) > 6:
-                step = max(1, len(y_axis) // 6)
-                tick_idx = np.arange(0, len(y_axis), step)
-            else:
-                tick_idx = np.arange(len(y_axis))
-            ax.set_yticks(tick_idx + 0.5)
-            ax.set_yticklabels([f'{y_axis[i]:.4g}' for i in tick_idx])
-
-        # Labels
-        x_label = self._get_axis_label(AxisType.X_AXIS) if x_axis is not None else 'Column'
-        y_label = self._get_axis_label(AxisType.Y_AXIS) if y_axis is not None else 'Row'
-        ax.set_xlabel(x_label)
-        ax.set_ylabel(y_label)
-        ax.set_zlabel('Value')
-        ax.set_title(f'{self.table.name}')
-
-        # Enable rotation with mouse
-        ax.mouse_init()
-
-        # Store axes for keyboard rotation
-        self.ax_3d = ax
 
     def keyPressEvent(self, event):
         """Handle key presses for graph rotation and zoom"""
-        if self.ax_3d is None:
+        if not self._handle_graph_key(event):
             super().keyPressEvent(event)
-            return
-
-        # Get current view angles
-        elev = self.ax_3d.elev
-        azim = self.ax_3d.azim
-
-        # Rotation step size (degrees)
-        rotation_step = 10
-
-        # Handle arrow keys for rotation
-        if event.key() == Qt.Key_Left:
-            azim -= rotation_step
-            self.ax_3d.view_init(elev=elev, azim=azim)
-            self.canvas.draw()
-        elif event.key() == Qt.Key_Right:
-            azim += rotation_step
-            self.ax_3d.view_init(elev=elev, azim=azim)
-            self.canvas.draw()
-        elif event.key() == Qt.Key_Up:
-            elev += rotation_step
-            self.ax_3d.view_init(elev=elev, azim=azim)
-            self.canvas.draw()
-        elif event.key() == Qt.Key_Down:
-            elev -= rotation_step
-            self.ax_3d.view_init(elev=elev, azim=azim)
-            self.canvas.draw()
-        # Handle +/= for zoom in
-        elif event.key() in (Qt.Key_Plus, Qt.Key_Equal):
-            self._zoom(1.1)
-        # Handle - for zoom out
-        elif event.key() == Qt.Key_Minus:
-            self._zoom(0.9)
-        else:
-            # Not a handled key, pass to parent
-            super().keyPressEvent(event)
-
-    def _zoom(self, factor):
-        """Zoom in or out by adjusting axis limits"""
-        if self.ax_3d is None:
-            return
-
-        # Get current limits
-        xlim = self.ax_3d.get_xlim()
-        ylim = self.ax_3d.get_ylim()
-        zlim = self.ax_3d.get_zlim()
-
-        # Calculate centers
-        x_center = (xlim[0] + xlim[1]) / 2
-        y_center = (ylim[0] + ylim[1]) / 2
-        z_center = (zlim[0] + zlim[1]) / 2
-
-        # Calculate new ranges
-        x_range = (xlim[1] - xlim[0]) / factor
-        y_range = (ylim[1] - ylim[0]) / factor
-        z_range = (zlim[1] - zlim[0]) / factor
-
-        # Set new limits
-        self.ax_3d.set_xlim(x_center - x_range/2, x_center + x_range/2)
-        self.ax_3d.set_ylim(y_center - y_range/2, y_center + y_range/2)
-        self.ax_3d.set_zlim(z_center - z_range/2, z_center + z_range/2)
-
-        self.canvas.draw()
-
-    def update_selection(self, selected_cells: list):
-        """Update the selected cells and redraw the graph"""
-        self.selected_cells = selected_cells
-        self._plot_data()
-
-    def _plot_2d(self):
-        """Plot 2D table as line/surface"""
-        ax = self.figure.add_subplot(111)
-
-        values = self.data['values']
-        y_axis = self.data.get('y_axis')
-
-        if y_axis is not None:
-            x = y_axis
-        else:
-            x = np.arange(len(values))
-
-        # Plot with color gradient
-        colors = self._calculate_colors_1d(values)
-
-        for i in range(len(x) - 1):
-            ax.plot(x[i:i+2], values[i:i+2], color=colors[i], linewidth=2)
-
-        # Highlight selected cells with blue markers
-        if self.selected_cells:
-            selected_x = []
-            selected_y = []
-            for row, col in self.selected_cells:
-                if row < len(values):
-                    selected_x.append(x[row])
-                    selected_y.append(values[row])
-            if selected_x:
-                ax.scatter(selected_x, selected_y, color='blue', s=100, zorder=10, alpha=0.8)
-
-        y_label = self._get_axis_label(AxisType.Y_AXIS) if y_axis is not None else 'Index'
-        ax.set_xlabel(y_label)
-        ax.set_ylabel('Value')
-        ax.set_title(f'{self.table.name}')
-        ax.grid(True, alpha=0.3)
-
-    def _plot_1d(self):
-        """Plot 1D table as single bar"""
-        ax = self.figure.add_subplot(111)
-
-        values = self.data['values']
-
-        # Single value bar
-        color = self._ratio_to_color(0.5)
-        ax.bar([0], [values[0]], color=color, width=0.5)
-
-        ax.set_ylabel('Value')
-        ax.set_title(f'{self.table.name}')
-        ax.set_xticks([])
-
-    def _calculate_colors(self, values: np.ndarray):
-        """Calculate color array matching table viewer gradient using scaling range"""
-        if self._scaling_range:
-            min_val, max_val = self._scaling_range
-        else:
-            min_val = np.min(values)
-            max_val = np.max(values)
-
-        if max_val == min_val:
-            ratios = np.full_like(values, 0.5)
-        else:
-            ratios = (values - min_val) / (max_val - min_val)
-            ratios = np.clip(ratios, 0.0, 1.0)
-
-        # Convert ratios to RGBA colors
-        colors = np.zeros((*values.shape, 4))
-        for i in range(values.shape[0]):
-            for j in range(values.shape[1]):
-                rgba = self._ratio_to_rgba(ratios[i, j])
-                colors[i, j] = rgba
-
-        return colors
-
-    def _calculate_colors_1d(self, values: np.ndarray):
-        """Calculate colors for 1D array using scaling range"""
-        if self._scaling_range:
-            min_val, max_val = self._scaling_range
-        else:
-            min_val = np.min(values)
-            max_val = np.max(values)
-
-        if max_val == min_val:
-            ratios = np.full_like(values, 0.5)
-        else:
-            ratios = (values - min_val) / (max_val - min_val)
-            ratios = np.clip(ratios, 0.0, 1.0)
-
-        colors = [self._ratio_to_color(r) for r in ratios]
-        return colors
-
-    def _ratio_to_rgba(self, ratio: float):
-        """Convert ratio to RGBA tuple using the configured color map"""
-        return get_colormap().ratio_to_rgba_float(ratio)
-
-    def _ratio_to_color(self, ratio: float):
-        """Convert ratio to matplotlib color (RGB tuple)"""
-        rgba = self._ratio_to_rgba(ratio)
-        return (rgba[0], rgba[1], rgba[2])
-
-    def _get_axis_label(self, axis_type: AxisType) -> str:
-        """
-        Get axis label with unit, e.g., 'Engine Speed (RPM)'
-
-        Args:
-            axis_type: AxisType.X_AXIS or AxisType.Y_AXIS
-
-        Returns:
-            Formatted axis label with unit if available
-        """
-        axis_table = self.table.get_axis(axis_type)
-        if not axis_table:
-            return "X Axis" if axis_type == AxisType.X_AXIS else "Y Axis"
-
-        name = axis_table.name
-        unit = ""
-
-        # Get unit from scaling if available
-        if self.rom_definition and axis_table.scaling:
-            scaling = self.rom_definition.get_scaling(axis_table.scaling)
-            if scaling and scaling.units:
-                unit = scaling.units
-
-        if unit:
-            return f"{name} ({unit})"
-        return name
