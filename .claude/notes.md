@@ -15,7 +15,10 @@
 - Use `python3` not `python` (WSL2 environment lacks symlink)
 
 ## Recent Completed Work (Feb 7, 2026) - Undo Wrong-ROM Fix
+- **Fixed Path vs str type mismatch throughout `main.py`** — `RomReader.rom_path` is `Path`, `RomDocument.rom_path` is `str`; on Windows, forward vs backslash normalization caused `str()` comparison to fail silently. Fixed `_find_document_by_rom_path()` to use `Path()` comparison. Fixed `close_tab()` to use `rom_reader.rom_path` (Path) instead of `document.rom_path` (str) for window matching and dict cleanup.
+- **Fixed test runner operations not emitting signals** — `set_value`, `multiply_selection`, `add_to_selection` called `_apply_bulk_operation` directly which doesn't emit `bulk_changes`/`axis_bulk_changes` signals. Now properly emits signals so changes are written to ROM.
 - **Fixed undo/edit writing to wrong ROM** when multiple ROMs are open — all 6 `get_current_document()` call sites in edit/undo handlers now resolve the correct ROM via `_find_document_by_rom_path()` instead of using the active tab
+- **Clean ROM state on tab close** — closing a ROM now: closes all its table windows, removes undo stacks, clears pending changes, and purges modified_cells/original_table_values for that ROM. Reopening a ROM starts fresh.
 - **Debounced graph selection updates** — arrow key navigation no longer triggers full 3D re-render per key press (100ms debounce timer)
 - **Eliminated double-draw** in graph widget — `canvas.draw_idle()` + deferred redraw only on first plot
 

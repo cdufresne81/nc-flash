@@ -391,10 +391,15 @@ class MainWindow(QMainWindow):
         """Find the RomDocument tab that owns the given ROM file path."""
         if not rom_path:
             return None
+        # Use Path comparison to handle slash normalization on Windows
+        # (QFileDialog returns forward slashes, Path uses backslashes)
+        from pathlib import Path as _Path
+        target = _Path(rom_path)
         for i in range(self.tab_widget.count()):
             doc = self.tab_widget.widget(i)
-            if hasattr(doc, 'rom_path') and doc.rom_path == rom_path:
+            if hasattr(doc, 'rom_path') and _Path(doc.rom_path) == target:
                 return doc
+        logger.warning(f"No document found for rom_path={rom_path}")
         return None
 
     def close_tab(self, index: int):
@@ -421,6 +426,37 @@ class MainWindow(QMainWindow):
                 return
             elif response == QMessageBox.Save:
                 document.save()
+
+        # Clean up all state tied to this ROM before removing the tab
+        if document:
+            # Use rom_reader.rom_path (Path) for consistent comparison
+            # (document.rom_path is str, window.rom_path is Path)
+            rom_path = document.rom_reader.rom_path if hasattr(document, 'rom_reader') and document.rom_reader else None
+
+            # Close all open table windows belonging to this ROM
+            windows_to_close = [w for w in self.open_table_windows
+                                if w.rom_path == rom_path]
+            for window in windows_to_close:
+                window.close()
+
+            # Collect all table addresses from this ROM's definition
+            table_addresses = set()
+            if hasattr(document, 'rom_reader') and document.rom_reader:
+                definition = document.rom_reader.definition
+                if definition:
+                    for table in definition.tables:
+                        table_addresses.add(table.address)
+
+            # Remove undo stacks for this ROM's tables
+            self.table_undo_manager.remove_stacks_for_addresses(table_addresses)
+
+            # Clear pending changes for this ROM's tables
+            self.change_tracker.clear_pending_for_addresses(table_addresses)
+
+            # Clear per-ROM tracking dicts
+            if rom_path:
+                self.modified_cells.pop(rom_path, None)
+                self.original_table_values.pop(rom_path, None)
 
         # Remove the tab and schedule widget cleanup
         self.tab_widget.removeTab(index)

@@ -577,10 +577,13 @@ class TestRunner:
             return False
 
         try:
-            # Use the viewer's bulk operation method which handles change tracking
             viewer = self.current_table_window.viewer
             operation_fn = lambda v: value
-            viewer._apply_bulk_operation(operation_fn, f"Set to {value}")
+            data_changes, axis_changes = viewer._apply_bulk_operation(operation_fn, f"Set to {value}")
+            if data_changes:
+                viewer.bulk_changes.emit(data_changes)
+            if axis_changes:
+                viewer.axis_bulk_changes.emit(axis_changes)
             self._process_events()
             self._log(f"Set selection to {value}")
             return True
@@ -603,10 +606,13 @@ class TestRunner:
             return False
 
         try:
-            # Use the viewer's bulk operation method which handles change tracking
             viewer = self.current_table_window.viewer
             operation_fn = lambda v: v * factor
-            viewer._apply_bulk_operation(operation_fn, f"Multiply by {factor}")
+            data_changes, axis_changes = viewer._apply_bulk_operation(operation_fn, f"Multiply by {factor}")
+            if data_changes:
+                viewer.bulk_changes.emit(data_changes)
+            if axis_changes:
+                viewer.axis_bulk_changes.emit(axis_changes)
             self._process_events()
             self._log(f"Multiplied selection by {factor}")
             return True
@@ -629,10 +635,13 @@ class TestRunner:
             return False
 
         try:
-            # Use the viewer's bulk operation method which handles change tracking
             viewer = self.current_table_window.viewer
             operation_fn = lambda v: v + value
-            viewer._apply_bulk_operation(operation_fn, f"Add {value}")
+            data_changes, axis_changes = viewer._apply_bulk_operation(operation_fn, f"Add {value}")
+            if data_changes:
+                viewer.bulk_changes.emit(data_changes)
+            if axis_changes:
+                viewer.axis_bulk_changes.emit(axis_changes)
             self._process_events()
             self._log(f"Added {value} to selection")
             return True

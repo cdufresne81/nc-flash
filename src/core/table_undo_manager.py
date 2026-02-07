@@ -112,13 +112,21 @@ class TableUndoManager:
             logger.debug("Deactivated undo stack (no table focused)")
 
     def remove_stack(self, table_address: str):
-        """
-        Remove an undo stack when table window is closed.
+        """Remove and delete the undo stack for a table."""
+        if table_address not in self._stacks:
+            return
+        stack = self._stacks.pop(table_address)
+        # Deactivate if this was the active stack
+        if self._undo_group.activeStack() is stack:
+            self._undo_group.setActiveStack(None)
+        stack.clear()
+        stack.deleteLater()
+        logger.debug(f"Removed undo stack for table {table_address}")
 
-        Currently keeps stacks to preserve undo history if table is reopened.
-        """
-        # Keep stacks to preserve undo history
-        pass
+    def remove_stacks_for_addresses(self, addresses):
+        """Remove undo stacks for a collection of table addresses."""
+        for addr in list(addresses):
+            self.remove_stack(addr)
 
     def clear_stack(self, table_address: str):
         """Clear the undo stack for a specific table."""

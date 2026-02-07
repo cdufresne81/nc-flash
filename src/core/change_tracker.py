@@ -234,6 +234,17 @@ class ChangeTracker:
         self._notify_change()
         logger.debug("Cleared pending changes")
 
+    def clear_pending_for_addresses(self, addresses):
+        """Clear pending changes for specific table addresses (e.g., when closing a ROM)."""
+        removed = 0
+        for addr in addresses:
+            if addr in self._pending:
+                del self._pending[addr]
+                removed += 1
+        if removed:
+            self._notify_change()
+            logger.debug(f"Cleared pending changes for {removed} tables")
+
     def clear_all(self):
         """Clear all state (pending changes)"""
         self._pending.clear()
