@@ -5,7 +5,7 @@ Handles loading, saving, and accessing application settings using QSettings.
 """
 
 from pathlib import Path
-from PySide6.QtCore import QSettings
+from PySide6.QtCore import QByteArray, QSettings
 
 from .constants import MAX_RECENT_FILES
 
@@ -25,7 +25,7 @@ class AppSettings:
             str: Path to definitions directory (defaults to ./definitions relative to app)
         """
         # Default to 'definitions' directory in the application root
-        default_path = str(Path.cwd() / "definitions")
+        default_path = str(Path(__file__).resolve().parent.parent.parent / "definitions")
         return self.settings.value("paths/definitions_directory", default_path)
 
     def set_definitions_directory(self, path: str):
@@ -36,25 +36,28 @@ class AppSettings:
             path: Path to definitions directory
         """
         self.settings.setValue("paths/definitions_directory", path)
-        self.settings.sync()
 
     def get_window_geometry(self):
         """Get saved window geometry"""
-        return self.settings.value("window/geometry")
+        value = self.settings.value("window/geometry")
+        if value is not None and not isinstance(value, QByteArray):
+            return None
+        return value
 
     def set_window_geometry(self, geometry):
         """Save window geometry"""
         self.settings.setValue("window/geometry", geometry)
-        self.settings.sync()
 
     def get_splitter_state(self):
         """Get saved splitter state"""
-        return self.settings.value("window/splitter_state")
+        value = self.settings.value("window/splitter_state")
+        if value is not None and not isinstance(value, QByteArray):
+            return None
+        return value
 
     def set_splitter_state(self, state):
         """Save splitter state"""
         self.settings.setValue("window/splitter_state", state)
-        self.settings.sync()
 
     def get_recent_files(self) -> list:
         """
@@ -92,12 +95,10 @@ class AppSettings:
         recent = recent[:max_recent]
 
         self.settings.setValue("recent_files", recent)
-        self.settings.sync()
 
     def clear_recent_files(self):
         """Clear the recent files list"""
         self.settings.setValue("recent_files", [])
-        self.settings.sync()
 
     def get_session_files(self) -> list:
         """
@@ -121,7 +122,6 @@ class AppSettings:
             file_paths: List of ROM file paths currently open
         """
         self.settings.setValue("session/open_files", file_paths)
-        self.settings.sync()
 
     def get_gradient_mode(self) -> str:
         """
@@ -140,7 +140,6 @@ class AppSettings:
             mode: 'minmax' or 'neighbors'
         """
         self.settings.setValue("display/gradient_mode", mode)
-        self.settings.sync()
 
     def get_table_font_size(self) -> int:
         """
@@ -159,7 +158,6 @@ class AppSettings:
             size: Font size in pixels
         """
         self.settings.setValue("display/table_font_size", size)
-        self.settings.sync()
 
     def get_colormap_path(self) -> str:
         """
@@ -180,7 +178,6 @@ class AppSettings:
             path: Path to .map file, or empty string for built-in gradient
         """
         self.settings.setValue("display/colormap_path", path)
-        self.settings.sync()
 
     def get_colormap_directory(self) -> str:
         """
@@ -200,7 +197,6 @@ class AppSettings:
             path: Path to directory containing .map files
         """
         self.settings.setValue("paths/colormap_directory", path)
-        self.settings.sync()
 
     def get_projects_directory(self) -> str:
         """
@@ -220,7 +216,32 @@ class AppSettings:
             path: Path to directory where projects are stored
         """
         self.settings.setValue("paths/projects_directory", path)
-        self.settings.sync()
+
+    _DEFAULT_TOGGLE_CATEGORIES = ["DTC - Activation Flags"]
+
+    def get_toggle_categories(self) -> list:
+        """
+        Get list of category names that display as toggle switches.
+
+        Returns:
+            list: Category names where 1D tables use toggle ON/OFF display
+        """
+        value = self.settings.value("display/toggle_categories",
+                                    self._DEFAULT_TOGGLE_CATEGORIES)
+        if value is None:
+            return list(self._DEFAULT_TOGGLE_CATEGORIES)
+        if isinstance(value, str):
+            return [value] if value else []
+        return list(value)
+
+    def set_toggle_categories(self, categories: list):
+        """
+        Set list of category names that display as toggle switches.
+
+        Args:
+            categories: List of category name strings
+        """
+        self.settings.setValue("display/toggle_categories", categories)
 
 
 # Global settings instance

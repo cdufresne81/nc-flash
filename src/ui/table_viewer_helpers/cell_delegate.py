@@ -33,7 +33,7 @@ class ModifiedCellDelegate(QStyledItemDelegate):
         if self.viewer.show_diff_highlights():
             # Get data coordinates from the cell
             data_coords = index.data(Qt.UserRole)
-            if data_coords is not None:
+            if data_coords is not None and not isinstance(data_coords[0], str):
                 data_row, data_col = data_coords
                 if self.viewer.is_cell_changed_from_base(data_row, data_col):
                     # Fill with semi-transparent yellow

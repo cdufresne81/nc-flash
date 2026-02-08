@@ -1,0 +1,60 @@
+# Test Script: Per-Table Undo/Redo
+# Tests that undo/redo is isolated per table
+# Run with: python tools/test_runner.py --script tests/gui/test_per_table_undo.txt
+
+# Load the sample ROM
+load_rom examples/lf9veb.bin
+
+# Open first table
+open_table "APP to TP Desired"
+wait 300
+screenshot ptu_01_table_a_initial table
+
+# Make a change in Table A
+select 2 2
+increment
+screenshot ptu_02_table_a_changed table
+
+# Open second table
+open_table "IAT Density"
+wait 300
+screenshot ptu_03_table_b_initial table
+
+# Make a change in Table B
+select 1 1
+increment
+screenshot ptu_04_table_b_changed table
+
+# Now undo while Table B is focused - should only undo Table B's change
+undo
+screenshot ptu_05_table_b_undone table
+
+# Switch focus to Table A - its change should still be there
+focus_table "APP to TP Desired"
+wait 100
+screenshot ptu_06_table_a_still_changed table
+
+# Undo Table A's change
+undo
+screenshot ptu_07_table_a_undone table
+
+# Redo Table A's change
+redo
+screenshot ptu_08_table_a_redone table
+
+# Switch to Table B and redo its change
+focus_table "IAT Density"
+wait 100
+redo
+screenshot ptu_09_table_b_redone table
+
+# Final cleanup - undo both tables
+undo
+focus_table "APP to TP Desired"
+wait 100
+undo
+
+# Close both tables
+close_table
+focus_table "IAT Density"
+close_table

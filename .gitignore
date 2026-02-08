@@ -67,10 +67,9 @@ debug_*.py
 repomix-output.xml
 
 # Test screenshots (auto-generated, don't commit)
-docs/screenshots/demo_*.png
-docs/screenshots/dm_*.png
-docs/screenshots/test_*.png
-docs/screenshots/screenshot_*.png
+docs/screenshots/*.png
+docs/screenshots/*.jpg
+docs/screenshots/*.jpeg
 
 # Projects directory (user projects, don't commit)
 projects/*

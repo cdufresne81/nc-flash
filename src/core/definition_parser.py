@@ -60,7 +60,8 @@ class DefinitionParser:
         logger.info(f"Parsing ROM definition from {self.xml_path}")
 
         try:
-            tree = etree.parse(str(self.xml_path))
+            parser = etree.XMLParser(resolve_entities=False, no_network=True)
+            tree = etree.parse(str(self.xml_path), parser)
             root = tree.getroot()
         except etree.XMLSyntaxError as e:
             logger.error(f"XML syntax error in {self.xml_path}: {e}")

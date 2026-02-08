@@ -1,281 +1,263 @@
 """
-Tests for axis editing functionality
+Tests for axis editing, swapxy data integrity, and axis read/write round-trips.
 
-These tests verify the axis cell identification, editing logic,
-and bulk operations on axis cells work correctly.
+These tests exercise actual production code from src/core/rom_reader.py
+and src/core/rom_definition.py.
 """
 
-import pytest
 import numpy as np
+import pytest
+
+from src.core.rom_reader import RomReader, ScalingConverter
+from src.core.rom_definition import Table, Scaling, TableType, AxisType
+from src.core.definition_parser import load_definition
+
+
+class TestSwapxyRoundTrip:
+    """Test that swapxy tables survive read->write->read without data corruption"""
+
+    def test_swapxy_3d_table_round_trip(self, sample_rom_path, sample_xml_path):
+        """Read a swapxy 3D table, write it back unchanged, verify data matches"""
+        definition = load_definition(str(sample_xml_path))
+        reader = RomReader(str(sample_rom_path), definition)
+
+        swapxy_table = None
+        for t in definition.tables:
+            if t.type == TableType.THREE_D and not t.is_axis and t.swapxy:
+                swapxy_table = t
+                break
 
-
-class TestAxisCellIdentification:
-    """Test axis cell UserRole data format"""
-
-    def test_axis_cell_format_x_axis(self):
-        """Test X-axis cell identification format"""
-        # X-axis cells should have UserRole data as ('x_axis', index)
-        axis_data = ('x_axis', 5)
-
-        assert isinstance(axis_data[0], str), "First element should be a string"
-        assert axis_data[0] == 'x_axis', "First element should be 'x_axis'"
-        assert isinstance(axis_data[1], int), "Second element should be an integer index"
-
-    def test_axis_cell_format_y_axis(self):
-        """Test Y-axis cell identification format"""
-        # Y-axis cells should have UserRole data as ('y_axis', index)
-        axis_data = ('y_axis', 3)
-
-        assert isinstance(axis_data[0], str), "First element should be a string"
-        assert axis_data[0] == 'y_axis', "First element should be 'y_axis'"
-        assert isinstance(axis_data[1], int), "Second element should be an integer index"
-
-    def test_data_cell_format(self):
-        """Test data cell identification format"""
-        # Data cells should have UserRole data as (row, col) - both integers
-        data_indices = (2, 5)
-
-        assert isinstance(data_indices[0], int), "First element should be an integer row"
-        assert isinstance(data_indices[1], int), "Second element should be an integer col"
-
-    def test_distinguishing_axis_from_data_cells(self):
-        """Test logic to distinguish axis cells from data cells"""
-        axis_cell = ('x_axis', 5)
-        data_cell = (2, 5)
-
-        # The check used in code: isinstance(data_indices[0], str)
-        assert isinstance(axis_cell[0], str), "Axis cell first element is string"
-        assert not isinstance(data_cell[0], str), "Data cell first element is not string"
-
-
-class TestAxisInterpolationLogic:
-    """Test axis interpolation calculations"""
-
-    def test_y_axis_vertical_interpolation(self):
-        """Test vertical interpolation on Y-axis values (e.g., RPM)"""
-        # Test case: Y-axis with RPM values 1000, ?, ?, 4000
-        # Should interpolate to 1000, 2000, 3000, 4000
-
-        y_axis = np.array([1000.0, 0.0, 0.0, 4000.0])  # Middle values to be interpolated
-
-        first_idx = 0
-        last_idx = 3
-        first_val = y_axis[first_idx]
-        last_val = y_axis[last_idx]
-
-        # Interpolate middle values
-        for idx in range(first_idx + 1, last_idx):
-            t = (idx - first_idx) / (last_idx - first_idx)
-            new_val = first_val + t * (last_val - first_val)
-            y_axis[idx] = new_val
-
-        expected = [1000.0, 2000.0, 3000.0, 4000.0]
-        for i, exp in enumerate(expected):
-            assert abs(y_axis[i] - exp) < 1e-9, f"Index {i}: expected {exp}, got {y_axis[i]}"
-
-    def test_x_axis_horizontal_interpolation(self):
-        """Test horizontal interpolation on X-axis values (e.g., Load)"""
-        # Test case: X-axis with Load values 0, ?, ?, ?, 1.0
-        # Should interpolate to 0, 0.25, 0.5, 0.75, 1.0
-
-        x_axis = np.array([0.0, 0.0, 0.0, 0.0, 1.0])  # Middle values to be interpolated
-
-        first_idx = 0
-        last_idx = 4
-        first_val = x_axis[first_idx]
-        last_val = x_axis[last_idx]
-
-        # Interpolate middle values
-        for idx in range(first_idx + 1, last_idx):
-            t = (idx - first_idx) / (last_idx - first_idx)
-            new_val = first_val + t * (last_val - first_val)
-            x_axis[idx] = new_val
-
-        expected = [0.0, 0.25, 0.5, 0.75, 1.0]
-        for i, exp in enumerate(expected):
-            assert abs(x_axis[i] - exp) < 1e-9, f"Index {i}: expected {exp}, got {x_axis[i]}"
-
-    def test_axis_interpolation_with_negative_values(self):
-        """Test axis interpolation handles negative values correctly"""
-        # Test case: Temperature axis from -40 to 120
-        axis = np.array([-40.0, 0.0, 0.0, 120.0])
-
-        first_idx = 0
-        last_idx = 3
-        first_val = axis[first_idx]
-        last_val = axis[last_idx]
-
-        for idx in range(first_idx + 1, last_idx):
-            t = (idx - first_idx) / (last_idx - first_idx)
-            new_val = first_val + t * (last_val - first_val)
-            axis[idx] = new_val
-
-        # -40 to 120 = 160 range, divided into 3 steps = 53.33 per step
-        expected = [-40.0, 13.333333, 66.666667, 120.0]
-        for i, exp in enumerate(expected):
-            assert abs(axis[i] - exp) < 0.001, f"Index {i}: expected {exp}, got {axis[i]}"
-
-
-class TestAxisBulkOperations:
-    """Test bulk operations on axis data"""
-
-    def test_increment_axis_values(self):
-        """Test incrementing axis values"""
-        y_axis = np.array([1000.0, 2000.0, 3000.0, 4000.0])
-        increment = 100.0
-
-        # Apply increment operation
-        new_values = y_axis + increment
-
-        expected = [1100.0, 2100.0, 3100.0, 4100.0]
-        for i, exp in enumerate(expected):
-            assert abs(new_values[i] - exp) < 1e-9, f"Index {i}: expected {exp}, got {new_values[i]}"
-
-    def test_multiply_axis_values(self):
-        """Test multiplying axis values by a factor"""
-        x_axis = np.array([0.0, 0.25, 0.5, 0.75, 1.0])
-        factor = 2.0
-
-        # Apply multiply operation
-        new_values = x_axis * factor
-
-        expected = [0.0, 0.5, 1.0, 1.5, 2.0]
-        for i, exp in enumerate(expected):
-            assert abs(new_values[i] - exp) < 1e-9, f"Index {i}: expected {exp}, got {new_values[i]}"
-
-    def test_set_axis_values(self):
-        """Test setting all axis values to a constant"""
-        y_axis = np.array([1000.0, 2000.0, 3000.0, 4000.0])
-        set_value = 2500.0
-
-        # Apply set operation
-        new_values = np.full_like(y_axis, set_value)
-
-        for val in new_values:
-            assert abs(val - set_value) < 1e-9, f"Expected {set_value}, got {val}"
-
-    def test_decrement_axis_values(self):
-        """Test decrementing axis values"""
-        y_axis = np.array([1000.0, 2000.0, 3000.0, 4000.0])
-        decrement = 500.0
-
-        # Apply decrement operation
-        new_values = y_axis - decrement
-
-        expected = [500.0, 1500.0, 2500.0, 3500.0]
-        for i, exp in enumerate(expected):
-            assert abs(new_values[i] - exp) < 1e-9, f"Index {i}: expected {exp}, got {new_values[i]}"
-
-
-class TestAxisChangeTracking:
-    """Test axis change tracking data structures"""
-
-    def test_axis_change_tuple_format(self):
-        """Test the format of axis change tuples"""
-        # Axis changes should be: (axis_type, index, old_value, new_value, old_raw, new_raw)
-        axis_change = ('y_axis', 2, 2000.0, 2500.0, 2000.0, 2500.0)
-
-        assert axis_change[0] in ('x_axis', 'y_axis'), "First element should be axis type"
-        assert isinstance(axis_change[1], int), "Second element should be index"
-        assert isinstance(axis_change[2], float), "Third element should be old_value"
-        assert isinstance(axis_change[3], float), "Fourth element should be new_value"
-        assert isinstance(axis_change[4], float), "Fifth element should be old_raw"
-        assert isinstance(axis_change[5], float), "Sixth element should be new_raw"
-
-    def test_data_change_tuple_format(self):
-        """Test the format of data cell change tuples"""
-        # Data changes should be: (row, col, old_value, new_value, old_raw, new_raw)
-        data_change = (5, 10, 1.5, 2.0, 150, 200)
-
-        assert isinstance(data_change[0], int), "First element should be row"
-        assert isinstance(data_change[1], int), "Second element should be col"
-        assert len(data_change) == 6, "Should have 6 elements"
-
-    def test_distinguishing_axis_from_data_changes(self):
-        """Test logic to distinguish axis changes from data changes"""
-        axis_change = ('y_axis', 2, 2000.0, 2500.0, 2000.0, 2500.0)
-        data_change = (5, 10, 1.5, 2.0, 150.0, 200.0)
-
-        # Axis changes have string as first element
-        assert isinstance(axis_change[0], str), "Axis change has string first element"
-        assert not isinstance(data_change[0], str), "Data change has int first element"
-
-
-class TestAxisDataStorage:
-    """Test axis data storage in current_data dictionary"""
-
-    def test_axis_data_structure(self):
-        """Test the structure of axis data in current_data"""
-        # Simulate current_data structure
-        current_data = {
-            'values': np.array([[1, 2, 3], [4, 5, 6], [7, 8, 9]]),
-            'x_axis': np.array([0.0, 0.5, 1.0]),
-            'y_axis': np.array([1000.0, 2000.0, 3000.0])
-        }
-
-        assert 'values' in current_data, "Should have 'values' key"
-        assert 'x_axis' in current_data, "Should have 'x_axis' key"
-        assert 'y_axis' in current_data, "Should have 'y_axis' key"
-
-        # X-axis length should match columns
-        assert len(current_data['x_axis']) == current_data['values'].shape[1]
-
-        # Y-axis length should match rows
-        assert len(current_data['y_axis']) == current_data['values'].shape[0]
-
-    def test_axis_value_update(self):
-        """Test updating axis values in place"""
-        current_data = {
-            'x_axis': np.array([0.0, 0.5, 1.0]),
-            'y_axis': np.array([1000.0, 2000.0, 3000.0])
-        }
-
-        # Update a specific axis value
-        current_data['y_axis'][1] = 2500.0
-
-        assert current_data['y_axis'][1] == 2500.0, "Y-axis value should be updated"
-
-        # Other values should be unchanged
-        assert current_data['y_axis'][0] == 1000.0
-        assert current_data['y_axis'][2] == 3000.0
-
-
-class TestAxisColorGradient:
-    """Test axis color gradient calculations"""
-
-    def test_axis_color_ratio_calculation(self):
-        """Test ratio calculation for axis color gradient"""
-        axis_values = np.array([1000.0, 2000.0, 3000.0, 4000.0])
-
-        min_val = np.min(axis_values)
-        max_val = np.max(axis_values)
-
-        # Test ratio for each value
-        for i, value in enumerate(axis_values):
-            if max_val == min_val:
-                ratio = 0.5
-            else:
-                ratio = (value - min_val) / (max_val - min_val)
-
-            expected_ratios = [0.0, 1/3, 2/3, 1.0]
-            assert abs(ratio - expected_ratios[i]) < 1e-9, f"Index {i}: expected ratio {expected_ratios[i]}, got {ratio}"
-
-    def test_axis_color_ratio_single_value(self):
-        """Test ratio calculation when all axis values are the same"""
-        axis_values = np.array([2000.0, 2000.0, 2000.0])
-
-        min_val = np.min(axis_values)
-        max_val = np.max(axis_values)
-
-        # When min == max, ratio should be 0.5 (middle of gradient)
-        for value in axis_values:
-            if max_val == min_val:
-                ratio = 0.5
-            else:
-                ratio = (value - min_val) / (max_val - min_val)
-
-            assert ratio == 0.5, f"Expected 0.5 when all values equal, got {ratio}"
-
-
-if __name__ == "__main__":
-    pytest.main([__file__, "-v"])
+        if swapxy_table is None:
+            pytest.skip("No swapxy 3D tables found in definition")
+
+        original = reader.read_table_data(swapxy_table)
+        assert original is not None
+        assert 'values' in original
+        assert original['values'].ndim == 2
+
+        original_values = original['values'].copy()
+
+        # Write back unchanged
+        reader.write_table_data(swapxy_table, original_values)
+
+        # Read again - must be identical
+        after_write = reader.read_table_data(swapxy_table)
+        np.testing.assert_array_almost_equal(
+            original_values, after_write['values'], decimal=5,
+            err_msg="swapxy table data corrupted during write->read round-trip"
+        )
+
+    def test_non_swapxy_3d_table_round_trip(self, sample_rom_path, sample_xml_path):
+        """Read a non-swapxy 3D table, write it back unchanged, verify data matches"""
+        definition = load_definition(str(sample_xml_path))
+        reader = RomReader(str(sample_rom_path), definition)
+
+        table = None
+        for t in definition.tables:
+            if t.type == TableType.THREE_D and not t.is_axis and not t.swapxy:
+                table = t
+                break
+
+        if table is None:
+            pytest.skip("No non-swapxy 3D tables found in definition")
+
+        original = reader.read_table_data(table)
+        assert original is not None
+        assert 'values' in original
+        assert original['values'].ndim == 2
+
+        original_values = original['values'].copy()
+        reader.write_table_data(table, original_values)
+        after_write = reader.read_table_data(table)
+
+        np.testing.assert_array_almost_equal(
+            original_values, after_write['values'], decimal=5,
+            err_msg="3D table data corrupted during write->read round-trip"
+        )
+
+    def test_swapxy_flatten_order_matches_reshape_order(self):
+        """Verify that flatten(order='F') reverses reshape(order='F')"""
+        flat_data = np.array([1, 2, 3, 4, 5, 6], dtype=float)
+
+        # Read path: reshape with F order (swapxy=True)
+        reshaped = flat_data.reshape((2, 3), order='F')
+        expected = np.array([[1, 3, 5], [2, 4, 6]], dtype=float)
+        np.testing.assert_array_equal(reshaped, expected)
+
+        # Write path: flatten with F order must recover original
+        reflattened = reshaped.flatten(order='F')
+        np.testing.assert_array_equal(reflattened, flat_data)
+
+    def test_swapxy_flatten_c_order_would_corrupt(self):
+        """Demonstrate that C order flatten on F-order-reshaped data is wrong"""
+        flat_data = np.array([1, 2, 3, 4, 5, 6], dtype=float)
+        reshaped = flat_data.reshape((2, 3), order='F')
+
+        wrong_flatten = reshaped.flatten(order='C')
+        assert not np.array_equal(wrong_flatten, flat_data), \
+            "C-order and F-order flatten should differ for non-trivial arrays"
+
+    def test_2d_table_round_trip(self, sample_rom_path, sample_xml_path):
+        """2D tables should also survive read->write->read"""
+        definition = load_definition(str(sample_xml_path))
+        reader = RomReader(str(sample_rom_path), definition)
+
+        table = None
+        for t in definition.tables:
+            if t.type == TableType.TWO_D and not t.is_axis:
+                table = t
+                break
+
+        if table is None:
+            pytest.skip("No 2D tables found in definition")
+
+        original = reader.read_table_data(table)
+        assert original is not None
+        original_values = original['values'].copy()
+
+        reader.write_table_data(table, original_values)
+        after_write = reader.read_table_data(table)
+
+        np.testing.assert_array_almost_equal(
+            original_values, after_write['values'], decimal=5
+        )
+
+
+class TestAxisReadWriteIntegrity:
+    """Test axis value read/write integrity with actual ROM data"""
+
+    def test_3d_table_has_both_axes(self, sample_rom_path, sample_xml_path):
+        """3D table data should include x_axis and y_axis arrays"""
+        definition = load_definition(str(sample_xml_path))
+        reader = RomReader(str(sample_rom_path), definition)
+
+        table = None
+        for t in definition.tables:
+            if t.type == TableType.THREE_D and not t.is_axis:
+                table = t
+                break
+
+        if table is None:
+            pytest.skip("No 3D tables found in definition")
+
+        data = reader.read_table_data(table)
+        assert 'x_axis' in data, "3D table should have x_axis data"
+        assert 'y_axis' in data, "3D table should have y_axis data"
+        assert data['x_axis'].ndim == 1
+        assert data['y_axis'].ndim == 1
+
+        x_axis_table = table.get_axis(AxisType.X_AXIS)
+        y_axis_table = table.get_axis(AxisType.Y_AXIS)
+        if x_axis_table:
+            assert len(data['x_axis']) == x_axis_table.elements
+        if y_axis_table:
+            assert len(data['y_axis']) == y_axis_table.elements
+
+    def test_single_cell_write_round_trip(self, sample_rom_path, sample_xml_path):
+        """Write a single cell value and read it back"""
+        definition = load_definition(str(sample_xml_path))
+        reader = RomReader(str(sample_rom_path), definition)
+
+        table = None
+        for t in definition.tables:
+            if t.type == TableType.ONE_D and not t.is_axis:
+                table = t
+                break
+
+        if table is None:
+            pytest.skip("No 1D tables found")
+
+        data = reader.read_table_data(table)
+        original_val = data['values'][0]
+
+        new_val = original_val + 1.0
+        scaling = definition.get_scaling(table.scaling)
+        converter = ScalingConverter(scaling)
+        new_raw = converter.from_display(new_val)
+        reader.write_cell_value(table, 0, 0, new_raw)
+
+        data2 = reader.read_table_data(table)
+        np.testing.assert_almost_equal(data2['values'][0], new_val, decimal=2)
+
+        # Restore original
+        orig_raw = converter.from_display(original_val)
+        reader.write_cell_value(table, 0, 0, orig_raw)
+
+    def test_3d_table_values_shape_matches_axes(self, sample_rom_path, sample_xml_path):
+        """3D table values array shape should be (y_len, x_len)"""
+        definition = load_definition(str(sample_xml_path))
+        reader = RomReader(str(sample_rom_path), definition)
+
+        for t in definition.tables:
+            if t.type == TableType.THREE_D and not t.is_axis:
+                data = reader.read_table_data(t)
+                if 'x_axis' in data and 'y_axis' in data and data['values'].ndim == 2:
+                    assert data['values'].shape == (len(data['y_axis']), len(data['x_axis'])), \
+                        f"Table {t.name}: values shape {data['values'].shape} doesn't match axes"
+                    return  # Found and tested one
+
+        pytest.skip("No 3D tables with complete axes found")
+
+
+class TestScalingConverterRoundTrip:
+    """Test that ScalingConverter conversions are reversible"""
+
+    def test_linear_scaling_round_trip(self):
+        """Linear scaling (x*factor) should round-trip cleanly"""
+        scaling = Scaling(
+            name="test_linear", units="V", toexpr="x*0.001",
+            frexpr="x/0.001", format="%.3f", min=0, max=5.0,
+            inc=0.001, storagetype="uint16", endian="big"
+        )
+        converter = ScalingConverter(scaling)
+
+        raw = np.array([0, 1000, 2500, 5000], dtype=float)
+        display = converter.to_display(raw)
+        raw_back = converter.from_display(display)
+
+        np.testing.assert_array_almost_equal(raw, raw_back, decimal=5)
+
+    def test_offset_scaling_round_trip(self):
+        """Offset scaling (x*factor+offset) should round-trip cleanly"""
+        scaling = Scaling(
+            name="test_offset", units="degC", toexpr="x*0.01-40",
+            frexpr="(x+40)/0.01", format="%.1f", min=-40, max=120,
+            inc=0.01, storagetype="uint16", endian="big"
+        )
+        converter = ScalingConverter(scaling)
+
+        raw = np.array([4000, 6000, 8000, 16000], dtype=float)
+        display = converter.to_display(raw)
+        raw_back = converter.from_display(display)
+
+        np.testing.assert_array_almost_equal(raw, raw_back, decimal=3)
+
+    def test_scalar_round_trip(self):
+        """Single scalar values should also round-trip"""
+        scaling = Scaling(
+            name="test_scalar", units="RPM", toexpr="x*0.25",
+            frexpr="x/0.25", format="%.0f", min=0, max=10000,
+            inc=50, storagetype="uint16", endian="big"
+        )
+        converter = ScalingConverter(scaling)
+
+        raw_val = 4000.0
+        display_val = converter.to_display(raw_val)
+        assert display_val == pytest.approx(1000.0)
+        raw_back = converter.from_display(display_val)
+        assert raw_back == pytest.approx(raw_val)
+
+    def test_exponentiation_scaling(self):
+        """Expressions with ^ (converted to **) should work"""
+        scaling = Scaling(
+            name="test_power", units="kPa", toexpr="x**2*0.01",
+            frexpr="(x/0.01)**0.5", format="%.2f", min=0, max=500,
+            inc=1, storagetype="uint16", endian="big"
+        )
+        converter = ScalingConverter(scaling)
+
+        raw_val = 100.0
+        display_val = converter.to_display(raw_val)
+        assert display_val == pytest.approx(100.0)  # 100^2 * 0.01 = 100
+        raw_back = converter.from_display(display_val)
+        assert raw_back == pytest.approx(raw_val, rel=1e-3)

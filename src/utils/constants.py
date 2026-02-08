@@ -24,7 +24,7 @@ TABLE_BROWSER_COLUMN_WIDTH = 300  # Width of name column
 # Log console settings
 LOG_CONSOLE_MAX_LINES = 1000  # Maximum lines kept in console
 LOG_CONSOLE_CLEAR_BUTTON_WIDTH = 80
-LOG_CONSOLE_FONT_FAMILY = "Courier New"
+LOG_CONSOLE_FONT_FAMILIES = ("Consolas", "Courier New", "DejaVu Sans Mono", "Monospace")
 LOG_CONSOLE_FONT_SIZE = 9
 
 # Logging configuration

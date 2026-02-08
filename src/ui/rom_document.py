@@ -103,3 +103,5 @@ class RomDocument(QWidget):
         if file_path:
             self.rom_path = file_path
             self.file_name = Path(file_path).name
+
+        self.set_modified(False)

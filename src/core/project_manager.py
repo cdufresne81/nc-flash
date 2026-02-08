@@ -5,6 +5,7 @@ Handles project creation, loading, saving, and file management.
 """
 
 import json
+import os
 import shutil
 import hashlib
 from pathlib import Path
@@ -378,16 +379,25 @@ class ProjectManager:
         return self.current_project is not None
 
     def _save_project_file(self, project: Project):
-        """Save project.json"""
+        """Save project.json (atomic write)"""
         project_file = Path(project.project_path) / PROJECT_FILE
+        tmp_path = str(project_file) + '.tmp'
         try:
-            with open(project_file, 'w') as f:
+            with open(tmp_path, 'w') as f:
                 json.dump(project.to_dict(), f, indent=2)
+                f.flush()
+                os.fsync(f.fileno())
+            os.replace(tmp_path, str(project_file))
         except Exception as e:
+            try:
+                if os.path.exists(tmp_path):
+                    os.remove(tmp_path)
+            except OSError:
+                pass
             raise ProjectSaveError(f"Failed to save project file: {e}")
 
     def _save_commits(self, commits: List[Commit], project: Project):
-        """Save commits.json"""
+        """Save commits.json (atomic write)"""
         commits_file = Path(project.project_path) / COMMITS_FILE
         commits_file.parent.mkdir(parents=True, exist_ok=True)
 
@@ -395,10 +405,19 @@ class ProjectManager:
             "version": "1.0",
             "commits": [c.to_dict() for c in commits]
         }
+        tmp_path = str(commits_file) + '.tmp'
         try:
-            with open(commits_file, 'w') as f:
+            with open(tmp_path, 'w') as f:
                 json.dump(data, f, indent=2)
+                f.flush()
+                os.fsync(f.fileno())
+            os.replace(tmp_path, str(commits_file))
         except Exception as e:
+            try:
+                if os.path.exists(tmp_path):
+                    os.remove(tmp_path)
+            except OSError:
+                pass
             raise ProjectSaveError(f"Failed to save commits file: {e}")
 
     def _load_commits(self, project_dir: Path) -> List[Commit]:

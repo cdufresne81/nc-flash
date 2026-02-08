@@ -263,7 +263,7 @@ class TestInitialization:
     def test_custom_definitions_dir(self):
         """Custom definitions directory should be used"""
         runner = TestRunner(definitions_dir="/custom/path", quiet=True)
-        assert str(runner.definitions_dir) == "/custom/path"
+        assert runner.definitions_dir == Path("/custom/path")
 
     def test_quiet_mode(self):
         """Quiet mode should suppress logging"""

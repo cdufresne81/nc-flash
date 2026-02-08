@@ -1,19 +1,19 @@
 # GUI Framework
-PySide6>=6.6.0
+PySide6>=6.10.0,<7.0.0
 
 # Data manipulation and visualization
-numpy>=1.24.0
-matplotlib>=3.7.0
+numpy>=2.4.0,<3.0.0
+matplotlib>=3.10.0,<4.0.0
 
 # XML parsing for ROM definitions
-lxml>=4.9.0
+lxml>=6.0.0,<7.0.0
 
 # Safe expression evaluation for scaling formulas
-simpleeval>=0.9.13
+simpleeval>=1.0.0,<2.0.0
 
 # Development and testing tools
-pytest>=8.0.0
-pytest-cov>=4.1.0
-pytest-mock>=3.12.0
-black>=24.1.0
-flake8>=7.0.0
+pytest>=9.0.0,<10.0.0
+pytest-cov>=7.0.0,<8.0.0
+pytest-mock>=3.15.0,<4.0.0
+black>=26.0.0,<27.0.0
+flake8>=7.3.0,<8.0.0

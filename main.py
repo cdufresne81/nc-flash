@@ -14,15 +14,13 @@ from PySide6.QtWidgets import (
     QApplication,
     QMainWindow,
     QWidget,
-    QVBoxLayout,
     QHBoxLayout,
     QSplitter,
     QFileDialog,
     QMessageBox,
-    QLabel,
     QTabWidget
 )
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QTimer
 
 from src.utils.logging_config import setup_logging, get_logger
 from src.utils.settings import get_settings
@@ -37,22 +35,24 @@ from src.core.rom_detector import RomDetector
 from src.core.exceptions import (
     DefinitionError,
     RomFileError,
+    RomWriteError,
     DetectionError,
     ScalingNotFoundError,
-    RomReadError
+    RomReadError,
 )
-from src.ui.table_browser import TableBrowser
 from src.ui.table_viewer_window import TableViewerWindow
 from src.ui.log_console import LogConsole
-from src.ui.settings_dialog import SettingsDialog
 from src.ui.setup_wizard import SetupWizard
 from src.ui.rom_document import RomDocument
-from src.ui.project_wizard import ProjectWizard
-from src.ui.commit_dialog import CommitDialog
-from src.ui.history_viewer import HistoryViewer
 from src.core.project_manager import ProjectManager
 from src.core.change_tracker import ChangeTracker
-from src.core.version_models import AxisChange
+from src.core.table_undo_manager import TableUndoManager, make_table_key, extract_table_address, extract_rom_path
+from src.core.version_models import CellChange, AxisChange
+
+# Mixin classes — each handles one responsibility group
+from src.ui.recent_files_mixin import RecentFilesMixin
+from src.ui.project_mixin import ProjectMixin
+from src.ui.session_mixin import SessionMixin
 
 logger = get_logger(__name__)
 
@@ -71,7 +71,7 @@ def handle_rom_operation_error(parent, operation: str, exception: Exception):
     QMessageBox.critical(parent, "Error", error_msg)
 
 
-class MainWindow(QMainWindow):
+class MainWindow(QMainWindow, RecentFilesMixin, ProjectMixin, SessionMixin):
     """Main application window"""
 
     def __init__(self):
@@ -100,6 +100,38 @@ class MainWindow(QMainWindow):
         self.change_tracker = ChangeTracker()
         self.change_tracker.add_change_callback(self._on_changes_updated)
 
+        # Per-table undo/redo manager (uses Qt's QUndoGroup pattern)
+        self.table_undo_manager = TableUndoManager()
+        self.table_undo_manager.set_callbacks(
+            apply_cell=self._apply_cell_change_from_undo,
+            apply_axis=self._apply_axis_change_from_undo,
+            update_pending=self._update_pending_from_undo,
+            update_pending_axis=self._update_pending_from_axis_undo,
+            begin_bulk_update=self._begin_bulk_update,
+            end_bulk_update=self._end_bulk_update,
+        )
+
+        # ROM detector initialized in _deferred_init (XML parsing is heavy)
+        self.rom_detector = None
+
+        # Initialize UI (lightweight widget creation)
+        self.init_ui()
+        self.init_menu()
+
+        # Defer heavy work to after the window is shown:
+        # - definitions directory check + setup wizard (modal dialog)
+        # - ROM detector initialization (XML parsing)
+        # - startup log message (depends on rom_detector)
+        # - session restore (file I/O)
+        QTimer.singleShot(0, self._deferred_init)
+
+    def _deferred_init(self):
+        """
+        Perform heavy initialization after the window is shown.
+
+        This includes file I/O, modal dialogs, XML parsing, and session restore
+        that would otherwise block the constructor and delay window display.
+        """
         # Check if definitions directory is configured and valid
         if not self.check_definitions_directory():
             # Show setup wizard on first run or if definitions directory is invalid
@@ -112,7 +144,9 @@ class MainWindow(QMainWindow):
                     f"{APP_NAME} requires a definitions directory to function.\n"
                     "Application will now exit."
                 )
-                sys.exit(1)
+                # Defer exit to the event loop so Qt can clean up properly
+                QTimer.singleShot(0, lambda: sys.exit(1))
+                return
 
         # ROM detector for automatic XML matching
         try:
@@ -128,22 +162,18 @@ class MainWindow(QMainWindow):
             )
             self.rom_detector = None
         except Exception as e:
-            logger.error(f"Unexpected error initializing ROM detector: {e}")
+            logger.exception(f"Unexpected error initializing ROM detector: {type(e).__name__}: {e}")
             QMessageBox.critical(
                 self,
                 "Initialization Error",
-                f"Failed to initialize ROM detector:\n{str(e)}"
+                f"Unexpected error initializing ROM detector:\n{type(e).__name__}: {e}"
             )
             self.rom_detector = None
 
-        # Initialize UI
-        self.init_ui()
-        self.init_menu()
-
-        # Log startup message
+        # Log startup message (depends on rom_detector)
         self.log_startup_message()
 
-        # Restore previous session
+        # Restore previous session (file I/O)
         self._restore_session()
 
     def check_definitions_directory(self) -> bool:
@@ -268,15 +298,15 @@ class MainWindow(QMainWindow):
         # Edit menu
         edit_menu = menubar.addMenu("Edit")
 
-        self.undo_action = edit_menu.addAction("Undo")
+        # Use QUndoGroup's createUndoAction/createRedoAction for per-table undo/redo
+        # These actions automatically enable/disable based on active stack state
+        self.undo_action = self.table_undo_manager.undo_group.createUndoAction(self, "Undo")
         self.undo_action.setShortcut("Ctrl+Z")
-        self.undo_action.triggered.connect(self.undo)
-        self.undo_action.setEnabled(False)
+        edit_menu.addAction(self.undo_action)
 
-        self.redo_action = edit_menu.addAction("Redo")
+        self.redo_action = self.table_undo_manager.undo_group.createRedoAction(self, "Redo")
         self.redo_action.setShortcut("Ctrl+Y")
-        self.redo_action.triggered.connect(self.redo)
-        self.redo_action.setEnabled(False)
+        edit_menu.addAction(self.redo_action)
 
         edit_menu.addSeparator()
 
@@ -295,69 +325,7 @@ class MainWindow(QMainWindow):
         about_action = help_menu.addAction("About")
         about_action.triggered.connect(self.show_about)
 
-    def update_recent_files_menu(self):
-        """Update the recent files menu with current list"""
-        # Remove existing recent file actions
-        for action in self.recent_files_actions:
-            self.file_menu.removeAction(action)
-        self.recent_files_actions.clear()
-
-        # Get recent files from settings
-        recent_files = self.settings.get_recent_files()
-
-        if recent_files:
-            # Add each recent file
-            for i, file_path in enumerate(recent_files, 1):
-                # Show just the filename, but store full path
-                file_name = Path(file_path).name
-                action_text = f"{i}. {file_name}"
-
-                action = self.file_menu.addAction(action_text)
-                action.setData(file_path)  # Store full path in action data
-                action.setStatusTip(file_path)  # Show full path in status bar
-                action.triggered.connect(lambda checked=False, path=file_path: self.open_recent_file(path))
-
-                # Insert before the separator
-                self.file_menu.insertAction(self.recent_files_separator, action)
-                self.recent_files_actions.append(action)
-
-            # Add "Clear Recent Files" option
-            clear_action = self.file_menu.addAction("Clear Recent Files")
-            clear_action.triggered.connect(self.clear_recent_files)
-            self.file_menu.insertAction(self.recent_files_separator, clear_action)
-            self.recent_files_actions.append(clear_action)
-
-    def open_recent_file(self, file_path: str):
-        """
-        Open a ROM file from recent files list
-
-        Args:
-            file_path: Full path to ROM file
-        """
-        if not Path(file_path).exists():
-            QMessageBox.warning(
-                self,
-                "File Not Found",
-                f"The file no longer exists:\n{file_path}\n\n"
-                "It will be removed from recent files."
-            )
-            # Remove from recent files
-            recent = self.settings.get_recent_files()
-            if file_path in recent:
-                recent.remove(file_path)
-                self.settings.settings.setValue("recent_files", recent)
-                self.settings.settings.sync()
-                self.update_recent_files_menu()
-            return
-
-        # Open the file (reuse existing logic by calling the internal open method)
-        self._open_rom_file(file_path)
-
-    def clear_recent_files(self):
-        """Clear the recent files list"""
-        self.settings.clear_recent_files()
-        self.update_recent_files_menu()
-        logger.info("Recent files list cleared")
+    # ========== Tab and Document Management ==========
 
     def update_window_title(self):
         """Update window title based on tab count"""
@@ -374,6 +342,21 @@ class MainWindow(QMainWindow):
         current_index = self.tab_widget.currentIndex()
         if current_index >= 0:
             return self.tab_widget.widget(current_index)
+        return None
+
+    def _find_document_by_rom_path(self, rom_path):
+        """Find the RomDocument tab that owns the given ROM file path."""
+        if not rom_path:
+            return None
+        # Use Path comparison to handle slash normalization on Windows
+        # (QFileDialog returns forward slashes, Path uses backslashes)
+        from pathlib import Path as _Path
+        target = _Path(rom_path)
+        for i in range(self.tab_widget.count()):
+            doc = self.tab_widget.widget(i)
+            if hasattr(doc, 'rom_path') and _Path(doc.rom_path) == target:
+                return doc
+        logger.warning(f"No document found for rom_path={rom_path}")
         return None
 
     def close_tab(self, index: int):
@@ -401,8 +384,42 @@ class MainWindow(QMainWindow):
             elif response == QMessageBox.Save:
                 document.save()
 
-        # Remove the tab
+        # Clean up all state tied to this ROM before removing the tab
+        if document:
+            # Use rom_reader.rom_path (Path) for consistent comparison
+            # (document.rom_path is str, window.rom_path is Path)
+            rom_path = document.rom_reader.rom_path if hasattr(document, 'rom_reader') and document.rom_reader else None
+
+            # Close all open table windows belonging to this ROM
+            windows_to_close = [w for w in self.open_table_windows
+                                if w.rom_path == rom_path]
+            for window in windows_to_close:
+                window.close()
+
+            # Collect composite keys for this ROM's tables
+            table_keys = set()
+            if hasattr(document, 'rom_reader') and document.rom_reader:
+                definition = document.rom_reader.definition
+                if definition:
+                    for table in definition.tables:
+                        table_keys.add(make_table_key(rom_path, table.address))
+
+            # Remove undo stacks for this ROM's tables (composite keys prevent
+            # accidentally destroying stacks belonging to other open ROMs)
+            self.table_undo_manager.remove_stacks_for_keys(table_keys)
+
+            # Clear pending changes for this ROM's tables
+            self.change_tracker.clear_pending_for_keys(table_keys)
+
+            # Clear per-ROM tracking dicts
+            if rom_path:
+                self.modified_cells.pop(rom_path, None)
+                self.original_table_values.pop(rom_path, None)
+
+        # Remove the tab and schedule widget cleanup
         self.tab_widget.removeTab(index)
+        if document:
+            document.deleteLater()
         self.update_window_title()
 
         logger.info(f"Closed ROM tab: {document.file_name if document else 'unknown'}")
@@ -422,6 +439,17 @@ class MainWindow(QMainWindow):
                 logger.info(f"Switched to ROM: {document.file_name}")
         else:
             self.update_window_title()
+
+    def _update_tab_title(self, document):
+        """Update tab title to show modified state"""
+        tab_index = self.tab_widget.indexOf(document)
+        if tab_index >= 0:
+            title = document.file_name
+            if document.is_modified():
+                title = f"*{title}"
+            self.tab_widget.setTabText(tab_index, title)
+
+    # ========== ROM I/O ==========
 
     def open_rom(self):
         """Open a ROM file via file dialog"""
@@ -521,8 +549,14 @@ class MainWindow(QMainWindow):
                 f"({len(rom_definition.tables)} tables)"
             )
 
-        except (DetectionError, RomFileError, DefinitionError, Exception) as e:
+        except (DetectionError, RomFileError, DefinitionError) as e:
             handle_rom_operation_error(self, "open ROM file", e)
+        except Exception as e:
+            logger.error(f"Unexpected error opening ROM file: {type(e).__name__}: {e}", exc_info=True)
+            QMessageBox.critical(
+                self, "Error",
+                f"Unexpected error opening ROM file:\n{type(e).__name__}: {e}"
+            )
 
     def save_rom(self):
         """Save the current ROM file"""
@@ -550,8 +584,14 @@ class MainWindow(QMainWindow):
                 "Success",
                 f"ROM saved successfully to:\n{document.rom_path}"
             )
-        except (RomFileError, Exception) as e:
+        except RomFileError as e:
             handle_rom_operation_error(self, "save ROM file", e)
+        except Exception as e:
+            logger.error(f"Unexpected error saving ROM file: {type(e).__name__}: {e}", exc_info=True)
+            QMessageBox.critical(
+                self, "Error",
+                f"Unexpected error saving ROM file:\n{type(e).__name__}: {e}"
+            )
 
     def save_rom_as(self):
         """Save the ROM to a new file"""
@@ -591,17 +631,22 @@ class MainWindow(QMainWindow):
                     "Success",
                     f"ROM saved successfully to:\n{file_path}"
                 )
-            except (RomFileError, Exception) as e:
+            except RomFileError as e:
                 handle_rom_operation_error(self, "save ROM file", e)
+            except Exception as e:
+                logger.error(f"Unexpected error saving ROM file: {type(e).__name__}: {e}", exc_info=True)
+                QMessageBox.critical(
+                    self, "Error",
+                    f"Unexpected error saving ROM file:\n{type(e).__name__}: {e}"
+                )
+
+    # ========== Table Selection and Window Management ==========
 
     def on_table_selected(self, table, rom_reader):
         """Handle table selection from browser - opens table in new window"""
         try:
             # Get ROM path for duplicate detection
             rom_path = rom_reader.rom_path
-
-            # Clean up closed windows from the list first
-            self.open_table_windows = [w for w in self.open_table_windows if w.isVisible()]
 
             # Check if this table is already open for this ROM
             # Use address for comparison since table names may not be unique across categories
@@ -621,12 +666,13 @@ class MainWindow(QMainWindow):
 
             if data:
                 # Store original table values if this is the first time loading this table
+                # Use table.address as the key since table names are not unique
                 if rom_path not in self.original_table_values:
                     self.original_table_values[rom_path] = {}
-                if table.name not in self.original_table_values[rom_path]:
+                if table.address not in self.original_table_values[rom_path]:
                     import numpy as np
                     # Deep copy the original values
-                    self.original_table_values[rom_path][table.name] = {
+                    self.original_table_values[rom_path][table.address] = {
                         "values": np.copy(data["values"]),
                         "x_axis": np.copy(data["x_axis"]) if data.get("x_axis") is not None else None,
                         "y_axis": np.copy(data["y_axis"]) if data.get("y_axis") is not None else None,
@@ -656,20 +702,16 @@ class MainWindow(QMainWindow):
                 # Connect axis_bulk_changes signal to change tracker
                 viewer_window.axis_bulk_changes.connect(self._on_table_axis_bulk_changes)
 
-                # Connect undo/redo signals
-                viewer_window.undo_requested.connect(self.undo)
-                viewer_window.redo_requested.connect(self.redo)
-
-                # Connect window focus signal to highlight table in tree
+                # Connect window focus signal to highlight table in tree and activate undo stack
                 viewer_window.window_focused.connect(self._on_table_window_focused)
 
                 viewer_window.show()
 
-                # Track the window
+                # Track the window (removed in TableViewerWindow.closeEvent)
                 self.open_table_windows.append(viewer_window)
 
                 # Log to console
-                logger.info(f"Opened table: {table.name}")
+                logger.info(f"Opened table: {table.name} ({table.address})")
                 logger.debug(f"  Category: {table.category}")
                 logger.debug(f"  Type: {table.type.value}")
                 logger.debug(f"  Address: {table.address}")
@@ -687,8 +729,14 @@ class MainWindow(QMainWindow):
                     f"Failed to read table data for: {table.name}"
                 )
 
-        except (ScalingNotFoundError, RomReadError, Exception) as e:
+        except (ScalingNotFoundError, RomReadError) as e:
             handle_rom_operation_error(self, "load table", e)
+        except Exception as e:
+            logger.error(f"Unexpected error loading table: {type(e).__name__}: {e}", exc_info=True)
+            QMessageBox.critical(
+                self, "Error",
+                f"Unexpected error loading table:\n{type(e).__name__}: {e}"
+            )
 
     def log_startup_message(self):
         """Log application startup message to console"""
@@ -706,396 +754,163 @@ class MainWindow(QMainWindow):
             for defn in definitions:
                 logger.info(f"  • {defn['xmlid']} - {defn['make']} {defn['model']}")
 
-    def show_settings(self):
-        """Show settings dialog"""
-        dialog = SettingsDialog(self)
-        dialog.settings_changed.connect(self.on_settings_changed)
-        dialog.exec()
+    # ========== Undo/Redo Callback Methods ==========
+    # These are called by TableUndoManager when undo/redo operations occur
 
-    def on_settings_changed(self):
-        """Handle settings changes"""
-        # Reinitialize ROM detector with new definitions path
-        try:
-            definitions_dir = self.settings.get_definitions_directory()
-            self.rom_detector = RomDetector(definitions_dir)
-            logger.info(f"ROM detector reinitialized with definitions directory: {definitions_dir}")
-            self.statusBar().showMessage(f"Settings updated. Definitions directory: {definitions_dir}")
-        except DetectionError as e:
-            logger.error(f"Failed to reinitialize ROM detector: {e}")
-            QMessageBox.warning(
-                self,
-                "Settings Error",
-                f"Failed to load definitions from new directory:\n{str(e)}\n\n"
-                "Please check the definitions directory path in settings."
-            )
-
-    def show_about(self):
-        """Show about dialog"""
-        QMessageBox.about(
-            self,
-            f"About {APP_NAME}",
-            f"{APP_NAME} {APP_VERSION_STRING}\n\n"
-            f"{APP_DESCRIPTION}\n\n"
-            "Designed to replace EcuFlash for ROM editing tasks.\n"
-            "Works with RomDrop for ECU flashing."
-        )
-
-    # ========== Project Management Methods ==========
-
-    def new_project(self):
-        """Create a new project via wizard"""
-        wizard = ProjectWizard(self)
-        if wizard.exec() == QDialog.Accepted:
-            try:
-                # Create the project
-                project = self.project_manager.create_project(
-                    project_path=wizard.project_location,
-                    project_name=wizard.project_name,
-                    source_rom_path=wizard.rom_path,
-                    rom_definition=wizard.rom_definition,
-                    description=wizard.project_description
-                )
-
-                # Open the project's working ROM
-                self._open_rom_file(project.working_rom_path)
-
-                # Update UI state
-                self._update_project_ui()
-
-                logger.info(f"Created project: {project.name}")
-                self.statusBar().showMessage(f"Created project: {project.name}")
-
-                QMessageBox.information(
-                    self,
-                    "Project Created",
-                    f"Project '{project.name}' created successfully.\n\n"
-                    f"Location: {project.project_path}"
-                )
-
-            except Exception as e:
-                handle_rom_operation_error(self, "create project", e)
-
-    def open_project(self):
-        """Open an existing project"""
-        project_path = QFileDialog.getExistingDirectory(
-            self,
-            "Open Project Folder",
-            str(Path.home())
-        )
-
-        if not project_path:
-            return
-
-        # Check if it's a valid project folder
-        if not ProjectManager.is_project_folder(project_path):
-            QMessageBox.warning(
-                self,
-                "Invalid Project",
-                "The selected folder is not a valid NC ROM Editor project.\n\n"
-                "A project folder must contain a project.json file."
-            )
-            return
-
-        try:
-            # Open the project
-            project = self.project_manager.open_project(project_path)
-
-            # Get ROM definition for the project
-            rom_id = project.original_rom.rom_id
-            xml_path = self.rom_detector.find_definition_by_id(rom_id)
-
-            if xml_path:
-                rom_definition = load_definition(xml_path)
-
-                # Create ROM reader for working ROM
-                rom_reader = RomReader(project.working_rom_path, rom_definition)
-
-                # Create ROM document widget
-                rom_document = RomDocument(
-                    project.working_rom_path, rom_definition, rom_reader, self
-                )
-                rom_document.table_selected.connect(self.on_table_selected)
-
-                # Add as new tab
-                tab_title = f"[P] {project.name}"
-                tab_index = self.tab_widget.addTab(rom_document, tab_title)
-                self.tab_widget.setTabToolTip(tab_index, project.project_path)
-                self.tab_widget.setCurrentIndex(tab_index)
-
-                # Update UI state
-                self._update_project_ui()
-
-                logger.info(f"Opened project: {project.name}")
-                self.statusBar().showMessage(f"Opened project: {project.name}")
-            else:
-                QMessageBox.warning(
-                    self,
-                    "Definition Not Found",
-                    f"Could not find ROM definition for ID: {rom_id}\n\n"
-                    "The project was created with a ROM definition that is no longer available."
-                )
-
-        except Exception as e:
-            handle_rom_operation_error(self, "open project", e)
-
-    def commit_changes(self):
-        """Commit pending changes to the project"""
-        if not self.project_manager.is_project_open():
-            QMessageBox.warning(
-                self,
-                "No Project",
-                "No project is currently open.\n\n"
-                "Use File > New Project to create a project first."
-            )
-            return
-
-        if not self.change_tracker.has_pending_changes():
-            QMessageBox.information(
-                self,
-                "No Changes",
-                "There are no pending changes to commit."
-            )
-            return
-
-        # Get pending changes
-        pending = self.change_tracker.get_pending_changes()
-
-        # Get version info for dialog
-        next_version = self.project_manager.get_next_version()
-        rom_id = self.project_manager.current_project.original_rom.rom_id
-        suggested_suffix = self.project_manager.current_project.last_suffix
-
-        # Show commit dialog with version info
-        dialog = CommitDialog(
-            pending,
-            next_version=next_version,
-            rom_id=rom_id,
-            suggested_suffix=suggested_suffix,
-            parent=self
-        )
-        if dialog.exec() == QDialog.Accepted:
-            try:
-                message = dialog.get_commit_message()
-                create_snapshot = dialog.get_create_snapshot()
-                snapshot_suffix = dialog.get_snapshot_suffix()
-
-                # Save changes to working ROM file first
-                document = self.get_current_document()
-                if document:
-                    document.rom_reader.save_rom()
-
-                # Create commit with version numbering
-                commit = self.project_manager.commit_changes(
-                    message=message,
-                    changes=pending,
-                    create_snapshot=create_snapshot,
-                    snapshot_suffix=snapshot_suffix
-                )
-
-                # Clear pending changes
-                self.change_tracker.clear_pending_changes()
-
-                # Update UI
-                self._update_project_ui()
-
-                logger.info(f"Committed v{commit.version}: {message[:50]}...")
-                self.statusBar().showMessage(f"Saved version {commit.version}")
-
-            except Exception as e:
-                handle_rom_operation_error(self, "commit changes", e)
-
-    def show_history(self):
-        """Show commit history viewer"""
-        if not self.project_manager.is_project_open():
-            QMessageBox.information(
-                self,
-                "No Project",
-                "Open a project to view commit history."
-            )
-            return
-
-        dialog = HistoryViewer(self.project_manager, self)
-        dialog.view_table_diff.connect(self._on_view_table_diff)
-        dialog.exec()
-
-    def _on_view_table_diff(self, table_name: str, commit):
-        """
-        Open a table viewer showing changes from a specific commit
+    def _find_table_window(self, table_key: str):
+        """Find visible table viewer window by composite key, using cache during bulk ops.
 
         Args:
-            table_name: Name of the table to view
-            commit: Commit object containing the changes
+            table_key: Composite key (rom_path|table_address) or bare table_address
         """
-        document = self.get_current_document()
-        if not document:
-            return
+        rom_path_str = extract_rom_path(table_key)
+        table_address = extract_table_address(table_key)
 
-        # Find the table definition
-        table = document.rom_definition.get_table_by_name(table_name)
-        if not table:
-            QMessageBox.warning(
-                self,
-                "Table Not Found",
-                f"Could not find table: {table_name}"
+        # Use cache during bulk operations to avoid per-cell window scans
+        cache = getattr(self, '_bulk_window_cache', None)
+        if cache is not None:
+            if table_key in cache:
+                return cache[table_key]
+            for window in self.open_table_windows:
+                if window.isVisible() and window.table.address == table_address:
+                    if rom_path_str is None or str(window.rom_path) == rom_path_str:
+                        cache[table_key] = window
+                        return window
+            cache[table_key] = None
+            return None
+
+        # Non-bulk: scan directly
+        for window in self.open_table_windows:
+            if window.isVisible() and window.table.address == table_address:
+                if rom_path_str is None or str(window.rom_path) == rom_path_str:
+                    return window
+        return None
+
+    def _apply_cell_change_from_undo(self, change: CellChange):
+        """
+        Apply a cell change to open table viewers and ROM data.
+        Called by TableUndoManager during undo/redo operations.
+        """
+        window = self._find_table_window(change.table_key or change.table_address)
+        if window:
+            # Update the viewer display
+            window.viewer.update_cell_value(
+                change.row, change.col, change.new_value
             )
-            return
 
-        try:
-            # Load base version data (previous version)
-            base_version = commit.version - 1 if commit.version > 0 else 0
-            base_rom_data = self.project_manager.load_version_data(base_version)
+            # Write to the ROM that owns this table (not the active tab)
+            document = self._find_document_by_rom_path(window.rom_path)
+            if document:
+                try:
+                    document.rom_reader.write_cell_value(
+                        window.table, change.row, change.col, change.new_raw
+                    )
+                except RomWriteError as e:
+                    logger.error(f"Failed to write cell value during undo/redo: {e}")
+                except Exception as e:
+                    logger.exception(f"Unexpected error writing cell value during undo/redo: {type(e).__name__}: {e}")
 
-            if base_rom_data is None:
-                QMessageBox.warning(
-                    self,
-                    "Version Not Found",
-                    f"Could not load base version {base_version} data."
-                )
-                return
+        logger.debug(f"Applied cell change: {change.table_name}[{change.row},{change.col}]")
 
-            # Create a temporary RomReader to read base version table data
-            from src.core.rom_reader import RomReader
-            import tempfile
-            import os
+    def _apply_axis_change_from_undo(self, change: AxisChange):
+        """
+        Apply an axis change to open table viewers and ROM data.
+        Called by TableUndoManager during undo/redo operations.
+        """
+        window = self._find_table_window(change.table_key or change.table_address)
+        if window:
+            # Update the viewer display
+            window.viewer.update_axis_cell_value(
+                change.axis_type, change.index, change.new_value
+            )
 
-            # Write base ROM to temp file and read table data
-            with tempfile.NamedTemporaryFile(delete=False, suffix='.bin') as tmp:
-                tmp.write(base_rom_data)
-                tmp_path = tmp.name
+            # Write to the ROM that owns this table (not the active tab)
+            document = self._find_document_by_rom_path(window.rom_path)
+            if document:
+                try:
+                    document.rom_reader.write_axis_value(
+                        window.table, change.axis_type, change.index, change.new_raw
+                    )
+                except RomWriteError as e:
+                    logger.error(f"Failed to write axis value during undo/redo: {e}")
+                except Exception as e:
+                    logger.exception(f"Unexpected error writing axis value during undo/redo: {type(e).__name__}: {e}")
 
+        logger.debug(f"Applied axis change: {change.table_name}[{change.axis_type}][{change.index}]")
+
+    def _update_pending_from_undo(self, change: CellChange, is_undo: bool):
+        """
+        Update pending changes tracking during cell undo/redo.
+        Called by TableUndoManager to keep change tracker in sync.
+
+        Note: change_tracker._notify_change() fires _on_changes_updated callback,
+        which handles _update_project_ui(). No direct call needed here.
+        """
+        self.change_tracker.update_pending_from_undo(change, is_undo)
+
+    def _update_pending_from_axis_undo(self, change, is_undo: bool):
+        """
+        Update pending changes tracking during axis undo/redo.
+        Called by TableUndoManager to keep change tracker in sync.
+        """
+        self.change_tracker.update_pending_from_axis_undo(change, is_undo)
+
+    def _begin_bulk_update(self, table_key: str = None):
+        """
+        Begin bulk update on the table viewer window for the given table.
+        Called by undo commands before applying multiple changes for performance.
+
+        Args:
+            table_key: Composite key (rom_path|table_address) or None for all windows
+        """
+        self._in_bulk_undo = True  # Defer _update_project_ui calls
+        self._bulk_window_cache = {}  # Cache window lookups during bulk
+        self._bulk_update_windows = []  # Track which windows we started
+
+        rom_path_str = extract_rom_path(table_key) if table_key else None
+        table_address = extract_table_address(table_key) if table_key else None
+
+        for window in self.open_table_windows:
+            if window.isVisible():
+                if table_key is None or (
+                    window.table.address == table_address and
+                    (rom_path_str is None or str(window.rom_path) == rom_path_str)
+                ):
+                    window.viewer.begin_bulk_update()
+                    self._bulk_update_windows.append(window)
+
+    def _end_bulk_update(self, table_key: str = None):
+        """
+        End bulk update on table viewer windows.
+        Called by undo commands after applying multiple changes.
+
+        Args:
+            table_key: Composite key (unused, we use tracked windows)
+        """
+        # End bulk update on exactly the windows we started (not based on visibility)
+        for window in getattr(self, '_bulk_update_windows', []):
             try:
-                base_reader = RomReader(tmp_path, document.rom_definition)
-                base_data = base_reader.read_table_data(table)
-            finally:
-                os.unlink(tmp_path)
+                window.viewer.end_bulk_update()
+            except RuntimeError:
+                # Window might have been deleted
+                pass
+        self._bulk_update_windows = []
+        self._in_bulk_undo = False
+        del self._bulk_window_cache  # Clear window cache
+        # Single deferred UI update for all changes in this bulk operation
+        self._update_project_ui()
 
-            # Read current version table data
-            current_data = document.rom_reader.read_table_data(table)
-
-            # Open diff viewer
-            viewer_window = TableViewerWindow(
-                table,
-                current_data,
-                document.rom_definition,
-                rom_path=document.rom_path,
-                parent=self,
-                diff_mode=True,
-                diff_base_data=base_data
-            )
-            viewer_window.setWindowTitle(f"{table_name} (v{base_version} → v{commit.version})")
-            viewer_window.show()
-
-        except Exception as e:
-            logger.error(f"Failed to open diff view: {e}")
-            QMessageBox.warning(
-                self,
-                "Error",
-                f"Failed to open diff view: {e}"
-            )
-
-    # ========== Undo/Redo Methods ==========
-
-    def undo(self):
-        """Undo last change (single or bulk, cell or axis)"""
-        result = self.change_tracker.undo()
-        if result:
-            # Handle both single and bulk changes
-            if isinstance(result, list):
-                # Bulk undo - check if axis or cell changes
-                if result and isinstance(result[0], AxisChange):
-                    for change in result:
-                        self._apply_axis_change(change)
-                    logger.debug(f"Undo axis bulk: {len(result)} cells")
-                else:
-                    for change in result:
-                        self._apply_cell_change(change)
-                    logger.debug(f"Undo bulk: {len(result)} cells")
-            elif isinstance(result, AxisChange):
-                # Single axis undo
-                self._apply_axis_change(result)
-                logger.debug(f"Undo axis: {result.table_name}[{result.axis_type}][{result.index}]")
-            else:
-                # Single cell undo
-                self._apply_cell_change(result)
-                logger.debug(f"Undo: {result.table_name}[{result.row},{result.col}]")
-            self._update_project_ui()
-
-    def redo(self):
-        """Redo last undone change (single or bulk, cell or axis)"""
-        result = self.change_tracker.redo()
-        if result:
-            # Handle both single and bulk changes
-            if isinstance(result, list):
-                # Bulk redo - check if axis or cell changes
-                if result and isinstance(result[0], AxisChange):
-                    for change in result:
-                        self._apply_axis_change(change)
-                    logger.debug(f"Redo axis bulk: {len(result)} cells")
-                else:
-                    for change in result:
-                        self._apply_cell_change(change)
-                    logger.debug(f"Redo bulk: {len(result)} cells")
-            elif isinstance(result, AxisChange):
-                # Single axis redo
-                self._apply_axis_change(result)
-                logger.debug(f"Redo axis: {result.table_name}[{result.axis_type}][{result.index}]")
-            else:
-                # Single cell redo
-                self._apply_cell_change(result)
-                logger.debug(f"Redo: {result.table_name}[{result.row},{result.col}]")
-            self._update_project_ui()
-
-    def _apply_cell_change(self, change):
-        """Apply a cell change to open table viewers and ROM data"""
-        # Find open table viewer window for this table (use address for unique match)
-        for window in self.open_table_windows:
-            if window.isVisible() and window.table.address == change.table_address:
-                # Update the viewer display
-                window.viewer.update_cell_value(
-                    change.row, change.col, change.new_value
-                )
-
-                # Also update ROM data in memory
-                document = self.get_current_document()
-                if document:
-                    try:
-                        document.rom_reader.write_cell_value(
-                            window.table, change.row, change.col, change.new_raw
-                        )
-                    except Exception as e:
-                        logger.error(f"Failed to write cell value during undo/redo: {e}")
-                break
-
-    def _apply_axis_change(self, change):
-        """Apply an axis change to open table viewers and ROM data"""
-        # Find open table viewer window for this table (use address for unique match)
-        for window in self.open_table_windows:
-            if window.isVisible() and window.table.address == change.table_address:
-                # Update the viewer display
-                window.viewer.update_axis_cell_value(
-                    change.axis_type, change.index, change.new_value
-                )
-
-                # Also update ROM data in memory
-                document = self.get_current_document()
-                if document:
-                    try:
-                        document.rom_reader.write_axis_value(
-                            window.table, change.axis_type, change.index, change.new_raw
-                        )
-                    except Exception as e:
-                        logger.error(f"Failed to write axis value during undo/redo: {e}")
-                break
+    # ========== Change Tracking and UI Updates ==========
 
     def _on_changes_updated(self):
-        """Called when change tracker state changes"""
-        self._update_project_ui()
+        """Called when change tracker state changes (via _notify_change callback)"""
+        # During bulk undo, defer UI updates until _end_bulk_update calls it once
+        if not getattr(self, '_in_bulk_undo', False):
+            self._update_project_ui()
 
     def _update_project_ui(self):
         """Update UI elements based on project/change state"""
-        # Update undo/redo actions
-        self.undo_action.setEnabled(self.change_tracker.can_undo())
-        self.redo_action.setEnabled(self.change_tracker.can_redo())
+        # Note: undo/redo action enabled state is managed automatically by QUndoGroup
 
         # Update commit action
         has_project = self.project_manager.is_project_open()
@@ -1118,175 +933,138 @@ class MainWindow(QMainWindow):
         self._update_modified_table_colors()
 
     def _update_modified_table_colors(self):
-        """Update table browser to show modified tables in pink"""
-        # Get list of modified tables from change tracker
-        modified_tables = self.change_tracker.get_modified_tables()
-
-        # Update all open ROM documents' table browsers
+        """Update table browser to show modified tables in pink (per-ROM filtering)"""
+        # Update each ROM document's table browser with only its own modified addresses
         for i in range(self.tab_widget.count()):
             document = self.tab_widget.widget(i)
-            if hasattr(document, 'table_browser'):
-                document.table_browser.update_modified_tables(modified_tables)
+            if hasattr(document, 'table_browser') and hasattr(document, 'rom_reader') and document.rom_reader:
+                rom_path = document.rom_reader.rom_path
+                modified_addresses = self.change_tracker.get_modified_addresses_for_rom(rom_path)
+                document.table_browser.update_modified_tables_by_address(modified_addresses)
+
+    # ========== Cell/Axis Change Handlers ==========
+
+    def _get_sender_rom_context(self):
+        """Get ROM path and document from the signal sender.
+
+        Common setup for all cell/axis change handlers. Returns
+        (rom_path, document) where rom_path may be None if not set
+        on the sender, and document may be None if not found.
+        """
+        sender = self.sender()
+        rom_path = getattr(sender, 'rom_path', None)
+        document = self._find_document_by_rom_path(rom_path) if rom_path else self.get_current_document()
+        return rom_path, document
+
+    def _write_to_rom_and_mark_modified(self, document, write_fn, description: str):
+        """Execute a ROM write operation with standard error handling.
+
+        Args:
+            document: RomDocument to write to (may be None — no-ops safely)
+            write_fn: Callable that performs the actual rom_reader write(s)
+            description: Human-readable description for error messages
+        """
+        if not document:
+            return
+        try:
+            write_fn()
+            if not document.is_modified():
+                document.set_modified(True)
+        except RomWriteError as e:
+            logger.error(f"Failed to write {description}: {e}")
+        except Exception as e:
+            logger.exception(f"Unexpected error writing {description}: {type(e).__name__}: {e}")
 
     def _on_table_cell_changed(self, table, row: int, col: int,
                                old_value: float, new_value: float,
                                old_raw: float, new_raw: float):
         """Handle cell change from table viewer window"""
-        # Record the change
-        self.change_tracker.record_change(
-            table, row, col,
-            old_value, new_value,
-            old_raw, new_raw
+        rom_path, document = self._get_sender_rom_context()
+
+        self.table_undo_manager.record_cell_change(
+            table, row, col, old_value, new_value, old_raw, new_raw,
+            rom_path=rom_path
+        )
+        self.change_tracker.record_pending_change(
+            table, row, col, old_value, new_value, old_raw, new_raw,
+            rom_path=rom_path
+        )
+        self._write_to_rom_and_mark_modified(
+            document,
+            lambda: document.rom_reader.write_cell_value(table, row, col, new_raw),
+            f"cell value in {table.name}",
         )
 
-        # Also update the ROM data in memory
-        document = self.get_current_document()
-        if document:
-            try:
-                # Write the cell change to ROM reader's in-memory data
-                # Note: This writes to memory only, not to disk
-                # The actual ROM file write happens on commit/save
-                document.rom_reader.write_cell_value(table, row, col, new_raw)
-
-                # Mark document as modified
-                if not document.is_modified():
-                    document.set_modified(True)
-            except Exception as e:
-                logger.error(f"Failed to write cell value: {e}")
-
-    def _on_table_bulk_changes(self, table, changes: list):
+    def _on_table_bulk_changes(self, table, changes: list, description: str = "Bulk Operation"):
         """Handle bulk changes from table viewer window (data manipulation operations)"""
         if not changes:
             return
 
-        # Extract description from first change if available
-        # For now, use a generic description - the actual description will come from
-        # the operation that created these changes
-        operation_desc = "Bulk Operation"
+        rom_path, document = self._get_sender_rom_context()
 
-        # Record all changes as a single undo operation
-        self.change_tracker.record_bulk_changes(table, changes, operation_desc)
+        self.table_undo_manager.record_bulk_cell_changes(table, changes, description, rom_path=rom_path)
+        self.change_tracker.record_pending_bulk_changes(table, changes, rom_path=rom_path)
 
-        # Also update the ROM data in memory for all changes
-        document = self.get_current_document()
-        if document:
-            try:
-                for row, col, old_value, new_value, old_raw, new_raw in changes:
-                    # Write each cell change to ROM reader's in-memory data
-                    document.rom_reader.write_cell_value(table, row, col, new_raw)
+        def write_bulk():
+            for row, col, old_value, new_value, old_raw, new_raw in changes:
+                document.rom_reader.write_cell_value(table, row, col, new_raw)
+            logger.debug(f"Applied bulk changes: {len(changes)} cells in {table.name}")
 
-                # Mark document as modified
-                if not document.is_modified():
-                    document.set_modified(True)
-
-                logger.debug(f"Applied bulk changes: {len(changes)} cells in {table.name}")
-            except Exception as e:
-                logger.error(f"Failed to write bulk changes: {e}")
+        self._write_to_rom_and_mark_modified(document, write_bulk, f"bulk changes in {table.name}")
 
     def _on_table_axis_changed(self, table, axis_type: str, index: int,
                                old_value: float, new_value: float,
                                old_raw: float, new_raw: float):
         """Handle axis change from table viewer window"""
-        # Record the change
-        self.change_tracker.record_axis_change(
-            table, axis_type, index,
-            old_value, new_value,
-            old_raw, new_raw
+        rom_path, document = self._get_sender_rom_context()
+
+        self.table_undo_manager.record_axis_change(
+            table, axis_type, index, old_value, new_value, old_raw, new_raw,
+            rom_path=rom_path
+        )
+        self.change_tracker.record_pending_axis_change(
+            table, axis_type, index, old_value, new_value, old_raw, new_raw,
+            rom_path=rom_path
+        )
+        self._write_to_rom_and_mark_modified(
+            document,
+            lambda: document.rom_reader.write_axis_value(table, axis_type, index, new_raw),
+            f"axis value in {table.name}",
         )
 
-        # Also update the ROM data in memory
-        document = self.get_current_document()
-        if document:
-            try:
-                # Write the axis change to ROM reader's in-memory data
-                document.rom_reader.write_axis_value(table, axis_type, index, new_raw)
-
-                # Mark document as modified
-                if not document.is_modified():
-                    document.set_modified(True)
-            except Exception as e:
-                logger.error(f"Failed to write axis value: {e}")
-
-    def _on_table_axis_bulk_changes(self, table, changes: list):
+    def _on_table_axis_bulk_changes(self, table, changes: list, description: str = "Axis Bulk Operation"):
         """Handle axis bulk changes from table viewer window (interpolation, etc.)"""
         if not changes:
             return
 
-        operation_desc = "Axis Bulk Operation"
+        rom_path, document = self._get_sender_rom_context()
 
-        # Record all changes as a single undo operation
-        self.change_tracker.record_axis_bulk_changes(table, changes, operation_desc)
+        self.table_undo_manager.record_axis_bulk_changes(table, changes, description, rom_path=rom_path)
+        self.change_tracker.record_pending_axis_bulk_changes(table, changes, rom_path=rom_path)
 
-        # Also update the ROM data in memory for all changes
-        document = self.get_current_document()
-        if document:
-            try:
-                for axis_type, index, old_value, new_value, old_raw, new_raw in changes:
-                    # Write each axis change to ROM reader's in-memory data
-                    document.rom_reader.write_axis_value(table, axis_type, index, new_raw)
+        def write_bulk():
+            for axis_type, index, old_value, new_value, old_raw, new_raw in changes:
+                document.rom_reader.write_axis_value(table, axis_type, index, new_raw)
+            logger.debug(f"Applied axis bulk changes: {len(changes)} cells in {table.name}")
 
-                # Mark document as modified
-                if not document.is_modified():
-                    document.set_modified(True)
+        self._write_to_rom_and_mark_modified(document, write_bulk, f"axis bulk changes in {table.name}")
 
-                logger.debug(f"Applied axis bulk changes: {len(changes)} cells in {table.name}")
-            except Exception as e:
-                logger.error(f"Failed to write axis bulk changes: {e}")
-
-    def _on_table_window_focused(self, table_address: str):
+    def _on_table_window_focused(self, table_key: str):
         """
         Handle table viewer window gaining focus - highlight corresponding tree item
+        and activate the correct undo stack.
 
         Args:
-            table_address: Address of the table that was focused
+            table_key: Composite key (rom_path|table_address) of the focused table
         """
+        # Activate the undo stack for this table (enables per-table undo/redo)
+        self.table_undo_manager.set_active_stack(table_key)
+
         # Find the document containing this table and select it in the tree
+        table_address = extract_table_address(table_key)
         document = self.get_current_document()
         if document and hasattr(document, 'table_browser'):
             document.table_browser.select_table_by_address(table_address)
-
-    def _update_tab_title(self, document):
-        """Update tab title to show modified state"""
-        tab_index = self.tab_widget.indexOf(document)
-        if tab_index >= 0:
-            title = document.file_name
-            if document.is_modified():
-                title = f"*{title}"
-            self.tab_widget.setTabText(tab_index, title)
-
-    def _restore_session(self):
-        """Restore files from previous session"""
-        session_files = self.settings.get_session_files()
-
-        if not session_files:
-            return
-
-        logger.info(f"Restoring session: {len(session_files)} file(s)")
-
-        for file_path in session_files:
-            if Path(file_path).exists():
-                try:
-                    self._open_rom_file(file_path)
-                except Exception as e:
-                    logger.warning(f"Failed to restore session file: {file_path} - {e}")
-            else:
-                logger.warning(f"Session file no longer exists: {file_path}")
-
-    def closeEvent(self, event):
-        """Save session state before closing"""
-        # Collect paths of all open ROM documents
-        open_files = []
-        for i in range(self.tab_widget.count()):
-            document = self.tab_widget.widget(i)
-            if document and hasattr(document, 'rom_path'):
-                open_files.append(document.rom_path)
-
-        # Save to settings
-        self.settings.set_session_files(open_files)
-        logger.info(f"Session saved: {len(open_files)} file(s)")
-
-        # Accept close event
-        event.accept()
 
 
 def main():

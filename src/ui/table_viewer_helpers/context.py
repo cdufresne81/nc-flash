@@ -5,10 +5,11 @@ Shared state object for TableViewer helper classes.
 Provides access to common state and the parent viewer's signals.
 """
 
+from contextlib import contextmanager
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Optional, Dict, Any
+from typing import TYPE_CHECKING, Optional, Dict, Any, List
 
-from PySide6.QtWidgets import QTableWidget
+from PySide6.QtWidgets import QTableWidget, QHeaderView
 
 if TYPE_CHECKING:
     from ..table_viewer import TableViewer
@@ -47,7 +48,66 @@ class TableViewerContext:
         """Check if viewer is in read-only mode"""
         return self.viewer._read_only
 
-    @property
-    def info_label(self):
-        """Access the info label widget"""
-        return self.viewer.info_label
+
+
+def save_header_resize_modes(table_widget: QTableWidget):
+    """
+    Save per-section resize modes for both horizontal and vertical headers.
+
+    Returns:
+        Tuple of (h_header, v_header, h_resize_modes, v_resize_modes)
+    """
+    h_header = table_widget.horizontalHeader()
+    v_header = table_widget.verticalHeader()
+    h_resize_modes = [h_header.sectionResizeMode(i) for i in range(h_header.count())]
+    v_resize_modes = [v_header.sectionResizeMode(i) for i in range(v_header.count())]
+    return h_header, v_header, h_resize_modes, v_resize_modes
+
+
+def set_headers_fixed(h_header, v_header):
+    """Set all header sections to Fixed mode (prevents resize calculations per cell)."""
+    for i in range(h_header.count()):
+        h_header.setSectionResizeMode(i, QHeaderView.Fixed)
+    for i in range(v_header.count()):
+        v_header.setSectionResizeMode(i, QHeaderView.Fixed)
+
+
+def restore_header_resize_modes(h_header, v_header,
+                                h_resize_modes: List, v_resize_modes: List):
+    """Restore previously saved per-section resize modes."""
+    for i, mode in enumerate(h_resize_modes):
+        if i < h_header.count():
+            h_header.setSectionResizeMode(i, mode)
+    for i, mode in enumerate(v_resize_modes):
+        if i < v_header.count():
+            v_header.setSectionResizeMode(i, mode)
+
+
+@contextmanager
+def frozen_table_updates(table_widget: QTableWidget):
+    """
+    Context manager that freezes a QTableWidget for bulk operations.
+
+    On entry:
+      - Disables widget updates (setUpdatesEnabled(False))
+      - Blocks signals (blockSignals(True))
+      - Saves per-section header resize modes and sets all to Fixed
+
+    On exit (guaranteed via finally):
+      - Restores header resize modes
+      - Unblocks signals
+      - Re-enables widget updates
+      - Triggers a single viewport repaint
+    """
+    table_widget.setUpdatesEnabled(False)
+    table_widget.blockSignals(True)
+
+    h_header, v_header, h_modes, v_modes = save_header_resize_modes(table_widget)
+    set_headers_fixed(h_header, v_header)
+    try:
+        yield
+    finally:
+        restore_header_resize_modes(h_header, v_header, h_modes, v_modes)
+        table_widget.blockSignals(False)
+        table_widget.setUpdatesEnabled(True)
+        table_widget.viewport().update()

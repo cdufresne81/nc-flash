@@ -33,7 +33,7 @@ def update_scaling(xml_path: Path, scaling_name: str, updates: dict) -> bool:
 
     try:
         # Parse XML preserving formatting
-        parser = etree.XMLParser(remove_blank_text=False)
+        parser = etree.XMLParser(remove_blank_text=False, resolve_entities=False, no_network=True)
         tree = etree.parse(str(xml_path), parser)
         root = tree.getroot()
 
@@ -56,9 +56,21 @@ def update_scaling(xml_path: Path, scaling_name: str, updates: dict) -> bool:
                 # Set attribute value
                 scaling_elem.set(attr, str(value))
 
-        # Create backup before writing
-        backup_path = xml_path.with_suffix(f".xml.bak")
-        shutil.copy2(xml_path, backup_path)
+        # Create backup with rotation (keep last 3 backups)
+        # .bak.1 = most recent, .bak.2 = previous, .bak.3 = oldest
+        max_backups = 3
+        base = str(xml_path)
+        # Rotate existing backups: delete oldest, shift others up
+        oldest = Path(f"{base}.bak.{max_backups}")
+        if oldest.exists():
+            oldest.unlink()
+        for i in range(max_backups - 1, 0, -1):
+            src = Path(f"{base}.bak.{i}")
+            dst = Path(f"{base}.bak.{i + 1}")
+            if src.exists():
+                src.rename(dst)
+        # Current file becomes .bak.1
+        shutil.copy2(xml_path, Path(f"{base}.bak.1"))
 
         # Write back to file
         tree.write(
@@ -97,7 +109,8 @@ def get_scaling_attributes(xml_path: Path, scaling_name: str) -> dict:
         return {}
 
     try:
-        tree = etree.parse(str(xml_path))
+        parser = etree.XMLParser(resolve_entities=False, no_network=True)
+        tree = etree.parse(str(xml_path), parser)
         root = tree.getroot()
 
         scaling_elements = root.xpath(f".//scaling[@name='{scaling_name}']")

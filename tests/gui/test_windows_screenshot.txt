@@ -1,0 +1,4 @@
+# Test screenshot on Windows
+load_rom examples/lf9veb.bin
+wait 500
+screenshot windows_test main

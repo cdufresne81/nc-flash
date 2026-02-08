@@ -22,13 +22,14 @@ from PySide6.QtWidgets import (
     QLabel,
     QTableWidget,
     QHeaderView,
-    QSizePolicy,
+    QFrame,
 )
-from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QColor, QKeySequence, QShortcut
+from PySide6.QtCore import Qt, Signal, QSize
+from PySide6.QtGui import QColor, QKeySequence, QShortcut, QPainter, QFontMetrics
 
-from ..core.rom_definition import Table, RomDefinition
+from ..core.rom_definition import Table, TableType, RomDefinition
 from ..utils.settings import get_settings
+from .widgets.toggle_switch import ToggleSwitch
 from .table_viewer_helpers import (
     TableViewerContext,
     TableDisplayHelper,
@@ -51,7 +52,6 @@ class RotatedLabel(QLabel):
 
     def paintEvent(self, event):
         """Paint the label with rotated text"""
-        from PySide6.QtGui import QPainter, QFontMetrics
         painter = QPainter(self)
         painter.rotate(-90)
 
@@ -70,8 +70,6 @@ class RotatedLabel(QLabel):
 
     def sizeHint(self):
         """Return preferred size (width/height swapped for rotated text)"""
-        from PySide6.QtCore import QSize
-        from PySide6.QtGui import QFontMetrics
         fm = QFontMetrics(self.font())
         # Swap width and height since text is rotated
         return QSize(fm.height() + 4, fm.horizontalAdvance(self.text()) + 10)
@@ -85,7 +83,7 @@ class TableViewer(QWidget):
     """Widget for viewing and editing table data with gradient coloring"""
 
     # Signal emitted when a cell value changes
-    # Args: table_name, row, col, old_value, new_value, old_raw, new_raw
+    # Args: table_address, row, col, old_value, new_value, old_raw, new_raw
     cell_changed = Signal(str, int, int, float, float, float, float)
 
     # Signal emitted when bulk operation completes (for single undo)
@@ -93,7 +91,7 @@ class TableViewer(QWidget):
     bulk_changes = Signal(list)
 
     # Signal emitted when an axis cell value changes
-    # Args: table_name, axis_type ('x_axis' or 'y_axis'), index, old_value, new_value, old_raw, new_raw
+    # Args: table_address, axis_type ('x_axis' or 'y_axis'), index, old_value, new_value, old_raw, new_raw
     axis_changed = Signal(str, str, int, float, float, float, float)
 
     # Signal emitted when axis bulk operation completes (for single undo)
@@ -172,14 +170,6 @@ class TableViewer(QWidget):
         main_layout.setSpacing(0)
         self.setLayout(main_layout)
 
-        # Table info label - TEMPORARILY HIDDEN (user request)
-        # TODO: May want to restore this label later or make it toggleable
-        self.info_label = QLabel("Select a table to view")
-        self.info_label.setStyleSheet("font-size: 9px; padding: 1px 2px; background: #f0f0f0;")
-        self.info_label.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Fixed)
-        self.info_label.setVisible(False)  # HIDDEN
-        main_layout.addWidget(self.info_label)
-
         # X-axis label (horizontal, centered above table, initially hidden)
         self.x_axis_label = QLabel("")
         self.x_axis_label.setAlignment(Qt.AlignCenter)
@@ -236,6 +226,102 @@ class TableViewer(QWidget):
 
         table_layout.addWidget(self.table_widget)
         main_layout.addLayout(table_layout)
+
+        # Toggle switch container (for binary ON/OFF categories like DTC flags)
+        self._init_toggle_ui(main_layout)
+
+    def _init_toggle_ui(self, parent_layout: QVBoxLayout):
+        """Initialize the toggle switch container (hidden by default)"""
+        self.toggle_container = QFrame()
+        self.toggle_container.setVisible(False)
+
+        toggle_layout = QVBoxLayout()
+        toggle_layout.setAlignment(Qt.AlignCenter)
+        toggle_layout.setContentsMargins(10, 10, 10, 10)
+        toggle_layout.setSpacing(8)
+        self.toggle_container.setLayout(toggle_layout)
+
+        # Toggle switch
+        self.toggle_switch = ToggleSwitch()
+        toggle_switch_row = QHBoxLayout()
+        toggle_switch_row.setAlignment(Qt.AlignCenter)
+        toggle_switch_row.addWidget(self.toggle_switch)
+        toggle_layout.addLayout(toggle_switch_row)
+
+        # Status label ("ON" / "OFF")
+        self.toggle_label = QLabel("OFF")
+        self.toggle_label.setAlignment(Qt.AlignCenter)
+        font = self.toggle_label.font()
+        font.setBold(True)
+        font.setPointSize(12)
+        self.toggle_label.setFont(font)
+        toggle_layout.addWidget(self.toggle_label)
+
+        parent_layout.addWidget(self.toggle_container)
+
+        # Track the original non-zero value for restoring on toggle ON
+        # (e.g., P1260 stores 3 instead of 1)
+        self._toggle_original_nonzero_value = 1.0
+
+        # Connect toggle signal
+        self.toggle_switch.toggled.connect(self._on_toggle_changed)
+
+    def _on_toggle_changed(self, checked: bool):
+        """Handle toggle switch state change from user interaction"""
+        if self._editing_in_progress or self._read_only:
+            return
+        if not self._ctx.current_table or not self._ctx.current_data:
+            return
+
+        values = self._ctx.current_data['values']
+        old_value = float(values[0])
+
+        if checked:
+            new_value = self._toggle_original_nonzero_value if self._toggle_original_nonzero_value != 0 else 1.0
+        else:
+            new_value = 0.0
+
+        if abs(new_value - old_value) < 1e-10:
+            return
+
+        # Convert display values to raw
+        old_raw = self._edit.display_to_raw(old_value)
+        new_raw = self._edit.display_to_raw(new_value)
+        if old_raw is None or new_raw is None:
+            return
+
+        # Update internal data
+        self._ctx.current_data['values'][0] = new_value
+
+        # Update the hidden table item for consistency
+        self._editing_in_progress = True
+        try:
+            item = self.table_widget.item(0, 0)
+            if item:
+                value_fmt = self._display.get_value_format()
+                item.setText(self._display.format_value(new_value, value_fmt))
+            self._update_toggle_label(checked)
+        finally:
+            self._editing_in_progress = False
+
+        # Emit change signal
+        self.cell_changed.emit(
+            self._ctx.current_table.address,
+            0, 0,
+            old_value, new_value,
+            old_raw, new_raw
+        )
+
+        logger.debug(f"Toggle changed: {self._ctx.current_table.name} {old_value} -> {new_value}")
+
+    def _update_toggle_label(self, checked: bool):
+        """Update the toggle status label text and color"""
+        if checked:
+            self.toggle_label.setText("ON")
+            self.toggle_label.setStyleSheet("color: #4CAF50;")
+        else:
+            self.toggle_label.setText("OFF")
+            self.toggle_label.setStyleSheet("color: #B0B0B0;")
 
     def set_read_only(self, read_only: bool):
         """Set whether the table is read-only"""
@@ -349,6 +435,14 @@ class TableViewer(QWidget):
         """
         self._display.display_table(table, data)
 
+        # Select the first data cell so the table is ready for keyboard navigation
+        if table.type == TableType.THREE_D:
+            self.table_widget.setCurrentCell(1, 1)
+        elif table.type == TableType.TWO_D:
+            self.table_widget.setCurrentCell(0, 1)
+        else:
+            self.table_widget.setCurrentCell(0, 0)
+
         # Apply diff tooltips if in diff mode
         if self._diff_mode and self._diff_base_data is not None:
             self._apply_diff_tooltips()
@@ -358,31 +452,42 @@ class TableViewer(QWidget):
         if not self._diff_mode or self._diff_base_data is None:
             return
 
+        base_values = self._diff_base_data.get("values")
+        if base_values is None:
+            return
+
+        current_values = self.current_data.get("values") if self.current_data else None
+        if current_values is None:
+            return
+
         value_fmt = self._display.get_value_format()
 
-        # Iterate through all cells
-        for row in range(self.table_widget.rowCount()):
-            for col in range(self.table_widget.columnCount()):
-                item = self.table_widget.item(row, col)
-                if item is None:
+        # Only iterate over cells that exist in the diff base data
+        if base_values.ndim == 1:
+            rows, cols = len(base_values), 1
+        else:
+            rows, cols = base_values.shape
+
+        for data_row in range(rows):
+            for data_col in range(cols):
+                try:
+                    if base_values.ndim == 1:
+                        base_value = base_values[data_row]
+                        current_value = current_values[data_row]
+                    else:
+                        base_value = base_values[data_row, data_col]
+                        current_value = current_values[data_row, data_col]
+                except (IndexError, TypeError):
                     continue
 
-                # Get data coordinates
-                data_coords = item.data(Qt.UserRole)
-                if data_coords is None:
+                if abs(current_value - base_value) < 1e-10:
                     continue
 
-                # Skip axis cells (stored as tuple with string)
-                if isinstance(data_coords[0], str):
-                    continue
-
-                data_row, data_col = data_coords
-
-                # Check if cell differs from base
-                if self.is_cell_changed_from_base(data_row, data_col):
-                    base_value = self.get_base_value(data_row, data_col)
-                    if base_value is not None:
-                        item.setToolTip(f"Previous: {self._display.format_value(base_value, value_fmt)}")
+                # Find the UI cell for these data coordinates
+                ui_row, ui_col = self._data_to_ui_coords(data_row, data_col)
+                item = self.table_widget.item(ui_row, ui_col)
+                if item is not None:
+                    item.setToolTip(f"Previous: {self._display.format_value(base_value, value_fmt)}")
 
     def clear(self):
         """Clear the viewer"""
@@ -417,11 +522,65 @@ class TableViewer(QWidget):
     def update_cell_value(self, data_row: int, data_col: int, new_value: float):
         """Update a cell's value programmatically (for undo/redo)"""
         self._edit.update_cell_value(data_row, data_col, new_value)
-        self.data_updated.emit()
+        # Skip per-cell signal during bulk operations (emitted once in end_bulk_update)
+        if not hasattr(self, '_bulk_update_state'):
+            self.data_updated.emit()
 
     def update_axis_cell_value(self, axis_type: str, data_idx: int, new_value: float):
         """Update an axis cell's value programmatically (for undo/redo)"""
         self._edit.update_axis_cell_value(axis_type, data_idx, new_value)
+        # Skip per-cell signal during bulk operations (emitted once in end_bulk_update)
+        if not hasattr(self, '_bulk_update_state'):
+            self.data_updated.emit()
+
+    def begin_bulk_update(self):
+        """
+        Prepare table for bulk cell updates - disables expensive per-cell operations.
+
+        Call this before applying multiple cell updates (e.g., bulk undo/redo).
+        Must be paired with end_bulk_update().
+        """
+        # Save current state
+        self._bulk_update_state = {
+            'updates_enabled': self.table_widget.updatesEnabled(),
+            'signals_blocked': self.table_widget.signalsBlocked(),
+        }
+
+        # Disable updates and signals to prevent per-cell repaints
+        self.table_widget.setUpdatesEnabled(False)
+        self.table_widget.blockSignals(True)
+
+        # Delegate header mode saving and value caching to display helper
+        self._display.begin_bulk_update()
+
+    def end_bulk_update(self):
+        """
+        Complete bulk update - restores state and triggers single repaint.
+
+        Must be called after begin_bulk_update() to restore normal operation.
+        Safe to call even if begin_bulk_update() wasn't called - ensures clean state.
+        """
+        # Restore display helper state (header modes, value cache)
+        self._display.end_bulk_update()
+
+        # Restore table widget state
+        if hasattr(self, '_bulk_update_state'):
+            self.table_widget.blockSignals(
+                self._bulk_update_state.get('signals_blocked', False)
+            )
+            self.table_widget.setUpdatesEnabled(
+                self._bulk_update_state.get('updates_enabled', True)
+            )
+            del self._bulk_update_state
+        else:
+            # Safety: ensure signals and updates are enabled even if begin wasn't called
+            self.table_widget.blockSignals(False)
+            self.table_widget.setUpdatesEnabled(True)
+
+        # Single repaint for all changes
+        self.table_widget.viewport().update()
+
+        # Single data_updated signal for graph refresh after all bulk changes
         self.data_updated.emit()
 
     def _data_to_ui_coords(self, data_row: int, data_col: int) -> tuple:
@@ -518,55 +677,53 @@ class TableViewer(QWidget):
         if isinstance(data_indices[0], str):
             # Axis cells: ('x_axis', index) or ('y_axis', index)
             axis_type, data_idx = data_indices
-            axis_key = f"{self.current_table.name}:{axis_type}"
+            axis_key = f"{self.current_table.address}:{axis_type}"
             return axis_key in self._modified_cells and data_idx in self._modified_cells[axis_key]
 
         # Data cell: (data_row, data_col)
         data_row, data_col = data_indices
-        table_name = self.current_table.name
+        table_address = self.current_table.address
 
         # Check if this cell is in the modified set
-        if table_name in self._modified_cells:
-            return (data_row, data_col) in self._modified_cells[table_name]
+        if table_address in self._modified_cells:
+            return (data_row, data_col) in self._modified_cells[table_address]
 
         return False
 
-    def mark_cell_modified(self, table_name: str, data_row: int, data_col: int):
+    def mark_cell_modified(self, table_address: str, data_row: int, data_col: int):
         """
         Mark a cell as modified
 
         Args:
-            table_name: Name of the table
+            table_address: Address of the table (unique identifier)
             data_row: Data row index
             data_col: Data column index
         """
-        if table_name not in self._modified_cells:
-            self._modified_cells[table_name] = set()
+        if table_address not in self._modified_cells:
+            self._modified_cells[table_address] = set()
 
-        self._modified_cells[table_name].add((data_row, data_col))
+        self._modified_cells[table_address].add((data_row, data_col))
 
-    def mark_axis_cell_modified(self, table_name: str, axis_type: str, data_idx: int):
+    def mark_axis_cell_modified(self, table_address: str, axis_type: str, data_idx: int):
         """
         Mark an axis cell as modified
 
         Args:
-            table_name: Name of the table
+            table_address: Address of the table (unique identifier)
             axis_type: 'x_axis' or 'y_axis'
             data_idx: Index in the axis array
         """
-        axis_key = f"{table_name}:{axis_type}"
+        axis_key = f"{table_address}:{axis_type}"
         if axis_key not in self._modified_cells:
             self._modified_cells[axis_key] = set()
 
         self._modified_cells[axis_key].add(data_idx)
 
-    def _on_cell_changed_track_modifications(self, table_name: str, data_row: int, data_col: int,
+    def _on_cell_changed_track_modifications(self, table_address: str, data_row: int, data_col: int,
                                              old_value: float, new_value: float,
                                              old_raw: float, new_raw: float):
         """Track cell modifications from cell_changed signal"""
-        self.mark_cell_modified(table_name, data_row, data_col)
-        # Force repaint to show border
-        self.table_widget.viewport().update()
+        self.mark_cell_modified(table_address, data_row, data_col)
 
     def _on_bulk_changes_track_modifications(self, changes: list):
         """Track cell modifications from bulk_changes signal"""
@@ -578,18 +735,13 @@ class TableViewer(QWidget):
             # Most operations emit: (row, col, old_value, new_value, old_raw, new_raw)
             if len(change) >= 2:
                 data_row, data_col = change[0], change[1]
-                self.mark_cell_modified(self.current_table.name, data_row, data_col)
+                self.mark_cell_modified(self.current_table.address, data_row, data_col)
 
-        # Force repaint to show borders
-        self.table_widget.viewport().update()
-
-    def _on_axis_changed_track_modifications(self, table_name: str, axis_type: str, data_idx: int,
+    def _on_axis_changed_track_modifications(self, table_address: str, axis_type: str, data_idx: int,
                                              old_value: float, new_value: float,
                                              old_raw: float, new_raw: float):
         """Track axis cell modifications from axis_changed signal"""
-        self.mark_axis_cell_modified(table_name, axis_type, data_idx)
-        # Force repaint to show border
-        self.table_widget.viewport().update()
+        self.mark_axis_cell_modified(table_address, axis_type, data_idx)
 
     def _on_axis_bulk_changes_track_modifications(self, changes: list):
         """Track axis cell modifications from axis_bulk_changes signal"""
@@ -600,25 +752,22 @@ class TableViewer(QWidget):
             # Axis bulk changes: (axis_type, index, old_value, new_value, old_raw, new_raw)
             if len(change) >= 2:
                 axis_type, data_idx = change[0], change[1]
-                self.mark_axis_cell_modified(self.current_table.name, axis_type, data_idx)
+                self.mark_axis_cell_modified(self.current_table.address, axis_type, data_idx)
 
-        # Force repaint to show borders
-        self.table_widget.viewport().update()
-
-    def _check_and_remove_border_if_original(self, table_name: str, data_row: int, data_col: int, current_value: float):
+    def _check_and_remove_border_if_original(self, table_address: str, data_row: int, data_col: int, current_value: float):
         """
         Sync border with original value: remove if matches, add if differs
 
         Args:
-            table_name: Name of the table
+            table_address: Address of the table (unique identifier)
             data_row: Data row index
             data_col: Data column index
             current_value: Current cell value
         """
-        if table_name not in self._original_values:
+        if table_address not in self._original_values:
             return
 
-        original_data = self._original_values[table_name]
+        original_data = self._original_values[table_address]
         original_values = original_data.get("values")
         if original_values is None:
             return
@@ -641,29 +790,26 @@ class TableViewer(QWidget):
 
         if is_modified:
             # Value differs from original - ensure border is present
-            self.mark_cell_modified(table_name, data_row, data_col)
+            self.mark_cell_modified(table_address, data_row, data_col)
         else:
             # Value matches original - ensure border is removed
-            if table_name in self._modified_cells:
-                self._modified_cells[table_name].discard((data_row, data_col))
+            if table_address in self._modified_cells:
+                self._modified_cells[table_address].discard((data_row, data_col))
 
-        # Force repaint to update border
-        self.table_widget.viewport().update()
-
-    def _check_and_remove_axis_border_if_original(self, table_name: str, axis_type: str, data_idx: int, current_value: float):
+    def _check_and_remove_axis_border_if_original(self, table_address: str, axis_type: str, data_idx: int, current_value: float):
         """
         Sync axis border with original value: remove if matches, add if differs
 
         Args:
-            table_name: Name of the table
+            table_address: Address of the table (unique identifier)
             axis_type: 'x_axis' or 'y_axis'
             data_idx: Index in the axis array
             current_value: Current axis cell value
         """
-        if table_name not in self._original_values:
+        if table_address not in self._original_values:
             return
 
-        original_data = self._original_values[table_name]
+        original_data = self._original_values[table_address]
         original_axis = original_data.get(axis_type)
         if original_axis is None or data_idx >= len(original_axis):
             return
@@ -675,12 +821,9 @@ class TableViewer(QWidget):
 
         if is_modified:
             # Value differs from original - ensure border is present
-            self.mark_axis_cell_modified(table_name, axis_type, data_idx)
+            self.mark_axis_cell_modified(table_address, axis_type, data_idx)
         else:
             # Value matches original - ensure border is removed
-            axis_key = f"{table_name}:{axis_type}"
+            axis_key = f"{table_address}:{axis_type}"
             if axis_key in self._modified_cells:
                 self._modified_cells[axis_key].discard(data_idx)
-
-        # Force repaint to update border
-        self.table_widget.viewport().update()

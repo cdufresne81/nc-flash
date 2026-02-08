@@ -209,8 +209,8 @@ class TestRomReaderInitialization:
         definition = load_definition(str(sample_xml_path))
         reader = RomReader(str(sample_rom_path), definition)
 
-        # ROM should be loaded as bytes
-        assert isinstance(reader.rom_data, bytes)
+        # ROM should be loaded as bytearray (mutable for in-place writes)
+        assert isinstance(reader.rom_data, bytearray)
         assert len(reader.rom_data) > 100000  # ROM files are large
 
 
