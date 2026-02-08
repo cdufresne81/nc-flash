@@ -5,7 +5,10 @@ Reads binary ROM files using ROM definition metadata.
 Extracts and scales table data based on definitions.
 """
 
+import ast
+import re
 import struct
+import os
 import numpy as np
 from pathlib import Path
 from typing import Optional, Union
@@ -32,10 +35,71 @@ def _convert_expr_to_python(expr: str) -> str:
     Replaces ^ with ** for exponentiation since many ROM definition
     files use ^ (calculator-style) but Python uses ** for power.
     """
-    import re
     # Replace ^ with ** for exponentiation
     # This handles patterns like x^2, x^3, (expr)^2, etc.
     return re.sub(r'\^', '**', expr)
+
+
+def _is_safe_numpy_expr(expr: str) -> bool:
+    """
+    Validate that an expression is safe to evaluate with numpy arrays.
+
+    Only allows arithmetic on 'x' with numeric constants. Rejects
+    anything that could be dangerous (function calls, attribute access,
+    imports, etc.).
+
+    Returns True if the expression uses only safe AST nodes.
+    """
+    try:
+        tree = ast.parse(expr, mode='eval')
+    except SyntaxError:
+        return False
+
+    _SAFE_NODES = (
+        ast.Expression,
+        ast.BinOp,
+        ast.UnaryOp,
+        # Binary operators
+        ast.Add, ast.Sub, ast.Mult, ast.Div,
+        ast.Pow, ast.FloorDiv, ast.Mod,
+        # Unary operators
+        ast.UAdd, ast.USub,
+        # Literals and names
+        ast.Constant, ast.Name,
+        # Parenthesised sub-expressions (implicit in BinOp nesting)
+    )
+
+    for node in ast.walk(tree):
+        if not isinstance(node, _SAFE_NODES):
+            return False
+        # Only allow 'x' as a variable name
+        if isinstance(node, ast.Name) and node.id != 'x':
+            return False
+
+    return True
+
+
+def _compile_numpy_expr(expr: str):
+    """
+    Compile a scaling expression into a code object for vectorized numpy evaluation.
+
+    The expression must pass _is_safe_numpy_expr validation. If it does, it is
+    compiled once and can be evaluated many times with different numpy arrays
+    bound to 'x'.
+
+    Returns:
+        A compiled code object, or None if the expression cannot be vectorized.
+    """
+    if not expr:
+        return None
+    if not _is_safe_numpy_expr(expr):
+        logger.debug(f"Expression not safe for numpy vectorization: {expr}")
+        return None
+    try:
+        return compile(expr, '<scaling>', 'eval')
+    except SyntaxError:
+        logger.debug(f"Failed to compile expression for numpy: {expr}")
+        return None
 
 
 class ScalingConverter:
@@ -54,10 +118,17 @@ class ScalingConverter:
         # Pre-convert expressions to Python syntax
         self._toexpr = _convert_expr_to_python(scaling.toexpr) if scaling.toexpr else scaling.toexpr
         self._frexpr = _convert_expr_to_python(scaling.frexpr) if scaling.frexpr else scaling.frexpr
+        # Pre-compile numpy-vectorizable code objects (None if not vectorizable)
+        self._toexpr_compiled = _compile_numpy_expr(self._toexpr)
+        self._frexpr_compiled = _compile_numpy_expr(self._frexpr)
 
     def to_display(self, raw_value: Union[float, np.ndarray]) -> Union[float, np.ndarray]:
         """
         Convert raw binary value(s) to display value(s)
+
+        Uses vectorized numpy evaluation when possible (compiled expression
+        applied to the whole array at once). Falls back to per-element
+        simpleeval for expressions that can't be safely vectorized.
 
         Args:
             raw_value: Raw value or array of values
@@ -68,21 +139,16 @@ class ScalingConverter:
         Raises:
             ScalingConversionError: If conversion fails
         """
-        try:
-            # Use simpleeval for safe expression evaluation
-            if isinstance(raw_value, np.ndarray):
-                return np.array([simple_eval(self._toexpr, names={'x': v}) for v in raw_value])
-            else:
-                return simple_eval(self._toexpr, names={'x': raw_value})
-        except Exception as e:
-            logger.error(f"Error converting to display with expr '{self._toexpr}': {e}")
-            raise ScalingConversionError(
-                f"Failed to convert raw value to display using expression '{self._toexpr}': {e}"
-            )
+        return self._eval_expr(
+            self._toexpr, self._toexpr_compiled, raw_value, "to display"
+        )
 
     def from_display(self, display_value: Union[float, np.ndarray]) -> Union[float, np.ndarray]:
         """
         Convert display value(s) back to raw binary value(s)
+
+        Uses vectorized numpy evaluation when possible. Falls back to
+        per-element simpleeval for non-vectorizable expressions.
 
         Args:
             display_value: Display value or array of values
@@ -93,15 +159,65 @@ class ScalingConverter:
         Raises:
             ScalingConversionError: If conversion fails
         """
+        return self._eval_expr(
+            self._frexpr, self._frexpr_compiled, display_value, "from display"
+        )
+
+    def _eval_expr(
+        self,
+        expr: str,
+        compiled_expr,
+        value: Union[float, np.ndarray],
+        direction: str,
+    ) -> Union[float, np.ndarray]:
+        """
+        Evaluate a scaling expression on a value or array.
+
+        Tries vectorized numpy evaluation first (single pass over the whole
+        array). Falls back to per-element simpleeval if the expression was
+        not compiled or if the vectorized path raises an error.
+
+        Args:
+            expr: The expression string (for error messages and fallback)
+            compiled_expr: Pre-compiled code object, or None
+            value: Scalar or numpy array to transform
+            direction: "to display" or "from display" (for error messages)
+
+        Returns:
+            Transformed value or array
+
+        Raises:
+            ScalingConversionError: If both vectorized and fallback paths fail
+        """
+        # --- Fast path: vectorised numpy evaluation ---
+        if compiled_expr is not None:
+            try:
+                # eval with x bound to the value/array; only numpy is in scope
+                result = eval(compiled_expr, {"__builtins__": {}}, {"x": value})  # noqa: S307
+                # Ensure the result is a numpy array when the input was one
+                if isinstance(value, np.ndarray) and not isinstance(result, np.ndarray):
+                    result = np.full_like(value, result, dtype=float)
+                return result
+            except Exception as exc:
+                # Vectorised eval failed (e.g. division by zero on some element).
+                # Fall through to the per-element path below.
+                logger.warning(
+                    f"Vectorized eval failed for '{expr}' ({type(exc).__name__}: {exc}), "
+                    f"falling back to per-element"
+                )
+
+        # --- Fallback: per-element simpleeval ---
         try:
-            if isinstance(display_value, np.ndarray):
-                return np.array([simple_eval(self._frexpr, names={'x': v}) for v in display_value])
+            if isinstance(value, np.ndarray):
+                return np.array(
+                    [simple_eval(expr, names={'x': v}) for v in value]
+                )
             else:
-                return simple_eval(self._frexpr, names={'x': display_value})
+                return simple_eval(expr, names={'x': value})
         except Exception as e:
-            logger.error(f"Error converting from display with expr '{self._frexpr}': {e}")
+            logger.error(f"Error converting {direction} with expr '{expr}': {e}")
             raise ScalingConversionError(
-                f"Failed to convert display value to raw using expression '{self._frexpr}': {e}"
+                f"Failed to convert value {direction} using expression '{expr}': {e}"
             )
 
 
@@ -142,7 +258,7 @@ class RomReader:
         """
         try:
             with open(self.rom_path, 'rb') as f:
-                self.rom_data = f.read()
+                self.rom_data = bytearray(f.read())
             logger.info(f"Loaded {len(self.rom_data)} bytes from ROM file")
         except IOError as e:
             logger.error(f"Failed to read ROM file {self.rom_path}: {e}")
@@ -160,7 +276,13 @@ class RomReader:
             expected_id = self.definition.romid.internalidstring
             id_length = len(expected_id)
 
-            actual_id = self.rom_data[address:address + id_length].decode('ascii', errors='ignore')
+            raw_bytes = self.rom_data[address:address + id_length]
+            actual_id = raw_bytes.decode('ascii', errors='ignore')
+            if len(actual_id) != len(raw_bytes):
+                logger.warning(
+                    f"ROM ID at {hex(address)} contains non-ASCII bytes "
+                    f"({len(raw_bytes) - len(actual_id)} bytes dropped)"
+                )
             match = actual_id == expected_id
 
             if match:
@@ -274,6 +396,8 @@ class RomReader:
             y_axis = table.y_axis
             if y_axis:
                 y_scaling = self.definition.get_scaling(y_axis.scaling)
+                if not y_scaling:
+                    logger.warning(f"Scaling '{y_axis.scaling}' not found for Y axis of '{table.name}'")
                 if y_scaling:
                     y_raw = self._read_raw_values(
                         address=y_axis.address_int,
@@ -288,6 +412,8 @@ class RomReader:
             x_axis = table.x_axis
             if x_axis:
                 x_scaling = self.definition.get_scaling(x_axis.scaling)
+                if not x_scaling:
+                    logger.warning(f"Scaling '{x_axis.scaling}' not found for X axis of '{table.name}'")
                 if x_scaling:
                     x_raw = self._read_raw_values(
                         address=x_axis.address_int,
@@ -308,7 +434,7 @@ class RomReader:
                     order = 'F' if table.swapxy else 'C'
                     result['values'] = display_values.reshape((y_len, x_len), order=order)
 
-        logger.info(f"Successfully read table: {table.name} ({table.type.value})")
+        logger.debug(f"Read table data: {table.name} ({table.address}) ({table.type.value})")
         return result
 
     def write_table_data(self, table: Table, values: np.ndarray) -> None:
@@ -335,9 +461,17 @@ class RomReader:
         # Convert display values back to raw
         converter = ScalingConverter(scaling)
 
-        # Flatten if 2D array
+        # Flatten if 2D array (must match reshape order used in read_table_data)
         if isinstance(values, np.ndarray) and values.ndim > 1:
-            values = values.flatten()
+            order = 'F' if table.swapxy else 'C'
+            values = values.flatten(order=order)
+
+        # Validate element count matches table definition
+        if len(values) != table.elements:
+            raise RomWriteError(
+                f"Value count mismatch for '{table.name}': "
+                f"got {len(values)}, expected {table.elements}"
+            )
 
         raw_values = converter.from_display(values)
 
@@ -367,12 +501,8 @@ class RomReader:
                     f"(ROM size: {len(self.rom_data)} bytes)"
                 )
 
-            # Modify ROM data in memory
-            self.rom_data = (
-                self.rom_data[:address] +
-                packed_data +
-                self.rom_data[address + len(packed_data):]
-            )
+            # Modify ROM data in memory (in-place)
+            self.rom_data[address:address + len(packed_data)] = packed_data
             logger.info(f"Successfully wrote table data: {table.name}")
         except RomWriteError:
             # Re-raise our own exceptions
@@ -440,12 +570,8 @@ class RomReader:
             if address + len(packed_data) > len(self.rom_data):
                 raise RomWriteError(f"Write exceeds ROM bounds at {hex(address)}")
 
-            # Modify ROM data in memory
-            self.rom_data = (
-                self.rom_data[:address] +
-                packed_data +
-                self.rom_data[address + len(packed_data):]
-            )
+            # Modify ROM data in memory (in-place)
+            self.rom_data[address:address + len(packed_data)] = packed_data
             logger.debug(f"Wrote cell [{row},{col}] = {raw_value} at {hex(address)}")
 
         except RomWriteError:
@@ -506,12 +632,8 @@ class RomReader:
             if address + len(packed_data) > len(self.rom_data):
                 raise RomWriteError(f"Write exceeds ROM bounds at {hex(address)}")
 
-            # Modify ROM data in memory
-            self.rom_data = (
-                self.rom_data[:address] +
-                packed_data +
-                self.rom_data[address + len(packed_data):]
-            )
+            # Modify ROM data in memory (in-place)
+            self.rom_data[address:address + len(packed_data)] = packed_data
             logger.debug(f"Wrote axis [{axis_type}][{index}] = {raw_value} at {hex(address)}")
 
         except RomWriteError:
@@ -535,10 +657,21 @@ class RomReader:
 
         logger.info(f"Saving ROM to {output_path}")
 
+        # Atomic write: write to temp file, then replace original
+        tmp_path = str(output_path) + '.tmp'
         try:
-            with open(output_path, 'wb') as f:
+            with open(tmp_path, 'wb') as f:
                 f.write(self.rom_data)
+                f.flush()
+                os.fsync(f.fileno())
+            os.replace(tmp_path, str(output_path))
             logger.info(f"Successfully saved {len(self.rom_data)} bytes to {output_path}")
-        except IOError as e:
+        except Exception as e:
+            # Clean up temp file on failure
+            try:
+                if os.path.exists(tmp_path):
+                    os.remove(tmp_path)
+            except OSError:
+                pass
             logger.error(f"Failed to save ROM file to {output_path}: {e}")
             raise RomWriteError(f"Failed to save ROM file: {e}")

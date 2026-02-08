@@ -224,6 +224,101 @@ class TestRunner:
             self._log(f"ERROR: {e}")
             return False
 
+    def open_table_by_category(self, table_name: str, category: str) -> bool:
+        """
+        Open a table by name and category
+
+        Args:
+            table_name: Name of the table to open
+            category: Category the table belongs to
+
+        Returns:
+            True if successful
+        """
+        if self.rom_definition is None or self.rom_reader is None:
+            self._log("ERROR: No ROM loaded")
+            return False
+
+        # Find the table matching both name and category
+        table = None
+        for t in self.rom_definition.tables:
+            if t.name == table_name and t.category == category:
+                table = t
+                break
+
+        if table is None:
+            self._log(f"ERROR: Table not found: {table_name} in category {category}")
+            # Show tables with same name
+            same_name = [(t.name, t.category) for t in self.rom_definition.tables
+                        if t.name == table_name]
+            if same_name:
+                self._log(f"  Tables with same name: {same_name}")
+            return False
+
+        try:
+            self._log(f"Opening table: {table_name} (category: {category}, address: {table.address})")
+
+            # Trigger table selection
+            self.main_window.on_table_selected(table, self.rom_reader)
+            self._process_events()
+
+            # Find the opened table window - match by address since name may not be unique
+            for window in self.main_window.open_table_windows:
+                if window.table.address == table.address:
+                    self.current_table_window = window
+                    break
+
+            if self.current_table_window:
+                self._log(f"Table opened: {table_name}")
+                return True
+            else:
+                self._log("ERROR: Failed to open table window")
+                return False
+
+        except Exception as e:
+            self._log(f"ERROR: {e}")
+            return False
+
+    def expand_category(self, category: str) -> bool:
+        """
+        Expand a category in the table browser tree
+
+        Args:
+            category: Name of the category to expand
+
+        Returns:
+            True if successful
+        """
+        if self.main_window is None:
+            self._log("ERROR: Application not started")
+            return False
+
+        try:
+            # Get current document's table browser
+            document = self.main_window.get_current_document()
+            if not document or not hasattr(document, 'table_browser'):
+                self._log("ERROR: No document with table browser")
+                return False
+
+            tree = document.table_browser.tree
+            root = tree.invisibleRootItem()
+
+            # Find and expand the category
+            for i in range(root.childCount()):
+                item = root.child(i)
+                if item.text(0) == category:
+                    tree.expandItem(item)
+                    self._process_events()
+                    self._log(f"Expanded category: {category}")
+                    return True
+
+            self._log(f"ERROR: Category not found: {category}")
+            return False
+
+        except Exception as e:
+            self._log(f"ERROR: {e}")
+            return False
+
     def select_cells(self, start_row: int, start_col: int,
                      end_row: int = None, end_col: int = None) -> bool:
         """
@@ -482,10 +577,13 @@ class TestRunner:
             return False
 
         try:
-            # Use the viewer's bulk operation method which handles change tracking
             viewer = self.current_table_window.viewer
             operation_fn = lambda v: value
-            viewer._apply_bulk_operation(operation_fn, f"Set to {value}")
+            data_changes, axis_changes = viewer._apply_bulk_operation(operation_fn, f"Set to {value}")
+            if data_changes:
+                viewer.bulk_changes.emit(data_changes)
+            if axis_changes:
+                viewer.axis_bulk_changes.emit(axis_changes)
             self._process_events()
             self._log(f"Set selection to {value}")
             return True
@@ -508,10 +606,13 @@ class TestRunner:
             return False
 
         try:
-            # Use the viewer's bulk operation method which handles change tracking
             viewer = self.current_table_window.viewer
             operation_fn = lambda v: v * factor
-            viewer._apply_bulk_operation(operation_fn, f"Multiply by {factor}")
+            data_changes, axis_changes = viewer._apply_bulk_operation(operation_fn, f"Multiply by {factor}")
+            if data_changes:
+                viewer.bulk_changes.emit(data_changes)
+            if axis_changes:
+                viewer.axis_bulk_changes.emit(axis_changes)
             self._process_events()
             self._log(f"Multiplied selection by {factor}")
             return True
@@ -534,10 +635,13 @@ class TestRunner:
             return False
 
         try:
-            # Use the viewer's bulk operation method which handles change tracking
             viewer = self.current_table_window.viewer
             operation_fn = lambda v: v + value
-            viewer._apply_bulk_operation(operation_fn, f"Add {value}")
+            data_changes, axis_changes = viewer._apply_bulk_operation(operation_fn, f"Add {value}")
+            if data_changes:
+                viewer.bulk_changes.emit(data_changes)
+            if axis_changes:
+                viewer.axis_bulk_changes.emit(axis_changes)
             self._process_events()
             self._log(f"Added {value} to selection")
             return True
@@ -650,6 +754,45 @@ class TestRunner:
             self._log(f"ERROR: {e}")
             return False
 
+    def focus_table(self, table_name: str) -> bool:
+        """
+        Switch focus to an already-open table window.
+
+        This activates the table's undo stack for per-table undo/redo.
+
+        Args:
+            table_name: Name of the table to focus
+
+        Returns:
+            True if successful
+        """
+        if self.main_window is None:
+            self._log("ERROR: Application not started")
+            return False
+
+        try:
+            # Find the window by table name
+            for window in self.main_window.open_table_windows:
+                if window.table.name == table_name and window.isVisible():
+                    # Activate the window (triggers window_focused signal)
+                    window.raise_()
+                    window.activateWindow()
+                    self.current_table_window = window
+                    self._process_events()
+
+                    # Also explicitly activate the undo stack
+                    self.main_window.table_undo_manager.set_active_stack(window.table.address)
+
+                    self._log(f"Focused table: {table_name}")
+                    return True
+
+            self._log(f"ERROR: Table not open: {table_name}")
+            return False
+
+        except Exception as e:
+            self._log(f"ERROR: {e}")
+            return False
+
     def get_window_size(self) -> tuple:
         """
         Get current table window size
@@ -727,9 +870,12 @@ class TestRunner:
         Returns:
             Path to saved screenshot, or empty string on failure
         """
+        # Always append timestamp to ensure unique filenames
+        timestamp = datetime.now().strftime("%H%M%S")
         if name is None:
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             name = f"screenshot_{timestamp}"
+        else:
+            name = f"{name}_{timestamp}"
 
         try:
             self._process_events()
@@ -762,7 +908,9 @@ class TestRunner:
 
     def undo(self) -> bool:
         """
-        Undo last action
+        Undo last action on the currently focused table.
+
+        Uses the per-table undo system via TableUndoManager.
 
         Returns:
             True if successful
@@ -772,7 +920,7 @@ class TestRunner:
             return False
 
         try:
-            self.main_window.undo()
+            self.main_window.table_undo_manager.undo_group.undo()
             self._process_events()
             self._log("Undo executed")
             return True
@@ -782,7 +930,9 @@ class TestRunner:
 
     def redo(self) -> bool:
         """
-        Redo last undone action
+        Redo last undone action on the currently focused table.
+
+        Uses the per-table undo system via TableUndoManager.
 
         Returns:
             True if successful
@@ -792,7 +942,7 @@ class TestRunner:
             return False
 
         try:
-            self.main_window.redo()
+            self.main_window.table_undo_manager.undo_group.redo()
             self._process_events()
             self._log("Redo executed")
             return True
@@ -957,6 +1107,12 @@ class TestRunner:
             elif cmd == "open_table" and len(args) >= 1:
                 return self.open_table(args[0])
 
+            elif cmd == "open_table_by_category" and len(args) >= 2:
+                return self.open_table_by_category(args[0], args[1])
+
+            elif cmd == "expand_category" and len(args) >= 1:
+                return self.expand_category(args[0])
+
             elif cmd == "select" and len(args) >= 2:
                 start_row = int(args[0])
                 start_col = int(args[1])
@@ -1009,6 +1165,13 @@ class TestRunner:
 
             elif cmd == "close_table":
                 return self.close_table()
+
+            elif cmd == "focus_table":
+                if not args:
+                    self._log("ERROR: focus_table requires table name")
+                    return False
+                table_name = " ".join(args).strip('"\'')
+                return self.focus_table(table_name)
 
             elif cmd == "screenshot":
                 name = args[0] if args else None
@@ -1137,6 +1300,7 @@ class TestRunner:
         print("  undo / redo              - Undo/redo last change")
         print("  wait <ms>                - Wait milliseconds")
         print("  close_table              - Close current table")
+        print("  focus_table \"<name>\"     - Switch focus to open table")
         print("  quit / exit              - Exit interactive mode")
         print("\n")
 

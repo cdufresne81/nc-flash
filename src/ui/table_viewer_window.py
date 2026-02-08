@@ -16,6 +16,7 @@ from PySide6.QtCore import Qt, Signal, QTimer
 from PySide6.QtGui import QKeySequence, QShortcut
 
 from ..utils.constants import APP_NAME
+from ..core.table_undo_manager import make_table_key
 from .table_viewer import TableViewer
 from .graph_viewer import GraphWidget
 from .scaling_edit_dialog import TableScalingDialog
@@ -50,10 +51,6 @@ class TableViewerWindow(QMainWindow):
     # Forward axis_bulk_changes signal from viewer
     # Args: table, list of (axis_type, index, old_value, new_value, old_raw, new_raw) tuples
     axis_bulk_changes = Signal(Table, list)
-
-    # Signals for undo/redo requests (forwarded to main window)
-    undo_requested = Signal()
-    redo_requested = Signal()
 
     # Signal emitted when this window receives focus
     # Args: table_address (str)
@@ -96,9 +93,9 @@ class TableViewerWindow(QMainWindow):
         )
 
         # Set window properties
-        title = f"{table.name} - {APP_NAME}"
+        title = f"{table.name} ({table.address}) - {APP_NAME}"
         if diff_mode:
-            title = f"{table.name} (Changes) - {APP_NAME}"
+            title = f"{table.name} ({table.address}) (Changes) - {APP_NAME}"
         self.setWindowTitle(title)
 
         # Create central widget with minimal margins
@@ -161,14 +158,22 @@ class TableViewerWindow(QMainWindow):
         self._refresh_timer.setInterval(50)  # 50ms debounce
         self._refresh_timer.timeout.connect(self._refresh_graph)
 
+        # Debounce timer for selection-driven graph updates (arrow key navigation
+        # fires itemSelectionChanged on every key press — full 3D re-render each
+        # time makes the UI sluggish without debouncing)
+        self._selection_timer = QTimer()
+        self._selection_timer.setSingleShot(True)
+        self._selection_timer.setInterval(100)  # 100ms debounce for selection
+        self._selection_timer.timeout.connect(self._update_graph_selection)
+
         # Connect data_updated signal to debounced refresh (for undo/redo)
         self.viewer.data_updated.connect(self._schedule_graph_refresh)
 
-        # Set up undo/redo shortcuts for this window
+        # Set up undo/redo shortcuts - route to main window's undo group
         undo_shortcut = QShortcut(QKeySequence.Undo, self)
-        undo_shortcut.activated.connect(self.undo_requested.emit)
+        undo_shortcut.activated.connect(self._do_undo)
         redo_shortcut = QShortcut(QKeySequence.Redo, self)
-        redo_shortcut.activated.connect(self.redo_requested.emit)
+        redo_shortcut.activated.connect(self._do_redo)
 
         # Set up Esc key to close window
         close_shortcut = QShortcut(QKeySequence(Qt.Key_Escape), self)
@@ -301,7 +306,12 @@ class TableViewerWindow(QMainWindow):
         return selected_cells
 
     def _on_table_selection_changed(self):
-        """Handle table selection changes - update graph if visible"""
+        """Handle table selection changes - debounce graph update"""
+        if self._graph_visible and self.graph_widget:
+            self._selection_timer.start()
+
+    def _update_graph_selection(self):
+        """Actually update graph selection (called after debounce)"""
         if self._graph_visible and self.graph_widget:
             selected_cells = self._get_selected_data_cells()
             self.graph_widget.update_selection(selected_cells)
@@ -325,9 +335,6 @@ class TableViewerWindow(QMainWindow):
             self.graph_widget.setMaximumWidth(0)
             self.graph_widget.hide()
             self.graph_action.setChecked(False)
-
-            # Process events to ensure hide is complete
-            QApplication.processEvents()
 
             # Resize window back to table-only size
             if self._table_only_size:
@@ -362,18 +369,28 @@ class TableViewerWindow(QMainWindow):
             # Set splitter proportions - table keeps its size, graph gets the rest
             self.splitter.setSizes([table_width, graph_width])
 
-            # Process events to ensure layout is complete before drawing
-            # This prevents matplotlib's constrained_layout from failing with zero width
-            QApplication.processEvents()
+            # Defer graph initialization to the next event-loop iteration so
+            # the splitter/resize layout is fully resolved before matplotlib's
+            # constrained_layout measures widget dimensions.  Using
+            # QTimer.singleShot(0, ...) is the safe alternative to the
+            # re-entrant QApplication.processEvents() anti-pattern.
+            QTimer.singleShot(0, self._init_graph_after_layout)
 
-            # Initialize graph with current data and selection AFTER resize is complete
-            selected_cells = self._get_selected_data_cells()
-            self.graph_widget.set_data(
-                self.table, self.data, self.rom_definition, selected_cells
-            )
+    def _init_graph_after_layout(self):
+        """Initialize graph after layout has settled (deferred from _toggle_graph).
 
-            # Set focus on graph so arrow keys work immediately
-            self.graph_widget.setFocus()
+        Called via QTimer.singleShot(0, ...) so that the splitter resize is
+        fully processed before matplotlib's constrained_layout measures the
+        canvas dimensions.
+        """
+        if not self._graph_visible or not self.graph_widget:
+            return
+        selected_cells = self._get_selected_data_cells()
+        self.graph_widget.set_data(
+            self.table, self.data, self.rom_definition, selected_cells
+        )
+        # Set focus on graph so arrow keys work immediately
+        self.graph_widget.setFocus()
 
     def _on_cell_changed(self, table_name: str, row: int, col: int,
                          old_value: float, new_value: float,
@@ -382,22 +399,32 @@ class TableViewerWindow(QMainWindow):
         self.cell_changed.emit(
             self.table, row, col, old_value, new_value, old_raw, new_raw
         )
-        # Refresh graph to show updated data
-        self._refresh_graph()
+        # Schedule debounced graph refresh (consolidates with selection-change draws)
+        self._schedule_graph_refresh()
 
     def _on_bulk_changes(self, changes: list):
         """Forward bulk changes signal with table object"""
         self.bulk_changes.emit(self.table, changes)
-        # Refresh graph to show updated data
-        self._refresh_graph()
+        # Schedule debounced graph refresh (consolidates with selection-change draws)
+        self._schedule_graph_refresh()
 
     def _refresh_graph(self):
-        """Refresh graph display if visible"""
+        """Refresh graph display if visible.
+
+        Uses update_selection (which rebuilds the 3D surface in-place)
+        instead of set_data (which clears the entire figure and causes
+        a visible zoom-out due to constrained_layout recalculation).
+        The graph widget holds a reference to the same data dict, so
+        cell value changes are already reflected without re-setting data.
+
+        Also cancels any pending selection-only timer since this refresh
+        already includes the current selection, preventing a redundant draw.
+        """
         if self._graph_visible and self.graph_widget:
+            # Cancel pending selection update — this refresh supersedes it
+            self._selection_timer.stop()
             selected_cells = self._get_selected_data_cells()
-            self.graph_widget.set_data(
-                self.table, self.data, self.rom_definition, selected_cells
-            )
+            self.graph_widget.update_selection(selected_cells)
 
     def _schedule_graph_refresh(self):
         """Schedule a debounced graph refresh (restarts timer on each call)"""
@@ -410,14 +437,14 @@ class TableViewerWindow(QMainWindow):
         self.axis_changed.emit(
             self.table, axis_type, index, old_value, new_value, old_raw, new_raw
         )
-        # Refresh graph to show updated axis
-        self._refresh_graph()
+        # Schedule debounced graph refresh (consolidates with selection-change draws)
+        self._schedule_graph_refresh()
 
     def _on_axis_bulk_changes(self, changes: list):
         """Forward axis bulk changes signal with table object"""
         self.axis_bulk_changes.emit(self.table, changes)
-        # Refresh graph to show updated axis
-        self._refresh_graph()
+        # Schedule debounced graph refresh (consolidates with selection-change draws)
+        self._schedule_graph_refresh()
 
     def _auto_size_window(self):
         """Auto-size window to fit table content - compact like ECUFlash"""
@@ -451,9 +478,6 @@ class TableViewerWindow(QMainWindow):
         # Add X-axis label height if visible
         if self.viewer.x_axis_label.isVisible():
             content_height += self.viewer.x_axis_label.sizeHint().height()
-
-        # Add info label height (TEMPORARILY HIDDEN - not adding height)
-        # content_height += self.viewer.info_label.sizeHint().height()
 
         # Add menu bar height
         if self.menuBar():
@@ -537,14 +561,41 @@ class TableViewerWindow(QMainWindow):
         if 'inc' in updates:
             scaling.inc = float(updates['inc']) if updates['inc'] else None
 
+    def _do_undo(self):
+        """Perform undo via main window's undo group"""
+        main_window = self.parent()
+        if main_window and hasattr(main_window, 'table_undo_manager'):
+            main_window.table_undo_manager.undo_group.undo()
+
+    def _do_redo(self):
+        """Perform redo via main window's undo group"""
+        main_window = self.parent()
+        if main_window and hasattr(main_window, 'table_undo_manager'):
+            main_window.table_undo_manager.undo_group.redo()
+
     def closeEvent(self, event):
-        """Handle window close event"""
+        """Handle window close event - deactivate undo stack and clean up resources"""
+        main_window = self.parent()
+        if main_window and hasattr(main_window, 'table_undo_manager'):
+            main_window.table_undo_manager.set_active_stack(None)
+        # Remove from parent's tracking list before deletion
+        if main_window and hasattr(main_window, 'open_table_windows'):
+            try:
+                main_window.open_table_windows.remove(self)
+            except ValueError:
+                pass
+        # Clean up matplotlib figure to prevent leak in global registry
+        if self.graph_widget and hasattr(self.graph_widget, 'figure'):
+            import matplotlib.pyplot as plt
+            plt.close(self.graph_widget.figure)
         event.accept()
+        # Schedule widget destruction for next event loop iteration
+        self.deleteLater()
 
     def event(self, event):
         """Handle window events to detect activation/focus"""
         from PySide6.QtCore import QEvent
         # WindowActivate is fired when the window gains focus (clicked, alt-tabbed to, etc.)
         if event.type() == QEvent.WindowActivate:
-            self.window_focused.emit(self.table.address)
+            self.window_focused.emit(make_table_key(self.rom_path, self.table.address))
         return super().event(event)

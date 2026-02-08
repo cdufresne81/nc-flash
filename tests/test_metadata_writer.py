@@ -38,9 +38,11 @@ def temp_xml_file(sample_xml_content):
     # Cleanup
     if temp_path.exists():
         temp_path.unlink()
-    backup_path = temp_path.with_suffix('.xml.bak')
-    if backup_path.exists():
-        backup_path.unlink()
+    # Clean up rotated backup files (.bak.1, .bak.2, .bak.3)
+    for i in range(1, 4):
+        backup_path = Path(f"{temp_path}.bak.{i}")
+        if backup_path.exists():
+            backup_path.unlink()
 
 
 class TestUpdateScaling:
@@ -125,8 +127,8 @@ class TestUpdateScaling:
         assert result is False
 
     def test_update_scaling_creates_backup(self, temp_xml_file):
-        """Test that updating creates a backup file"""
-        backup_path = temp_xml_file.with_suffix('.xml.bak')
+        """Test that updating creates a rotated backup file (.bak.1)"""
+        backup_path = Path(f"{temp_xml_file}.bak.1")
 
         # Ensure backup doesn't exist initially
         if backup_path.exists():
@@ -136,6 +138,27 @@ class TestUpdateScaling:
 
         assert result is True
         assert backup_path.exists()
+
+    def test_backup_rotation(self, temp_xml_file):
+        """Test that backups are rotated (keep last 3)"""
+        # Make three successive updates to create 3 backups
+        update_scaling(temp_xml_file, "TestScaling", {"min": "10"})
+        update_scaling(temp_xml_file, "TestScaling", {"min": "20"})
+        update_scaling(temp_xml_file, "TestScaling", {"min": "30"})
+
+        # All three backups should exist
+        assert Path(f"{temp_xml_file}.bak.1").exists()
+        assert Path(f"{temp_xml_file}.bak.2").exists()
+        assert Path(f"{temp_xml_file}.bak.3").exists()
+
+        # A fourth update should rotate out the oldest
+        update_scaling(temp_xml_file, "TestScaling", {"min": "40"})
+
+        assert Path(f"{temp_xml_file}.bak.1").exists()
+        assert Path(f"{temp_xml_file}.bak.2").exists()
+        assert Path(f"{temp_xml_file}.bak.3").exists()
+        # No .bak.4 should exist
+        assert not Path(f"{temp_xml_file}.bak.4").exists()
 
     def test_update_scaling_nonexistent_file(self):
         """Test updating a file that doesn't exist"""

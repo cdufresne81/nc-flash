@@ -9,7 +9,7 @@ import logging
 from ..utils.constants import (
     LOG_CONSOLE_MAX_LINES,
     LOG_CONSOLE_CLEAR_BUTTON_WIDTH,
-    LOG_CONSOLE_FONT_FAMILY,
+    LOG_CONSOLE_FONT_FAMILIES,
     LOG_CONSOLE_FONT_SIZE
 )
 from PySide6.QtWidgets import (
@@ -96,7 +96,8 @@ class LogConsole(QWidget):
         self.console.setLineWrapMode(QTextEdit.NoWrap)
 
         # Use monospace font for console-like appearance
-        font = QFont(LOG_CONSOLE_FONT_FAMILY, LOG_CONSOLE_FONT_SIZE)
+        font = QFont(LOG_CONSOLE_FONT_FAMILIES[0], LOG_CONSOLE_FONT_SIZE)
+        font.setFamilies(list(LOG_CONSOLE_FONT_FAMILIES))
         self.console.setFont(font)
 
         # Style the console

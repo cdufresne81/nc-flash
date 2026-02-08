@@ -135,13 +135,12 @@ class HistoryViewer(QDialog):
             self.view_table_diff.emit(table_name, commit)
 
     def _filter_commits(self, text: str):
-        """Filter commits by search text"""
+        """Filter commits by search text using stored item data"""
         text = text.lower()
 
         for i in range(self.commit_tree.topLevelItemCount()):
             item = self.commit_tree.topLevelItem(i)
-            commit_id = item.data(0, Qt.UserRole)
-            commit = self.project_manager.get_commit(commit_id)
+            commit = item.data(0, Qt.UserRole + 1)
 
             if commit:
                 visible = (

@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, Optional, Tuple
 
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QBrush
+from simpleeval import simple_eval
 
 from ...core.rom_definition import TableType, AxisType
 from .context import TableViewerContext
@@ -100,9 +101,9 @@ class TableEditHelper:
         finally:
             self.ctx.editing_in_progress = False
 
-        # Emit the change signal
+        # Emit the change signal (use address as unique identifier)
         self.ctx.viewer.cell_changed.emit(
-            self.ctx.current_table.name,
+            self.ctx.current_table.address,
             data_row, data_col,
             old_value, new_value,
             old_raw, new_raw
@@ -137,7 +138,6 @@ class TableEditHelper:
             return display_value
 
         try:
-            from simpleeval import simple_eval
             return simple_eval(scaling.frexpr, names={'x': display_value})
         except Exception as e:
             logger.error(f"Error converting to raw: {e}")
@@ -176,12 +176,19 @@ class TableEditHelper:
                 item.setText(self.display.format_value(new_value, value_fmt))
                 color = self.display.get_cell_color(new_value, values, data_row, data_col)
                 item.setBackground(QBrush(color))
+
+            # Sync toggle switch if visible (undo/redo for toggle categories)
+            viewer = self.ctx.viewer
+            if viewer.toggle_container.isVisible():
+                checked = new_value != 0
+                viewer.toggle_switch.setChecked(checked)
+                viewer._update_toggle_label(checked)
         finally:
             self.ctx.editing_in_progress = False
 
         # Check if value matches original and remove border if so (smart border removal on undo)
         self.ctx.viewer._check_and_remove_border_if_original(
-            self.ctx.current_table.name, data_row, data_col, new_value
+            self.ctx.current_table.address, data_row, data_col, new_value
         )
 
     def data_to_ui_coords(self, data_row: int, data_col: int) -> Tuple[Optional[int], Optional[int]]:
@@ -260,14 +267,14 @@ class TableEditHelper:
             item.setText(self.display.format_value(new_value, axis_fmt))
 
             # Update cell color based on new value
-            color = self.display.get_axis_color(new_value, self.ctx.current_data[axis_key])
+            color = self.display.get_axis_color(new_value, self.ctx.current_data[axis_key], axis_type)
             item.setBackground(QBrush(color))
         finally:
             self.ctx.editing_in_progress = False
 
-        # Emit the axis change signal
+        # Emit the axis change signal (use address as unique identifier)
         self.ctx.viewer.axis_changed.emit(
-            self.ctx.current_table.name,
+            self.ctx.current_table.address,
             axis_type_str,
             data_idx,
             old_value, new_value,
@@ -304,7 +311,6 @@ class TableEditHelper:
             return display_value
 
         try:
-            from simpleeval import simple_eval
             return simple_eval(scaling.frexpr, names={'x': display_value})
         except Exception as e:
             logger.error(f"Error converting axis to raw: {e}")
@@ -343,14 +349,14 @@ class TableEditHelper:
                 axis_type_enum = AxisType.X_AXIS if axis_type == 'x_axis' else AxisType.Y_AXIS
                 axis_fmt = self.display.get_axis_format(axis_type_enum)
                 item.setText(self.display.format_value(new_value, axis_fmt))
-                color = self.display.get_axis_color(new_value, axis_data)
+                color = self.display.get_axis_color(new_value, axis_data, axis_type_enum)
                 item.setBackground(QBrush(color))
         finally:
             self.ctx.editing_in_progress = False
 
         # Check if value matches original and remove border if so (smart border removal on undo)
         self.ctx.viewer._check_and_remove_axis_border_if_original(
-            self.ctx.current_table.name, axis_type, data_idx, new_value
+            self.ctx.current_table.address, axis_type, data_idx, new_value
         )
 
     def _axis_data_to_ui_coords(self, axis_type: str, data_idx: int) -> Tuple[Optional[int], Optional[int]]:

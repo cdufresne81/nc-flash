@@ -19,7 +19,8 @@ from PySide6.QtWidgets import (
     QFileDialog,
     QGroupBox,
     QComboBox,
-    QSpinBox
+    QSpinBox,
+    QCheckBox
 )
 from PySide6.QtCore import Qt, Signal
 
@@ -178,10 +179,22 @@ class SettingsDialog(QDialog):
         layout = QVBoxLayout()
         tab.setLayout(layout)
 
-        # Placeholder label
-        label = QLabel("Table editor settings will be added here")
-        label.setAlignment(Qt.AlignCenter)
-        layout.addWidget(label)
+        # Toggle display group
+        toggle_group = QGroupBox("Toggle Display")
+        toggle_layout = QVBoxLayout()
+        toggle_group.setLayout(toggle_layout)
+
+        self.dtc_toggle_checkbox = QCheckBox("Use toggle switches for DTC Activation Flags")
+        toggle_layout.addWidget(self.dtc_toggle_checkbox)
+
+        toggle_help = QLabel(
+            "When enabled, DTC Activation Flag tables show an ON/OFF toggle\n"
+            "instead of a numeric cell (0 = OFF, non-zero = ON)"
+        )
+        toggle_help.setStyleSheet("color: gray; font-size: 10px;")
+        toggle_layout.addWidget(toggle_help)
+
+        layout.addWidget(toggle_group)
 
         layout.addStretch()
 
@@ -210,6 +223,10 @@ class SettingsDialog(QDialog):
         # Load colormap path
         colormap_path = self.settings.get_colormap_path()
         self.colormap_path_edit.setText(colormap_path)
+
+        # Load toggle categories setting
+        toggle_cats = self.settings.get_toggle_categories()
+        self.dtc_toggle_checkbox.setChecked("DTC - Activation Flags" in toggle_cats)
 
     def browse_projects_directory(self):
         """Open directory browser for projects directory"""
@@ -284,6 +301,12 @@ class SettingsDialog(QDialog):
         colormap_path = self.colormap_path_edit.text().strip()
         self.settings.set_colormap_path(colormap_path)
         reload_colormap()
+
+        # Save toggle categories
+        toggle_cats = []
+        if self.dtc_toggle_checkbox.isChecked():
+            toggle_cats.append("DTC - Activation Flags")
+        self.settings.set_toggle_categories(toggle_cats)
 
         # Emit signal that settings changed
         self.settings_changed.emit()

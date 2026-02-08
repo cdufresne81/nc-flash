@@ -1,0 +1,25 @@
+# Debug: 3D graph zoom-out on cell value change
+# Steps: open table, open graph, screenshot full window, edit cells, screenshot again
+
+load_rom examples/lf9veb.bin
+open_table "APP to TP Desired - 3rd Gear"
+wait 300
+
+# Open graph panel
+open_graph
+wait 800
+
+# Screenshot BEFORE any edits (full table viewer window with graph)
+screenshot graph_zoom_before table
+
+# Now change some cell values
+select 3 3 6 6
+wait 200
+multiply 1.1
+wait 500
+
+# Screenshot AFTER edits (full table viewer window - graph should remain same size)
+screenshot graph_zoom_after table
+
+close_graph
+close_table

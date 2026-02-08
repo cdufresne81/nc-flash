@@ -10,6 +10,22 @@ import tempfile
 from unittest.mock import patch, MagicMock
 
 from src.utils.colormap import ColorMap, get_colormap, set_colormap, reload_colormap
+import src.utils.colormap as colormap_module
+
+
+@pytest.fixture(autouse=True)
+def _restore_colormap_globals():
+    """Save and restore ColorMap class state and module globals between tests.
+
+    This prevents mutations like ``ColorMap._builtin_gradient = None`` or
+    ``_current_colormap = <some instance>`` from leaking across tests and
+    causing order-dependent failures.
+    """
+    original_builtin_gradient = ColorMap._builtin_gradient
+    original_current_colormap = colormap_module._current_colormap
+    yield
+    ColorMap._builtin_gradient = original_builtin_gradient
+    colormap_module._current_colormap = original_current_colormap
 
 
 @pytest.fixture
@@ -287,7 +303,6 @@ class TestGlobalColormapFunctions:
     def test_reload_colormap(self):
         """Test reload_colormap resets global instance"""
         # Reset the global colormap
-        import src.utils.colormap as colormap_module
         colormap_module._current_colormap = None
 
         with patch('src.utils.settings.get_settings') as mock_get_settings:

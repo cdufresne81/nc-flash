@@ -8,7 +8,23 @@ import pytest
 from unittest.mock import patch, MagicMock
 from pathlib import Path
 
+from PySide6.QtCore import QByteArray
+
 from src.utils.settings import AppSettings, get_settings
+import src.utils.settings as settings_module
+
+
+@pytest.fixture(autouse=True)
+def _restore_settings_globals():
+    """Save and restore the module-level ``_settings`` singleton between tests.
+
+    Tests in ``TestGlobalSettingsInstance`` set ``settings_module._settings = None``
+    to exercise lazy initialization.  Without cleanup, the mutation leaks into
+    later tests and can cause order-dependent failures.
+    """
+    original_settings = settings_module._settings
+    yield
+    settings_module._settings = original_settings
 
 
 @pytest.fixture
@@ -283,7 +299,7 @@ class TestWindowSettings:
         mock_instance, settings_store = mock_qsettings
         app_settings = AppSettings()
 
-        geometry_data = b"fake_geometry_data"
+        geometry_data = QByteArray(b"fake_geometry_data")
         app_settings.set_window_geometry(geometry_data)
 
         result = app_settings.get_window_geometry()
@@ -299,11 +315,67 @@ class TestWindowSettings:
         mock_instance, settings_store = mock_qsettings
         app_settings = AppSettings()
 
-        state_data = b"fake_splitter_state"
+        state_data = QByteArray(b"fake_splitter_state")
         app_settings.set_splitter_state(state_data)
 
         result = app_settings.get_splitter_state()
         assert result == state_data
+
+
+class TestToggleCategories:
+    """Tests for toggle categories settings (DTC toggle switch feature)"""
+
+    def test_get_toggle_categories_default(self, app_settings):
+        """Test default toggle categories includes DTC Activation Flags"""
+        result = app_settings.get_toggle_categories()
+        assert result == ["DTC - Activation Flags"]
+
+    def test_set_and_get_toggle_categories(self, mock_qsettings):
+        """Test setting and getting toggle categories"""
+        mock_instance, settings_store = mock_qsettings
+        app_settings = AppSettings()
+
+        app_settings.set_toggle_categories(["DTC - Activation Flags", "Custom Category"])
+
+        result = app_settings.get_toggle_categories()
+        assert result == ["DTC - Activation Flags", "Custom Category"]
+
+    def test_set_empty_toggle_categories(self, mock_qsettings):
+        """Test disabling all toggle categories"""
+        mock_instance, settings_store = mock_qsettings
+        app_settings = AppSettings()
+
+        app_settings.set_toggle_categories([])
+
+        result = app_settings.get_toggle_categories()
+        assert result == []
+
+    def test_get_toggle_categories_single_string(self, mock_qsettings):
+        """Test handling of single string value (QSettings quirk with 1-element lists)"""
+        mock_instance, settings_store = mock_qsettings
+        settings_store["display/toggle_categories"] = "DTC - Activation Flags"
+        app_settings = AppSettings()
+
+        result = app_settings.get_toggle_categories()
+        assert result == ["DTC - Activation Flags"]
+
+    def test_get_toggle_categories_empty_string(self, mock_qsettings):
+        """Test handling of empty string value"""
+        mock_instance, settings_store = mock_qsettings
+        settings_store["display/toggle_categories"] = ""
+        app_settings = AppSettings()
+
+        result = app_settings.get_toggle_categories()
+        assert result == []
+
+    def test_get_toggle_categories_none_value(self, mock_qsettings):
+        """Test handling of None value falls back to default"""
+        mock_instance, settings_store = mock_qsettings
+        settings_store["display/toggle_categories"] = None
+        app_settings = AppSettings()
+
+        result = app_settings.get_toggle_categories()
+        assert result == ["DTC - Activation Flags"]
 
 
 class TestGlobalSettingsInstance:

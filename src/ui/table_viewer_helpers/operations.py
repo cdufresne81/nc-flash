@@ -9,10 +9,11 @@ from typing import TYPE_CHECKING, List, Tuple, Callable
 
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QBrush
-from PySide6.QtWidgets import QDialog, QTableWidgetSelectionRange
+from PySide6.QtWidgets import QDialog, QTableWidgetSelectionRange, QTableWidgetItem
 
 from ...core.rom_definition import TableType, AxisType
-from .context import TableViewerContext
+from ..data_operation_dialogs import AddValueDialog, MultiplyDialog, SetValueDialog
+from .context import TableViewerContext, frozen_table_updates
 
 if TYPE_CHECKING:
     from .display import TableDisplayHelper
@@ -63,123 +64,143 @@ class TableOperationsHelper:
 
         data_changes = []
         axis_changes = []
+        changed_items = []  # Track (item, new_value, data_row, data_col) for color updates
 
-        # Iterate through selection
-        for row in range(min_row, max_row + 1):
-            for col in range(min_col, max_col + 1):
-                item = self.ctx.table_widget.item(row, col)
-                if not item:
-                    continue
+        # Cache min/max values before bulk operation to avoid O(n²) complexity in color calculations
+        if 'values' in self.ctx.current_data:
+            self.display.cache_value_range(self.ctx.current_data['values'])
 
-                # Check cell type from UserRole data
-                data_indices = item.data(Qt.UserRole)
-                if data_indices is None:
-                    continue  # No data associated with this cell
+        # Cache format string to avoid repeated lookups
+        value_fmt = self.display.get_value_format()
 
-                # Check if this is an axis cell or data cell
-                if isinstance(data_indices[0], str):
-                    # Axis cell: ('x_axis', index) or ('y_axis', index)
-                    axis_type_str, data_idx = data_indices
-                    axis_type = AxisType.X_AXIS if axis_type_str == 'x_axis' else AxisType.Y_AXIS
+        with frozen_table_updates(self.ctx.table_widget):
+            try:
+                # Iterate through selection
+                for row in range(min_row, max_row + 1):
+                    for col in range(min_col, max_col + 1):
+                        item = self.ctx.table_widget.item(row, col)
+                        if not item:
+                            continue
 
-                    # Get axis table for scaling
-                    axis_table = self.ctx.current_table.get_axis(axis_type)
-                    if not axis_table:
-                        continue
+                        # Check cell type from UserRole data
+                        data_indices = item.data(Qt.UserRole)
+                        if data_indices is None:
+                            continue  # No data associated with this cell
 
-                    # Get current axis value
-                    axis_key = axis_type_str
-                    axis_data = self.ctx.current_data.get(axis_key)
-                    if axis_data is None:
-                        continue
+                        # Check if this is an axis cell or data cell
+                        if isinstance(data_indices[0], str):
+                            # Axis cell: ('x_axis', index) or ('y_axis', index)
+                            axis_type_str, data_idx = data_indices
+                            axis_type = AxisType.X_AXIS if axis_type_str == 'x_axis' else AxisType.Y_AXIS
 
-                    old_value = float(axis_data[data_idx])
+                            # Get axis table for scaling
+                            axis_table = self.ctx.current_table.get_axis(axis_type)
+                            if not axis_table:
+                                continue
 
-                    # Apply operation - use axis_operation_fn if provided, otherwise fall back to operation_fn
-                    try:
-                        if axis_operation_fn:
-                            new_value = float(axis_operation_fn(old_value, axis_type_str))
+                            # Get current axis value
+                            axis_key = axis_type_str
+                            axis_data = self.ctx.current_data.get(axis_key)
+                            if axis_data is None:
+                                continue
+
+                            old_value = float(axis_data[data_idx])
+
+                            # Apply operation - use axis_operation_fn if provided, otherwise fall back to operation_fn
+                            try:
+                                if axis_operation_fn:
+                                    new_value = float(axis_operation_fn(old_value, axis_type_str))
+                                else:
+                                    new_value = float(operation_fn(old_value))
+                            except Exception as e:
+                                logger.warning(f"Operation failed for axis cell [{axis_type_str}][{data_idx}]: {e}")
+                                continue
+
+                            # Skip if no change
+                            if abs(new_value - old_value) < 1e-10:
+                                continue
+
+                            # Convert to raw values using axis scaling
+                            old_raw = self.edit._axis_display_to_raw(old_value, axis_table)
+                            new_raw = self.edit._axis_display_to_raw(new_value, axis_table)
+                            if old_raw is None or new_raw is None:
+                                continue
+
+                            # Update internal axis data
+                            self.ctx.current_data[axis_key][data_idx] = new_value
+
+                            # Update cell display
+                            self.ctx.editing_in_progress = True
+                            try:
+                                axis_fmt = self.display.get_axis_format(axis_type)
+                                item.setText(self.display.format_value(new_value, axis_fmt))
+                                color = self.display.get_axis_color(new_value, self.ctx.current_data[axis_key], axis_type)
+                                item.setBackground(QBrush(color))
+                            finally:
+                                self.ctx.editing_in_progress = False
+
+                            # Record axis change
+                            axis_changes.append((axis_type_str, data_idx, old_value, new_value, float(old_raw), float(new_raw)))
+
                         else:
-                            new_value = float(operation_fn(old_value))
-                    except Exception as e:
-                        logger.warning(f"Operation failed for axis cell [{axis_type_str}][{data_idx}]: {e}")
-                        continue
+                            # Data cell: (data_row, data_col)
+                            data_row, data_col = data_indices
 
-                    # Skip if no change
-                    if abs(new_value - old_value) < 1e-10:
-                        continue
+                            # Get current value
+                            values = self.ctx.current_data['values']
+                            if values.ndim == 1:
+                                old_value = float(values[data_row])
+                            else:
+                                old_value = float(values[data_row, data_col])
 
-                    # Convert to raw values using axis scaling
-                    old_raw = self.edit._axis_display_to_raw(old_value, axis_table)
-                    new_raw = self.edit._axis_display_to_raw(new_value, axis_table)
-                    if old_raw is None or new_raw is None:
-                        continue
+                            # Apply operation
+                            try:
+                                new_value = float(operation_fn(old_value))
+                            except Exception as e:
+                                logger.warning(f"Operation failed for cell [{data_row},{data_col}]: {e}")
+                                continue
 
-                    # Update internal axis data
-                    self.ctx.current_data[axis_key][data_idx] = new_value
+                            # Skip if no change
+                            if abs(new_value - old_value) < 1e-10:
+                                continue
 
-                    # Update cell display
+                            # Convert to raw values
+                            old_raw = self.edit.display_to_raw(old_value)
+                            new_raw = self.edit.display_to_raw(new_value)
+                            if old_raw is None or new_raw is None:
+                                continue
+
+                            # Update internal data
+                            if values.ndim == 1:
+                                self.ctx.current_data['values'][data_row] = new_value
+                            else:
+                                self.ctx.current_data['values'][data_row, data_col] = new_value
+
+                            # Track cell for batch update at end (skip per-cell widget updates)
+                            changed_items.append((row, col, new_value, data_row, data_col))
+
+                            # Record data change
+                            data_changes.append((data_row, data_col, old_value, new_value, old_raw, new_raw))
+
+                # Batch update: set text and colors for all changed cells at once
+                if changed_items and 'values' in self.ctx.current_data:
+                    self.display.cache_value_range(self.ctx.current_data['values'])
                     self.ctx.editing_in_progress = True
                     try:
-                        axis_fmt = self.display.get_axis_format(axis_type)
-                        item.setText(self.display.format_value(new_value, axis_fmt))
-                        color = self.display.get_axis_color(new_value, self.ctx.current_data[axis_key])
-                        item.setBackground(QBrush(color))
+                        for row, col, new_value, data_row, data_col in changed_items:
+                            item = self.ctx.table_widget.item(row, col)
+                            if item:
+                                formatted = self.display.format_value(new_value, value_fmt)
+                                item.setText(formatted)
+                                color = self.display.get_cell_color(new_value, self.ctx.current_data['values'], data_row, data_col)
+                                item.setBackground(QBrush(color))
                     finally:
                         self.ctx.editing_in_progress = False
 
-                    # Record axis change
-                    axis_changes.append((axis_type_str, data_idx, old_value, new_value, float(old_raw), float(new_raw)))
-
-                else:
-                    # Data cell: (data_row, data_col)
-                    data_row, data_col = data_indices
-
-                    # Get current value
-                    values = self.ctx.current_data['values']
-                    if values.ndim == 1:
-                        old_value = float(values[data_row])
-                    else:
-                        old_value = float(values[data_row, data_col])
-
-                    # Apply operation
-                    try:
-                        new_value = float(operation_fn(old_value))
-                    except Exception as e:
-                        logger.warning(f"Operation failed for cell [{data_row},{data_col}]: {e}")
-                        continue
-
-                    # Skip if no change
-                    if abs(new_value - old_value) < 1e-10:
-                        continue
-
-                    # Convert to raw values
-                    old_raw = self.edit.display_to_raw(old_value)
-                    new_raw = self.edit.display_to_raw(new_value)
-                    if old_raw is None or new_raw is None:
-                        continue
-
-                    # Update internal data
-                    if values.ndim == 1:
-                        self.ctx.current_data['values'][data_row] = new_value
-                    else:
-                        self.ctx.current_data['values'][data_row, data_col] = new_value
-
-                    # Update cell display
-                    self.ctx.editing_in_progress = True
-                    try:
-                        value_fmt = self.display.get_value_format()
-                        item.setText(self.display.format_value(new_value, value_fmt))
-                        color = self.display.get_cell_color(new_value, self.ctx.current_data['values'], data_row, data_col)
-                        item.setBackground(QBrush(color))
-                    finally:
-                        self.ctx.editing_in_progress = False
-
-                    # Record data change
-                    data_changes.append((data_row, data_col, old_value, new_value, old_raw, new_raw))
-
-        logger.debug(f"{operation_name}: Modified {len(data_changes)} data cell(s), {len(axis_changes)} axis cell(s)")
-        return data_changes, axis_changes
+                return data_changes, axis_changes
+            finally:
+                # Clear the cached min/max values
+                self.display.clear_value_range_cache()
 
     def _get_axis_increment(self, axis_type_str: str) -> float:
         """Get the increment value for an axis from its scaling metadata"""
@@ -261,8 +282,6 @@ class TableOperationsHelper:
             logger.debug("No current table, returning")
             return
 
-        from ..data_operation_dialogs import AddValueDialog
-
         logger.debug("Creating AddValueDialog")
         dialog = AddValueDialog(self.ctx.viewer)
         logger.debug("Showing dialog")
@@ -290,8 +309,6 @@ class TableOperationsHelper:
             logger.debug("No current table, returning")
             return
 
-        from ..data_operation_dialogs import MultiplyDialog
-
         logger.debug("Creating MultiplyDialog")
         dialog = MultiplyDialog(self.ctx.viewer)
         logger.debug("Showing dialog")
@@ -316,8 +333,6 @@ class TableOperationsHelper:
         """Set all selected cells to value (dialog)"""
         if not self.ctx.current_table:
             return
-
-        from ..data_operation_dialogs import SetValueDialog
 
         # Count selected cells for preview
         selected = self.ctx.table_widget.selectedRanges()
@@ -475,49 +490,50 @@ class TableOperationsHelper:
         # Apply smoothed values and track changes
         data_changes = []
 
-        for ui_row, ui_col, data_row, data_col in selected_cells:
-            if (data_row, data_col) not in smoothed_values:
-                continue
+        with frozen_table_updates(self.ctx.table_widget):
+            for ui_row, ui_col, data_row, data_col in selected_cells:
+                if (data_row, data_col) not in smoothed_values:
+                    continue
 
-            new_value = smoothed_values[(data_row, data_col)]
+                new_value = smoothed_values[(data_row, data_col)]
 
-            if values.ndim == 1:
-                old_value = float(values[data_row])
-            else:
-                old_value = float(values[data_row, data_col])
+                if values.ndim == 1:
+                    old_value = float(values[data_row])
+                else:
+                    old_value = float(values[data_row, data_col])
 
-            # Skip if no significant change
-            if abs(new_value - old_value) < 1e-10:
-                continue
+                # Skip if no significant change
+                if abs(new_value - old_value) < 1e-10:
+                    continue
 
-            # Convert to raw values
-            old_raw = self.edit.display_to_raw(old_value)
-            new_raw = self.edit.display_to_raw(new_value)
-            if old_raw is None or new_raw is None:
-                continue
+                # Convert to raw values
+                old_raw = self.edit.display_to_raw(old_value)
+                new_raw = self.edit.display_to_raw(new_value)
+                if old_raw is None or new_raw is None:
+                    continue
 
-            # Update internal data
-            if values.ndim == 1:
-                self.ctx.current_data['values'][data_row] = new_value
-            else:
-                self.ctx.current_data['values'][data_row, data_col] = new_value
+                # Update internal data
+                if values.ndim == 1:
+                    self.ctx.current_data['values'][data_row] = new_value
+                else:
+                    self.ctx.current_data['values'][data_row, data_col] = new_value
 
-            # Update cell display
-            item = self.ctx.table_widget.item(ui_row, ui_col)
-            if item:
-                self.ctx.editing_in_progress = True
-                try:
-                    value_fmt = self.display.get_value_format()
-                    item.setText(self.display.format_value(new_value, value_fmt))
-                    color = self.display.get_cell_color(new_value, self.ctx.current_data['values'], data_row, data_col)
-                    item.setBackground(QBrush(color))
-                finally:
-                    self.ctx.editing_in_progress = False
+                # Update cell display
+                item = self.ctx.table_widget.item(ui_row, ui_col)
+                if item:
+                    self.ctx.editing_in_progress = True
+                    try:
+                        value_fmt = self.display.get_value_format()
+                        item.setText(self.display.format_value(new_value, value_fmt))
+                        color = self.display.get_cell_color(new_value, self.ctx.current_data['values'], data_row, data_col)
+                        item.setBackground(QBrush(color))
+                    finally:
+                        self.ctx.editing_in_progress = False
 
-            # Record change
-            data_changes.append((data_row, data_col, old_value, new_value, old_raw, new_raw))
+                    # Record change
+                    data_changes.append((data_row, data_col, old_value, new_value, old_raw, new_raw))
 
-        # Emit signal for all changes
-        if data_changes:
-            self.ctx.viewer.bulk_changes.emit(data_changes)
-            logger.debug(f"Smoothed {len(data_changes)} cell(s)")
+            # Emit signal for all changes
+            if data_changes:
+                self.ctx.viewer.bulk_changes.emit(data_changes)
+                logger.debug(f"Smoothed {len(data_changes)} cell(s)")

@@ -12,6 +12,7 @@ Serialization Pattern:
 """
 
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Optional, List, Dict, Any, Protocol, TypeVar, runtime_checkable
 from datetime import datetime
 import uuid
@@ -44,6 +45,7 @@ class CellChange:
     new_value: float  # Display value
     old_raw: float    # Raw binary value
     new_raw: float    # Raw binary value
+    table_key: str = ""  # Composite key (rom_path|address) for multi-ROM isolation
 
     def to_dict(self) -> dict:
         """Serialize to dictionary for JSON storage"""
@@ -117,7 +119,7 @@ class Commit:
                snapshot_filename: Optional[str] = None) -> 'Commit':
         """Factory method to create a new commit"""
         return cls(
-            id=str(uuid.uuid4())[:12],
+            id=uuid.uuid4().hex,
             version=version,
             parent_id=parent_id,
             message=message,
@@ -177,6 +179,7 @@ class AxisChange:
     new_value: float  # Display value
     old_raw: float    # Raw binary value
     new_raw: float    # Raw binary value
+    table_key: str = ""  # Composite key (rom_path|address) for multi-ROM isolation
 
     def to_dict(self) -> dict:
         """Serialize to dictionary for JSON storage"""
@@ -322,11 +325,9 @@ class Project:
     @property
     def original_rom_path(self) -> str:
         """Full path to original ROM file"""
-        from pathlib import Path
         return str(Path(self.project_path) / self.original_rom.filename)
 
     @property
     def working_rom_path(self) -> str:
         """Full path to working ROM file"""
-        from pathlib import Path
         return str(Path(self.project_path) / self.working_rom)

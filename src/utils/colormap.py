@@ -174,7 +174,8 @@ def get_colormap() -> ColorMap:
     """
     global _current_colormap
     if _current_colormap is None:
-        # Load from settings or use default
+        # Lazy import: test suite patches src.utils.settings.get_settings;
+        # a module-level import would capture the real function before patches apply.
         from .settings import get_settings
         settings = get_settings()
         colormap_path = settings.get_colormap_path()

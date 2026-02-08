@@ -90,7 +90,3 @@ def set_log_level(level: int) -> None:
     root_logger.setLevel(level)
     for handler in root_logger.handlers:
         handler.setLevel(level)
-
-
-# Default configuration on import
-setup_logging(level=logging.INFO, console=True, detailed=False)

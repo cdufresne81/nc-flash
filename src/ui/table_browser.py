@@ -369,7 +369,7 @@ class TableBrowser(QWidget):
 
     def update_modified_tables(self, modified_table_names: list):
         """
-        Update the list of modified tables
+        Update the list of modified tables (deprecated - use update_modified_tables_by_address)
 
         Args:
             modified_table_names: List of table names that have been modified
@@ -383,6 +383,17 @@ class TableBrowser(QWidget):
                 if table:
                     self.modified_tables.add(table.address)
 
+        self._update_table_colors()
+
+    def update_modified_tables_by_address(self, modified_addresses: list):
+        """
+        Update the list of modified tables by address
+
+        Args:
+            modified_addresses: List of table addresses that have been modified
+        """
+        self.modified_tables.clear()
+        self.modified_tables.update(modified_addresses)
         self._update_table_colors()
 
     def _update_table_colors(self):
@@ -409,7 +420,7 @@ class TableBrowser(QWidget):
             address: Table address (e.g., "1000" or "0x1000")
         """
         # Normalize address (remove 0x prefix if present for comparison)
-        target_address = address.lower().lstrip('0x')
+        target_address = address.lower().removeprefix('0x')
 
         # Search through all category items
         for i in range(self.tree.topLevelItemCount()):
@@ -421,7 +432,7 @@ class TableBrowser(QWidget):
 
                 if table:
                     # Normalize stored address for comparison
-                    item_address = table.address.lower().lstrip('0x')
+                    item_address = table.address.lower().removeprefix('0x')
 
                     if item_address == target_address:
                         # Expand the category if not already expanded

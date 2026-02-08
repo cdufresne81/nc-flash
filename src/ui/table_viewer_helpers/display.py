@@ -15,9 +15,14 @@ from PySide6.QtGui import QColor, QBrush
 from ...core.rom_definition import Table, TableType, AxisType
 from ...utils.settings import get_settings
 from ...utils.colormap import get_colormap
-from .context import TableViewerContext
+from .context import (
+    TableViewerContext, save_header_resize_modes, set_headers_fixed,
+    restore_header_resize_modes,
+)
 
 logger = logging.getLogger(__name__)
+
+_PRINTF_PATTERN = re.compile(r'%[-+0 #]*(\d*)\.?(\d*)([diouxXeEfFgGaAcspn%])')
 
 
 class TableDisplayHelper:
@@ -25,6 +30,60 @@ class TableDisplayHelper:
 
     def __init__(self, ctx: TableViewerContext):
         self.ctx = ctx
+        # Cache for min/max values during bulk operations to avoid O(n²) complexity
+        self._cached_min_max = None
+
+    def cache_value_range(self, values: np.ndarray):
+        """Cache min/max values for bulk operations to avoid repeated calculations"""
+        if values is not None and values.size > 0:
+            # Prefer scaling-defined range over data-derived range
+            scaling_range = self._get_scaling_range()
+            if scaling_range:
+                self._cached_min_max = scaling_range
+            else:
+                self._cached_min_max = (float(np.min(values)), float(np.max(values)))
+
+    def clear_value_range_cache(self):
+        """Clear the cached min/max values"""
+        self._cached_min_max = None
+
+    def begin_bulk_update(self):
+        """
+        Prepare for bulk cell updates - save header modes and cache value range.
+
+        This optimization prevents expensive per-cell recalculations during bulk
+        operations like undo/redo of multi-cell changes.
+        """
+        h_header, v_header, h_modes, v_modes = save_header_resize_modes(
+            self.ctx.table_widget
+        )
+        self._saved_h_header = h_header
+        self._saved_v_header = v_header
+        self._saved_h_resize_modes = h_modes
+        self._saved_v_resize_modes = v_modes
+        set_headers_fixed(h_header, v_header)
+
+        # Cache min/max values for color calculations (avoids O(n^2) complexity)
+        if self.ctx.current_data and 'values' in self.ctx.current_data:
+            self.cache_value_range(self.ctx.current_data['values'])
+
+    def end_bulk_update(self):
+        """
+        Complete bulk update - restore header modes and clear cache.
+        """
+        # Clear value range cache
+        self.clear_value_range_cache()
+
+        # Restore header resize modes
+        if hasattr(self, '_saved_h_resize_modes'):
+            restore_header_resize_modes(
+                self._saved_h_header, self._saved_v_header,
+                self._saved_h_resize_modes, self._saved_v_resize_modes,
+            )
+            del self._saved_h_header
+            del self._saved_v_header
+            del self._saved_h_resize_modes
+            del self._saved_v_resize_modes
 
     def apply_table_style(self):
         """Apply table styling based on settings - compact like ECUFlash"""
@@ -63,15 +122,6 @@ class TableDisplayHelper:
         self.ctx.current_data = data
 
         # Update info label - TEMPORARILY HIDDEN (user request)
-        # TODO: May want to restore this label later or make it toggleable
-        # info_text = (
-        #     f"{table.name} | "
-        #     f"Type: {table.type.value} | "
-        #     f"Category: {table.category} | "
-        #     f"Address: 0x{table.address}"
-        # )
-        # self.ctx.info_label.setText(info_text)
-
         values = data['values']
 
         if table.type == TableType.ONE_D:
@@ -85,18 +135,27 @@ class TableDisplayHelper:
         """Clear the viewer"""
         self.ctx.current_table = None
         self.ctx.current_data = None
-        # self.ctx.info_label.setText("Select a table to view")  # TEMPORARILY HIDDEN
         self.ctx.table_widget.setRowCount(0)
         self.ctx.table_widget.setColumnCount(0)
         # Hide axis labels
         self.ctx.viewer.x_axis_label.setVisible(False)
         self.ctx.viewer.y_axis_label.setVisible(False)
 
+    def _is_toggle_category(self) -> bool:
+        """Check if the current table's category should use toggle display"""
+        if not self.ctx.current_table:
+            return False
+        category = self.ctx.current_table.category or ""
+        toggle_categories = get_settings().get_toggle_categories()
+        return category in toggle_categories
+
     def _display_1d(self, values: np.ndarray):
         """Display 1D table (single value)"""
         # Hide axis labels (not used for 1D tables)
         self.ctx.viewer.x_axis_label.setVisible(False)
         self.ctx.viewer.y_axis_label.setVisible(False)
+
+        use_toggle = self._is_toggle_category()
 
         self.ctx.editing_in_progress = True
         try:
@@ -114,6 +173,27 @@ class TableDisplayHelper:
             if self.ctx.read_only:
                 item.setFlags(item.flags() & ~Qt.ItemIsEditable)
             self.ctx.table_widget.setItem(0, 0, item)
+
+            if use_toggle:
+                # Toggle mode: hide table grid, show toggle switch
+                self.ctx.table_widget.setVisible(False)
+                viewer = self.ctx.viewer
+                viewer.toggle_container.setVisible(True)
+
+                # Store original non-zero value for restoring on toggle ON
+                val = float(values[0])
+                viewer._toggle_original_nonzero_value = val if val != 0 else 1.0
+
+                checked = val != 0
+                viewer.toggle_switch.setChecked(checked)
+                viewer._update_toggle_label(checked)
+
+                if self.ctx.read_only:
+                    viewer.toggle_switch.setEnabled(False)
+            else:
+                # Normal mode: show table grid, hide toggle
+                self.ctx.table_widget.setVisible(True)
+                self.ctx.viewer.toggle_container.setVisible(False)
         finally:
             self.ctx.editing_in_progress = False
 
@@ -141,9 +221,15 @@ class TableDisplayHelper:
             display_values = values[::-1] if flipy else values
             display_y_axis = y_axis[::-1] if (y_axis is not None and flipy) else y_axis
 
-            # Calculate Y axis gradient range
-            if display_y_axis is not None and len(display_y_axis) > 0:
-                y_min, y_max = np.min(display_y_axis), np.max(display_y_axis)
+            # Calculate Y axis gradient range (prefer scaling-defined range)
+            y_scaling_range = None
+            y_axis_table = self.ctx.current_table.get_axis(AxisType.Y_AXIS)
+            if y_axis_table and y_axis_table.scaling:
+                y_scaling_range = self._get_scaling_range(y_axis_table.scaling)
+            if y_scaling_range:
+                y_min, y_max = y_scaling_range
+            elif display_y_axis is not None and len(display_y_axis) > 0:
+                y_min, y_max = float(np.min(display_y_axis)), float(np.max(display_y_axis))
             else:
                 y_min, y_max = 0, num_values - 1
 
@@ -157,6 +243,7 @@ class TableDisplayHelper:
                     # Apply gradient based on Y axis values
                     if y_max != y_min:
                         ratio = (display_y_axis[i] - y_min) / (y_max - y_min)
+                        ratio = max(0.0, min(1.0, ratio))
                     else:
                         ratio = 0.5
                     y_item.setBackground(QBrush(self.ratio_to_color(ratio)))
@@ -203,6 +290,9 @@ class TableDisplayHelper:
             return
 
         self.ctx.editing_in_progress = True
+        # Block signals and disable updates to prevent per-cell repaints (audit #22)
+        self.ctx.table_widget.blockSignals(True)
+        self.ctx.table_widget.setUpdatesEnabled(False)
         try:
             rows, cols = values.shape
 
@@ -257,11 +347,20 @@ class TableDisplayHelper:
 
             # X-axis values in row 0 (columns 1+) with gradient and bottom border
             if display_x_axis is not None and len(display_x_axis) == cols:
-                x_min, x_max = np.min(display_x_axis), np.max(display_x_axis)
+                # Prefer scaling-defined range for X axis
+                x_scaling_range = None
+                x_axis_table = self.ctx.current_table.get_axis(AxisType.X_AXIS)
+                if x_axis_table and x_axis_table.scaling:
+                    x_scaling_range = self._get_scaling_range(x_axis_table.scaling)
+                if x_scaling_range:
+                    x_min, x_max = x_scaling_range
+                else:
+                    x_min, x_max = float(np.min(display_x_axis)), float(np.max(display_x_axis))
                 for col in range(cols):
                     x_item = QTableWidgetItem(self.format_value(display_x_axis[col], x_fmt))
                     if x_max != x_min:
                         ratio = (display_x_axis[col] - x_min) / (x_max - x_min)
+                        ratio = max(0.0, min(1.0, ratio))
                     else:
                         ratio = 0.5
                     x_item.setBackground(QBrush(self.ratio_to_color(ratio)))
@@ -281,12 +380,21 @@ class TableDisplayHelper:
 
             # === Column 0: Y-axis VALUES (rows 1+) with right border for separation ===
             if display_y_axis is not None and len(display_y_axis) == rows:
-                y_min, y_max = np.min(display_y_axis), np.max(display_y_axis)
+                # Prefer scaling-defined range for Y axis
+                y_scaling_range = None
+                y_axis_table = self.ctx.current_table.get_axis(AxisType.Y_AXIS)
+                if y_axis_table and y_axis_table.scaling:
+                    y_scaling_range = self._get_scaling_range(y_axis_table.scaling)
+                if y_scaling_range:
+                    y_min, y_max = y_scaling_range
+                else:
+                    y_min, y_max = float(np.min(display_y_axis)), float(np.max(display_y_axis))
                 for row in range(rows):
                     # Col 0: Y-axis value (colored) with right border
                     y_val_item = QTableWidgetItem(self.format_value(display_y_axis[row], y_fmt))
                     if y_max != y_min:
                         ratio = (display_y_axis[row] - y_min) / (y_max - y_min)
+                        ratio = max(0.0, min(1.0, ratio))
                     else:
                         ratio = 0.5
                     y_val_item.setBackground(QBrush(self.ratio_to_color(ratio)))
@@ -306,19 +414,27 @@ class TableDisplayHelper:
                     self.ctx.table_widget.setItem(row + 1, 0, y_val_item)
 
             # === Data cells (rows 1+, cols 1+) ===
-            for row in range(rows):
-                for col in range(cols):
-                    value_item = QTableWidgetItem(self.format_value(display_values[row, col], value_fmt))
-                    color = self.get_cell_color(display_values[row, col], values, row, col)
-                    value_item.setBackground(QBrush(color))
-                    data_row = (rows - 1 - row) if flipy else row
-                    data_col = (cols - 1 - col) if flipx else col
-                    value_item.setData(Qt.UserRole, (data_row, data_col))
-                    if self.ctx.read_only:
-                        value_item.setFlags(value_item.flags() & ~Qt.ItemIsEditable)
-                    self.ctx.table_widget.setItem(row + 1, col + 1, value_item)
+            self.cache_value_range(values)
+            try:
+                for row in range(rows):
+                    for col in range(cols):
+                        value_item = QTableWidgetItem(self.format_value(display_values[row, col], value_fmt))
+                        color = self.get_cell_color(display_values[row, col], values, row, col)
+                        value_item.setBackground(QBrush(color))
+                        data_row = (rows - 1 - row) if flipy else row
+                        data_col = (cols - 1 - col) if flipx else col
+                        value_item.setData(Qt.UserRole, (data_row, data_col))
+                        if self.ctx.read_only:
+                            value_item.setFlags(value_item.flags() & ~Qt.ItemIsEditable)
+                        self.ctx.table_widget.setItem(row + 1, col + 1, value_item)
+            finally:
+                self.clear_value_range_cache()
         finally:
             self.ctx.editing_in_progress = False
+            # Re-enable signals and updates, trigger a single repaint (audit #22)
+            self.ctx.table_widget.blockSignals(False)
+            self.ctx.table_widget.setUpdatesEnabled(True)
+            self.ctx.table_widget.viewport().update()
 
         # Apply uniform column width to data columns
         self._apply_uniform_column_width_3d()
@@ -376,7 +492,7 @@ class TableDisplayHelper:
         if not printf_format:
             return ".2f"
 
-        match = re.match(r'%[-+0 #]*(\d*)\.?(\d*)([diouxXeEfFgGaAcspn%])', printf_format)
+        match = _PRINTF_PATTERN.match(printf_format)
         if not match:
             return ".2f"
 
@@ -436,6 +552,27 @@ class TableDisplayHelper:
         """
         return get_colormap().ratio_to_color(ratio)
 
+    def _get_scaling_range(self, scaling_name: str = None):
+        """
+        Get min/max from a scaling definition.
+
+        Returns (min, max) tuple, or None if scaling has no valid range defined.
+        """
+        if not self.ctx.rom_definition:
+            return None
+        name = scaling_name or (self.ctx.current_table.scaling if self.ctx.current_table else None)
+        if not name:
+            return None
+        scaling = self.ctx.rom_definition.get_scaling(name)
+        if not scaling:
+            return None
+        # min=0 and max=0 means no range defined
+        if scaling.min == 0 and scaling.max == 0:
+            return None
+        if scaling.min == scaling.max:
+            return None
+        return (scaling.min, scaling.max)
+
     def get_cell_color(self, value: float, values: np.ndarray,
                        row: int, col: int) -> QColor:
         """Calculate cell background color based on gradient mode"""
@@ -444,13 +581,23 @@ class TableDisplayHelper:
         if mode == "neighbors":
             ratio = self._get_neighbor_ratio(value, values, row, col)
         else:
-            min_val = np.min(values)
-            max_val = np.max(values)
+            # Use cached min/max if available (during bulk operations), otherwise calculate
+            if self._cached_min_max is not None:
+                min_val, max_val = self._cached_min_max
+            else:
+                # Prefer scaling-defined range over data-derived range
+                scaling_range = self._get_scaling_range()
+                if scaling_range:
+                    min_val, max_val = scaling_range
+                else:
+                    min_val = float(np.min(values))
+                    max_val = float(np.max(values))
 
             if max_val == min_val:
                 ratio = 0.5
             else:
                 ratio = (value - min_val) / (max_val - min_val)
+                ratio = max(0.0, min(1.0, ratio))
 
         return self.ratio_to_color(ratio)
 
@@ -458,18 +605,31 @@ class TableDisplayHelper:
         """Public method to get axis format (used by editing helper)"""
         return self._get_axis_format(axis_type)
 
-    def get_axis_color(self, value: float, axis_values: np.ndarray) -> QColor:
+    def get_axis_color(self, value: float, axis_values: np.ndarray,
+                       axis_type: AxisType = None) -> QColor:
         """Calculate axis cell color based on value within axis range"""
         if axis_values is None or len(axis_values) == 0:
             return QColor(240, 240, 240)
 
-        min_val = np.min(axis_values)
-        max_val = np.max(axis_values)
+        # Try scaling-defined range for this axis
+        min_val = max_val = None
+        if axis_type and self.ctx.current_table and self.ctx.rom_definition:
+            axis_table = self.ctx.current_table.get_axis(axis_type)
+            if axis_table and axis_table.scaling:
+                scaling_range = self._get_scaling_range(axis_table.scaling)
+                if scaling_range:
+                    min_val, max_val = scaling_range
+
+        # Fall back to data-derived range
+        if min_val is None:
+            min_val = float(np.min(axis_values))
+            max_val = float(np.max(axis_values))
 
         if max_val == min_val:
             ratio = 0.5
         else:
             ratio = (value - min_val) / (max_val - min_val)
+            ratio = max(0.0, min(1.0, ratio))
 
         return self.ratio_to_color(ratio)
 

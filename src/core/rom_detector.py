@@ -107,7 +107,8 @@ class RomDetector:
             etree.XMLSyntaxError: If XML is malformed
             DefinitionParseError: If XML structure is unexpected
         """
-        tree = etree.parse(str(xml_path))
+        parser = etree.XMLParser(resolve_entities=False, no_network=True)
+        tree = etree.parse(str(xml_path), parser)
         root = tree.getroot()
 
         # Find romid element

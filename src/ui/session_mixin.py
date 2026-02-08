@@ -1,0 +1,117 @@
+"""
+Session Mixin for MainWindow
+
+Handles session management: restoring previous session state, saving session
+on close, checking for unsaved changes, and settings/about dialogs.
+
+This is a mixin class — it has no __init__ and relies on MainWindow providing:
+- self.settings (Settings instance)
+- self.rom_detector (RomDetector instance, may be None)
+- self.tab_widget (QTabWidget)
+- self._open_rom_file(path) method
+- self.statusBar() method
+"""
+
+from pathlib import Path
+
+from PySide6.QtWidgets import QMessageBox
+
+from src.utils.logging_config import get_logger
+from src.utils.constants import APP_NAME, APP_VERSION_STRING, APP_DESCRIPTION
+from src.core.rom_detector import RomDetector
+from src.core.exceptions import DetectionError, RomEditorError
+from src.ui.settings_dialog import SettingsDialog
+
+logger = get_logger(__name__)
+
+
+class SessionMixin:
+    """Mixin providing session management functionality for MainWindow."""
+
+    def _restore_session(self):
+        """Restore files from previous session"""
+        session_files = self.settings.get_session_files()
+
+        if not session_files:
+            return
+
+        logger.info(f"Restoring session: {len(session_files)} file(s)")
+
+        for file_path in session_files:
+            if Path(file_path).exists():
+                try:
+                    self._open_rom_file(file_path)
+                except RomEditorError as e:
+                    logger.warning(f"Failed to restore session file: {file_path} - {e}")
+                except Exception as e:
+                    logger.exception(f"Unexpected error restoring session file: {file_path} - {type(e).__name__}: {e}")
+            else:
+                logger.warning(f"Session file no longer exists: {file_path}")
+
+    def closeEvent(self, event):
+        """Check for unsaved changes across all tabs, then save session state before closing"""
+        # Check each open tab for unsaved changes
+        for i in range(self.tab_widget.count()):
+            document = self.tab_widget.widget(i)
+            if document and document.is_modified():
+                response = QMessageBox.question(
+                    self,
+                    "Unsaved Changes",
+                    f"'{document.file_name}' has unsaved changes.\n\nDo you want to save before closing?",
+                    QMessageBox.Save | QMessageBox.Discard | QMessageBox.Cancel,
+                    QMessageBox.Save
+                )
+
+                if response == QMessageBox.Cancel:
+                    event.ignore()
+                    return
+                elif response == QMessageBox.Save:
+                    document.save()
+
+        # Collect paths of all open ROM documents
+        open_files = []
+        for i in range(self.tab_widget.count()):
+            document = self.tab_widget.widget(i)
+            if document and hasattr(document, 'rom_path'):
+                open_files.append(document.rom_path)
+
+        # Save to settings
+        self.settings.set_session_files(open_files)
+        logger.info(f"Session saved: {len(open_files)} file(s)")
+
+        # Accept close event
+        event.accept()
+
+    def show_settings(self):
+        """Show settings dialog"""
+        dialog = SettingsDialog(self)
+        dialog.settings_changed.connect(self.on_settings_changed)
+        dialog.exec()
+
+    def on_settings_changed(self):
+        """Handle settings changes"""
+        # Reinitialize ROM detector with new definitions path
+        try:
+            definitions_dir = self.settings.get_definitions_directory()
+            self.rom_detector = RomDetector(definitions_dir)
+            logger.info(f"ROM detector reinitialized with definitions directory: {definitions_dir}")
+            self.statusBar().showMessage(f"Settings updated. Definitions directory: {definitions_dir}")
+        except DetectionError as e:
+            logger.error(f"Failed to reinitialize ROM detector: {e}")
+            QMessageBox.warning(
+                self,
+                "Settings Error",
+                f"Failed to load definitions from new directory:\n{str(e)}\n\n"
+                "Please check the definitions directory path in settings."
+            )
+
+    def show_about(self):
+        """Show about dialog"""
+        QMessageBox.about(
+            self,
+            f"About {APP_NAME}",
+            f"{APP_NAME} {APP_VERSION_STRING}\n\n"
+            f"{APP_DESCRIPTION}\n\n"
+            "Designed to replace EcuFlash for ROM editing tasks.\n"
+            "Works with RomDrop for ECU flashing."
+        )

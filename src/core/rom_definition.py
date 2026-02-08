@@ -144,13 +144,21 @@ class RomDefinition:
     tables: List[Table] = field(default_factory=list)
     xml_path: Optional[str] = None  # Path to source XML file
 
+    # Lazy lookup caches (built on first access)
+    _cache_by_category: Optional[Dict[str, List['Table']]] = field(
+        default=None, init=False, repr=False, compare=False
+    )
+    _cache_by_name: Optional[Dict[str, 'Table']] = field(
+        default=None, init=False, repr=False, compare=False
+    )
+
     def get_scaling(self, name: str) -> Optional[Scaling]:
         """Get scaling definition by name"""
         return self.scalings.get(name)
 
-    def get_tables_by_category(self) -> Dict[str, List[Table]]:
-        """Group tables by category for UI display"""
-        categories = {}
+    def _build_category_cache(self) -> Dict[str, List[Table]]:
+        """Build and cache the tables-by-category lookup dict."""
+        categories: Dict[str, List[Table]] = {}
         for table in self.tables:
             if table.is_axis:  # Skip axis tables
                 continue
@@ -160,9 +168,18 @@ class RomDefinition:
             categories[category].append(table)
         return categories
 
+    def _build_name_cache(self) -> Dict[str, Table]:
+        """Build and cache the table-by-name lookup dict."""
+        return {table.name: table for table in self.tables}
+
+    def get_tables_by_category(self) -> Dict[str, List[Table]]:
+        """Group tables by category for UI display (cached after first call)"""
+        if self._cache_by_category is None:
+            self._cache_by_category = self._build_category_cache()
+        return self._cache_by_category
+
     def get_table_by_name(self, name: str) -> Optional[Table]:
-        """Find table by name"""
-        for table in self.tables:
-            if table.name == name:
-                return table
-        return None
+        """Find table by name (O(1) via cached dict)"""
+        if self._cache_by_name is None:
+            self._cache_by_name = self._build_name_cache()
+        return self._cache_by_name.get(name)
