@@ -5,7 +5,7 @@ Manages per-table QUndoStacks using Qt's QUndoGroup pattern.
 Each open table has its own undo stack, with the active stack
 determined by window focus.
 
-Stack keys are composite (rom_path|table_address) to isolate
+Stack keys are composite (rom_path\0table_address) to isolate
 undo stacks when multiple ROMs share the same table addresses.
 """
 
@@ -35,9 +35,9 @@ def make_table_key(rom_path, table_address: str) -> str:
         table_address: Hex address string (e.g., "0x1000")
 
     Returns:
-        Composite key string like "C:\\path\\rom.bin|0x1000"
+        Composite key string like "C:\\path\\rom.bin\\x000x1000"
     """
-    return f"{rom_path}|{table_address}" if rom_path else table_address
+    return f"{rom_path}\0{table_address}" if rom_path else table_address
 
 
 def extract_table_address(table_key: str) -> str:
@@ -49,8 +49,8 @@ def extract_table_address(table_key: str) -> str:
     Returns:
         Raw table address (e.g., "0x1000")
     """
-    if '|' in table_key:
-        return table_key.rsplit('|', 1)[1]
+    if '\0' in table_key:
+        return table_key.rsplit('\0', 1)[1]
     return table_key
 
 
@@ -60,8 +60,8 @@ def extract_rom_path(table_key: str) -> Optional[str]:
     Returns:
         ROM path string, or None if key has no ROM prefix.
     """
-    if '|' in table_key:
-        return table_key.rsplit('|', 1)[0]
+    if '\0' in table_key:
+        return table_key.rsplit('\0', 1)[0]
     return None
 
 
@@ -69,7 +69,7 @@ class TableUndoManager:
     """
     Manages per-table undo/redo using Qt's QUndoGroup.
 
-    - One QUndoStack per table (keyed by composite rom_path|table_address)
+    - One QUndoStack per table (keyed by composite rom_path\0table_address)
     - QUndoGroup manages active stack based on focus
     - Provides unified interface for recording changes
     """
@@ -82,6 +82,7 @@ class TableUndoManager:
         self._apply_cell_change: Optional[Callable[[CellChange], None]] = None
         self._apply_axis_change: Optional[Callable[[AxisChange], None]] = None
         self._update_pending: Optional[Callable[[CellChange, bool], None]] = None
+        self._update_pending_axis: Optional[Callable[[AxisChange, bool], None]] = None
         # Callbacks for bulk update optimization (batching)
         self._begin_bulk_update: Optional[Callable[[], None]] = None
         self._end_bulk_update: Optional[Callable[[], None]] = None
@@ -96,6 +97,7 @@ class TableUndoManager:
         apply_cell: Callable[[CellChange], None],
         apply_axis: Callable[[AxisChange], None],
         update_pending: Optional[Callable[[CellChange, bool], None]] = None,
+        update_pending_axis: Optional[Callable[[AxisChange, bool], None]] = None,
         begin_bulk_update: Optional[Callable[[], None]] = None,
         end_bulk_update: Optional[Callable[[], None]] = None,
     ):
@@ -105,13 +107,15 @@ class TableUndoManager:
         Args:
             apply_cell: Called to apply CellChange to ROM/UI
             apply_axis: Called to apply AxisChange to ROM/UI
-            update_pending: Called to update pending changes tracking
+            update_pending: Called to update pending cell changes tracking
+            update_pending_axis: Called to update pending axis changes tracking
             begin_bulk_update: Called before applying multiple changes (for performance)
             end_bulk_update: Called after applying multiple changes (for performance)
         """
         self._apply_cell_change = apply_cell
         self._apply_axis_change = apply_axis
         self._update_pending = update_pending
+        self._update_pending_axis = update_pending_axis
         self._begin_bulk_update = begin_bulk_update
         self._end_bulk_update = end_bulk_update
 
@@ -120,7 +124,7 @@ class TableUndoManager:
         Get or create an undo stack for a table.
 
         Args:
-            table_key: Composite key (rom_path|table_address)
+            table_key: Composite key (rom_path\0table_address)
 
         Returns:
             QUndoStack for the table
@@ -295,7 +299,7 @@ class TableUndoManager:
         )
 
         stack = self.get_or_create_stack(table_key)
-        cmd = AxisEditCommand(change, self._apply_axis_change)
+        cmd = AxisEditCommand(change, self._apply_axis_change, self._update_pending_axis)
         stack.push(cmd)
 
         logger.debug(f"Recorded axis change: {table.name}[{axis_type}][{index}]")
@@ -345,6 +349,7 @@ class TableUndoManager:
             axis_changes,
             description,
             self._apply_axis_change,
+            self._update_pending_axis,
             self._begin_bulk_update,
             self._end_bulk_update,
         )

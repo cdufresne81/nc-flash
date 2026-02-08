@@ -6,7 +6,7 @@ Tracks pending (uncommitted) changes for the commit/save workflow.
 Note: Undo/redo functionality has been moved to TableUndoManager (table_undo_manager.py)
 which uses Qt's QUndoGroup pattern for per-table undo/redo.
 
-Keys are composite (rom_path|table_address) to isolate tracking
+Keys are composite (rom_path\0table_address) to isolate tracking
 when multiple ROMs share the same table addresses.
 """
 
@@ -14,11 +14,20 @@ from typing import List, Dict, Callable
 from dataclasses import dataclass, field
 import logging
 
-from .version_models import CellChange, TableChanges
+from .version_models import CellChange, AxisChange, TableChanges
 from .rom_definition import Table
 from .table_undo_manager import make_table_key, extract_table_address, extract_rom_path
 
 logger = logging.getLogger(__name__)
+
+# Sentinel col values to distinguish axis changes stored as CellChange
+AXIS_COL_Y = -1
+AXIS_COL_X = -2
+
+
+def _axis_type_to_col(axis_type: str) -> int:
+    """Encode axis type as a special column value for storage in CellChange."""
+    return AXIS_COL_Y if axis_type == 'y_axis' else AXIS_COL_X
 
 
 @dataclass
@@ -74,13 +83,13 @@ class ChangeTracker:
     - Pending changes that need to be saved/committed
     - Change notifications for UI updates
 
-    Keys are composite (rom_path|table_address) to isolate per-ROM state.
+    Keys are composite (rom_path\0table_address) to isolate per-ROM state.
 
     Note: Undo/redo functionality is handled by TableUndoManager.
     """
 
     def __init__(self):
-        # Pending changes by composite key (rom_path|table_address)
+        # Pending changes by composite key (rom_path\0table_address)
         self._pending: Dict[str, PendingChanges] = {}
 
         # Callbacks for UI updates
@@ -170,6 +179,103 @@ class ChangeTracker:
         self._notify_change()
 
         logger.debug(f"Recorded {len(changes)} pending bulk changes in {table.name}")
+
+    def record_pending_axis_change(self, table: Table, axis_type: str, index: int,
+                                   old_value: float, new_value: float,
+                                   old_raw: float, new_raw: float,
+                                   rom_path=None):
+        """
+        Record an axis value change for pending/commit tracking.
+
+        Axis changes are stored as CellChange with special col encoding
+        (AXIS_COL_Y=-1 for y_axis, AXIS_COL_X=-2 for x_axis) so that
+        existing has_changes() and get_modified_addresses_for_rom() work
+        without modification.
+        """
+        table_key = make_table_key(rom_path, table.address)
+        col = _axis_type_to_col(axis_type)
+
+        change = CellChange(
+            table_name=table.name,
+            table_address=table.address,
+            row=index,
+            col=col,
+            old_value=old_value,
+            new_value=new_value,
+            old_raw=old_raw,
+            new_raw=new_raw,
+            table_key=table_key,
+        )
+
+        if table_key not in self._pending:
+            self._pending[table_key] = PendingChanges(
+                table_name=table.name,
+                table_address=table.address
+            )
+        self._pending[table_key].add_change(change)
+        self._notify_change()
+
+        logger.debug(f"Recorded pending axis change: {table.name}[{axis_type}][{index}] {old_value} -> {new_value}")
+
+    def record_pending_axis_bulk_changes(self, table: Table, changes: List[tuple],
+                                         rom_path=None):
+        """
+        Record multiple axis changes for pending/commit tracking.
+
+        Args:
+            table: Table being edited
+            changes: List of (axis_type, index, old_value, new_value, old_raw, new_raw) tuples
+            rom_path: Path to ROM file for multi-ROM isolation
+        """
+        if not changes:
+            return
+
+        table_key = make_table_key(rom_path, table.address)
+
+        for axis_type, index, old_value, new_value, old_raw, new_raw in changes:
+            col = _axis_type_to_col(axis_type)
+            change = CellChange(
+                table_name=table.name,
+                table_address=table.address,
+                row=index,
+                col=col,
+                old_value=old_value,
+                new_value=new_value,
+                old_raw=old_raw,
+                new_raw=new_raw,
+                table_key=table_key,
+            )
+
+            if table_key not in self._pending:
+                self._pending[table_key] = PendingChanges(
+                    table_name=table.name,
+                    table_address=table.address
+                )
+            self._pending[table_key].add_change(change)
+
+        self._notify_change()
+        logger.debug(f"Recorded {len(changes)} pending axis bulk changes in {table.name}")
+
+    def update_pending_from_axis_undo(self, change: AxisChange, is_undo: bool):
+        """
+        Update pending changes during axis undo/redo operations.
+
+        Converts the AxisChange to CellChange encoding and delegates
+        to the standard update_pending_from_undo logic.
+        """
+        col = _axis_type_to_col(change.axis_type)
+        cell_change = CellChange(
+            table_name=change.table_name,
+            table_address=change.table_address,
+            row=change.index,
+            col=col,
+            old_value=change.old_value,
+            new_value=change.new_value,
+            old_raw=change.old_raw,
+            new_raw=change.new_raw,
+            table_key=change.table_key,
+        )
+        self.update_pending_from_undo(cell_change, is_undo)
 
     def update_pending_from_undo(self, change: CellChange, is_undo: bool):
         """

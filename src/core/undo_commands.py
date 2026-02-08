@@ -141,12 +141,14 @@ class AxisEditCommand(QUndoCommand):
         self,
         change: AxisChange,
         apply_callback: Callable[[AxisChange], None],
+        update_pending_callback: Optional[Callable[[AxisChange, bool], None]] = None,
     ):
         super().__init__(
             f"Edit {change.table_name} {change.axis_type}[{change.index}]"
         )
         self.change = change
         self.apply_callback = apply_callback
+        self.update_pending = update_pending_callback
         self._first_redo = True
 
     def undo(self):
@@ -162,12 +164,16 @@ class AxisEditCommand(QUndoCommand):
             table_key=self.change.table_key,
         )
         self.apply_callback(reverse)
+        if self.update_pending:
+            self.update_pending(self.change, True)
 
     def redo(self):
         if self._first_redo:
             self._first_redo = False
             return
         self.apply_callback(self.change)
+        if self.update_pending:
+            self.update_pending(self.change, False)
 
 
 class BulkAxisEditCommand(QUndoCommand):
@@ -178,12 +184,14 @@ class BulkAxisEditCommand(QUndoCommand):
         changes: List[AxisChange],
         description: str,
         apply_callback: Callable[[AxisChange], None],
+        update_pending_callback: Optional[Callable[[AxisChange, bool], None]] = None,
         begin_bulk_callback: Optional[Callable[[], None]] = None,
         end_bulk_callback: Optional[Callable[[], None]] = None,
     ):
         super().__init__(description)
         self.changes = changes
         self.apply_callback = apply_callback
+        self.update_pending = update_pending_callback
         self.begin_bulk = begin_bulk_callback
         self.end_bulk = end_bulk_callback
         self._first_redo = True
@@ -211,6 +219,8 @@ class BulkAxisEditCommand(QUndoCommand):
                     table_key=change.table_key,
                 )
                 self.apply_callback(reverse)
+                if self.update_pending:
+                    self.update_pending(change, True)
         finally:
             # End bulk update (if callback provided)
             if self.end_bulk:
@@ -232,6 +242,8 @@ class BulkAxisEditCommand(QUndoCommand):
         try:
             for change in self.changes:
                 self.apply_callback(change)
+                if self.update_pending:
+                    self.update_pending(change, False)
         finally:
             # End bulk update (if callback provided)
             if self.end_bulk:

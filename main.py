@@ -106,6 +106,7 @@ class MainWindow(QMainWindow, RecentFilesMixin, ProjectMixin, SessionMixin):
             apply_cell=self._apply_cell_change_from_undo,
             apply_axis=self._apply_axis_change_from_undo,
             update_pending=self._update_pending_from_undo,
+            update_pending_axis=self._update_pending_from_axis_undo,
             begin_bulk_update=self._begin_bulk_update,
             end_bulk_update=self._end_bulk_update,
         )
@@ -839,13 +840,20 @@ class MainWindow(QMainWindow, RecentFilesMixin, ProjectMixin, SessionMixin):
 
     def _update_pending_from_undo(self, change: CellChange, is_undo: bool):
         """
-        Update pending changes tracking during undo/redo.
+        Update pending changes tracking during cell undo/redo.
         Called by TableUndoManager to keep change tracker in sync.
 
         Note: change_tracker._notify_change() fires _on_changes_updated callback,
         which handles _update_project_ui(). No direct call needed here.
         """
         self.change_tracker.update_pending_from_undo(change, is_undo)
+
+    def _update_pending_from_axis_undo(self, change, is_undo: bool):
+        """
+        Update pending changes tracking during axis undo/redo.
+        Called by TableUndoManager to keep change tracker in sync.
+        """
+        self.change_tracker.update_pending_from_axis_undo(change, is_undo)
 
     def _begin_bulk_update(self, table_key: str = None):
         """
@@ -936,122 +944,110 @@ class MainWindow(QMainWindow, RecentFilesMixin, ProjectMixin, SessionMixin):
 
     # ========== Cell/Axis Change Handlers ==========
 
+    def _get_sender_rom_context(self):
+        """Get ROM path and document from the signal sender.
+
+        Common setup for all cell/axis change handlers. Returns
+        (rom_path, document) where rom_path may be None if not set
+        on the sender, and document may be None if not found.
+        """
+        sender = self.sender()
+        rom_path = getattr(sender, 'rom_path', None)
+        document = self._find_document_by_rom_path(rom_path) if rom_path else self.get_current_document()
+        return rom_path, document
+
+    def _write_to_rom_and_mark_modified(self, document, write_fn, description: str):
+        """Execute a ROM write operation with standard error handling.
+
+        Args:
+            document: RomDocument to write to (may be None — no-ops safely)
+            write_fn: Callable that performs the actual rom_reader write(s)
+            description: Human-readable description for error messages
+        """
+        if not document:
+            return
+        try:
+            write_fn()
+            if not document.is_modified():
+                document.set_modified(True)
+        except RomWriteError as e:
+            logger.error(f"Failed to write {description}: {e}")
+        except Exception as e:
+            logger.exception(f"Unexpected error writing {description}: {type(e).__name__}: {e}")
+
     def _on_table_cell_changed(self, table, row: int, col: int,
                                old_value: float, new_value: float,
                                old_raw: float, new_raw: float):
         """Handle cell change from table viewer window"""
-        # Get ROM path from the sender window for multi-ROM isolation
-        sender = self.sender()
-        rom_path = getattr(sender, 'rom_path', None)
+        rom_path, document = self._get_sender_rom_context()
 
-        # Record to undo manager (per-table undo/redo)
         self.table_undo_manager.record_cell_change(
-            table, row, col,
-            old_value, new_value,
-            old_raw, new_raw,
+            table, row, col, old_value, new_value, old_raw, new_raw,
             rom_path=rom_path
         )
-
-        # Record to change tracker (for pending changes / commit tracking)
         self.change_tracker.record_pending_change(
-            table, row, col,
-            old_value, new_value,
-            old_raw, new_raw,
+            table, row, col, old_value, new_value, old_raw, new_raw,
             rom_path=rom_path
         )
-        document = self._find_document_by_rom_path(rom_path) if rom_path else self.get_current_document()
-        if document:
-            try:
-                document.rom_reader.write_cell_value(table, row, col, new_raw)
-
-                if not document.is_modified():
-                    document.set_modified(True)
-            except RomWriteError as e:
-                logger.error(f"Failed to write cell value: {e}")
-            except Exception as e:
-                logger.exception(f"Unexpected error writing cell value: {type(e).__name__}: {e}")
+        self._write_to_rom_and_mark_modified(
+            document,
+            lambda: document.rom_reader.write_cell_value(table, row, col, new_raw),
+            f"cell value in {table.name}",
+        )
 
     def _on_table_bulk_changes(self, table, changes: list, description: str = "Bulk Operation"):
         """Handle bulk changes from table viewer window (data manipulation operations)"""
         if not changes:
             return
 
-        # Get ROM path from the sender window for multi-ROM isolation
-        sender = self.sender()
-        rom_path = getattr(sender, 'rom_path', None)
+        rom_path, document = self._get_sender_rom_context()
 
-        # Record to undo manager (per-table undo/redo)
         self.table_undo_manager.record_bulk_cell_changes(table, changes, description, rom_path=rom_path)
-
-        # Record to change tracker (for pending changes / commit tracking)
         self.change_tracker.record_pending_bulk_changes(table, changes, rom_path=rom_path)
-        document = self._find_document_by_rom_path(rom_path) if rom_path else self.get_current_document()
-        if document:
-            try:
-                for row, col, old_value, new_value, old_raw, new_raw in changes:
-                    document.rom_reader.write_cell_value(table, row, col, new_raw)
 
-                if not document.is_modified():
-                    document.set_modified(True)
+        def write_bulk():
+            for row, col, old_value, new_value, old_raw, new_raw in changes:
+                document.rom_reader.write_cell_value(table, row, col, new_raw)
+            logger.debug(f"Applied bulk changes: {len(changes)} cells in {table.name}")
 
-                logger.debug(f"Applied bulk changes: {len(changes)} cells in {table.name}")
-            except RomWriteError as e:
-                logger.error(f"Failed to write bulk changes: {e}")
-            except Exception as e:
-                logger.exception(f"Unexpected error writing bulk changes: {type(e).__name__}: {e}")
+        self._write_to_rom_and_mark_modified(document, write_bulk, f"bulk changes in {table.name}")
 
     def _on_table_axis_changed(self, table, axis_type: str, index: int,
                                old_value: float, new_value: float,
                                old_raw: float, new_raw: float):
         """Handle axis change from table viewer window"""
-        # Get ROM path from the sender window for multi-ROM isolation
-        sender = self.sender()
-        rom_path = getattr(sender, 'rom_path', None)
+        rom_path, document = self._get_sender_rom_context()
 
-        # Record to undo manager (per-table undo/redo)
         self.table_undo_manager.record_axis_change(
-            table, axis_type, index,
-            old_value, new_value,
-            old_raw, new_raw,
+            table, axis_type, index, old_value, new_value, old_raw, new_raw,
             rom_path=rom_path
         )
-        document = self._find_document_by_rom_path(rom_path) if rom_path else self.get_current_document()
-        if document:
-            try:
-                document.rom_reader.write_axis_value(table, axis_type, index, new_raw)
-
-                if not document.is_modified():
-                    document.set_modified(True)
-            except RomWriteError as e:
-                logger.error(f"Failed to write axis value: {e}")
-            except Exception as e:
-                logger.exception(f"Unexpected error writing axis value: {type(e).__name__}: {e}")
+        self.change_tracker.record_pending_axis_change(
+            table, axis_type, index, old_value, new_value, old_raw, new_raw,
+            rom_path=rom_path
+        )
+        self._write_to_rom_and_mark_modified(
+            document,
+            lambda: document.rom_reader.write_axis_value(table, axis_type, index, new_raw),
+            f"axis value in {table.name}",
+        )
 
     def _on_table_axis_bulk_changes(self, table, changes: list, description: str = "Axis Bulk Operation"):
         """Handle axis bulk changes from table viewer window (interpolation, etc.)"""
         if not changes:
             return
 
-        # Get ROM path from the sender window for multi-ROM isolation
-        sender = self.sender()
-        rom_path = getattr(sender, 'rom_path', None)
+        rom_path, document = self._get_sender_rom_context()
 
-        # Record to undo manager (per-table undo/redo)
         self.table_undo_manager.record_axis_bulk_changes(table, changes, description, rom_path=rom_path)
-        document = self._find_document_by_rom_path(rom_path) if rom_path else self.get_current_document()
-        if document:
-            try:
-                for axis_type, index, old_value, new_value, old_raw, new_raw in changes:
-                    document.rom_reader.write_axis_value(table, axis_type, index, new_raw)
+        self.change_tracker.record_pending_axis_bulk_changes(table, changes, rom_path=rom_path)
 
-                if not document.is_modified():
-                    document.set_modified(True)
+        def write_bulk():
+            for axis_type, index, old_value, new_value, old_raw, new_raw in changes:
+                document.rom_reader.write_axis_value(table, axis_type, index, new_raw)
+            logger.debug(f"Applied axis bulk changes: {len(changes)} cells in {table.name}")
 
-                logger.debug(f"Applied axis bulk changes: {len(changes)} cells in {table.name}")
-            except RomWriteError as e:
-                logger.error(f"Failed to write axis bulk changes: {e}")
-            except Exception as e:
-                logger.exception(f"Unexpected error writing axis bulk changes: {type(e).__name__}: {e}")
+        self._write_to_rom_and_mark_modified(document, write_bulk, f"axis bulk changes in {table.name}")
 
     def _on_table_window_focused(self, table_key: str):
         """
