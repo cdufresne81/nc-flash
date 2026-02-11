@@ -5,6 +5,8 @@ Displays 3D visualization of table data with rotation and selection highlighting
 Provides both a standalone window (GraphViewer) and embeddable widget (GraphWidget).
 """
 
+import logging
+
 import numpy as np
 import matplotlib.pyplot as plt
 from PySide6.QtWidgets import QMainWindow, QVBoxLayout, QWidget, QSizePolicy
@@ -16,6 +18,8 @@ from matplotlib.figure import Figure
 from ..core.rom_definition import Table, TableType, RomDefinition, AxisType
 from ..utils.constants import APP_NAME
 from ..utils.colormap import get_colormap
+
+logger = logging.getLogger(__name__)
 
 
 class _GraphPlotMixin:
@@ -98,7 +102,7 @@ class _GraphPlotMixin:
 
         # Override colors for selected cells with blue
         if self.selected_cells:
-            blue_color = (0.0, 0.5, 1.0, 1.0)
+            blue_color = np.array([0.0, 0.5, 1.0, 1.0])
             for row, col in self.selected_cells:
                 if row < colors.shape[0] and col < colors.shape[1]:
                     colors[row, col] = blue_color
@@ -186,7 +190,11 @@ class _GraphPlotMixin:
         ax.set_xticks([])
 
     def _calculate_colors(self, values: np.ndarray):
-        """Calculate color array matching table viewer gradient using scaling range"""
+        """Calculate color array matching table viewer gradient using scaling range.
+
+        Uses vectorized numpy operations with the colormap's 256-entry LUT
+        instead of per-cell Python function calls.
+        """
         if self._scaling_range:
             min_val, max_val = self._scaling_range
         else:
@@ -199,11 +207,15 @@ class _GraphPlotMixin:
             ratios = (values - min_val) / (max_val - min_val)
             ratios = np.clip(ratios, 0.0, 1.0)
 
-        colors = np.zeros((*values.shape, 4))
-        for i in range(values.shape[0]):
-            for j in range(values.shape[1]):
-                rgba = self._ratio_to_rgba(ratios[i, j])
-                colors[i, j] = rgba
+        # Vectorized color lookup: map ratios to 0-255 indices, then batch-lookup
+        # in the colormap's color table (avoids per-cell Python function calls)
+        cmap = get_colormap()
+        scaled = np.nan_to_num(ratios * 255, nan=127.0)
+        indices = np.clip(scaled, 0, 255).astype(np.intp)
+        color_lut = np.array(cmap.colors, dtype=np.float64) / 255.0
+        colors = np.empty((*values.shape, 4))
+        colors[..., :3] = color_lut[indices]
+        colors[..., 3] = 1.0
 
         return colors
 
@@ -221,7 +233,12 @@ class _GraphPlotMixin:
             ratios = (values - min_val) / (max_val - min_val)
             ratios = np.clip(ratios, 0.0, 1.0)
 
-        return [self._ratio_to_color(r) for r in ratios]
+        # Vectorized: batch lookup into colormap LUT
+        cmap = get_colormap()
+        scaled = np.nan_to_num(ratios * 255, nan=127.0)
+        indices = np.clip(scaled, 0, 255).astype(np.intp)
+        color_lut = np.array(cmap.colors, dtype=np.float64) / 255.0
+        return [tuple(color_lut[idx]) for idx in indices]
 
     def _ratio_to_rgba(self, ratio: float):
         """Convert ratio to RGBA tuple"""
@@ -311,17 +328,46 @@ class _GraphPlotMixin:
         self.selected_cells = selected_cells
         if self.table is None:
             return
-        # For 3D plots, update colors in-place without full replot to
-        # preserve the view (axis limits, zoom, angles). A full figure.clear()
-        # resets the constrained_layout state, causing a visible zoom-out.
+        # For 3D plots, update facecolors in-place without recreating the surface.
+        # This avoids the expensive plot_surface() call (~55-94ms) and reduces
+        # the draw cost since the polygon collection doesn't change.
         if self.table.type == TableType.THREE_D and self.ax_3d is not None:
-            self._update_3d_surface()
+            self._update_3d_facecolors()
             self.canvas.draw_idle()
         else:
             self._plot_data()
 
+    def _update_3d_facecolors(self):
+        """Update 3D surface facecolors in-place (selection highlight only).
+
+        Much faster than _update_3d_surface() because it reuses the existing
+        Poly3DCollection instead of removing and recreating it.
+        """
+        ax = self.ax_3d
+        if not ax.collections:
+            return
+
+        values = self.data['values']
+        colors = self._calculate_colors(values)
+
+        if self.selected_cells:
+            blue_color = np.array([0.0, 0.5, 1.0, 1.0])
+            for row, col in self.selected_cells:
+                if row < colors.shape[0] and col < colors.shape[1]:
+                    colors[row, col] = blue_color
+
+        # Flatten colors to match Poly3DCollection's face order
+        # plot_surface creates one polygon per cell: (rows) x (cols) faces
+        rows, cols = values.shape
+        face_colors = colors.reshape(-1, 4)
+        ax.collections[0].set_facecolors(face_colors)
+
     def _update_3d_surface(self):
-        """Update 3D surface in-place without full replot (preserves view)."""
+        """Update 3D surface in-place without full replot (preserves view).
+
+        Used when data values change (not just selection). Rebuilds the surface
+        geometry since Z values may have changed.
+        """
         ax = self.ax_3d
 
         # Save axis limits before modifying collections
@@ -333,7 +379,7 @@ class _GraphPlotMixin:
         while ax.collections:
             ax.collections[0].remove()
 
-        # Rebuild surface with updated colors on the same axes
+        # Rebuild surface with updated data on the same axes
         values = self.data['values']
         rows, cols = values.shape
         X, Y = np.meshgrid(np.arange(cols + 1), np.arange(rows + 1))
@@ -345,8 +391,9 @@ class _GraphPlotMixin:
         Z_extended[rows, cols] = values[-1, -1]
 
         colors = self._calculate_colors(values)
+
         if self.selected_cells:
-            blue_color = (0.0, 0.5, 1.0, 1.0)
+            blue_color = np.array([0.0, 0.5, 1.0, 1.0])
             for row, col in self.selected_cells:
                 if row < colors.shape[0] and col < colors.shape[1]:
                     colors[row, col] = blue_color
@@ -386,8 +433,10 @@ class GraphWidget(_GraphPlotMixin, QWidget):
         self._first_plot = True
 
         # Create matplotlib figure and canvas
-        # Use constrained_layout for stable sizing (avoids resizing on redraws)
-        self.figure = Figure(figsize=(8, 6), layout='constrained')
+        # No layout engine — constrained_layout is broken for 3D axes (collapses
+        # to zero and adds ~200ms overhead per draw). Subplot params are set
+        # manually in _plot_3d to provide stable sizing.
+        self.figure = Figure(figsize=(8, 6))
         self.canvas = FigureCanvas(self.figure)
 
         # Set up layout

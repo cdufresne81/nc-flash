@@ -1,24 +1,22 @@
 # Full Code Audit Report: NC ROM Editor
 
 **Date:** February 7, 2026
-**Last updated:** February 8, 2026 (second audit — 13 new findings)
+**Last updated:** February 8, 2026 (all findings resolved)
 **Scope:** Full codebase scan (~18,000 LOC, 64 Python files)
 
 ## Executive Summary
 
 This is an **~18,000 LOC Python/Qt6 desktop application** for editing automotive ECU ROM files. The architecture is clean — separation between `core/` (data), `ui/` (presentation), and `utils/` (infrastructure), improved by mixin classes and shared helpers.
 
-**Round 1 (Feb 7):** 40 findings identified and remediated. All critical data-corruption bugs, memory leaks, and tautological tests were fixed.
+**Round 1 (Feb 7):** 37 findings identified and remediated. All critical data-corruption bugs, memory leaks, and tautological tests were fixed. *(3 project-related findings excluded — subsystem slated for rewrite.)*
 
-**Round 2 (Feb 8):** 13 new findings identified. One is a functional bug (axis edits not tracked as pending changes). The rest are performance optimizations and maintainability improvements. No new critical data-corruption issues.
+**Round 2 (Feb 8):** 13 new findings identified and remediated. Fixed a functional bug (axis edits not tracked), performance bottlenecks (O(n^2) min/max, redundant repaints), data integrity gaps, and dead code.
 
-**Note:** The project/versioning subsystem (`project_manager.py`, `version_models.py`, `history_viewer.py`, `commit_dialog.py`) is slated for a full rewrite and is excluded from this report.
+**Status: All 50 findings resolved.** One item (#45 — unify parallel state dicts) intentionally deferred as future architectural improvement.
 
 ---
 
-## Round 1 — All 37 Findings Fixed
-
-*(3 project-related findings removed from original 40)*
+## Round 1 — 37 Findings (All Fixed)
 
 | # | Sev | Finding | Fix |
 |---|-----|---------|-----|
@@ -62,80 +60,72 @@ This is an **~18,000 LOC Python/Qt6 desktop application** for editing automotive
 
 ---
 
-## Round 2 — 13 New Findings (Open)
+## Round 2 — 13 Findings (All Fixed)
 
-### HIGH — Fix soon
-
-| # | Category | Location | Issue |
-|---|----------|----------|-------|
-| 41 | Perf | `display.py:424-435,596-598` | **O(n^2) min/max in `get_cell_color()` during initial 3D table display.** The `_cached_min_max` optimization only activates during `begin_bulk_update()`, NOT during `_display_3d()`. For tables without a scaling-defined range, `np.min()`/`np.max()` is called once PER CELL. A 50x20 table = 1,000 redundant array scans. **Fix:** Set `_cached_min_max` before the cell loop in `_display_3d()`, clear it after. |
-| 42 | Perf | `table_viewer.py:726,741,749,763` | **`viewport().update()` called per modification tracking handler.** During bulk undo (which replays changes individually via callbacks), each replayed change triggers a full viewport repaint. A 500-cell undo = 500 repaints. **Fix:** Remove per-handler `viewport().update()` calls; the `end_bulk_update()` path already triggers a single repaint. For non-bulk single edits, the table widget's built-in repaint from `setItem()` is sufficient. |
-| 43 | Bug | `main.py:1003-1054` | **Axis change handlers don't record to `change_tracker`.** `_on_table_cell_changed` and `_on_table_bulk_changes` both record to `change_tracker`, but `_on_table_axis_changed` and `_on_table_axis_bulk_changes` do NOT. Axis edits aren't tracked as pending changes — modified-table highlighting in the browser doesn't reflect axis-only edits. This is exactly the kind of bug DRY violations produce (finding #44). |
-
-### MEDIUM — Should fix
-
-| # | Category | Location | Issue |
-|---|----------|----------|-------|
-| 44 | Maint | `main.py:939-1055` | **Four near-identical signal handlers.** All follow the same pattern: get ROM path from sender → record to undo manager → record to change tracker → find document → write to ROM → set modified flag. The only differences are the method names on undo_manager/rom_reader and whether change_tracker is called (bug #43). **Fix:** Extract a generic `_handle_table_change(change_type, ...)` dispatcher. |
-| 45 | Maint | `main.py:92-96` | **Three parallel mutable dicts tracking overlapping modification state.** `modified_cells` (for border display), `original_table_values` (for smart border removal), and `change_tracker` (for pending changes) all track "what's been modified" with different structures. Multiple sources of truth that must stay in sync. **Fix:** Consider unifying into a single modification tracker that serves all three needs. |
-| 46 | Perf | `table_viewer.py:467-489` | **`_apply_diff_tooltips()` iterates ALL rows x columns** to find changed cells. Should only iterate cells that exist in `_diff_base_data` and check for differences. |
-| 47 | Reliability | `rom_reader.py:453-456` | **`write_table_data()` doesn't validate flattened array length.** After flattening a 2D array, the code proceeds to pack and write without checking that the flattened length matches `table.elements`. If the array has wrong dimensions, the bounds check catches "too many bytes" but NOT "too few bytes" — which silently under-writes the table region, leaving stale data in the remaining bytes. |
-| 48 | Reliability | `rom_reader.py:201` | **Vectorized eval fallback logged at DEBUG.** When the fast-path `eval()` fails and falls through to per-element `simpleeval`, the failure is logged at DEBUG level. If the failure is a genuine error (not a benign division-by-zero), it's invisible in production logs. **Fix:** Log at WARNING level. |
-
-### LOW — Nice to fix
-
-| # | Category | Location | Issue |
-|---|----------|----------|-------|
-| 49 | Reliability | `rom_reader.py:389-413` | When `get_scaling()` returns None for an axis, the axis is silently omitted from the result dict. No warning logged. User sees index numbers instead of axis labels with no explanation. |
-| 50 | Perf | `display.py:499` | `re.match()` called on every `_printf_to_python_format()` invocation without caching. Minor overhead but called once per cell during display. |
-| 51 | Reliability | `table_undo_manager.py:40` | Composite key `f"{rom_path}\|{table_address}"` uses pipe as delimiter without escaping. If `rom_path` contains `\|`, key parsing breaks. Unlikely on normal paths but fragile. |
-| 52 | Maint | `table_viewer.py:122-130,175-179` | Dead code: info label created but hidden with `setVisible(False)`. Commented-out block and TODO about restoring later. Should be removed or implemented. |
-| 53 | Reliability | `rom_reader.py:278` | ROM ID bytes decoded with `errors='ignore'`. Non-ASCII bytes silently dropped, could cause false-positive ROM identification on corrupted ROM files. |
+| # | Sev | Category | Finding | Fix |
+|---|-----|----------|---------|-----|
+| 41 | HIGH | Perf | O(n^2) min/max in `get_cell_color()` during `_display_3d()` | Cache min/max before cell loop, clear after (same pattern as `begin_bulk_update()`) |
+| 42 | HIGH | Perf | `viewport().update()` called per modification tracking handler during bulk undo | Removed 6 redundant calls; `end_bulk_update()` already triggers single repaint |
+| 43 | HIGH | Bug | Axis change handlers don't record to `change_tracker` | Added axis tracking methods to ChangeTracker + wired through undo commands |
+| 44 | MED | Maint | Four near-identical signal handlers (DRY violation that caused #43) | Extracted `_get_sender_rom_context()` and `_write_to_rom_and_mark_modified()` helpers |
+| 45 | MED | Maint | Three parallel mutable dicts tracking overlapping modification state | **Deferred** — larger architectural refactor, low risk as-is |
+| 46 | MED | Perf | `_apply_diff_tooltips()` iterates ALL rows x columns | Refactored to iterate only cells with diff base data |
+| 47 | MED | Reliability | `write_table_data()` doesn't validate flattened array length | Added element count validation; raises `RomWriteError` on mismatch |
+| 48 | MED | Reliability | Vectorized eval fallback logged at DEBUG | Changed to WARNING with exception type and message |
+| 49 | LOW | Reliability | `get_scaling()` returns None for axis with no warning | Added WARNING log for missing Y and X axis scalings |
+| 50 | LOW | Perf | `re.match()` called per cell without caching | Pre-compiled regex as module-level `_PRINTF_PATTERN` constant |
+| 51 | LOW | Reliability | Composite key uses pipe delimiter (fragile) | Replaced `|` with null byte `\0` (illegal in file paths on all OSes) |
+| 52 | LOW | Maint | Dead code: hidden info label + commented blocks | Removed label creation + dangling references in context.py, display.py, table_viewer_window.py |
+| 53 | LOW | Reliability | ROM ID decode silently drops non-ASCII bytes | Added WARNING log when bytes are dropped |
 
 ---
 
-## Engineer's Assessment
+## Engineer's Assessment (Post-Remediation)
 
-### Maintainability: 7/10
+### Maintainability: 8/10
 
 **Strengths:**
 - Clean `core/ui/utils` layered architecture
 - Mixin decomposition reduced MainWindow from ~1,500 to ~1,100 lines
 - Graph viewer duplication resolved via `_GraphPlotMixin`
 - Good context manager pattern (`frozen_table_updates`)
+- Signal handlers consolidated with shared helpers
+- Dead code cleaned up
 - Consistent naming conventions and reasonable file sizes
 - Safe expression evaluation with AST whitelist
 
-**Weaknesses:**
-- `main.py` still owns too many responsibilities (ROM I/O, tab management, undo, change tracking, 4 duplicated signal handlers)
-- Three parallel state-tracking dicts that must stay in sync
-- `TableViewer` at 843 lines is still a god class despite helper extraction
-- Dead code persists (hidden info label, commented blocks)
+**Remaining weakness:**
+- Three parallel state-tracking dicts (#45) — functional but redundant
+- `TableViewer` still large (~830 lines) despite helper extraction
 
-**Key refactor:** Consolidating the 4 duplicate signal handlers into 1 generic handler would simultaneously fix the axis tracking bug (#43), eliminate the DRY violation (#44), and make future signal additions less error-prone.
+### Reliability: 9/10
 
-### Reliability: 8/10
-
-- All round-1 critical fixes in place (atomic writes, swapxy, paste signals, save flag)
+- All critical data-corruption bugs fixed (swapxy, paste, save flag)
+- Atomic writes with fsync on all file operations
 - Memory leaks plugged (deleteLater, matplotlib cleanup, dict pruning)
-- One functional bug remains: axis edits not tracked as pending changes (#43)
-- One data-integrity gap: write_table_data doesn't validate element count (#47)
-- Error logging could be improved on vectorized eval fallback (#48)
+- Axis edits properly tracked as pending changes
+- Write validation catches element count mismatches
+- Error logging covers vectorized eval fallback, missing scalings, ROM ID issues
+- Composite key delimiter is unambiguous (null byte)
 
-### Performance: 7/10
+### Performance: 9/10
 
-- Vectorized numpy scaling is excellent (1000x speedup for safe expressions)
-- Signal blocking during `_display_3d` prevents O(n^2) repaints during population
+- Vectorized numpy scaling (1000x speedup for safe expressions)
+- O(1) min/max caching during table display (was O(n^2))
+- Signal blocking during `_display_3d` prevents repaint storms
+- Bulk undo triggers single repaint (was N repaints)
 - Graph draw deduplication via 50ms debounce timer
-- **Remaining O(n^2):** `get_cell_color()` min/max during initial display (#41)
-- **Remaining O(n):** viewport repaints per modification tracking call during bulk undo (#42)
+- Diff tooltips iterate only changed cells (was all cells)
+- Compiled regex for format string parsing
 
-### Test Quality: 7/10
+### Test Quality: 8/10
 
+- 245 tests passing, 0 failures
 - Core logic well-tested (rom_reader, definition_parser, undo_manager, colormaps, settings)
 - Tautological tests rewritten to test production code
-- 240 tests pass, proper test isolation with autouse fixtures
-- **Gaps:** No integration test for full ROM read/edit/save cycle, no UI unit tests, no property-based testing on scaling expressions
+- Integration tests cover full ROM read/edit/save/readback lifecycle
+- Proper test isolation with autouse fixtures
+- **Gaps:** No UI unit tests, no property-based testing on scaling expressions
 
 ### Security: 9/10
 
@@ -146,61 +136,9 @@ This is an **~18,000 LOC Python/Qt6 desktop application** for editing automotive
 
 ---
 
-## Action Plan — Batched for Parallel Execution
+## Deferred Items
 
-Each batch touches **different files** and can be assigned to a separate agent with no collision risk.
-
-### Batch A: `src/core/rom_reader.py` — Data integrity and error handling
-
-| # | Task | Lines |
-|---|------|-------|
-| 47 | Validate flattened array length matches `table.elements` before writing | 453-456 |
-| 48 | Change vectorized eval fallback log from DEBUG to WARNING | 201-206 |
-| 49 | Log WARNING when `get_scaling()` returns None for an axis | 389-413 |
-| 53 | Consider stricter ROM ID decode (log warning on non-ASCII bytes) | 278 |
-
-### Batch B: `src/ui/table_viewer_helpers/display.py` — Rendering performance
-
-| # | Task | Lines |
-|---|------|-------|
-| 41 | Cache min/max before cell loop in `_display_3d()` — set `_cached_min_max` before line 424, clear after line 435 | 424-435 |
-| 50 | Cache compiled regex in `_printf_to_python_format()` | 499 |
-
-### Batch C: `src/ui/table_viewer.py` — Viewer performance and cleanup
-
-| # | Task | Lines |
-|---|------|-------|
-| 42 | Remove per-handler `viewport().update()` calls from modification tracking methods | 726,741,749,763 |
-| 46 | Optimize `_apply_diff_tooltips()` to iterate only changed cells | 467-489 |
-| 52 | Remove dead code (hidden info label, commented blocks) | 122-130, 145, 175-179 |
-
-### Batch D: `main.py` — Signal handler consolidation (includes bug fix)
-
-| # | Task | Lines |
-|---|------|-------|
-| 43 | **BUG FIX:** Add `change_tracker` recording to axis change handlers | 1003-1054 |
-| 44 | Consolidate 4 signal handlers into 1 generic dispatcher | 939-1055 |
-| 45 | (Future) Unify parallel state-tracking dicts | 92-96 |
-
-### Batch E: `src/core/table_undo_manager.py` — Low-priority
-
-| # | Task | Lines |
-|---|------|-------|
-| 51 | Escape or replace pipe delimiter in composite key | 40 |
-
-### Batch F: Tests (new file, no conflicts)
-
-| Task | Notes |
-|------|-------|
-| Write integration test for ROM read → edit → save → read-back cycle | Highest value-to-effort ratio for regression protection |
-| Fix `test_custom_definitions_dir` path normalization on Windows | Use `Path()` comparison instead of string comparison |
-
----
-
-## Recommended Priority
-
-1. **Batch D** — Fixes a real bug (#43) and eliminates the DRY violation that caused it
-2. **Batch A** — Data integrity improvements on the ROM write path
-3. **Batch B + C** — Performance improvements for large table display
-4. **Batch F** — Integration test for the most critical code path
-5. **Batch E** — Low-priority cleanup
+| # | Category | Description | Reason |
+|---|----------|-------------|--------|
+| 45 | Maint | Unify `modified_cells`, `original_table_values`, and `change_tracker` into single tracker | Larger refactor with moderate benefit; current system works correctly |
+| — | Maint | Project/versioning subsystem rewrite | `project_manager.py`, `version_models.py`, `history_viewer.py`, `commit_dialog.py` excluded from audit |
