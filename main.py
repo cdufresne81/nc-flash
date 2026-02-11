@@ -248,9 +248,10 @@ class MainWindow(QMainWindow, RecentFilesMixin, ProjectMixin, SessionMixin):
     def init_menu(self):
         """Initialize the menu bar"""
         menubar = self.menuBar()
+        menubar.setStyleSheet("QMenuBar::item { padding: 2px 6px; }")
 
-        # File menu
-        self.file_menu = menubar.addMenu("File")
+        # File menu (Alt+F)
+        self.file_menu = menubar.addMenu("&File")
 
         # Project section
         new_project_action = self.file_menu.addAction("New Project...")
@@ -295,8 +296,8 @@ class MainWindow(QMainWindow, RecentFilesMixin, ProjectMixin, SessionMixin):
         exit_action = self.file_menu.addAction("Exit")
         exit_action.triggered.connect(self.close)
 
-        # Edit menu
-        edit_menu = menubar.addMenu("Edit")
+        # Edit menu (Alt+E)
+        edit_menu = menubar.addMenu("&Edit")
 
         # Use QUndoGroup's createUndoAction/createRedoAction for per-table undo/redo
         # These actions automatically enable/disable based on active stack state
@@ -313,14 +314,14 @@ class MainWindow(QMainWindow, RecentFilesMixin, ProjectMixin, SessionMixin):
         settings_action = edit_menu.addAction("Settings...")
         settings_action.triggered.connect(self.show_settings)
 
-        # View menu
-        view_menu = menubar.addMenu("View")
+        # View menu (Alt+V)
+        view_menu = menubar.addMenu("&View")
 
         history_action = view_menu.addAction("Commit History...")
         history_action.triggered.connect(self.show_history)
 
-        # Help menu
-        help_menu = menubar.addMenu("Help")
+        # Help menu (Alt+H)
+        help_menu = menubar.addMenu("&Help")
 
         about_action = help_menu.addAction("About")
         about_action.triggered.connect(self.show_about)
