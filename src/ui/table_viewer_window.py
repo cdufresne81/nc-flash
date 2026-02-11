@@ -6,6 +6,7 @@ Allows opening multiple tables simultaneously for comparison.
 Features an embedded graph panel that can be toggled with G key.
 """
 
+import logging
 from pathlib import Path
 
 from PySide6.QtWidgets import (
@@ -16,6 +17,8 @@ from PySide6.QtCore import Qt, Signal, QTimer
 from PySide6.QtGui import QKeySequence, QShortcut
 
 from ..utils.constants import APP_NAME
+
+logger = logging.getLogger(__name__)
 from ..core.table_undo_manager import make_table_key
 from .table_viewer import TableViewer
 from .graph_viewer import GraphWidget
@@ -191,6 +194,7 @@ class TableViewerWindow(QMainWindow):
     def _create_menu_bar(self):
         """Create menu bar with File, Edit, and View menus"""
         menubar = self.menuBar()
+        menubar.setStyleSheet("QMenuBar::item { padding: 2px 6px; }")
 
         # File menu (Alt+F)
         file_menu = menubar.addMenu("&File")
@@ -409,13 +413,12 @@ class TableViewerWindow(QMainWindow):
         self._schedule_graph_refresh()
 
     def _refresh_graph(self):
-        """Refresh graph display if visible.
+        """Refresh graph display after data changes (cell/axis edits).
 
-        Uses update_selection (which rebuilds the 3D surface in-place)
-        instead of set_data (which clears the entire figure and causes
-        a visible zoom-out due to constrained_layout recalculation).
-        The graph widget holds a reference to the same data dict, so
-        cell value changes are already reflected without re-setting data.
+        Uses update_data() which rebuilds the 3D surface geometry (Z values)
+        in-place via _update_3d_surface(), preserving view angles and zoom.
+        The graph widget holds a reference to the same data dict, so the
+        new values are already visible to it — update_data re-reads them.
 
         Also cancels any pending selection-only timer since this refresh
         already includes the current selection, preventing a redundant draw.
@@ -424,7 +427,8 @@ class TableViewerWindow(QMainWindow):
             # Cancel pending selection update — this refresh supersedes it
             self._selection_timer.stop()
             selected_cells = self._get_selected_data_cells()
-            self.graph_widget.update_selection(selected_cells)
+            self.graph_widget.selected_cells = selected_cells
+            self.graph_widget.update_data(self.data)
 
     def _schedule_graph_refresh(self):
         """Schedule a debounced graph refresh (restarts timer on each call)"""
@@ -447,62 +451,79 @@ class TableViewerWindow(QMainWindow):
         self._schedule_graph_refresh()
 
     def _auto_size_window(self):
-        """Auto-size window to fit table content - compact like ECUFlash"""
+        """Auto-size window to fit table content, clamped to screen.
+
+        Uses Qt header.length() for reliable column/row totals.
+        resize() sets the client area — the OS title bar sits outside it.
+        """
         table_widget = self.viewer.table_widget
 
-        # Calculate content width
-        content_width = 0
-        for col in range(table_widget.columnCount()):
-            content_width += table_widget.columnWidth(col)
+        # Total width/height of all table columns/rows (reliable Qt API)
+        table_w = table_widget.horizontalHeader().length()
+        table_h = table_widget.verticalHeader().length()
 
-        # Add vertical header width if visible
+        # Add visible header sizes
         if table_widget.verticalHeader().isVisible():
-            content_width += table_widget.verticalHeader().width()
-
-        # Add Y-axis label width if visible
-        if self.viewer.y_axis_label.isVisible():
-            content_width += self.viewer.y_axis_label.sizeHint().width()
-
-        # Margin for window border, scrollbar, and internal spacing
-        content_width += 35
-
-        # Calculate content height
-        content_height = 0
-        for row in range(table_widget.rowCount()):
-            content_height += table_widget.rowHeight(row)
-
-        # Add horizontal header height if visible
+            table_w += table_widget.verticalHeader().width()
         if table_widget.horizontalHeader().isVisible():
-            content_height += table_widget.horizontalHeader().height()
+            table_h += table_widget.horizontalHeader().height()
 
-        # Add X-axis label height if visible
+        # Table frame border (e.g. 1px per side)
+        table_w += table_widget.frameWidth() * 2
+        table_h += table_widget.frameWidth() * 2
+
+        # Reserve space for scrollbars — they appear dynamically (AsNeeded
+        # policy) and eat into the viewport, which can cascade: a vertical
+        # scrollbar reduces viewport width, triggering a horizontal scrollbar
+        # that reduces viewport height, etc.  Always reserving avoids this.
+        table_w += table_widget.verticalScrollBar().sizeHint().width()
+        table_h += table_widget.horizontalScrollBar().sizeHint().height()
+
+        # Safety padding — scrollbar sizeHint() can underreport the actual
+        # rendered size (especially on high-DPI or themed systems).  Add
+        # one row/column as buffer so content is never clipped behind a
+        # scrollbar, preventing unnecessary scrollbar appearance.
+        if table_widget.rowCount() > 0:
+            table_h += table_widget.rowHeight(0) - 10
+        else:
+            table_h += 14
+        if table_widget.columnCount() > 0:
+            table_w += table_widget.columnWidth(0) - 20
+        else:
+            table_w += 40
+
+        # Build client area from layout components
+        content_w = table_w
+        content_h = table_h
+
+        # Y-axis label (left of table, in horizontal layout with 2px spacing)
+        if self.viewer.y_axis_label.isVisible():
+            content_w += self.viewer.y_axis_label.sizeHint().width() + 2
+
+        # X-axis label (above table, in vertical layout)
         if self.viewer.x_axis_label.isVisible():
-            content_height += self.viewer.x_axis_label.sizeHint().height()
+            content_h += self.viewer.x_axis_label.sizeHint().height()
 
-        # Add menu bar height
-        if self.menuBar():
-            content_height += self.menuBar().height()
+        # Menu bar
+        content_h += self.menuBar().sizeHint().height()
 
-        # Add window title bar and frame (approximate)
-        content_height += 40
-
-        # Get screen size to limit window size
+        # Screen limits — availableGeometry() excludes the OS taskbar.
+        # Subtract frame height (title bar + borders) so the on-screen
+        # window fits; otherwise the OS silently shrinks the client area.
         screen = QApplication.primaryScreen()
         if screen:
-            screen_geometry = screen.availableGeometry()
-            max_width = int(screen_geometry.width() * 0.9)
-            max_height = int(screen_geometry.height() * 0.9)
+            avail = screen.availableGeometry()
+            max_w = avail.width()
+            max_h = avail.height() - 40  # ~OS title bar + borders
         else:
-            max_width = 1600
-            max_height = 900
+            max_w = 1920
+            max_h = 1040
 
-        # Apply size limits (allow small tables to be very compact)
-        min_width = 80
-        min_height = 60
-        final_width = max(min_width, min(content_width, max_width))
-        final_height = max(min_height, min(content_height, max_height))
+        final_w = max(80, min(content_w, max_w))
+        final_h = max(60, min(content_h, max_h))
 
-        self.resize(final_width, final_height)
+
+        self.resize(final_w, final_h)
 
     def _edit_scaling(self):
         """Open dialog to edit all scalings for this table"""

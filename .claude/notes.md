@@ -11,6 +11,9 @@ See `docs/CODE_AUDIT_REPORT.md` for full details and batched action plan.
 - ~~**Batch E (table_undo_manager.py)** — DONE: Replaced pipe delimiter with null byte~~
 - ~~**Batch F (tests)** — DONE: Integration test + Windows path fix (246 tests, 0 failures)~~
 
+### UI Polish
+- ~~**Reduce menu bar item spacing** — DONE: Added `QMenuBar::item { padding: 2px 6px; }` to both main window and table viewer window menus~~
+
 ### Features
 - ~~**Ctrl+S save** - DONE: Unified save — commits if project open with changes, otherwise saves ROM~~
 - **ROM comparison tool** - Compare two ROM files (stock vs modified), highlight differences in tables and raw data
@@ -21,6 +24,15 @@ See `docs/CODE_AUDIT_REPORT.md` for full details and batched action plan.
 
 ## Environment Notes
 - Use `python3` not `python` (WSL2 environment lacks symlink)
+
+## Recent Completed Work (Feb 10, 2026) - Table Viewer Auto-Size Fix
+- **Fixed table viewer window not showing all rows for 3D tables** — `_auto_size_window()` rewritten to use `header.length()` API instead of manual row/column iteration. Added one-row-height safety padding to prevent the last row from being clipped behind the horizontal scrollbar (the scrollbar `sizeHint()` underreports actual size on themed/high-DPI systems). Also subtracts 40px from available geometry for OS window frame. Verified on 1D, 2D, 3D, and large 3D tables.
+
+## Recent Completed Work (Feb 10, 2026) - Graph Performance Optimization
+- **Removed constrained_layout from GraphWidget Figure** — `layout='constrained'` was broken for 3D axes (warning: "axes sizes collapsed to zero"), adding ~200ms overhead per draw for a failing constraint solver. Removed in favor of default layout. Canvas.draw() dropped from ~380ms to ~220ms.
+- **Vectorized `_calculate_colors()` and `_calculate_colors_1d()`** — Replaced per-cell Python loop (O(rows*cols) function calls through 3 layers of indirection) with numpy array operations: batch ratio-to-index mapping + LUT lookup. Color computation dropped from ~6-30ms to ~1ms.
+- **In-place facecolor update for selection changes** — Added `_update_3d_facecolors()` that calls `set_facecolors()` on the existing Poly3DCollection instead of removing and recreating the surface. Selection update pre-draw cost dropped from ~60-100ms to ~1-2ms.
+- **Net result (29x25 table, 725 cells):** Initial graph open 764ms→419ms (**45% faster**), selection update 275-342ms→142-157ms (**55% faster**).
 
 ## Recent Completed Work (Feb 7, 2026) - Post-Remediation Re-Audit
 - **Comprehensive re-audit of all 40 findings** — Systematically verified every fix by reading source files. All 40 fixes confirmed in place. No regressions introduced by the remediation work. Updated `docs/CODE_AUDIT_REPORT.md` with: all items moved to DONE table, updated scores (Maintainability 9/10, Reliability 9/10, Test Quality 7/10, Performance 8/10, Security 9/10), Post-Remediation Notes section assessing new code (mixins, context manager, vectorized scaling, deferred init), and updated priority list for future improvements.
