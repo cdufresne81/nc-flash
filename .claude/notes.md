@@ -25,6 +25,9 @@ See `docs/CODE_AUDIT_REPORT.md` for full details and batched action plan.
 ## Environment Notes
 - Use `python` not `python3` (Windows environment)
 
+## Recent Completed Work (Feb 22, 2026) - Table Viewer Toolbar
+- **Added action toolbar to table viewer window** — 12 quick-access buttons below the menu bar with programmatic QPainter icons (high-DPI aware). Grouped by function: File (clipboard, export CSV), Basic edits (increment, decrement), Value ops (add to data, multiply, set value), Interpolation (vertical, horizontal, 2D, smooth), View (graph toggle). Edit actions auto-disabled in diff mode. Graph toggle button syncs checked state with View menu. Toolbar height accounted for in auto-sizing.
+
 ## Recent Completed Work (Feb 10, 2026) - Table Viewer Auto-Size Fix
 - **Fixed table viewer window not showing all rows for 3D tables** — `_auto_size_window()` rewritten to use `header.length()` API instead of manual row/column iteration. Added one-row-height safety padding to prevent the last row from being clipped behind the horizontal scrollbar (the scrollbar `sizeHint()` underreports actual size on themed/high-DPI systems). Also subtracts 40px from available geometry for OS window frame. Verified on 1D, 2D, 3D, and large 3D tables.
 

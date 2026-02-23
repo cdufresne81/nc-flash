@@ -11,10 +11,13 @@ from pathlib import Path
 
 from PySide6.QtWidgets import (
     QMainWindow, QVBoxLayout, QHBoxLayout, QWidget, QApplication,
-    QSplitter, QMessageBox
+    QSplitter, QMessageBox, QToolBar
 )
-from PySide6.QtCore import Qt, Signal, QTimer
-from PySide6.QtGui import QColor, QIcon, QKeySequence, QPainter, QPen, QPixmap, QShortcut
+from PySide6.QtCore import Qt, Signal, QTimer, QSize
+from PySide6.QtGui import (
+    QColor, QIcon, QKeySequence, QPainter, QPainterPath,
+    QPen, QPixmap, QShortcut
+)
 
 from ..utils.constants import APP_NAME
 
@@ -193,8 +196,9 @@ class TableViewerWindow(QMainWindow):
         close_shortcut = QShortcut(QKeySequence(Qt.Key_Escape), self)
         close_shortcut.activated.connect(self.close)
 
-        # Create menu bar
+        # Create menu bar and toolbar
         self._create_menu_bar()
+        self._create_toolbar()
 
         # Display the table data
         self.viewer.display_table(table, data)
@@ -295,6 +299,223 @@ class TableViewerWindow(QMainWindow):
         else:
             self.graph_action = None
 
+    def _create_toolbar(self):
+        """Create toolbar with quick-access action buttons"""
+        from ..core.rom_definition import TableType
+
+        tb = self.addToolBar("Actions")
+        tb.setObjectName("mainToolbar")
+        tb.setMovable(False)
+        tb.setFloatable(False)
+        tb.setIconSize(QSize(20, 20))
+        tb.setStyleSheet("""
+            QToolBar {
+                spacing: 1px;
+                padding: 1px 4px;
+                border: none;
+            }
+            QToolButton {
+                padding: 3px;
+                border: 1px solid transparent;
+                border-radius: 3px;
+            }
+            QToolButton:hover {
+                background: rgba(128, 128, 128, 0.15);
+                border: 1px solid rgba(128, 128, 128, 0.25);
+            }
+            QToolButton:pressed {
+                background: rgba(128, 128, 128, 0.3);
+            }
+            QToolButton:checked {
+                background: rgba(0, 120, 215, 0.15);
+                border: 1px solid rgba(0, 120, 215, 0.4);
+            }
+        """)
+        self._toolbar = tb
+
+        # --- File actions ---
+        act = tb.addAction(self._make_toolbar_icon("copy"), "")
+        act.setToolTip("Copy Table to Clipboard  (Ctrl+Shift+C)")
+        act.triggered.connect(self.viewer.copy_table_to_clipboard)
+
+        act = tb.addAction(self._make_toolbar_icon("export"), "")
+        act.setToolTip("Export to CSV  (Ctrl+E)")
+        act.triggered.connect(self._export_to_csv)
+
+        tb.addSeparator()
+
+        # --- Edit actions (disabled in diff/read-only mode) ---
+        edit_actions = []
+
+        act = tb.addAction(self._make_toolbar_icon("increment"), "")
+        act.setToolTip("Increment  (+)")
+        act.triggered.connect(self.viewer.increment_selection)
+        edit_actions.append(act)
+
+        act = tb.addAction(self._make_toolbar_icon("decrement"), "")
+        act.setToolTip("Decrement  (\u2212)")
+        act.triggered.connect(self.viewer.decrement_selection)
+        edit_actions.append(act)
+
+        tb.addSeparator()
+
+        act = tb.addAction(self._make_toolbar_icon("add"), "")
+        act.setToolTip("Add to Data...")
+        act.triggered.connect(self.viewer.add_to_selection)
+        edit_actions.append(act)
+
+        act = tb.addAction(self._make_toolbar_icon("multiply"), "")
+        act.setToolTip("Multiply Data...  (*)")
+        act.triggered.connect(self.viewer.multiply_selection)
+        edit_actions.append(act)
+
+        act = tb.addAction(self._make_toolbar_icon("set_value"), "")
+        act.setToolTip("Set Value...  (=)")
+        act.triggered.connect(self.viewer.set_value_selection)
+        edit_actions.append(act)
+
+        tb.addSeparator()
+
+        act = tb.addAction(self._make_toolbar_icon("interp_v"), "")
+        act.setToolTip("Interpolate Vertically  (V)")
+        act.triggered.connect(self.viewer.interpolate_vertical)
+        edit_actions.append(act)
+
+        act = tb.addAction(self._make_toolbar_icon("interp_h"), "")
+        act.setToolTip("Interpolate Horizontally  (H)")
+        act.triggered.connect(self.viewer.interpolate_horizontal)
+        edit_actions.append(act)
+
+        act = tb.addAction(self._make_toolbar_icon("interp_2d"), "")
+        act.setToolTip("Interpolate 2D  (B)")
+        act.triggered.connect(self.viewer.interpolate_2d)
+        edit_actions.append(act)
+
+        act = tb.addAction(self._make_toolbar_icon("smooth"), "")
+        act.setToolTip("Smooth Selection  (S)")
+        act.triggered.connect(self.viewer.smooth_selection)
+        edit_actions.append(act)
+
+        # Disable edit actions in diff mode
+        if self._diff_mode:
+            for a in edit_actions:
+                a.setEnabled(False)
+
+        # --- View actions ---
+        if self.table.type != TableType.ONE_D:
+            tb.addSeparator()
+            self._tb_graph_action = tb.addAction(
+                self._make_toolbar_icon("graph"), "")
+            self._tb_graph_action.setToolTip("Show Graph  (G)")
+            self._tb_graph_action.setCheckable(True)
+            self._tb_graph_action.triggered.connect(self._toggle_graph)
+        else:
+            self._tb_graph_action = None
+
+    def _make_toolbar_icon(self, name: str):
+        """Create a crisp toolbar icon by name using QPainter"""
+        s = 20
+        dpr = self.devicePixelRatioF()
+        pm = QPixmap(int(s * dpr), int(s * dpr))
+        pm.setDevicePixelRatio(dpr)
+        pm.fill(Qt.transparent)
+
+        p = QPainter(pm)
+        p.setRenderHint(QPainter.Antialiasing)
+        c = self.palette().windowText().color()
+        pen = QPen(c, 1.6, Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin)
+        p.setPen(pen)
+
+        if name == "copy":
+            # Clipboard with text lines
+            p.drawRect(3, 4, 14, 14)
+            p.drawRect(7, 1, 6, 5)
+            p.drawLine(6, 9, 14, 9)
+            p.drawLine(6, 12, 14, 12)
+            p.drawLine(6, 15, 11, 15)
+
+        elif name == "export":
+            # Down arrow into tray
+            p.drawLine(10, 2, 10, 11)
+            p.drawLine(7, 8, 10, 11)
+            p.drawLine(13, 8, 10, 11)
+            p.drawLine(3, 13, 3, 18)
+            p.drawLine(3, 18, 17, 18)
+            p.drawLine(17, 18, 17, 13)
+
+        elif name == "increment":
+            # Bold plus
+            p.setPen(QPen(c, 2.0, Qt.SolidLine, Qt.RoundCap))
+            p.drawLine(10, 4, 10, 16)
+            p.drawLine(4, 10, 16, 10)
+
+        elif name == "decrement":
+            # Bold minus
+            p.setPen(QPen(c, 2.0, Qt.SolidLine, Qt.RoundCap))
+            p.drawLine(4, 10, 16, 10)
+
+        elif name == "add":
+            # Circled plus
+            p.drawEllipse(2, 2, 16, 16)
+            p.drawLine(10, 6, 10, 14)
+            p.drawLine(6, 10, 14, 10)
+
+        elif name == "multiply":
+            # Asterisk (three lines through center)
+            p.setPen(QPen(c, 1.8, Qt.SolidLine, Qt.RoundCap))
+            p.drawLine(10, 4, 10, 16)
+            p.drawLine(5, 7, 15, 13)
+            p.drawLine(15, 7, 5, 13)
+
+        elif name == "set_value":
+            # Equals sign
+            p.setPen(QPen(c, 2.0, Qt.SolidLine, Qt.RoundCap))
+            p.drawLine(4, 8, 16, 8)
+            p.drawLine(4, 12, 16, 12)
+
+        elif name == "interp_v":
+            # Vertical double-headed arrow
+            p.drawLine(10, 3, 10, 17)
+            p.drawLine(7, 6, 10, 3)
+            p.drawLine(13, 6, 10, 3)
+            p.drawLine(7, 14, 10, 17)
+            p.drawLine(13, 14, 10, 17)
+
+        elif name == "interp_h":
+            # Horizontal double-headed arrow
+            p.drawLine(3, 10, 17, 10)
+            p.drawLine(6, 7, 3, 10)
+            p.drawLine(6, 13, 3, 10)
+            p.drawLine(14, 7, 17, 10)
+            p.drawLine(14, 13, 17, 10)
+
+        elif name == "interp_2d":
+            # 2x2 grid
+            p.drawRect(3, 3, 14, 14)
+            p.drawLine(10, 3, 10, 17)
+            p.drawLine(3, 10, 17, 10)
+
+        elif name == "smooth":
+            # S-curve
+            path = QPainterPath()
+            path.moveTo(3, 14)
+            path.cubicTo(7, 2, 13, 18, 17, 6)
+            p.setBrush(Qt.NoBrush)
+            p.drawPath(path)
+
+        elif name == "graph":
+            # Bar chart
+            p.setPen(QPen(c, 3.0, Qt.SolidLine, Qt.FlatCap))
+            p.drawLine(4, 17, 4, 12)
+            p.drawLine(8, 17, 8, 7)
+            p.drawLine(12, 17, 12, 10)
+            p.drawLine(16, 17, 16, 4)
+            p.setPen(QPen(c, 1.4, Qt.SolidLine, Qt.RoundCap))
+            p.drawLine(2, 18, 18, 18)
+
+        p.end()
+        return QIcon(pm)
+
     def _on_toggle_diff_highlights(self):
         """Toggle diff highlighting visibility"""
         self.viewer.toggle_diff_highlights()
@@ -350,6 +571,8 @@ class TableViewerWindow(QMainWindow):
             self.graph_widget.setMaximumWidth(0)
             self.graph_widget.hide()
             self.graph_action.setChecked(False)
+            if self._tb_graph_action:
+                self._tb_graph_action.setChecked(False)
 
             # Resize window back to table-only size
             if self._table_only_size:
@@ -367,6 +590,8 @@ class TableViewerWindow(QMainWindow):
             self.graph_widget.setMaximumWidth(16777215)  # QWIDGETSIZE_MAX
             self.graph_widget.show()
             self.graph_action.setChecked(True)
+            if self._tb_graph_action:
+                self._tb_graph_action.setChecked(True)
 
             # Calculate new width based on saved table-only size
             table_width = self._table_only_size.width()
@@ -515,8 +740,10 @@ class TableViewerWindow(QMainWindow):
         if self.viewer.x_axis_label.isVisible():
             content_h += self.viewer.x_axis_label.sizeHint().height()
 
-        # Menu bar
+        # Menu bar + toolbar
         content_h += self.menuBar().sizeHint().height()
+        if hasattr(self, '_toolbar'):
+            content_h += self._toolbar.sizeHint().height()
 
         # Screen limits — availableGeometry() excludes the OS taskbar.
         # Subtract frame height (title bar + borders) so the on-screen
