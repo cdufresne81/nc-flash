@@ -11,10 +11,10 @@ from pathlib import Path
 
 from PySide6.QtWidgets import (
     QMainWindow, QVBoxLayout, QHBoxLayout, QWidget, QApplication,
-    QSplitter, QFrame, QMessageBox
+    QSplitter, QMessageBox
 )
 from PySide6.QtCore import Qt, Signal, QTimer
-from PySide6.QtGui import QKeySequence, QShortcut
+from PySide6.QtGui import QColor, QIcon, QKeySequence, QPainter, QPen, QPixmap, QShortcut
 
 from ..utils.constants import APP_NAME
 
@@ -62,7 +62,8 @@ class TableViewerWindow(QMainWindow):
     def __init__(self, table: Table, data: dict, rom_definition: RomDefinition,
                  rom_path: str = None, parent=None,
                  modified_cells_dict: dict = None, original_values_dict: dict = None,
-                 diff_mode: bool = False, diff_base_data: dict = None):
+                 diff_mode: bool = False, diff_base_data: dict = None,
+                 bg_color: QColor = None):
         """
         Initialize table viewer window
 
@@ -76,6 +77,7 @@ class TableViewerWindow(QMainWindow):
             original_values_dict: Shared dict with original table values (for smart border removal)
             diff_mode: If True, show diff highlighting (read-only viewing)
             diff_base_data: Base version data to compare against in diff mode
+            bg_color: Background tint color for this ROM (None = default gray)
         """
         super().__init__(parent)
 
@@ -95,17 +97,22 @@ class TableViewerWindow(QMainWindow):
             Qt.WindowTitleHint
         )
 
-        # Set window properties
-        title = f"{table.name} ({table.address}) - {APP_NAME}"
+        # Set window properties - use ROM filename instead of app name
+        rom_label = Path(rom_path).stem if rom_path else APP_NAME
+        title = f"{table.name} ({table.address}) - {rom_label}"
         if diff_mode:
-            title = f"{table.name} ({table.address}) (Changes) - {APP_NAME}"
+            title = f"{table.name} ({table.address}) (Changes) - {rom_label}"
         self.setWindowTitle(title)
+
+        # Colored icon in the title bar to identify which ROM this table belongs to
+        self._rom_color = bg_color
+        self._apply_color_icon(bg_color)
 
         # Create central widget with minimal margins
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
 
-        # Match empty areas (e.g. beyond table cells) to the window background
+        # Match empty areas to window background (no per-ROM tint)
         win_color = central_widget.palette().window().color().name()
         central_widget.setStyleSheet(f"background-color: {win_color};")
 
@@ -597,6 +604,23 @@ class TableViewerWindow(QMainWindow):
         main_window = self.parent()
         if main_window and hasattr(main_window, 'table_undo_manager'):
             main_window.table_undo_manager.undo_group.redo()
+
+    def _apply_color_icon(self, color):
+        """Set a colored square with border as the window icon to identify the ROM."""
+        size = 16
+        pixmap = QPixmap(size, size)
+        fill = color if color else self.palette().window().color()
+        pixmap.fill(fill)
+        painter = QPainter(pixmap)
+        painter.setPen(QPen(QColor(80, 80, 80), 1))
+        painter.drawRect(0, 0, size - 1, size - 1)
+        painter.end()
+        self.setWindowIcon(QIcon(pixmap))
+
+    def set_rom_color(self, color: QColor):
+        """Update the ROM color indicator for this window."""
+        self._rom_color = color
+        self._apply_color_icon(color)
 
     def closeEvent(self, event):
         """Handle window close event - deactivate undo stack and clean up resources"""
