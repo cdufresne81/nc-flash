@@ -4,10 +4,10 @@ Application Settings Management
 Handles loading, saving, and accessing application settings using QSettings.
 """
 
-from pathlib import Path
 from PySide6.QtCore import QByteArray, QSettings
 
 from .constants import MAX_RECENT_FILES
+from .paths import get_app_root
 
 
 class AppSettings:
@@ -25,7 +25,7 @@ class AppSettings:
             str: Path to definitions directory (defaults to ./definitions relative to app)
         """
         # Default to 'definitions' directory in the application root
-        default_path = str(Path(__file__).resolve().parent.parent.parent / "definitions")
+        default_path = str(get_app_root() / "definitions")
         return self.settings.value("paths/definitions_directory", default_path)
 
     def set_definitions_directory(self, path: str):
@@ -167,7 +167,7 @@ class AppSettings:
             str: Path to .map file, or empty string for built-in gradient
         """
         # Default to the built-in default.map in the colormaps directory
-        default_path = str(Path(__file__).parent.parent.parent / "colormaps" / "default.map")
+        default_path = str(get_app_root() / "colormaps" / "default.map")
         return self.settings.value("display/colormap_path", default_path)
 
     def set_colormap_path(self, path: str):
@@ -186,7 +186,7 @@ class AppSettings:
         Returns:
             str: Path to directory containing .map files
         """
-        default_path = str(Path(__file__).parent.parent.parent / "colormaps")
+        default_path = str(get_app_root() / "colormaps")
         return self.settings.value("paths/colormap_directory", default_path)
 
     def set_colormap_directory(self, path: str):
@@ -205,7 +205,7 @@ class AppSettings:
         Returns:
             str: Path to directory where projects are stored
         """
-        default_path = str(Path(__file__).parent.parent.parent / "projects")
+        default_path = str(get_app_root() / "projects")
         return self.settings.value("paths/projects_directory", default_path)
 
     def set_projects_directory(self, path: str):
@@ -242,6 +242,24 @@ class AppSettings:
             categories: List of category name strings
         """
         self.settings.setValue("display/toggle_categories", categories)
+
+    def get_romdrop_executable_path(self) -> str:
+        """
+        Get the configured RomDrop executable path
+
+        Returns:
+            str: Path to romdrop.exe, or empty string if not configured
+        """
+        return self.settings.value("tools/romdrop_executable_path", "")
+
+    def set_romdrop_executable_path(self, path: str):
+        """
+        Set the RomDrop executable path
+
+        Args:
+            path: Path to romdrop.exe
+        """
+        self.settings.setValue("tools/romdrop_executable_path", path)
 
 
 # Global settings instance

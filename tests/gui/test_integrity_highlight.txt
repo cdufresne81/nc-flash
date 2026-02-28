@@ -14,3 +14,4 @@ set 99
 wait 500
 # Take screenshot - bug: 0xc92cc is highlighted pink instead of 0xf8618
 screenshot integrity_highlight_bug_163500 main
+close_table

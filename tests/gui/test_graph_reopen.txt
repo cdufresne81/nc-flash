@@ -1,7 +1,13 @@
 load_rom examples/lf9veb.bin
 open_table "CC Correction Sensitivity - 1st Gear"
+wait 300
 open_graph
+wait 500
 screenshot cc_correction_graph_first
 close_graph
+wait 300
 open_graph
+wait 500
 screenshot cc_correction_graph_second
+close_graph
+close_table

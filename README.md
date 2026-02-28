@@ -1,6 +1,12 @@
+<p align="center">
+  <img src="assets/NCRomEditor.png" alt="NC ROM Editor" width="128">
+</p>
+
 # NC ROM Editor
 
 [![GitHub](https://img.shields.io/badge/GitHub-NCRomEditor-blue?logo=github)](https://github.com/cdufresne81/NCRomEditor)
+
+> **Notice:** This project was built with AI assistance (vibe coded). Modifying and flashing ECU software carries real risk — incorrect tunes can damage your engine, ECU, or other vehicle components. The author assumes no responsibility for any damage to your vehicle, hardware, or any other consequence arising from the use of this software. **Use entirely at your own risk.** Always keep backups of your stock ROM and understand what you are changing before flashing.
 
 An open-source ROM editor for NC Miata (MX-5) ECUs, designed to replace the discontinued EcuFlash for ROM editing tasks.
 
@@ -40,47 +46,44 @@ python main.py
 ### Core Features
 - Automatic ROM ID detection and XML definition matching
 - Read NC Miata ECU ROM binary files
-- Browse 511 calibration tables organized by category
 - View 1D, 2D, and 3D tables with proper axis labels
 - Save modified ROM files
 - ROM ID verification
 
+### Table Browser
+- Browse tables organized by category
+- Search tables by category, name or address 
+- Show only modified tables.
+
 ### Table Editing
 - Direct cell value editing with validation
+- Undo/redo support (`Ctrl+Z`/`Ctrl+Y`)
 - Add/Subtract values to selected cells
 - Multiply selected cells by a factor
 - Set all selected cells to a specific value
 - Increment/Decrement values (`+`/`-` keys)
 - Smoothing filter for selected cells (`S` key)
-
-### Interpolation
 - Vertical interpolation (`V` key)
 - Horizontal interpolation (`H` key)
 - 2D bilinear interpolation for 3D tables (`B` key)
 
-### Clipboard & Export
+### Table Clipboard & Export
 - Copy/paste cells (`Ctrl+C`/`Ctrl+V`)
 - Copy entire table to clipboard for Excel (`Ctrl+Shift+C`)
 - Export table to CSV (`Ctrl+E`)
 
-### Undo/Redo
-- Full undo/redo support (`Ctrl+Z`/`Ctrl+Y`)
-- Individual cell and bulk operation tracking
-- Up to 100 undo levels
-
-### Visualization
+### Table Visualization
 - Interactive 3D surface plot for 3D tables
 - 2D line graph for 2D tables
 - Toggle graph panel (`G` key)
 - Cell selection highlighting on graph
 - Configurable color maps
 
-### Project Management
-- Create and load projects with version history
-- Git-like commit system with messages
-- Snapshot creation with version numbering
-- Table diff viewer to compare changes between versions
-- Modified cell tracking with visual indicators
+### ECU Flashing
+- One-click flash via RomDrop integration (`Ctrl+Shift+F`)
+- Safety warning dialog with pre-flash checklist (dynamic flash mode only)
+- Auto-saves unsaved changes before flashing
+- Configurable RomDrop executable path in Settings → Tools
 
 ### ROM Comparison
 - Side-by-side comparison of two ROMs (`Ctrl+Shift+D`)
@@ -92,16 +95,16 @@ python main.py
 
 ### User Interface
 - Multi-ROM support with tabs
+- Per-ROM color swatches on tabs to easily identify which ROM is which when multiple files are open
 - Multi-window table viewers
 - Recent files list
-- Session restoration
+- Session restoration (automatically reopen last ROM)
 - Configurable settings (font size, color maps)
-- Activity log console
+- Verbose activity log console
 - Keyboard shortcuts for all major operations
-- Per-ROM color coding with tab swatches
 
 ### In Development
-- Automatic ECU checksum calculation
+- Projects management
 
 ## Keyboard Shortcuts
 
@@ -122,6 +125,7 @@ python main.py
 | `G` | Toggle graph panel |
 | `Ctrl+O` | Open ROM file |
 | `Ctrl+Shift+D` | Compare open ROMs |
+| `Ctrl+Shift+F` | Flash ROM to ECU via RomDrop |
 
 ## Tech Stack
 
@@ -180,7 +184,7 @@ nc-rom-editor/
 4. **Edit Values:** Click cells to edit, use shortcuts for bulk operations
 5. **Visualize:** Press `G` to toggle 3D/2D graph view
 6. **Save ROM:** File → Save ROM or Save ROM As...
-7. **Flash to ECU:** Use RomDrop to flash the modified ROM
+7. **Flash to ECU:** Tools → Flash ROM to ECU (or `Ctrl+Shift+F`) — launches RomDrop with your ROM file
 
 ### Using Projects (Experimental)
 
@@ -249,8 +253,8 @@ Tests run automatically on GitHub Actions for:
 This version includes full table editing, project management with version history, interactive graph visualization, ROM comparison tool, and a polished toolbar-driven UI.
 
 **Next Priorities:**
-- Automatic ECU checksum calculation
-- Windows standalone packaging (PyInstaller)
+- Project management
+- Windows installer (Inno Setup)
 
 ## Contributing
 
@@ -258,8 +262,5 @@ Contributions welcome! This is an open-source project to preserve and improve up
 
 ## License
 
-TBD
+This project is licensed under the [GNU General Public License v3.0](LICENSE).
 
-## Disclaimer
-
-Modifying your ECU can damage your vehicle or violate emissions regulations. Use this software at your own risk. Always keep backups of your stock ROM.

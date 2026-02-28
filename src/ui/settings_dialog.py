@@ -55,6 +55,7 @@ class SettingsDialog(QDialog):
         self.create_general_tab()
         self.create_appearance_tab()
         self.create_editor_tab()
+        self.create_tools_tab()
 
         # Dialog buttons (OK, Cancel, Apply)
         button_box = QDialogButtonBox(
@@ -200,6 +201,38 @@ class SettingsDialog(QDialog):
 
         self.tabs.addTab(tab, "Editor")
 
+    def create_tools_tab(self):
+        """Create the Tools settings tab"""
+        tab = QWidget()
+        layout = QVBoxLayout()
+        tab.setLayout(layout)
+
+        # RomDrop group
+        romdrop_group = QGroupBox("RomDrop")
+        romdrop_layout = QFormLayout()
+        romdrop_group.setLayout(romdrop_layout)
+
+        # RomDrop executable path
+        romdrop_path_layout = QHBoxLayout()
+        self.romdrop_path_edit = QLineEdit()
+        self.romdrop_path_edit.setPlaceholderText("Path to romdrop.exe")
+        romdrop_path_layout.addWidget(self.romdrop_path_edit)
+
+        browse_romdrop_button = QPushButton("Browse...")
+        browse_romdrop_button.clicked.connect(self.browse_romdrop_executable)
+        romdrop_path_layout.addWidget(browse_romdrop_button)
+
+        romdrop_layout.addRow("RomDrop executable:", romdrop_path_layout)
+
+        romdrop_help = QLabel("Path to romdrop.exe for one-click ECU flashing")
+        romdrop_help.setStyleSheet("color: gray; font-size: 10px;")
+        romdrop_layout.addRow("", romdrop_help)
+
+        layout.addWidget(romdrop_group)
+        layout.addStretch()
+
+        self.tabs.addTab(tab, "Tools")
+
     def load_settings(self):
         """Load current settings into the UI"""
         # Load projects directory
@@ -227,6 +260,10 @@ class SettingsDialog(QDialog):
         # Load toggle categories setting
         toggle_cats = self.settings.get_toggle_categories()
         self.dtc_toggle_checkbox.setChecked("DTC - Activation Flags" in toggle_cats)
+
+        # Load RomDrop executable path
+        romdrop_path = self.settings.get_romdrop_executable_path()
+        self.romdrop_path_edit.setText(romdrop_path)
 
     def browse_projects_directory(self):
         """Open directory browser for projects directory"""
@@ -277,6 +314,22 @@ class SettingsDialog(QDialog):
         if file_path:
             self.colormap_path_edit.setText(file_path)
 
+    def browse_romdrop_executable(self):
+        """Open file browser for RomDrop executable"""
+        current_path = self.romdrop_path_edit.text()
+        if not current_path:
+            current_path = str(Path.cwd())
+
+        file_path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Select RomDrop Executable",
+            current_path,
+            "Executable Files (*.exe);;All Files (*)"
+        )
+
+        if file_path:
+            self.romdrop_path_edit.setText(file_path)
+
     def apply_settings(self):
         """Apply settings without closing the dialog"""
         # Save projects directory
@@ -307,6 +360,10 @@ class SettingsDialog(QDialog):
         if self.dtc_toggle_checkbox.isChecked():
             toggle_cats.append("DTC - Activation Flags")
         self.settings.set_toggle_categories(toggle_cats)
+
+        # Save RomDrop executable path
+        romdrop_path = self.romdrop_path_edit.text().strip()
+        self.settings.set_romdrop_executable_path(romdrop_path)
 
         # Emit signal that settings changed
         self.settings_changed.emit()
