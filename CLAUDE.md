@@ -86,6 +86,7 @@ When ending a work session, complete ALL steps below. Work is NOT complete until
    - Apply **Incremental notes** rule for any missed completed work
    - Verify "Recent Completed Work" is complete (incremental notes should have captured most changes - only add missing items, no duplicates)
    - Sanity check `README.md` against recent work - add new features, remove references to deleted functionality
+   - Update `CHANGELOG.md` — add new features/fixes/changes to the `[Unreleased]` section (create it if missing)
 
 5. **Hand off** - Provide context summary for next session
 
