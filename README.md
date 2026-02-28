@@ -40,47 +40,34 @@ python main.py
 ### Core Features
 - Automatic ROM ID detection and XML definition matching
 - Read NC Miata ECU ROM binary files
-- Browse 511 calibration tables organized by category
+- Search and browse tables organized by category
 - View 1D, 2D, and 3D tables with proper axis labels
 - Save modified ROM files
 - ROM ID verification
 
 ### Table Editing
 - Direct cell value editing with validation
+- Undo/redo support (`Ctrl+Z`/`Ctrl+Y`)
 - Add/Subtract values to selected cells
 - Multiply selected cells by a factor
 - Set all selected cells to a specific value
 - Increment/Decrement values (`+`/`-` keys)
 - Smoothing filter for selected cells (`S` key)
-
-### Interpolation
 - Vertical interpolation (`V` key)
 - Horizontal interpolation (`H` key)
 - 2D bilinear interpolation for 3D tables (`B` key)
 
-### Clipboard & Export
+### Table Clipboard & Export
 - Copy/paste cells (`Ctrl+C`/`Ctrl+V`)
 - Copy entire table to clipboard for Excel (`Ctrl+Shift+C`)
 - Export table to CSV (`Ctrl+E`)
 
-### Undo/Redo
-- Full undo/redo support (`Ctrl+Z`/`Ctrl+Y`)
-- Individual cell and bulk operation tracking
-- Up to 100 undo levels
-
-### Visualization
+### Table Visualization
 - Interactive 3D surface plot for 3D tables
 - 2D line graph for 2D tables
 - Toggle graph panel (`G` key)
 - Cell selection highlighting on graph
 - Configurable color maps
-
-### Project Management
-- Create and load projects with version history
-- Git-like commit system with messages
-- Snapshot creation with version numbering
-- Table diff viewer to compare changes between versions
-- Modified cell tracking with visual indicators
 
 ### ROM Comparison
 - Side-by-side comparison of two ROMs (`Ctrl+Shift+D`)
@@ -101,7 +88,7 @@ python main.py
 - Per-ROM color coding with tab swatches
 
 ### In Development
-- Automatic ECU checksum calculation
+- Projects management
 
 ## Keyboard Shortcuts
 
@@ -249,7 +236,7 @@ Tests run automatically on GitHub Actions for:
 This version includes full table editing, project management with version history, interactive graph visualization, ROM comparison tool, and a polished toolbar-driven UI.
 
 **Next Priorities:**
-- Automatic ECU checksum calculation
+- Project management.
 - Windows standalone packaging (PyInstaller)
 
 ## Contributing
@@ -258,7 +245,7 @@ Contributions welcome! This is an open-source project to preserve and improve up
 
 ## License
 
-TBD
+This project is licensed under the [GNU General Public License v3.0](LICENSE).
 
 ## Disclaimer
 
