@@ -102,6 +102,7 @@ python main.py
 - Configurable settings (font size, color maps)
 - Verbose activity log console
 - Keyboard shortcuts for all major operations
+- Cross-platform: Windows, Linux, and macOS
 
 ### In Development
 - Projects management
