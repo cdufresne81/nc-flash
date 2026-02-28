@@ -31,7 +31,7 @@ python main.py
 
 ### Test the Application
 1. Run the application
-2. File → Open ROM → Select `examples/lf9veb.bin`
+2. File → Open → Select `examples/lf9veb.bin`
 3. Browse tables in the left panel
 4. Click any table to view data
 
@@ -120,6 +120,7 @@ python main.py
 | `B` | Bilinear interpolation |
 | `S` | Smooth selection |
 | `G` | Toggle graph panel |
+| `Ctrl+O` | Open ROM file |
 | `Ctrl+Shift+D` | Compare open ROMs |
 
 ## Tech Stack
@@ -173,7 +174,7 @@ nc-rom-editor/
 
 ## Usage
 
-1. **Load ROM:** File → Open ROM → Select `examples/lf9veb.bin`
+1. **Load ROM:** File → Open → Select `examples/lf9veb.bin`
 2. **Browse Tables:** Expand categories in the left panel (e.g., "Spark Target - Base")
 3. **View Table:** Click any table to see its data with axis values
 4. **Edit Values:** Click cells to edit, use shortcuts for bulk operations
@@ -181,9 +182,9 @@ nc-rom-editor/
 6. **Save ROM:** File → Save ROM or Save ROM As...
 7. **Flash to ECU:** Use RomDrop to flash the modified ROM
 
-### Using Projects
+### Using Projects (Experimental)
 
-Projects provide version control for your tuning work:
+Projects provide version control for your tuning work. This feature is behind a feature flag — launch with `--enable-projects` to access it (or use `run-dev.bat`).
 
 1. **Create Project:** File → New Project → Select a ROM file
 2. **Make Changes:** Edit tables as needed
