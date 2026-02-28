@@ -23,6 +23,9 @@ See `docs/CODE_AUDIT_REPORT.md` for full details and batched action plan.
 ### Distribution
 - **Windows packaging** - Use PyInstaller to package as standalone .exe, test on clean Windows system
 
+## Recent Completed Work (Feb 28, 2026) - Unified Open Action
+- **Unified "Open" action** — Replaced separate "Open Project..." (folder picker) and "Open ROM..." (file picker) menu items with a single "Open..." (Ctrl+O) that shows a file picker. If the selected ROM's parent directory is a project folder (`project.json` present), opens as project via `open_project_path()`; otherwise opens as standalone ROM. Toolbar button updated to match. Removed `open_project()` from `ProjectMixin`.
+
 ## Recent Completed Work (Feb 27, 2026) - Project Management UI Fixes
 - **ROM comparison NaN filter** — `_compute_diffs()` now skips tables where both sides (or a one-sided table) have all-NaN values, preventing unpatched ROM tables from cluttering the comparison sidebar.
 - **Session restore for projects** — Session save uses `document.project_path` to detect project tabs; stores `project:<path>` entries; restore calls `open_project_path()` to reopen with full project context (`[P]` prefix, history, etc.).

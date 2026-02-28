@@ -77,31 +77,18 @@ class ProjectMixin:
                     f"Unexpected error creating project:\n{type(e).__name__}: {e}"
                 )
 
-    def open_project(self):
-        """Open an existing project via folder dialog"""
-        project_path = QFileDialog.getExistingDirectory(
-            self,
-            "Open Project Folder",
-            str(Path.home())
-        )
-
-        if not project_path:
-            return
-
-        # Check if it's a valid project folder
-        if not ProjectManager.is_project_folder(project_path):
-            QMessageBox.warning(
-                self,
-                "Invalid Project",
-                "The selected folder is not a valid NC ROM Editor project.\n\n"
-                "A project folder must contain a project.json file."
+    def open_project_path(self, project_path: str):
+        """Open a project from a given path (used by open_file, session restore, recent files)"""
+        # Prevent opening the same project twice
+        existing = self._find_open_tab(project_path=project_path)
+        if existing >= 0:
+            self.tab_widget.setCurrentIndex(existing)
+            QMessageBox.information(
+                self, "Already Open",
+                f"This project is already open.\n\n{Path(project_path).name}"
             )
             return
 
-        self.open_project_path(project_path)
-
-    def open_project_path(self, project_path: str):
-        """Open a project from a given path (used by open_project dialog and session restore)"""
         try:
             # Open the project
             project = self.project_manager.open_project(project_path)

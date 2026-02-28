@@ -287,13 +287,9 @@ class MainWindow(QMainWindow, RecentFilesMixin, ProjectMixin, SessionMixin):
         new_project_action = self.file_menu.addAction("New Project...")
         new_project_action.triggered.connect(self.new_project)
 
-        open_project_action = self.file_menu.addAction("Open Project...")
-        open_project_action.triggered.connect(self.open_project)
-
-        self.file_menu.addSeparator()
-
-        open_action = self.file_menu.addAction("Open ROM...")
-        open_action.triggered.connect(self.open_rom)
+        open_action = self.file_menu.addAction("Open...")
+        open_action.setShortcut("Ctrl+O")
+        open_action.triggered.connect(self.open_file)
 
         save_action = self.file_menu.addAction("Save")
         save_action.setShortcut("Ctrl+S")
@@ -392,8 +388,8 @@ class MainWindow(QMainWindow, RecentFilesMixin, ProjectMixin, SessionMixin):
         """)
 
         act = tb.addAction(self._make_icon("open"), "")
-        act.setToolTip("Open ROM")
-        act.triggered.connect(self.open_rom)
+        act.setToolTip("Open  (Ctrl+O)")
+        act.triggered.connect(self.open_file)
 
         act = tb.addAction(self._make_icon("save"), "")
         act.setToolTip("Save  (Ctrl+S)")
@@ -511,6 +507,21 @@ class MainWindow(QMainWindow, RecentFilesMixin, ProjectMixin, SessionMixin):
                 return doc
         logger.warning(f"No document found for rom_path={rom_path}")
         return None
+
+    def _find_open_tab(self, *, rom_path=None, project_path=None):
+        """Find an already-open tab by ROM file path or project path.
+
+        Returns the tab index, or -1 if not found.
+        """
+        for i in range(self.tab_widget.count()):
+            doc = self.tab_widget.widget(i)
+            if not hasattr(doc, 'rom_path'):
+                continue
+            if rom_path and Path(doc.rom_path) == Path(rom_path):
+                return i
+            if project_path and getattr(doc, 'project_path', None) and Path(doc.project_path) == Path(project_path):
+                return i
+        return -1
 
     def close_tab(self, index: int):
         """
@@ -666,16 +677,21 @@ class MainWindow(QMainWindow, RecentFilesMixin, ProjectMixin, SessionMixin):
 
     # ========== ROM I/O ==========
 
-    def open_rom(self):
-        """Open a ROM file via file dialog"""
+    def open_file(self):
+        """Open a ROM file or project via file dialog."""
         file_path, _ = QFileDialog.getOpenFileName(
             self,
             "Open ROM File",
             "",
             "ROM Files (*.bin *.rom);;All Files (*)"
         )
+        if not file_path:
+            return
 
-        if file_path:
+        parent = Path(file_path).parent
+        if ProjectManager.is_project_folder(str(parent)):
+            self.open_project_path(str(parent))
+        else:
             self._open_rom_file(file_path)
 
     def _open_rom_file(self, file_path: str):
@@ -685,6 +701,16 @@ class MainWindow(QMainWindow, RecentFilesMixin, ProjectMixin, SessionMixin):
         Args:
             file_path: Full path to ROM file
         """
+        # Prevent opening the same ROM twice
+        existing = self._find_open_tab(rom_path=file_path)
+        if existing >= 0:
+            self.tab_widget.setCurrentIndex(existing)
+            QMessageBox.information(
+                self, "Already Open",
+                f"This ROM is already open.\n\n{Path(file_path).name}"
+            )
+            return
+
         try:
             logger.info(f"Opening ROM file: {file_path}")
             self.statusBar().showMessage(f"Detecting ROM ID...")
