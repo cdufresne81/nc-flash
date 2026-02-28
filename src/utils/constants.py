@@ -6,7 +6,7 @@ Centralized location for all magic numbers and configuration constants.
 
 # Application metadata
 APP_NAME = "NC ROM Editor"
-APP_VERSION = "0.1.0"
+APP_VERSION = "1.2.0"
 APP_VERSION_STRING = f"v{APP_VERSION}"
 APP_DESCRIPTION = "An open-source ROM editor for NC Miata ECUs"
 
