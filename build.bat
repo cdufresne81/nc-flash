@@ -50,7 +50,7 @@ if defined ISCC (
     )
     echo.
     echo === Installer Build Complete ===
-    echo Installer: Output\NCRomEditor-1.2.0-Setup.exe
+    echo Installer: Output\NCRomEditor-1.3.0-Setup.exe
 ) else (
     echo Skipping installer: Inno Setup 6 not found.
     echo Install from https://jrsoftware.org/isinfo.php to build the installer.

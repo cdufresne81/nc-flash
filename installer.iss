@@ -3,7 +3,7 @@
 ; Build:    iscc installer.iss
 
 #define MyAppName "NC ROM Editor"
-#define MyAppVersion "1.2.0"
+#define MyAppVersion "1.3.0"
 #define MyAppPublisher "cdufresne81"
 #define MyAppURL "https://github.com/cdufresne81/NCRomEditor"
 #define MyAppExeName "NCRomEditor.exe"
