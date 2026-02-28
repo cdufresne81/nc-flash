@@ -16,14 +16,49 @@ See `docs/CODE_AUDIT_REPORT.md` for full details and batched action plan.
 
 ### Features
 - ~~**Ctrl+S save** - DONE: Unified save — commits if project open with changes, otherwise saves ROM~~
-- **ROM comparison tool** - Compare two ROM files (stock vs modified), highlight differences in tables and raw data
+- ~~**ROM comparison tool** - DONE: Side-by-side comparison window with table diff~~
+- ~~**Cross-definition ROM comparison** - DONE: Name-based table matching, per-ROM definitions, one-sided/shape-mismatch support~~
 - **Project/versioning system** - Full rewrite planned (current code excluded from audit)
 
 ### Distribution
 - **Windows packaging** - Use PyInstaller to package as standalone .exe, test on clean Windows system
 
+## Recent Completed Work (Feb 28, 2026) - Unified Open Action
+- **Unified "Open" action** — Replaced separate "Open Project..." (folder picker) and "Open ROM..." (file picker) menu items with a single "Open..." (Ctrl+O) that shows a file picker. If the selected ROM's parent directory is a project folder (`project.json` present), opens as project via `open_project_path()`; otherwise opens as standalone ROM. Toolbar button updated to match. Removed `open_project()` from `ProjectMixin`.
+
+## Recent Completed Work (Feb 27, 2026) - Project Management UI Fixes
+- **ROM comparison NaN filter** — `_compute_diffs()` now skips tables where both sides (or a one-sided table) have all-NaN values, preventing unpatched ROM tables from cluttering the comparison sidebar.
+- **Session restore for projects** — Session save uses `document.project_path` to detect project tabs; stores `project:<path>` entries; restore calls `open_project_path()` to reopen with full project context (`[P]` prefix, history, etc.).
+- **Project tab color swatch** — `open_project_path()` calls `_assign_rom_color()` and `_create_tab_color_button()` so project tabs get the same color swatch as standalone ROM tabs.
+- **Flat project structure** — Projects no longer create `history/` subfolder. `commits.json` and all snapshots live at project root. Backward compat: `_load_commits()` and `get_snapshot_path()` fall back to `history/` paths for old projects.
+- **v0/v1 project layout** — `create_project()` creates `v0_{romid}_original.bin` (pristine, never modified) and `v1_{romid}_working.bin` (editable copy). No more `original.bin` or `modified.bin`.
+- **New project gets [P] prefix** — `new_project()` now calls `open_project_path()` instead of `_open_rom_file()`, so newly created projects get the `[P]` tab prefix, color swatch, and recent files entry.
+- **Projects in recent files** — `open_project_path()` adds `project:<path>` to recent files. `RecentFilesMixin` displays them as `[P] folder_name` and opens via `open_project_path()`.
+- **RomDocument.project_path** — New attribute tracks project association per-document (used by session save and recent files).
+- **Fixed closeEvent MRO bug** — `SessionMixin.closeEvent` was shadowed by `QWidget.closeEvent` (C++ slot) in Python's MRO, meaning session data was *never* saved on app close. Renamed to `_handle_close()` with an explicit `MainWindow.closeEvent` override that delegates to it. Added MRO regression tests.
+- **Legacy session/recent data handling** — `_restore_session()` and `open_recent_file()` detect ROM files inside project folders (parent has `project.json`) and open them as projects. Covers stale QSettings data from before project-aware code.
+
 ## Environment Notes
-- Use `python3` not `python` (WSL2 environment lacks symlink)
+- Use `python` not `python3` (Windows environment)
+
+## Recent Completed Work (Feb 24, 2026) - Compare Window Fixes
+- **Cell border highlighting after compare copy** — `apply_compare_copy()` now updates `self.modified_cells[rom_path]` for both cell and axis changes, so `ModifiedCellDelegate` draws borders on copied cells. Also refreshes open table viewer windows via bulk `update_cell_value()` calls.
+- **Copy buttons moved between panels** — Copy table buttons (→| and |←) moved from the toolbar to a narrow centered column between the two table panels, vertically centered. Fixed-width 32px column in the QSplitter, non-collapsible.
+
+## Recent Completed Work (Feb 24, 2026) - Compare Window Enhancements
+- **Panel labels show ROM filenames** — Replaced generic "Original"/"Modified" labels above compare panels with actual ROM filenames.
+- **Copy table between ROMs** — Two toolbar buttons (→| and |←) to copy a table's values from one ROM to the other. Routes through `MainWindow.apply_compare_copy()` which uses the full edit pipeline: undo support, change tracker, modified indicator (*) on tab, pink table highlighting in browser, cell-level modification tracking. Confirmation dialog before copy. Disabled for one-sided tables and shape mismatches.
+- **Main window toolbar** — Added 4 quick-access buttons: Open ROM, Save, Compare, Settings. Programmatic QPainter icons (high-DPI aware).
+- **Tools menu** — Replaced single-item "Compare" menu with "Tools" menu.
+
+## Recent Completed Work (Feb 23, 2026) - Cross-Definition ROM Comparison
+- **Enabled cross-definition ROM comparison** — Removed the xmlid gate that blocked comparing ROMs with different definitions (e.g., NC1 vs NC2). `CompareWindow` now accepts two separate `RomDefinition` objects (one per ROM) and uses name-based table matching. Features: one-sided tables (A-only/B-only) shown with one panel populated and the other cleared, shape mismatches display each panel at native shape with all cells highlighted, sidebar labels include ◀/▶/≠ indicators, status bar shows context-appropriate messages. Each side uses its own definition for scaling, formatting, axis ranges, and flip flags — no cross-contamination. Window title shows both xmlids when definitions differ.
+
+## Recent Completed Work (Feb 23, 2026) - ROM Comparison Tool
+- **Added ROM comparison tool** — New `CompareWindow` (`src/ui/compare_window.py`) provides side-by-side table comparison between two open ROMs. Features: category tree sidebar listing modified tables with change counts, synchronized scrolling between original and modified panels, changed cells highlighted with gray border (matching `ModifiedCellDelegate` pattern), "Changed only" toggle that dims unchanged cells, keyboard navigation (Up/Down to switch tables, T to toggle, Esc to close). Window supports maximize. Compact "Original"/"Modified" labels above each table panel. Accessible via Compare > Compare Open ROMs (Ctrl+Shift+D). Supports 1D, 2D, and 3D table types with proper axis display, flip handling, and thermal gradient coloring. Spec at `docs/specs/ROM_COMPARISON_TOOL.md`, HTML mockups at `docs/mockups/`.
+
+## Recent Completed Work (Feb 22, 2026) - Table Viewer Toolbar
+- **Added action toolbar to table viewer window** — 12 quick-access buttons below the menu bar with programmatic QPainter icons (high-DPI aware). Grouped by function: File (clipboard, export CSV), Basic edits (increment, decrement), Value ops (add to data, multiply, set value), Interpolation (vertical, horizontal, 2D, smooth), View (graph toggle). Edit actions auto-disabled in diff mode. Graph toggle button syncs checked state with View menu. Toolbar height accounted for in auto-sizing.
 
 ## Recent Completed Work (Feb 10, 2026) - Table Viewer Auto-Size Fix
 - **Fixed table viewer window not showing all rows for 3D tables** — `_auto_size_window()` rewritten to use `header.length()` API instead of manual row/column iteration. Added one-row-height safety padding to prevent the last row from being clipped behind the horizontal scrollbar (the scrollbar `sizeHint()` underreports actual size on themed/high-DPI systems). Also subtracts 40px from available geometry for OS window frame. Verified on 1D, 2D, 3D, and large 3D tables.

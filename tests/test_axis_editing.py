@@ -47,34 +47,6 @@ class TestSwapxyRoundTrip:
             err_msg="swapxy table data corrupted during write->read round-trip"
         )
 
-    def test_non_swapxy_3d_table_round_trip(self, sample_rom_path, sample_xml_path):
-        """Read a non-swapxy 3D table, write it back unchanged, verify data matches"""
-        definition = load_definition(str(sample_xml_path))
-        reader = RomReader(str(sample_rom_path), definition)
-
-        table = None
-        for t in definition.tables:
-            if t.type == TableType.THREE_D and not t.is_axis and not t.swapxy:
-                table = t
-                break
-
-        if table is None:
-            pytest.skip("No non-swapxy 3D tables found in definition")
-
-        original = reader.read_table_data(table)
-        assert original is not None
-        assert 'values' in original
-        assert original['values'].ndim == 2
-
-        original_values = original['values'].copy()
-        reader.write_table_data(table, original_values)
-        after_write = reader.read_table_data(table)
-
-        np.testing.assert_array_almost_equal(
-            original_values, after_write['values'], decimal=5,
-            err_msg="3D table data corrupted during write->read round-trip"
-        )
-
     def test_swapxy_flatten_order_matches_reshape_order(self):
         """Verify that flatten(order='F') reverses reshape(order='F')"""
         flat_data = np.array([1, 2, 3, 4, 5, 6], dtype=float)

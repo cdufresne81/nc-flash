@@ -1,0 +1,373 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ROM Compare - Mockup 3: Unified Diff View</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; font-size: 13px; background: #f0f0f0; color: #222; display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
+
+  /* ── Toolbar ── */
+  .toolbar {
+    display: flex; align-items: center; gap: 6px;
+    padding: 4px 10px; background: #fff; border-bottom: 1px solid #c0c0c0;
+    min-height: 36px; flex-shrink: 0;
+  }
+  .toolbar .title { font-weight: 700; font-size: 13px; }
+  .toolbar .rom-pill {
+    display: inline-flex; align-items: center; gap: 4px;
+    padding: 2px 8px; border-radius: 12px; font-size: 11px; font-weight: 500;
+  }
+  .pill-original { background: #e8e8e8; color: #555; }
+  .pill-modified { background: #dce8f4; color: #2a5a8a; }
+  .pill-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+  .pill-original .pill-dot { background: #999; }
+  .pill-modified .pill-dot { background: #5a9fd4; }
+  .vs { color: #aaa; font-size: 11px; }
+  .spacer { flex: 1; }
+
+  .nav-group { display: flex; align-items: center; gap: 1px; }
+  .btn {
+    height: 28px; min-width: 28px; border: 1px solid transparent;
+    border-radius: 3px; background: transparent; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    color: #333; font-size: 12px; padding: 0 6px; gap: 4px;
+  }
+  .btn:hover { background: rgba(128,128,128,0.15); border-color: rgba(128,128,128,0.25); }
+  .btn:active { background: rgba(128,128,128,0.3); }
+  .btn svg { width: 14px; height: 14px; flex-shrink: 0; }
+  .btn.active { background: rgba(0,120,215,0.15); border-color: rgba(0,120,215,0.4); }
+  .nav-counter { font-size: 11px; color: #666; padding: 0 4px; }
+  .sep { width: 1px; height: 20px; background: #ddd; margin: 0 4px; }
+
+  /* Toggle */
+  .toggle-group { display: flex; align-items: center; gap: 5px; }
+  .toggle-label { font-size: 11px; color: #666; }
+  .toggle-switch { position: relative; width: 34px; height: 18px; cursor: pointer; }
+  .toggle-switch input { display: none; }
+  .toggle-track { position: absolute; inset: 0; border-radius: 9px; background: #b0b0b0; transition: background 0.2s; }
+  .toggle-switch input:checked + .toggle-track { background: #4CAF50; }
+  .toggle-handle { position: absolute; top: 2px; left: 2px; width: 14px; height: 14px; border-radius: 50%; background: #fff; transition: left 0.2s; box-shadow: 0 1px 2px rgba(0,0,0,0.2); }
+  .toggle-switch input:checked ~ .toggle-handle { left: 18px; }
+
+  /* ── Main layout ── */
+  .main { display: flex; flex: 1; overflow: hidden; }
+
+  /* ── Sidebar ── */
+  .sidebar {
+    width: 200px; background: #fff; border-right: 1px solid #c0c0c0;
+    display: flex; flex-direction: column; flex-shrink: 0;
+  }
+  .sidebar-header {
+    padding: 8px 10px; font-weight: 600; font-size: 11px;
+    background: #f5f5f5; border-bottom: 1px solid #d0d0d0;
+    color: #555; text-transform: uppercase; letter-spacing: 0.5px;
+  }
+  .table-list { flex: 1; overflow-y: auto; }
+  .table-item {
+    padding: 6px 10px; cursor: pointer; border-bottom: 1px solid #f0f0f0;
+    font-size: 12px; display: flex; align-items: center; gap: 6px;
+    border-left: 3px solid transparent;
+  }
+  .table-item:hover { background: #f5f8fc; }
+  .table-item.active { background: #e5eef8; border-left-color: #0078d7; font-weight: 600; }
+  .table-item .cnt { margin-left: auto; font-size: 10px; color: #999; background: #f0f0f0; padding: 1px 5px; border-radius: 8px; }
+  .table-item.active .cnt { background: #cde0f5; color: #0078d7; }
+
+  /* ── Content area ── */
+  .content { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+
+  /* Table header */
+  .content-header {
+    display: flex; align-items: center; padding: 8px 14px; gap: 10px;
+    background: #fff; border-bottom: 1px solid #d0d0d0; flex-shrink: 0;
+  }
+  .content-header .tname { font-weight: 700; font-size: 15px; }
+  .content-header .taddr { color: #888; font-size: 12px; }
+  .content-header .summary {
+    margin-left: auto; font-size: 12px; display: flex; gap: 12px;
+  }
+  .summary-item { display: flex; align-items: center; gap: 4px; }
+  .summary-dot { width: 10px; height: 10px; border-radius: 2px; display: inline-block; }
+
+  /* Legend */
+  .legend {
+    display: flex; gap: 16px; padding: 5px 14px; font-size: 11px;
+    background: #fafafa; border-bottom: 1px solid #e0e0e0; flex-shrink: 0; color: #666;
+  }
+  .legend-item { display: flex; align-items: center; gap: 4px; }
+  .legend-swatch {
+    width: 14px; height: 14px; border-radius: 2px; border: 1px solid #ccc;
+    display: inline-block;
+  }
+
+  /* ── Unified table ── */
+  .table-scroll { flex: 1; overflow: auto; padding: 8px 14px; }
+
+  .unified-table {
+    border-collapse: collapse; font-size: 12px;
+    font-family: 'Consolas', 'Courier New', monospace; width: auto;
+  }
+  .unified-table th, .unified-table td {
+    padding: 3px 6px; border: 1px solid #a0a0a0; text-align: right; white-space: nowrap;
+  }
+  .unified-table th {
+    background: #dcdcdc; font-weight: bold; position: sticky; top: 0; z-index: 2;
+  }
+  .unified-table .corner { position: sticky; left: 0; top: 0; z-index: 3; background: #dcdcdc; text-align: center; }
+  .unified-table .axis-y { background: #dcdcdc; font-weight: bold; position: sticky; left: 0; z-index: 1; }
+
+  /* Each data cell contains two values stacked */
+  .cell-pair {
+    display: flex; flex-direction: column; align-items: flex-end;
+    line-height: 1.3; min-width: 50px;
+  }
+  .cell-val-original { color: #555; font-size: 11px; }
+  .cell-val-modified { color: #222; font-size: 12px; font-weight: 500; }
+
+  /* Unchanged cell — single value display */
+  .cell-same .cell-pair { flex-direction: row; justify-content: flex-end; }
+  .cell-same .cell-val-original { display: none; }
+  .cell-same .cell-val-modified { color: #444; font-weight: normal; }
+
+  /* Changed cell */
+  .cell-diff {
+    background: rgba(255, 165, 0, 0.35) !important;
+    outline: 2px solid #FF8C00;
+    outline-offset: -2px;
+  }
+  .cell-diff .cell-val-original {
+    text-decoration: line-through; color: #999; font-size: 10px;
+  }
+  .cell-diff .cell-val-modified { color: #000; font-weight: bold; }
+
+  /* Delta indicator */
+  .cell-delta {
+    font-size: 9px; font-weight: normal; color: #0078d7;
+    display: block; text-align: right;
+  }
+  .cell-delta.positive { color: #2e7d32; }
+  .cell-delta.negative { color: #c62828; }
+
+  /* Dimmed unchanged (toggle ON) */
+  .dim-unchanged .cell-same { opacity: 0.15; }
+
+  /* Cell gradient (subtle behind diff) */
+  .cell-cold { background: #6699ff; }
+  .cell-cool { background: #66cccc; }
+  .cell-mid { background: #88cc66; }
+  .cell-warm { background: #cccc44; }
+  .cell-hot { background: #dd6644; }
+
+  /* ── Status bar ── */
+  .statusbar {
+    padding: 3px 10px; background: #fff; border-top: 1px solid #c0c0c0;
+    font-size: 11px; color: #666; display: flex; gap: 16px; flex-shrink: 0;
+  }
+  kbd { background: #f0f0f0; border: 1px solid #ccc; border-radius: 2px; padding: 0 3px; font-size: 10px; font-family: inherit; box-shadow: 0 1px 0 #aaa; }
+</style>
+</head>
+<body>
+
+<!-- Toolbar -->
+<div class="toolbar">
+  <span class="title">ROM Compare</span>
+  <span class="rom-pill pill-original"><span class="pill-dot"></span>lf9veb_stock.bin</span>
+  <span class="vs">vs</span>
+  <span class="rom-pill pill-modified"><span class="pill-dot"></span>lf9veb_tuned.bin</span>
+  <div class="spacer"></div>
+
+  <div class="toggle-group">
+    <span class="toggle-label">Changed only</span>
+    <label class="toggle-switch">
+      <input type="checkbox" id="changedToggle">
+      <div class="toggle-track"></div>
+      <div class="toggle-handle"></div>
+    </label>
+  </div>
+
+  <div class="sep"></div>
+
+  <div class="nav-group">
+    <button class="btn" title="Previous table (↑)">
+      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4,10 8,5 12,10"/></svg>
+    </button>
+    <span class="nav-counter">3 / 12</span>
+    <button class="btn" title="Next table (↓)">
+      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4,6 8,11 12,6"/></svg>
+    </button>
+  </div>
+</div>
+
+<div class="main">
+  <!-- Sidebar -->
+  <div class="sidebar">
+    <div class="sidebar-header">Modified Tables (12)</div>
+    <div class="table-list">
+      <div class="table-item">Fuel Map 1 <span class="cnt">24</span></div>
+      <div class="table-item">Fuel Map 2 <span class="cnt">18</span></div>
+      <div class="table-item active">Ignition Timing <span class="cnt">8</span></div>
+      <div class="table-item">Boost Target <span class="cnt">31</span></div>
+      <div class="table-item">WGDC Initial <span class="cnt">12</span></div>
+      <div class="table-item">WGDC Max <span class="cnt">6</span></div>
+      <div class="table-item">MAF Scaling <span class="cnt">4</span></div>
+      <div class="table-item">Rev Limit <span class="cnt">1</span></div>
+      <div class="table-item">Speed Limiter <span class="cnt">1</span></div>
+      <div class="table-item">TGV Map <span class="cnt">15</span></div>
+      <div class="table-item">Injector Latency <span class="cnt">3</span></div>
+      <div class="table-item">Knock Correction <span class="cnt">9</span></div>
+    </div>
+  </div>
+
+  <!-- Content -->
+  <div class="content">
+    <div class="content-header">
+      <span class="tname">Ignition Timing</span>
+      <span class="taddr">0x20A00</span>
+      <div class="summary">
+        <span class="summary-item"><span class="summary-dot" style="background:rgba(255,165,0,0.5);outline:1px solid #FF8C00"></span>8 changed</span>
+        <span class="summary-item" style="color:#aaa">58 unchanged</span>
+      </div>
+    </div>
+    <div class="legend">
+      <span class="legend-item"><span class="legend-swatch" style="background:rgba(255,165,0,0.35);outline:2px solid #FF8C00;outline-offset:-2px"></span>Changed cell</span>
+      <span class="legend-item">Format: <span style="text-decoration:line-through;color:#999;font-size:10px">old</span> &rarr; <b>new</b> <span style="color:#2e7d32;font-size:10px">(+delta)</span></span>
+    </div>
+
+    <div class="table-scroll" id="tableScroll">
+      <table class="unified-table" id="unifiedTable">
+        <tr>
+          <th class="corner">RPM &rarr;<br>Load &darr;</th>
+          <th>1000</th><th>1500</th><th>2000</th><th>2500</th>
+          <th>3000</th><th>3500</th><th>4000</th><th>4500</th>
+          <th>5000</th><th>5500</th><th>6000</th>
+        </tr>
+        <tr>
+          <td class="axis-y">1.00</td>
+          <td class="cell-same cell-cold"><div class="cell-pair"><span class="cell-val-original">10.0</span><span class="cell-val-modified">10.0</span></div></td>
+          <td class="cell-same cell-cold"><div class="cell-pair"><span class="cell-val-original">12.0</span><span class="cell-val-modified">12.0</span></div></td>
+          <td class="cell-same cell-cool"><div class="cell-pair"><span class="cell-val-original">14.0</span><span class="cell-val-modified">14.0</span></div></td>
+          <td class="cell-same cell-cool"><div class="cell-pair"><span class="cell-val-original">16.0</span><span class="cell-val-modified">16.0</span></div></td>
+          <td class="cell-same cell-mid"><div class="cell-pair"><span class="cell-val-original">18.0</span><span class="cell-val-modified">18.0</span></div></td>
+          <td class="cell-same cell-mid"><div class="cell-pair"><span class="cell-val-original">20.0</span><span class="cell-val-modified">20.0</span></div></td>
+          <td class="cell-same cell-warm"><div class="cell-pair"><span class="cell-val-original">22.0</span><span class="cell-val-modified">22.0</span></div></td>
+          <td class="cell-same cell-warm"><div class="cell-pair"><span class="cell-val-original">24.0</span><span class="cell-val-modified">24.0</span></div></td>
+          <td class="cell-same cell-hot"><div class="cell-pair"><span class="cell-val-original">26.0</span><span class="cell-val-modified">26.0</span></div></td>
+          <td class="cell-same cell-hot"><div class="cell-pair"><span class="cell-val-original">28.0</span><span class="cell-val-modified">28.0</span></div></td>
+          <td class="cell-same cell-hot"><div class="cell-pair"><span class="cell-val-original">30.0</span><span class="cell-val-modified">30.0</span></div></td>
+        </tr>
+        <tr>
+          <td class="axis-y">1.25</td>
+          <td class="cell-same cell-cold"><div class="cell-pair"><span class="cell-val-original">8.0</span><span class="cell-val-modified">8.0</span></div></td>
+          <td class="cell-same cell-cold"><div class="cell-pair"><span class="cell-val-original">10.0</span><span class="cell-val-modified">10.0</span></div></td>
+          <td class="cell-same cell-cool"><div class="cell-pair"><span class="cell-val-original">12.0</span><span class="cell-val-modified">12.0</span></div></td>
+          <td class="cell-same cell-cool"><div class="cell-pair"><span class="cell-val-original">14.0</span><span class="cell-val-modified">14.0</span></div></td>
+          <td class="cell-diff"><div class="cell-pair"><span class="cell-val-original">16.0</span><span class="cell-val-modified">18.0</span><span class="cell-delta positive">+2.0</span></div></td>
+          <td class="cell-diff"><div class="cell-pair"><span class="cell-val-original">18.0</span><span class="cell-val-modified">20.0</span><span class="cell-delta positive">+2.0</span></div></td>
+          <td class="cell-diff"><div class="cell-pair"><span class="cell-val-original">20.0</span><span class="cell-val-modified">22.0</span><span class="cell-delta positive">+2.0</span></div></td>
+          <td class="cell-same cell-warm"><div class="cell-pair"><span class="cell-val-original">22.0</span><span class="cell-val-modified">22.0</span></div></td>
+          <td class="cell-same cell-hot"><div class="cell-pair"><span class="cell-val-original">24.0</span><span class="cell-val-modified">24.0</span></div></td>
+          <td class="cell-same cell-hot"><div class="cell-pair"><span class="cell-val-original">26.0</span><span class="cell-val-modified">26.0</span></div></td>
+          <td class="cell-same cell-hot"><div class="cell-pair"><span class="cell-val-original">28.0</span><span class="cell-val-modified">28.0</span></div></td>
+        </tr>
+        <tr>
+          <td class="axis-y">1.50</td>
+          <td class="cell-same cell-cold"><div class="cell-pair"><span class="cell-val-original">6.0</span><span class="cell-val-modified">6.0</span></div></td>
+          <td class="cell-same cell-cold"><div class="cell-pair"><span class="cell-val-original">8.0</span><span class="cell-val-modified">8.0</span></div></td>
+          <td class="cell-same cell-cool"><div class="cell-pair"><span class="cell-val-original">10.0</span><span class="cell-val-modified">10.0</span></div></td>
+          <td class="cell-same cell-cool"><div class="cell-pair"><span class="cell-val-original">12.0</span><span class="cell-val-modified">12.0</span></div></td>
+          <td class="cell-diff"><div class="cell-pair"><span class="cell-val-original">14.0</span><span class="cell-val-modified">16.0</span><span class="cell-delta positive">+2.0</span></div></td>
+          <td class="cell-same cell-mid"><div class="cell-pair"><span class="cell-val-original">16.0</span><span class="cell-val-modified">16.0</span></div></td>
+          <td class="cell-same cell-warm"><div class="cell-pair"><span class="cell-val-original">18.0</span><span class="cell-val-modified">18.0</span></div></td>
+          <td class="cell-same cell-warm"><div class="cell-pair"><span class="cell-val-original">20.0</span><span class="cell-val-modified">20.0</span></div></td>
+          <td class="cell-same cell-hot"><div class="cell-pair"><span class="cell-val-original">22.0</span><span class="cell-val-modified">22.0</span></div></td>
+          <td class="cell-same cell-hot"><div class="cell-pair"><span class="cell-val-original">24.0</span><span class="cell-val-modified">24.0</span></div></td>
+          <td class="cell-same cell-hot"><div class="cell-pair"><span class="cell-val-original">26.0</span><span class="cell-val-modified">26.0</span></div></td>
+        </tr>
+        <tr>
+          <td class="axis-y">1.75</td>
+          <td class="cell-same cell-cold"><div class="cell-pair"><span class="cell-val-original">4.0</span><span class="cell-val-modified">4.0</span></div></td>
+          <td class="cell-same cell-cold"><div class="cell-pair"><span class="cell-val-original">6.0</span><span class="cell-val-modified">6.0</span></div></td>
+          <td class="cell-same cell-cool"><div class="cell-pair"><span class="cell-val-original">8.0</span><span class="cell-val-modified">8.0</span></div></td>
+          <td class="cell-same cell-cool"><div class="cell-pair"><span class="cell-val-original">10.0</span><span class="cell-val-modified">10.0</span></div></td>
+          <td class="cell-same cell-mid"><div class="cell-pair"><span class="cell-val-original">12.0</span><span class="cell-val-modified">12.0</span></div></td>
+          <td class="cell-diff"><div class="cell-pair"><span class="cell-val-original">14.0</span><span class="cell-val-modified">16.0</span><span class="cell-delta positive">+2.0</span></div></td>
+          <td class="cell-diff"><div class="cell-pair"><span class="cell-val-original">16.0</span><span class="cell-val-modified">18.0</span><span class="cell-delta positive">+2.0</span></div></td>
+          <td class="cell-diff"><div class="cell-pair"><span class="cell-val-original">18.0</span><span class="cell-val-modified">20.0</span><span class="cell-delta positive">+2.0</span></div></td>
+          <td class="cell-same cell-hot"><div class="cell-pair"><span class="cell-val-original">20.0</span><span class="cell-val-modified">20.0</span></div></td>
+          <td class="cell-same cell-hot"><div class="cell-pair"><span class="cell-val-original">22.0</span><span class="cell-val-modified">22.0</span></div></td>
+          <td class="cell-same cell-hot"><div class="cell-pair"><span class="cell-val-original">24.0</span><span class="cell-val-modified">24.0</span></div></td>
+        </tr>
+        <tr>
+          <td class="axis-y">2.00</td>
+          <td class="cell-same cell-cold"><div class="cell-pair"><span class="cell-val-original">2.0</span><span class="cell-val-modified">2.0</span></div></td>
+          <td class="cell-same cell-cold"><div class="cell-pair"><span class="cell-val-original">4.0</span><span class="cell-val-modified">4.0</span></div></td>
+          <td class="cell-same cell-cool"><div class="cell-pair"><span class="cell-val-original">6.0</span><span class="cell-val-modified">6.0</span></div></td>
+          <td class="cell-same cell-cool"><div class="cell-pair"><span class="cell-val-original">8.0</span><span class="cell-val-modified">8.0</span></div></td>
+          <td class="cell-same cell-mid"><div class="cell-pair"><span class="cell-val-original">10.0</span><span class="cell-val-modified">10.0</span></div></td>
+          <td class="cell-same cell-mid"><div class="cell-pair"><span class="cell-val-original">12.0</span><span class="cell-val-modified">12.0</span></div></td>
+          <td class="cell-same cell-warm"><div class="cell-pair"><span class="cell-val-original">14.0</span><span class="cell-val-modified">14.0</span></div></td>
+          <td class="cell-same cell-warm"><div class="cell-pair"><span class="cell-val-original">16.0</span><span class="cell-val-modified">16.0</span></div></td>
+          <td class="cell-same cell-hot"><div class="cell-pair"><span class="cell-val-original">18.0</span><span class="cell-val-modified">18.0</span></div></td>
+          <td class="cell-same cell-hot"><div class="cell-pair"><span class="cell-val-original">20.0</span><span class="cell-val-modified">20.0</span></div></td>
+          <td class="cell-same cell-hot"><div class="cell-pair"><span class="cell-val-original">22.0</span><span class="cell-val-modified">22.0</span></div></td>
+        </tr>
+        <tr>
+          <td class="axis-y">2.25</td>
+          <td class="cell-same cell-cold"><div class="cell-pair"><span class="cell-val-original">0.0</span><span class="cell-val-modified">0.0</span></div></td>
+          <td class="cell-same cell-cold"><div class="cell-pair"><span class="cell-val-original">2.0</span><span class="cell-val-modified">2.0</span></div></td>
+          <td class="cell-same cell-cool"><div class="cell-pair"><span class="cell-val-original">4.0</span><span class="cell-val-modified">4.0</span></div></td>
+          <td class="cell-same cell-cool"><div class="cell-pair"><span class="cell-val-original">6.0</span><span class="cell-val-modified">6.0</span></div></td>
+          <td class="cell-same cell-mid"><div class="cell-pair"><span class="cell-val-original">8.0</span><span class="cell-val-modified">8.0</span></div></td>
+          <td class="cell-same cell-mid"><div class="cell-pair"><span class="cell-val-original">10.0</span><span class="cell-val-modified">10.0</span></div></td>
+          <td class="cell-same cell-warm"><div class="cell-pair"><span class="cell-val-original">12.0</span><span class="cell-val-modified">12.0</span></div></td>
+          <td class="cell-same cell-warm"><div class="cell-pair"><span class="cell-val-original">14.0</span><span class="cell-val-modified">14.0</span></div></td>
+          <td class="cell-same cell-hot"><div class="cell-pair"><span class="cell-val-original">16.0</span><span class="cell-val-modified">16.0</span></div></td>
+          <td class="cell-same cell-hot"><div class="cell-pair"><span class="cell-val-original">18.0</span><span class="cell-val-modified">18.0</span></div></td>
+          <td class="cell-same cell-hot"><div class="cell-pair"><span class="cell-val-original">20.0</span><span class="cell-val-modified">20.0</span></div></td>
+        </tr>
+      </table>
+    </div>
+  </div>
+</div>
+
+<div class="statusbar">
+  <span>Ignition Timing (0x20A00) — 8 of 66 cells changed (12.1%) — All deltas: +2.0</span>
+  <div class="spacer"></div>
+  <span><kbd>↑</kbd><kbd>↓</kbd> Navigate &nbsp; <kbd>T</kbd> Toggle changed</span>
+</div>
+
+<script>
+  document.getElementById('changedToggle').addEventListener('change', function() {
+    document.getElementById('unifiedTable').classList.toggle('dim-unchanged', this.checked);
+  });
+
+  document.addEventListener('keydown', e => {
+    if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+      const items = document.querySelectorAll('.table-item');
+      let idx = Array.from(items).findIndex(el => el.classList.contains('active'));
+      items[idx].classList.remove('active');
+      idx = e.key === 'ArrowDown' ? Math.min(idx + 1, items.length - 1) : Math.max(idx - 1, 0);
+      items[idx].classList.add('active');
+      items[idx].scrollIntoView({ block: 'nearest' });
+      document.querySelector('.nav-counter').textContent = (idx + 1) + ' / ' + items.length;
+      e.preventDefault();
+    }
+    if (e.key === 't' || e.key === 'T') {
+      const cb = document.getElementById('changedToggle');
+      cb.checked = !cb.checked;
+      cb.dispatchEvent(new Event('change'));
+    }
+  });
+
+  document.querySelectorAll('.table-item').forEach((item, idx) => {
+    item.addEventListener('click', () => {
+      document.querySelector('.table-item.active')?.classList.remove('active');
+      item.classList.add('active');
+      document.querySelector('.nav-counter').textContent = (idx + 1) + ' / 12';
+    });
+  });
+</script>
+</body>
+</html>

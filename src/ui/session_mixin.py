@@ -9,6 +9,7 @@ This is a mixin class — it has no __init__ and relies on MainWindow providing:
 - self.rom_detector (RomDetector instance, may be None)
 - self.tab_widget (QTabWidget)
 - self._open_rom_file(path) method
+- self.open_project_path(path) method
 - self.statusBar() method
 """
 
@@ -19,6 +20,7 @@ from PySide6.QtWidgets import QMessageBox
 from src.utils.logging_config import get_logger
 from src.utils.constants import APP_NAME, APP_VERSION_STRING, APP_DESCRIPTION
 from src.core.rom_detector import RomDetector
+from src.core.project_manager import ProjectManager
 from src.core.exceptions import DetectionError, RomEditorError
 from src.ui.settings_dialog import SettingsDialog
 
@@ -37,19 +39,39 @@ class SessionMixin:
 
         logger.info(f"Restoring session: {len(session_files)} file(s)")
 
-        for file_path in session_files:
-            if Path(file_path).exists():
-                try:
-                    self._open_rom_file(file_path)
-                except RomEditorError as e:
-                    logger.warning(f"Failed to restore session file: {file_path} - {e}")
-                except Exception as e:
-                    logger.exception(f"Unexpected error restoring session file: {file_path} - {type(e).__name__}: {e}")
-            else:
-                logger.warning(f"Session file no longer exists: {file_path}")
+        for entry in session_files:
+            try:
+                if entry.startswith("project:"):
+                    # Explicit project tab
+                    project_path = entry[len("project:"):]
+                    if Path(project_path).exists():
+                        self.open_project_path(project_path)
+                    else:
+                        logger.warning(f"Session project folder no longer exists: {project_path}")
+                else:
+                    path = Path(entry)
+                    if not path.exists():
+                        logger.warning(f"Session file no longer exists: {entry}")
+                        continue
+                    # Check if this ROM lives inside a project folder (legacy session data)
+                    parent = path.parent
+                    if ProjectManager.is_project_folder(str(parent)):
+                        logger.info(f"Session ROM is inside project folder, restoring as project: {parent}")
+                        self.open_project_path(str(parent))
+                    else:
+                        self._open_rom_file(entry)
+            except RomEditorError as e:
+                logger.warning(f"Failed to restore session entry: {entry} - {e}")
+            except Exception as e:
+                logger.exception(f"Unexpected error restoring session entry: {entry} - {type(e).__name__}: {e}")
 
-    def closeEvent(self, event):
-        """Check for unsaved changes across all tabs, then save session state before closing"""
+    def _handle_close(self, event):
+        """Check for unsaved changes across all tabs, then save session state before closing.
+
+        NOTE: This is NOT called closeEvent because QWidget.closeEvent (C++ slot)
+        shadows mixin methods in the MRO. MainWindow must define its own closeEvent
+        that delegates here.
+        """
         # Check each open tab for unsaved changes
         for i in range(self.tab_widget.count()):
             document = self.tab_widget.widget(i)
@@ -69,11 +91,16 @@ class SessionMixin:
                     document.save()
 
         # Collect paths of all open ROM documents
+        # For project tabs, save as "project:<path>" so restore reopens the project
         open_files = []
         for i in range(self.tab_widget.count()):
             document = self.tab_widget.widget(i)
             if document and hasattr(document, 'rom_path'):
-                open_files.append(document.rom_path)
+                project_path = getattr(document, 'project_path', None)
+                if project_path:
+                    open_files.append(f"project:{project_path}")
+                else:
+                    open_files.append(document.rom_path)
 
         # Save to settings
         self.settings.set_session_files(open_files)

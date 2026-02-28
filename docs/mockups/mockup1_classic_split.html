@@ -1,0 +1,386 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ROM Compare - Mockup 1: Classic Split</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; font-size: 13px; background: #f0f0f0; color: #222; display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
+
+  /* ── Top toolbar ── */
+  .toolbar {
+    display: flex; align-items: center; gap: 8px;
+    padding: 4px 10px; background: #fff; border-bottom: 1px solid #c0c0c0;
+    min-height: 36px; flex-shrink: 0;
+  }
+  .toolbar .title { font-weight: 600; font-size: 13px; margin-right: 8px; }
+  .toolbar .rom-label {
+    display: inline-flex; align-items: center; gap: 4px;
+    padding: 2px 8px; border-radius: 3px; font-size: 12px;
+  }
+  .rom-label .swatch {
+    width: 12px; height: 12px; border-radius: 2px; border: 1px solid #888;
+    display: inline-block;
+  }
+  .rom-original .swatch { background: #d0d0d0; }
+  .rom-modified .swatch { background: #b4d2f0; }
+  .rom-original { background: #e8e8e8; }
+  .rom-modified { background: #dce8f4; }
+
+  .spacer { flex: 1; }
+
+  .nav-group { display: flex; align-items: center; gap: 2px; }
+  .nav-btn {
+    width: 28px; height: 28px; border: 1px solid transparent;
+    border-radius: 3px; background: transparent; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    color: #333; font-size: 16px;
+  }
+  .nav-btn:hover { background: rgba(128,128,128,0.15); border-color: rgba(128,128,128,0.25); }
+  .nav-btn:active { background: rgba(128,128,128,0.3); }
+  .nav-btn svg { width: 16px; height: 16px; }
+
+  .nav-counter { font-size: 12px; color: #555; padding: 0 6px; white-space: nowrap; }
+
+  /* Toggle switch */
+  .toggle-group { display: flex; align-items: center; gap: 6px; margin-left: 12px; }
+  .toggle-label { font-size: 12px; color: #555; }
+  .toggle-switch {
+    position: relative; width: 36px; height: 20px; cursor: pointer;
+  }
+  .toggle-switch input { display: none; }
+  .toggle-track {
+    position: absolute; inset: 0; border-radius: 10px;
+    background: #b0b0b0; transition: background 0.2s;
+  }
+  .toggle-switch input:checked + .toggle-track { background: #4CAF50; }
+  .toggle-handle {
+    position: absolute; top: 2px; left: 2px; width: 16px; height: 16px;
+    border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+    transition: left 0.2s;
+  }
+  .toggle-switch input:checked ~ .toggle-handle { left: 18px; }
+
+  /* ── Main layout ── */
+  .main { display: flex; flex: 1; overflow: hidden; }
+
+  /* ── Left sidebar: modified tables list ── */
+  .sidebar {
+    width: 220px; min-width: 220px; background: #fff;
+    border-right: 1px solid #c0c0c0; display: flex; flex-direction: column;
+    flex-shrink: 0;
+  }
+  .sidebar-header {
+    padding: 8px 10px; font-weight: 600; font-size: 12px;
+    background: #f5f5f5; border-bottom: 1px solid #d0d0d0;
+    color: #444; text-transform: uppercase; letter-spacing: 0.5px;
+  }
+  .sidebar-count { font-weight: 400; color: #888; }
+  .table-list { flex: 1; overflow-y: auto; }
+  .table-item {
+    padding: 7px 10px; cursor: pointer; border-bottom: 1px solid #eee;
+    display: flex; align-items: center; gap: 6px; font-size: 12px;
+  }
+  .table-item:hover { background: #f0f4fa; }
+  .table-item.active { background: #e0ecf8; border-left: 3px solid #0078d7; font-weight: 600; }
+  .table-item .change-badge {
+    background: #fff3cd; color: #856404; border-radius: 8px;
+    padding: 1px 6px; font-size: 10px; margin-left: auto; white-space: nowrap;
+  }
+
+  /* ── Compare area ── */
+  .compare-area { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+  .compare-header {
+    display: flex; border-bottom: 1px solid #d0d0d0; flex-shrink: 0;
+  }
+  .compare-header .panel-label {
+    flex: 1; padding: 6px 12px; font-weight: 600; font-size: 12px;
+    display: flex; align-items: center; gap: 6px;
+  }
+  .compare-header .panel-label:first-child { background: #f5f5f5; border-right: 1px solid #d0d0d0; }
+  .compare-header .panel-label:last-child { background: #eef3fa; }
+  .panel-label .file-name { color: #555; font-weight: 400; }
+
+  .compare-tables { display: flex; flex: 1; overflow: hidden; }
+  .table-panel {
+    flex: 1; overflow: auto; padding: 8px;
+  }
+  .table-panel:first-child { border-right: 2px solid #c0c0c0; }
+
+  /* ── Table styling ── */
+  .data-table {
+    border-collapse: collapse; width: auto; font-size: 12px;
+    font-family: 'Consolas', 'Courier New', monospace;
+  }
+  .data-table th, .data-table td {
+    padding: 2px 6px; border: 1px solid #a0a0a0; text-align: right;
+    white-space: nowrap;
+  }
+  .data-table th {
+    background: #dcdcdc; font-weight: bold; position: sticky; top: 0; z-index: 1;
+  }
+  .data-table .axis-y {
+    background: #dcdcdc; font-weight: bold; position: sticky; left: 0; z-index: 1;
+  }
+  .data-table .corner {
+    background: #dcdcdc; position: sticky; top: 0; left: 0; z-index: 2;
+  }
+
+  /* Cell gradient colors (thermal) */
+  .cell-cold { background: #6699ff; }
+  .cell-cool { background: #66cccc; }
+  .cell-mid { background: #88cc66; }
+  .cell-warm { background: #cccc44; }
+  .cell-hot { background: #dd6644; }
+
+  /* Changed cell highlight - matches Qt style */
+  .cell-changed {
+    background: rgba(255, 165, 0, 0.4) !important;
+    outline: 2px solid #FF8C00;
+    outline-offset: -2px;
+    font-weight: bold;
+    color: #000;
+  }
+
+  /* Dimmed non-changed cells (when toggle is ON) */
+  .dim-unchanged td:not(.cell-changed):not(.axis-y):not(.corner) {
+    opacity: 0.25;
+  }
+  .dim-unchanged th:not(.corner) {
+    opacity: 0.5;
+  }
+
+  /* ── Status bar ── */
+  .statusbar {
+    padding: 3px 10px; background: #fff; border-top: 1px solid #c0c0c0;
+    font-size: 11px; color: #666; display: flex; gap: 20px; flex-shrink: 0;
+  }
+
+  /* ── Keyboard hint ── */
+  kbd {
+    background: #f0f0f0; border: 1px solid #ccc; border-radius: 3px;
+    padding: 0 4px; font-size: 10px; font-family: inherit;
+    box-shadow: 0 1px 0 #999;
+  }
+</style>
+</head>
+<body>
+
+<!-- Toolbar -->
+<div class="toolbar">
+  <span class="title">ROM Compare</span>
+  <span class="rom-label rom-original"><span class="swatch"></span>lf9veb_stock.bin</span>
+  <span style="color:#999">vs</span>
+  <span class="rom-label rom-modified"><span class="swatch"></span>lf9veb_tuned.bin</span>
+  <div class="spacer"></div>
+
+  <div class="nav-group">
+    <button class="nav-btn" title="Previous table (↑)">
+      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4,10 8,5 12,10"/></svg>
+    </button>
+    <span class="nav-counter">3 / 12</span>
+    <button class="nav-btn" title="Next table (↓)">
+      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4,6 8,11 12,6"/></svg>
+    </button>
+  </div>
+
+  <div class="toggle-group">
+    <span class="toggle-label">Changed only</span>
+    <label class="toggle-switch" id="toggleSwitch">
+      <input type="checkbox" id="changedToggle">
+      <div class="toggle-track"></div>
+      <div class="toggle-handle"></div>
+    </label>
+  </div>
+</div>
+
+<div class="main">
+  <!-- Left sidebar -->
+  <div class="sidebar">
+    <div class="sidebar-header">
+      Modified Tables <span class="sidebar-count">(12)</span>
+    </div>
+    <div class="table-list">
+      <div class="table-item">Fuel Map 1 <span class="change-badge">24 cells</span></div>
+      <div class="table-item">Fuel Map 2 <span class="change-badge">18 cells</span></div>
+      <div class="table-item active">Ignition Timing <span class="change-badge">8 cells</span></div>
+      <div class="table-item">Boost Target <span class="change-badge">31 cells</span></div>
+      <div class="table-item">WGDC Initial <span class="change-badge">12 cells</span></div>
+      <div class="table-item">WGDC Max <span class="change-badge">6 cells</span></div>
+      <div class="table-item">MAF Scaling <span class="change-badge">4 cells</span></div>
+      <div class="table-item">Rev Limit <span class="change-badge">1 cell</span></div>
+      <div class="table-item">Speed Limiter <span class="change-badge">1 cell</span></div>
+      <div class="table-item">TGV Map <span class="change-badge">15 cells</span></div>
+      <div class="table-item">Injector Latency <span class="change-badge">3 cells</span></div>
+      <div class="table-item">Knock Correction <span class="change-badge">9 cells</span></div>
+    </div>
+  </div>
+
+  <!-- Compare area -->
+  <div class="compare-area">
+    <div class="compare-header">
+      <div class="panel-label">
+        <span class="swatch" style="width:10px;height:10px;border-radius:2px;border:1px solid #888;background:#d0d0d0;display:inline-block"></span>
+        Original <span class="file-name">— lf9veb_stock.bin</span>
+      </div>
+      <div class="panel-label">
+        <span class="swatch" style="width:10px;height:10px;border-radius:2px;border:1px solid #888;background:#b4d2f0;display:inline-block"></span>
+        Modified <span class="file-name">— lf9veb_tuned.bin</span>
+      </div>
+    </div>
+    <div class="compare-tables" id="compareArea">
+      <!-- Left: Original -->
+      <div class="table-panel">
+        <table class="data-table" id="tableLeft">
+          <tr>
+            <th class="corner">RPM →<br>Load ↓</th>
+            <th>1000</th><th>1500</th><th>2000</th><th>2500</th>
+            <th>3000</th><th>3500</th><th>4000</th><th>4500</th>
+            <th>5000</th><th>5500</th><th>6000</th>
+          </tr>
+          <tr>
+            <td class="axis-y">1.00</td>
+            <td class="cell-cold">10.0</td><td class="cell-cold">12.0</td><td class="cell-cool">14.0</td><td class="cell-cool">16.0</td>
+            <td class="cell-mid">18.0</td><td class="cell-mid">20.0</td><td class="cell-warm">22.0</td><td class="cell-warm">24.0</td>
+            <td class="cell-hot">26.0</td><td class="cell-hot">28.0</td><td class="cell-hot">30.0</td>
+          </tr>
+          <tr>
+            <td class="axis-y">1.25</td>
+            <td class="cell-cold">8.0</td><td class="cell-cold">10.0</td><td class="cell-cool">12.0</td><td class="cell-cool">14.0</td>
+            <td class="cell-mid cell-changed">16.0</td><td class="cell-mid cell-changed">18.0</td><td class="cell-warm cell-changed">20.0</td><td class="cell-warm">22.0</td>
+            <td class="cell-hot">24.0</td><td class="cell-hot">26.0</td><td class="cell-hot">28.0</td>
+          </tr>
+          <tr>
+            <td class="axis-y">1.50</td>
+            <td class="cell-cold">6.0</td><td class="cell-cold">8.0</td><td class="cell-cool">10.0</td><td class="cell-cool">12.0</td>
+            <td class="cell-mid cell-changed">14.0</td><td class="cell-mid">16.0</td><td class="cell-warm">18.0</td><td class="cell-warm">20.0</td>
+            <td class="cell-hot">22.0</td><td class="cell-hot">24.0</td><td class="cell-hot">26.0</td>
+          </tr>
+          <tr>
+            <td class="axis-y">1.75</td>
+            <td class="cell-cold">4.0</td><td class="cell-cold">6.0</td><td class="cell-cool">8.0</td><td class="cell-cool">10.0</td>
+            <td class="cell-mid">12.0</td><td class="cell-mid cell-changed">14.0</td><td class="cell-warm cell-changed">16.0</td><td class="cell-warm cell-changed">18.0</td>
+            <td class="cell-hot">20.0</td><td class="cell-hot">22.0</td><td class="cell-hot">24.0</td>
+          </tr>
+          <tr>
+            <td class="axis-y">2.00</td>
+            <td class="cell-cold">2.0</td><td class="cell-cold">4.0</td><td class="cell-cool">6.0</td><td class="cell-cool">8.0</td>
+            <td class="cell-mid">10.0</td><td class="cell-mid">12.0</td><td class="cell-warm">14.0</td><td class="cell-warm">16.0</td>
+            <td class="cell-hot">18.0</td><td class="cell-hot">20.0</td><td class="cell-hot">22.0</td>
+          </tr>
+          <tr>
+            <td class="axis-y">2.25</td>
+            <td class="cell-cold">0.0</td><td class="cell-cold">2.0</td><td class="cell-cool">4.0</td><td class="cell-cool">6.0</td>
+            <td class="cell-mid">8.0</td><td class="cell-mid">10.0</td><td class="cell-warm">12.0</td><td class="cell-warm">14.0</td>
+            <td class="cell-hot">16.0</td><td class="cell-hot">18.0</td><td class="cell-hot">20.0</td>
+          </tr>
+        </table>
+      </div>
+
+      <!-- Right: Modified -->
+      <div class="table-panel">
+        <table class="data-table" id="tableRight">
+          <tr>
+            <th class="corner">RPM →<br>Load ↓</th>
+            <th>1000</th><th>1500</th><th>2000</th><th>2500</th>
+            <th>3000</th><th>3500</th><th>4000</th><th>4500</th>
+            <th>5000</th><th>5500</th><th>6000</th>
+          </tr>
+          <tr>
+            <td class="axis-y">1.00</td>
+            <td class="cell-cold">10.0</td><td class="cell-cold">12.0</td><td class="cell-cool">14.0</td><td class="cell-cool">16.0</td>
+            <td class="cell-mid">18.0</td><td class="cell-mid">20.0</td><td class="cell-warm">22.0</td><td class="cell-warm">24.0</td>
+            <td class="cell-hot">26.0</td><td class="cell-hot">28.0</td><td class="cell-hot">30.0</td>
+          </tr>
+          <tr>
+            <td class="axis-y">1.25</td>
+            <td class="cell-cold">8.0</td><td class="cell-cold">10.0</td><td class="cell-cool">12.0</td><td class="cell-cool">14.0</td>
+            <td class="cell-mid cell-changed">18.0</td><td class="cell-mid cell-changed">20.0</td><td class="cell-warm cell-changed">22.0</td><td class="cell-warm">22.0</td>
+            <td class="cell-hot">24.0</td><td class="cell-hot">26.0</td><td class="cell-hot">28.0</td>
+          </tr>
+          <tr>
+            <td class="axis-y">1.50</td>
+            <td class="cell-cold">6.0</td><td class="cell-cold">8.0</td><td class="cell-cool">10.0</td><td class="cell-cool">12.0</td>
+            <td class="cell-mid cell-changed">16.0</td><td class="cell-mid">16.0</td><td class="cell-warm">18.0</td><td class="cell-warm">20.0</td>
+            <td class="cell-hot">22.0</td><td class="cell-hot">24.0</td><td class="cell-hot">26.0</td>
+          </tr>
+          <tr>
+            <td class="axis-y">1.75</td>
+            <td class="cell-cold">4.0</td><td class="cell-cold">6.0</td><td class="cell-cool">8.0</td><td class="cell-cool">10.0</td>
+            <td class="cell-mid">12.0</td><td class="cell-mid cell-changed">16.0</td><td class="cell-warm cell-changed">18.0</td><td class="cell-warm cell-changed">20.0</td>
+            <td class="cell-hot">20.0</td><td class="cell-hot">22.0</td><td class="cell-hot">24.0</td>
+          </tr>
+          <tr>
+            <td class="axis-y">2.00</td>
+            <td class="cell-cold">2.0</td><td class="cell-cold">4.0</td><td class="cell-cool">6.0</td><td class="cell-cool">8.0</td>
+            <td class="cell-mid">10.0</td><td class="cell-mid">12.0</td><td class="cell-warm">14.0</td><td class="cell-warm">16.0</td>
+            <td class="cell-hot">18.0</td><td class="cell-hot">20.0</td><td class="cell-hot">22.0</td>
+          </tr>
+          <tr>
+            <td class="axis-y">2.25</td>
+            <td class="cell-cold">0.0</td><td class="cell-cold">2.0</td><td class="cell-cool">4.0</td><td class="cell-cool">6.0</td>
+            <td class="cell-mid">8.0</td><td class="cell-mid">10.0</td><td class="cell-warm">12.0</td><td class="cell-warm">14.0</td>
+            <td class="cell-hot">16.0</td><td class="cell-hot">18.0</td><td class="cell-hot">20.0</td>
+          </tr>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Status bar -->
+<div class="statusbar">
+  <span>Ignition Timing (0x20A00) — 8 changed cells</span>
+  <span class="spacer"></span>
+  <span><kbd>↑</kbd> <kbd>↓</kbd> Navigate tables &nbsp; <kbd>T</kbd> Toggle changed only</span>
+</div>
+
+<script>
+  // Toggle changed-only dimming
+  document.getElementById('changedToggle').addEventListener('change', function() {
+    document.getElementById('tableLeft').classList.toggle('dim-unchanged', this.checked);
+    document.getElementById('tableRight').classList.toggle('dim-unchanged', this.checked);
+  });
+
+  // Keyboard navigation
+  document.addEventListener('keydown', function(e) {
+    if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+      const items = document.querySelectorAll('.table-item');
+      let active = document.querySelector('.table-item.active');
+      let idx = Array.from(items).indexOf(active);
+      items[idx].classList.remove('active');
+      idx = e.key === 'ArrowDown' ? Math.min(idx + 1, items.length - 1) : Math.max(idx - 1, 0);
+      items[idx].classList.add('active');
+      items[idx].scrollIntoView({ block: 'nearest' });
+      document.querySelector('.nav-counter').textContent = (idx + 1) + ' / ' + items.length;
+      e.preventDefault();
+    }
+    if (e.key === 't' || e.key === 'T') {
+      const cb = document.getElementById('changedToggle');
+      cb.checked = !cb.checked;
+      cb.dispatchEvent(new Event('change'));
+    }
+  });
+
+  // Sync scroll between panels
+  const panels = document.querySelectorAll('.table-panel');
+  panels.forEach((panel, i) => {
+    panel.addEventListener('scroll', () => {
+      const other = panels[1 - i];
+      other.scrollTop = panel.scrollTop;
+      other.scrollLeft = panel.scrollLeft;
+    });
+  });
+
+  // Click table items
+  document.querySelectorAll('.table-item').forEach((item, idx) => {
+    item.addEventListener('click', () => {
+      document.querySelector('.table-item.active')?.classList.remove('active');
+      item.classList.add('active');
+      document.querySelector('.nav-counter').textContent = (idx + 1) + ' / 12';
+    });
+  });
+</script>
+</body>
+</html>

@@ -33,6 +33,7 @@ class RomDocument(QWidget):
         self.rom_reader = rom_reader
         self.file_name = Path(rom_path).name
         self._modified = False
+        self.project_path = None  # Set by open_project_path() for project tabs
         self.init_ui()
 
     def init_ui(self):

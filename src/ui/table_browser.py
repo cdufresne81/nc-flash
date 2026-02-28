@@ -13,6 +13,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QLineEdit,
     QPushButton,
+    QCheckBox,
     QStyledItemDelegate,
     QStyle,
     QComboBox,
@@ -137,6 +138,7 @@ class TableBrowser(QWidget):
         self.definition = None
         self.modified_tables = set()  # Track modified table addresses
         self.current_level_filter = 0  # 0 = show all levels
+        self._modified_only = False
         self.init_ui()
 
     def init_ui(self):
@@ -178,6 +180,11 @@ class TableBrowser(QWidget):
         self.level_combo.setToolTip("Filter tables by complexity level")
         level_layout.addWidget(self.level_combo)
         level_layout.addStretch()
+
+        self.modified_checkbox = QCheckBox("Modified only")
+        self.modified_checkbox.setToolTip("Show only tables with pending changes")
+        self.modified_checkbox.toggled.connect(self._on_modified_filter_changed)
+        level_layout.addWidget(self.modified_checkbox)
 
         layout.addLayout(level_layout)
 
@@ -255,6 +262,11 @@ class TableBrowser(QWidget):
         self.current_level_filter = self.level_combo.currentData()
         self._apply_filters()
 
+    def _on_modified_filter_changed(self, checked: bool):
+        """Handle modified-only checkbox toggle"""
+        self._modified_only = checked
+        self._apply_filters()
+
     def _apply_filters(self):
         """Apply both search and level filters"""
         self._filter_tables(self.search_box.text())
@@ -274,7 +286,7 @@ class TableBrowser(QWidget):
         self.tree.viewport().update()  # Force repaint
 
         # If no filters active, show all items
-        if not search_text and level_filter == 0:
+        if not search_text and level_filter == 0 and not self._modified_only:
             self._show_all_items()
             return
 
@@ -309,8 +321,11 @@ class TableBrowser(QWidget):
                 else:
                     search_ok = True
 
-                # Item is visible if it passes both filters
-                is_visible = level_ok and search_ok
+                # Check modified filter
+                modified_ok = not self._modified_only or (table and table.address in self.modified_tables)
+
+                # Item is visible if it passes all filters
+                is_visible = level_ok and search_ok and modified_ok
                 table_item.setHidden(not is_visible)
 
                 if is_visible:
@@ -326,30 +341,12 @@ class TableBrowser(QWidget):
                 category_item.setExpanded(False)
 
     def _show_all_items(self):
-        """Show all items in the tree (respecting level filter) and collapse categories"""
-        level_filter = self.current_level_filter
-
+        """Show all items in the tree and collapse categories"""
         for i in range(self.tree.topLevelItemCount()):
             category_item = self.tree.topLevelItem(i)
-            category_has_visible = False
-
+            category_item.setHidden(False)
             for j in range(category_item.childCount()):
-                table_item = category_item.child(j)
-                table = table_item.data(0, 100)
-
-                # Check level filter
-                if level_filter == 0:
-                    is_visible = True
-                else:
-                    is_visible = table and table.level <= level_filter
-
-                table_item.setHidden(not is_visible)
-                if is_visible:
-                    category_has_visible = True
-
-            category_item.setHidden(not category_has_visible)
-
-            # Collapse categories when search is cleared
+                category_item.child(j).setHidden(False)
             category_item.setExpanded(False)
 
     def mark_table_modified(self, table_address: str):

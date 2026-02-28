@@ -82,6 +82,14 @@ python main.py
 - Table diff viewer to compare changes between versions
 - Modified cell tracking with visual indicators
 
+### ROM Comparison
+- Side-by-side comparison of two ROMs (`Ctrl+Shift+D`)
+- Category tree listing all modified tables with change counts
+- Changed cells highlighted with gray border (matching edit indicators)
+- "Changed only" toggle dims unchanged cells for focus
+- Synchronized scrolling between original and modified panels
+- Keyboard navigation: `↑`/`↓` tables, `T` toggle, `Esc` close
+
 ### User Interface
 - Multi-ROM support with tabs
 - Multi-window table viewers
@@ -90,9 +98,9 @@ python main.py
 - Configurable settings (font size, color maps)
 - Activity log console
 - Keyboard shortcuts for all major operations
+- Per-ROM color coding with tab swatches
 
-### 🚧 In Development
-- ROM comparison tool (compare two different ROMs)
+### In Development
 - Automatic ECU checksum calculation
 
 ## Keyboard Shortcuts
@@ -112,6 +120,7 @@ python main.py
 | `B` | Bilinear interpolation |
 | `S` | Smooth selection |
 | `G` | Toggle graph panel |
+| `Ctrl+Shift+D` | Compare open ROMs |
 
 ## Tech Stack
 
@@ -142,6 +151,7 @@ nc-rom-editor/
 │   │   │   ├── operations.py          # Bulk operations
 │   │   │   ├── interpolation.py       # Interpolation algorithms
 │   │   │   └── clipboard.py           # Copy/paste and export
+│   │   ├── compare_window.py          # ROM comparison window
 │   │   ├── graph_viewer.py            # 3D/2D graph visualization
 │   │   ├── table_browser.py           # Category tree browser
 │   │   ├── history_viewer.py          # Version history viewer
@@ -233,13 +243,13 @@ Tests run automatically on GitHub Actions for:
 
 ## Development Status
 
-**Current Version:** v0.2.0 - Beta
+**Current Version:** v0.3.0 - Beta
 
-This version includes full table editing capabilities, project management with version history, and interactive graph visualization.
+This version includes full table editing, project management with version history, interactive graph visualization, ROM comparison tool, and a polished toolbar-driven UI.
 
 **Next Priorities:**
-- ROM comparison tool
 - Automatic ECU checksum calculation
+- Windows standalone packaging (PyInstaller)
 
 ## Contributing
 

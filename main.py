@@ -18,9 +18,12 @@ from PySide6.QtWidgets import (
     QSplitter,
     QFileDialog,
     QMessageBox,
-    QTabWidget
+    QTabWidget,
+    QToolButton,
+    QColorDialog,
 )
-from PySide6.QtCore import Qt, QTimer
+from PySide6.QtCore import Qt, QTimer, QSize
+from PySide6.QtGui import QColor, QIcon, QPainter, QPen, QPixmap
 
 from src.utils.logging_config import setup_logging, get_logger
 from src.utils.settings import get_settings
@@ -111,12 +114,31 @@ class MainWindow(QMainWindow, RecentFilesMixin, ProjectMixin, SessionMixin):
             end_bulk_update=self._end_bulk_update,
         )
 
+        # Per-ROM background colors: {rom_path: QColor or None}
+        # First ROM gets None (default gray), subsequent ROMs get auto-assigned tints
+        self.rom_colors = {}
+        self._color_palette = [
+            QColor(180, 210, 240),  # soft blue
+            QColor(210, 240, 180),  # soft green
+            QColor(240, 210, 180),  # soft peach
+            QColor(220, 190, 240),  # soft purple
+            QColor(240, 230, 180),  # soft yellow
+            QColor(180, 235, 220),  # soft teal
+            QColor(240, 190, 210),  # soft pink
+            QColor(200, 220, 200),  # soft sage
+        ]
+        self._next_color_index = 0
+
         # ROM detector initialized in _deferred_init (XML parsing is heavy)
         self.rom_detector = None
+
+        # Singleton comparison window reference
+        self.compare_window = None
 
         # Initialize UI (lightweight widget creation)
         self.init_ui()
         self.init_menu()
+        self._create_toolbar()
 
         # Defer heavy work to after the window is shown:
         # - definitions directory check + setup wizard (modal dialog)
@@ -124,6 +146,14 @@ class MainWindow(QMainWindow, RecentFilesMixin, ProjectMixin, SessionMixin):
         # - startup log message (depends on rom_detector)
         # - session restore (file I/O)
         QTimer.singleShot(0, self._deferred_init)
+
+    def closeEvent(self, event):
+        """Override QWidget.closeEvent — delegates to SessionMixin._handle_close.
+
+        Mixin methods named closeEvent are shadowed by QWidget's C++ slot in the MRO,
+        so this explicit override is required.
+        """
+        self._handle_close(event)
 
     def _deferred_init(self):
         """
@@ -257,13 +287,9 @@ class MainWindow(QMainWindow, RecentFilesMixin, ProjectMixin, SessionMixin):
         new_project_action = self.file_menu.addAction("New Project...")
         new_project_action.triggered.connect(self.new_project)
 
-        open_project_action = self.file_menu.addAction("Open Project...")
-        open_project_action.triggered.connect(self.open_project)
-
-        self.file_menu.addSeparator()
-
-        open_action = self.file_menu.addAction("Open ROM...")
-        open_action.triggered.connect(self.open_rom)
+        open_action = self.file_menu.addAction("Open...")
+        open_action.setShortcut("Ctrl+O")
+        open_action.triggered.connect(self.open_file)
 
         save_action = self.file_menu.addAction("Save")
         save_action.setShortcut("Ctrl+S")
@@ -320,11 +346,133 @@ class MainWindow(QMainWindow, RecentFilesMixin, ProjectMixin, SessionMixin):
         history_action = view_menu.addAction("Commit History...")
         history_action.triggered.connect(self.show_history)
 
+        # Tools menu (Alt+T)
+        tools_menu = menubar.addMenu("&Tools")
+
+        self.compare_action = tools_menu.addAction("Compare Open &ROMs...")
+        self.compare_action.setShortcut("Ctrl+Shift+D")
+        self.compare_action.triggered.connect(self._on_compare_roms)
+        self.compare_action.setEnabled(False)
+
         # Help menu (Alt+H)
         help_menu = menubar.addMenu("&Help")
 
         about_action = help_menu.addAction("About")
         about_action.triggered.connect(self.show_about)
+
+    def _create_toolbar(self):
+        """Create the main window toolbar with quick-access buttons."""
+        tb = self.addToolBar("Main")
+        tb.setObjectName("mainToolbar")
+        tb.setMovable(False)
+        tb.setFloatable(False)
+        tb.setIconSize(QSize(20, 20))
+        tb.setStyleSheet("""
+            QToolBar {
+                spacing: 1px;
+                padding: 1px 4px;
+                border: none;
+            }
+            QToolButton {
+                padding: 3px;
+                border: 1px solid transparent;
+                border-radius: 3px;
+            }
+            QToolButton:hover {
+                background: rgba(128, 128, 128, 0.15);
+                border: 1px solid rgba(128, 128, 128, 0.25);
+            }
+            QToolButton:pressed {
+                background: rgba(128, 128, 128, 0.3);
+            }
+        """)
+
+        act = tb.addAction(self._make_icon("open"), "")
+        act.setToolTip("Open  (Ctrl+O)")
+        act.triggered.connect(self.open_file)
+
+        act = tb.addAction(self._make_icon("save"), "")
+        act.setToolTip("Save  (Ctrl+S)")
+        act.triggered.connect(self._save)
+
+        tb.addSeparator()
+
+        act = tb.addAction(self._make_icon("compare"), "")
+        act.setToolTip("Compare Open ROMs  (Ctrl+Shift+D)")
+        act.triggered.connect(self._on_compare_roms)
+        self._toolbar_compare = act
+
+        tb.addSeparator()
+
+        act = tb.addAction(self._make_icon("settings"), "")
+        act.setToolTip("Settings")
+        act.triggered.connect(self.show_settings)
+
+    def _make_icon(self, name: str) -> QIcon:
+        """Create a crisp toolbar icon by name using QPainter."""
+        s = 20
+        dpr = self.devicePixelRatioF()
+        pm = QPixmap(int(s * dpr), int(s * dpr))
+        pm.setDevicePixelRatio(dpr)
+        pm.fill(Qt.transparent)
+
+        p = QPainter(pm)
+        p.setRenderHint(QPainter.Antialiasing)
+        c = self.palette().windowText().color()
+        pen = QPen(c, 1.6, Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin)
+        p.setPen(pen)
+
+        if name == "open":
+            # Folder
+            p.drawLine(2, 7, 2, 17)
+            p.drawLine(2, 17, 17, 17)
+            p.drawLine(17, 17, 17, 7)
+            p.drawLine(17, 7, 10, 7)
+            p.drawLine(10, 7, 8, 4)
+            p.drawLine(8, 4, 2, 4)
+            p.drawLine(2, 4, 2, 7)
+
+        elif name == "save":
+            # Floppy disk
+            p.drawRect(3, 2, 14, 16)
+            p.drawRect(6, 2, 8, 6)
+            p.drawRect(6, 11, 8, 5)
+
+        elif name == "compare":
+            # Two overlapping rectangles with arrows
+            p.drawRect(2, 4, 7, 12)
+            p.drawRect(11, 4, 7, 12)
+            # Left-right arrows between them
+            p.setPen(QPen(c, 1.4, Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin))
+            p.drawLine(9, 8, 11, 8)
+            p.drawLine(11, 12, 9, 12)
+
+        elif name == "settings":
+            # Gear with flat-topped teeth
+            from math import cos, sin, pi
+            from PySide6.QtCore import QPointF
+            from PySide6.QtGui import QPolygonF
+            cx, cy, r_out, r_in = 10, 10, 8.5, 5.5
+            teeth = 6
+            tooth_half = 0.28  # half-width of tooth in radians fraction
+            pts = []
+            for i in range(teeth):
+                a = 2 * pi * i / teeth - pi / 2
+                # Outer edge of tooth (two corners)
+                pts.append(QPointF(cx + r_out * cos(a - tooth_half), cy + r_out * sin(a - tooth_half)))
+                pts.append(QPointF(cx + r_out * cos(a + tooth_half), cy + r_out * sin(a + tooth_half)))
+                # Inner edge (valley between teeth)
+                a_next = 2 * pi * (i + 0.5) / teeth - pi / 2
+                pts.append(QPointF(cx + r_in * cos(a + tooth_half), cy + r_in * sin(a + tooth_half)))
+                pts.append(QPointF(cx + r_in * cos(a_next + tooth_half), cy + r_in * sin(a_next + tooth_half)))
+            poly = QPolygonF(pts)
+            p.setBrush(Qt.NoBrush)
+            p.drawPolygon(poly)
+            # Center circle
+            p.drawEllipse(QPointF(cx, cy), 2.5, 2.5)
+
+        p.end()
+        return QIcon(pm)
 
     # ========== Tab and Document Management ==========
 
@@ -359,6 +507,21 @@ class MainWindow(QMainWindow, RecentFilesMixin, ProjectMixin, SessionMixin):
                 return doc
         logger.warning(f"No document found for rom_path={rom_path}")
         return None
+
+    def _find_open_tab(self, *, rom_path=None, project_path=None):
+        """Find an already-open tab by ROM file path or project path.
+
+        Returns the tab index, or -1 if not found.
+        """
+        for i in range(self.tab_widget.count()):
+            doc = self.tab_widget.widget(i)
+            if not hasattr(doc, 'rom_path'):
+                continue
+            if rom_path and Path(doc.rom_path) == Path(rom_path):
+                return i
+            if project_path and getattr(doc, 'project_path', None) and Path(doc.project_path) == Path(project_path):
+                return i
+        return -1
 
     def close_tab(self, index: int):
         """
@@ -416,6 +579,7 @@ class MainWindow(QMainWindow, RecentFilesMixin, ProjectMixin, SessionMixin):
             if rom_path:
                 self.modified_cells.pop(rom_path, None)
                 self.original_table_values.pop(rom_path, None)
+                self.rom_colors.pop(rom_path, None)
 
         # Remove the tab and schedule widget cleanup
         self.tab_widget.removeTab(index)
@@ -424,6 +588,7 @@ class MainWindow(QMainWindow, RecentFilesMixin, ProjectMixin, SessionMixin):
         self.update_window_title()
 
         logger.info(f"Closed ROM tab: {document.file_name if document else 'unknown'}")
+        self._update_compare_action()
 
     def close_current_tab(self):
         """Close the currently active tab"""
@@ -440,6 +605,66 @@ class MainWindow(QMainWindow, RecentFilesMixin, ProjectMixin, SessionMixin):
                 logger.info(f"Switched to ROM: {document.file_name}")
         else:
             self.update_window_title()
+        self._update_compare_action()
+
+    def _assign_rom_color(self, rom_path):
+        """Assign a background color for a newly opened ROM.
+        First ROM gets None (default gray), subsequent ROMs get palette colors."""
+        if not self.rom_colors:
+            # First ROM — keep default gray
+            self.rom_colors[rom_path] = None
+        else:
+            color = self._color_palette[self._next_color_index % len(self._color_palette)]
+            self.rom_colors[rom_path] = color
+            self._next_color_index += 1
+        return self.rom_colors[rom_path]
+
+    def _create_tab_color_button(self, rom_path, tab_index):
+        """Create a small color swatch button on the left side of a tab."""
+        color = self.rom_colors.get(rom_path)
+        btn = QToolButton()
+        btn.setFixedSize(16, 16)
+        btn.setAutoRaise(True)
+        self._style_color_button(btn, color)
+        btn.clicked.connect(lambda: self._pick_rom_color(rom_path))
+        self.tab_widget.tabBar().setTabButton(tab_index, self.tab_widget.tabBar().ButtonPosition.LeftSide, btn)
+
+    def _style_color_button(self, btn, color):
+        """Apply color swatch styling to a tab button."""
+        if color:
+            btn.setStyleSheet(
+                f"QToolButton {{ background-color: {color.name()}; border: 1px solid #888; border-radius: 3px; }}"
+                f"QToolButton:hover {{ border: 1px solid #444; }}"
+            )
+        else:
+            # Default gray — use system window color
+            btn.setStyleSheet(
+                "QToolButton { background-color: palette(window); border: 1px solid #888; border-radius: 3px; }"
+                "QToolButton:hover { border: 1px solid #444; }"
+            )
+
+    def _pick_rom_color(self, rom_path):
+        """Open color picker for a ROM and apply the chosen color."""
+        current = self.rom_colors.get(rom_path)
+        initial = current if current else self.palette().window().color()
+        color = QColorDialog.getColor(initial, self, "Choose ROM color")
+        if not color.isValid():
+            return
+        self.rom_colors[rom_path] = color
+
+        # Update the tab color button
+        for i in range(self.tab_widget.count()):
+            doc = self.tab_widget.widget(i)
+            if doc and hasattr(doc, 'rom_reader') and doc.rom_reader and doc.rom_reader.rom_path == rom_path:
+                btn = self.tab_widget.tabBar().tabButton(i, self.tab_widget.tabBar().ButtonPosition.LeftSide)
+                if btn:
+                    self._style_color_button(btn, color)
+                break
+
+        # Update all open table viewer windows for this ROM
+        for window in self.open_table_windows:
+            if window.rom_path == rom_path:
+                window.set_rom_color(color)
 
     def _update_tab_title(self, document):
         """Update tab title to show modified state"""
@@ -452,16 +677,21 @@ class MainWindow(QMainWindow, RecentFilesMixin, ProjectMixin, SessionMixin):
 
     # ========== ROM I/O ==========
 
-    def open_rom(self):
-        """Open a ROM file via file dialog"""
+    def open_file(self):
+        """Open a ROM file or project via file dialog."""
         file_path, _ = QFileDialog.getOpenFileName(
             self,
             "Open ROM File",
             "",
             "ROM Files (*.bin *.rom);;All Files (*)"
         )
+        if not file_path:
+            return
 
-        if file_path:
+        parent = Path(file_path).parent
+        if ProjectManager.is_project_folder(str(parent)):
+            self.open_project_path(str(parent))
+        else:
             self._open_rom_file(file_path)
 
     def _open_rom_file(self, file_path: str):
@@ -471,6 +701,16 @@ class MainWindow(QMainWindow, RecentFilesMixin, ProjectMixin, SessionMixin):
         Args:
             file_path: Full path to ROM file
         """
+        # Prevent opening the same ROM twice
+        existing = self._find_open_tab(rom_path=file_path)
+        if existing >= 0:
+            self.tab_widget.setCurrentIndex(existing)
+            QMessageBox.information(
+                self, "Already Open",
+                f"This ROM is already open.\n\n{Path(file_path).name}"
+            )
+            return
+
         try:
             logger.info(f"Opening ROM file: {file_path}")
             self.statusBar().showMessage(f"Detecting ROM ID...")
@@ -524,10 +764,15 @@ class MainWindow(QMainWindow, RecentFilesMixin, ProjectMixin, SessionMixin):
             rom_document.table_selected.connect(self.on_table_selected)
             rom_document.modified_changed.connect(lambda modified, doc=rom_document: self._update_tab_title(doc))
 
-            # Add as new tab
+            # Assign a color for this ROM (first ROM = default gray)
+            rom_path = rom_reader.rom_path
+            self._assign_rom_color(rom_path)
+
+            # Add as new tab with color swatch
             file_name = Path(file_path).name
             tab_index = self.tab_widget.addTab(rom_document, file_name)
             self.tab_widget.setTabToolTip(tab_index, file_path)
+            self._create_tab_color_button(rom_path, tab_index)
             self.tab_widget.setCurrentIndex(tab_index)
 
             # Add to recent files list
@@ -549,6 +794,8 @@ class MainWindow(QMainWindow, RecentFilesMixin, ProjectMixin, SessionMixin):
                 f"Loaded: {file_name} - {rom_definition.romid.xmlid} "
                 f"({len(rom_definition.tables)} tables)"
             )
+
+            self._update_compare_action()
 
         except (DetectionError, RomFileError, DefinitionError) as e:
             handle_rom_operation_error(self, "open ROM file", e)
@@ -648,6 +895,232 @@ class MainWindow(QMainWindow, RecentFilesMixin, ProjectMixin, SessionMixin):
                     f"Unexpected error saving ROM file:\n{type(e).__name__}: {e}"
                 )
 
+    # ========== ROM Comparison ==========
+
+    def _update_compare_action(self):
+        """Enable/disable the Compare action based on open ROM count."""
+        enabled = self.tab_widget.count() >= 2
+        self.compare_action.setEnabled(enabled)
+        if hasattr(self, '_toolbar_compare'):
+            self._toolbar_compare.setEnabled(enabled)
+
+    def apply_compare_copy(self, dst_reader: 'RomReader', dst_table: 'Table',
+                           dst_definition: 'RomDefinition', src_data: dict):
+        """Apply a table copy from the compare window through the full edit pipeline.
+
+        This routes through undo, change tracking, ROM write, and modified
+        indicators — identical to a manual paste operation.
+
+        Args:
+            dst_reader: RomReader of the destination ROM
+            dst_table: Table definition in the destination ROM
+            dst_definition: RomDefinition of the destination ROM
+            src_data: Source data dict from read_table_data (has 'values', axes)
+        """
+        from src.core.rom_reader import ScalingConverter
+        from src.core.rom_definition import AxisType
+
+        rom_path = dst_reader.rom_path
+        document = self._find_document_by_rom_path(rom_path)
+        if not document:
+            return
+
+        # --- Capture pre-copy originals for border tracking ---
+        # Must happen before ROM writes so _check_and_remove_border_if_original
+        # uses the true original when undoing (even if the table viewer opens later).
+        import numpy as np
+        old_data = dst_reader.read_table_data(dst_table)
+        if rom_path not in self.original_table_values:
+            self.original_table_values[rom_path] = {}
+        if dst_table.address not in self.original_table_values[rom_path]:
+            self.original_table_values[rom_path][dst_table.address] = {
+                "values": np.copy(old_data["values"]),
+                "x_axis": np.copy(old_data["x_axis"]) if old_data.get("x_axis") is not None else None,
+                "y_axis": np.copy(old_data["y_axis"]) if old_data.get("y_axis") is not None else None,
+            }
+
+        # --- Value cells ---
+        old_vals = old_data['values']
+        new_vals = src_data['values']
+
+        scaling = dst_definition.get_scaling(dst_table.scaling)
+        converter = ScalingConverter(scaling) if scaling else None
+
+        cell_changes = []
+        if old_vals.ndim == 1:
+            for i in range(len(old_vals)):
+                if old_vals[i] != new_vals[i]:
+                    old_raw = converter.from_display(float(old_vals[i])) if converter else float(old_vals[i])
+                    new_raw = converter.from_display(float(new_vals[i])) if converter else float(new_vals[i])
+                    cell_changes.append((i, 0, float(old_vals[i]), float(new_vals[i]), float(old_raw), float(new_raw)))
+        else:
+            rows, cols = old_vals.shape
+            for r in range(rows):
+                for c in range(cols):
+                    if old_vals[r, c] != new_vals[r, c]:
+                        old_raw = converter.from_display(float(old_vals[r, c])) if converter else float(old_vals[r, c])
+                        new_raw = converter.from_display(float(new_vals[r, c])) if converter else float(new_vals[r, c])
+                        cell_changes.append((r, c, float(old_vals[r, c]), float(new_vals[r, c]), float(old_raw), float(new_raw)))
+
+        if cell_changes:
+            desc = f"Compare Copy: {dst_table.name}"
+            self.table_undo_manager.record_bulk_cell_changes(dst_table, cell_changes, desc, rom_path=rom_path)
+            self.change_tracker.record_pending_bulk_changes(dst_table, cell_changes, rom_path=rom_path)
+
+            def write_cells():
+                for row, col, _ov, _nv, _or, new_raw in cell_changes:
+                    document.rom_reader.write_cell_value(dst_table, row, col, new_raw)
+
+            self._write_to_rom_and_mark_modified(document, write_cells, f"compare copy in {dst_table.name}")
+
+        # --- Axis cells ---
+        for axis_type, axis_key in [(AxisType.Y_AXIS, 'y_axis'), (AxisType.X_AXIS, 'x_axis')]:
+            src_axis = src_data.get(axis_key)
+            old_axis = old_data.get(axis_key)
+            axis_table = dst_table.get_axis(axis_type)
+            if src_axis is None or old_axis is None or axis_table is None:
+                continue
+
+            axis_scaling = dst_definition.get_scaling(axis_table.scaling)
+            axis_converter = ScalingConverter(axis_scaling) if axis_scaling else None
+
+            axis_changes = []
+            for i in range(min(len(old_axis), len(src_axis))):
+                if old_axis[i] != src_axis[i]:
+                    old_raw = axis_converter.from_display(float(old_axis[i])) if axis_converter else float(old_axis[i])
+                    new_raw = axis_converter.from_display(float(src_axis[i])) if axis_converter else float(src_axis[i])
+                    axis_changes.append((axis_key, i, float(old_axis[i]), float(src_axis[i]), float(old_raw), float(new_raw)))
+
+            if axis_changes:
+                desc = f"Compare Copy Axis: {dst_table.name}"
+                self.table_undo_manager.record_axis_bulk_changes(dst_table, axis_changes, desc, rom_path=rom_path)
+                self.change_tracker.record_pending_axis_bulk_changes(dst_table, axis_changes, rom_path=rom_path)
+
+                def write_axes(changes=axis_changes):
+                    for ax_type, idx, _ov, _nv, _or, new_raw in changes:
+                        document.rom_reader.write_axis_value(dst_table, ax_type, idx, new_raw)
+
+                self._write_to_rom_and_mark_modified(document, write_axes, f"compare copy axis in {dst_table.name}")
+
+        # --- Update modified_cells for cell border highlighting ---
+        if rom_path not in self.modified_cells:
+            self.modified_cells[rom_path] = {}
+
+        if cell_changes:
+            if dst_table.address not in self.modified_cells[rom_path]:
+                self.modified_cells[rom_path][dst_table.address] = set()
+            for row, col, _ov, _nv, _or, _nr in cell_changes:
+                self.modified_cells[rom_path][dst_table.address].add((row, col))
+
+        # Update axis modified tracking
+        for axis_type, axis_key in [(AxisType.Y_AXIS, 'y_axis'), (AxisType.X_AXIS, 'x_axis')]:
+            ak = f"{dst_table.address}:{axis_key}"
+            src_axis = src_data.get(axis_key)
+            old_axis = old_data.get(axis_key)
+            if src_axis is None or old_axis is None:
+                continue
+            for i in range(min(len(old_axis), len(src_axis))):
+                if old_axis[i] != src_axis[i]:
+                    if ak not in self.modified_cells[rom_path]:
+                        self.modified_cells[rom_path][ak] = set()
+                    self.modified_cells[rom_path][ak].add(i)
+
+        # --- Refresh open table viewer windows showing this table ---
+        from src.core.table_undo_manager import make_table_key
+        table_key = make_table_key(rom_path, dst_table.address)
+        window = self._find_table_window(table_key)
+        if window:
+            viewer = window.viewer
+            viewer.begin_bulk_update()
+            try:
+                for row, col, _ov, new_val, _or, _nr in cell_changes:
+                    viewer.update_cell_value(row, col, new_val)
+            finally:
+                viewer.end_bulk_update()
+
+        self._update_tab_title(document)
+
+    def _on_compare_roms(self):
+        """Open the ROM comparison window."""
+        from src.ui.compare_window import CompareWindow
+
+        count = self.tab_widget.count()
+        if count < 2:
+            QMessageBox.information(
+                self, "Compare",
+                "Open at least two ROM files to compare."
+            )
+            return
+
+        # Close existing compare window
+        if self.compare_window is not None:
+            self.compare_window.close()
+            self.compare_window = None
+
+        if count == 2:
+            doc_a = self.tab_widget.widget(0)
+            doc_b = self.tab_widget.widget(1)
+        else:
+            # Let user pick which two ROMs to compare
+            rom_names = []
+            for i in range(count):
+                doc = self.tab_widget.widget(i)
+                rom_names.append(doc.file_name)
+
+            from PySide6.QtWidgets import QInputDialog
+            name_a, ok = QInputDialog.getItem(
+                self, "Compare ROMs", "Select original (base) ROM:",
+                rom_names, 0, False
+            )
+            if not ok:
+                return
+            idx_a = rom_names.index(name_a)
+
+            remaining = [n for i, n in enumerate(rom_names) if i != idx_a]
+            name_b, ok = QInputDialog.getItem(
+                self, "Compare ROMs", "Select modified ROM:",
+                remaining, 0, False
+            )
+            if not ok:
+                return
+            idx_b = rom_names.index(name_b)
+
+            doc_a = self.tab_widget.widget(idx_a)
+            doc_b = self.tab_widget.widget(idx_b)
+
+        # Get ROM colors
+        color_a = self.rom_colors.get(doc_a.rom_reader.rom_path)
+        color_b = self.rom_colors.get(doc_b.rom_reader.rom_path)
+
+        cross_def = (doc_a.rom_definition.romid.xmlid != doc_b.rom_definition.romid.xmlid)
+        self.statusBar().showMessage("Computing ROM differences...")
+
+        window = CompareWindow(
+            doc_a.rom_reader, doc_b.rom_reader,
+            doc_a.rom_definition, doc_b.rom_definition,
+            color_a, color_b,
+            doc_a.file_name, doc_b.file_name,
+            parent=self,
+        )
+
+        if not window.has_diffs:
+            window.deleteLater()
+            msg = ("No comparable tables found between definitions."
+                   if cross_def else
+                   "ROMs are identical \u2014 no differences found.")
+            QMessageBox.information(self, "Compare", msg)
+            self.statusBar().showMessage("No differences found.")
+            return
+
+        self.compare_window = window
+        window.show()
+
+        n = len(window._modified_tables)
+        self.statusBar().showMessage(
+            f"Comparing {doc_a.file_name} vs {doc_b.file_name} \u2014 {n} tables differ"
+        )
+        logger.info(f"ROM comparison opened: {doc_a.file_name} vs {doc_b.file_name} ({n} tables differ)")
+
     # ========== Table Selection and Window Management ==========
 
     def on_table_selected(self, table, rom_reader):
@@ -663,7 +1136,8 @@ class MainWindow(QMainWindow, RecentFilesMixin, ProjectMixin, SessionMixin):
                     # Window already exists - bring to focus
                     window.raise_()
                     window.activateWindow()
-                    logger.info(f"Table already open, bringing to focus: {table.name}")
+                    rom_label = Path(rom_path).stem
+                    logger.info(f"[{rom_label}] Table already open, bringing to focus: {table.name}")
                     self.statusBar().showMessage(f"Table already open: {table.name}")
                     return
 
@@ -695,7 +1169,8 @@ class MainWindow(QMainWindow, RecentFilesMixin, ProjectMixin, SessionMixin):
                     table, data, rom_reader.definition,
                     rom_path=rom_path, parent=self,
                     modified_cells_dict=self.modified_cells[rom_path],
-                    original_values_dict=self.original_table_values[rom_path]
+                    original_values_dict=self.original_table_values[rom_path],
+                    bg_color=self.rom_colors.get(rom_path),
                 )
 
                 # Connect cell_changed signal to change tracker
@@ -719,7 +1194,8 @@ class MainWindow(QMainWindow, RecentFilesMixin, ProjectMixin, SessionMixin):
                 self.open_table_windows.append(viewer_window)
 
                 # Log to console
-                logger.info(f"Opened table: {table.name} ({table.address})")
+                rom_label = Path(rom_path).stem
+                logger.info(f"[{rom_label}] Opened table: {table.name} ({table.address})")
                 logger.debug(f"  Category: {table.category}")
                 logger.debug(f"  Type: {table.type.value}")
                 logger.debug(f"  Address: {table.address}")
