@@ -32,7 +32,26 @@ if errorlevel 1 (
 )
 
 echo.
-echo === Build Complete ===
+echo === PyInstaller Build Complete ===
 echo Output: dist\NCRomEditor\NCRomEditor.exe
 echo.
-echo To run: dist\NCRomEditor\NCRomEditor.exe
+
+REM Build installer with Inno Setup (optional)
+set "ISCC="
+if exist "%ProgramFiles(x86)%\Inno Setup 6\ISCC.exe" set "ISCC=%ProgramFiles(x86)%\Inno Setup 6\ISCC.exe"
+if exist "%ProgramFiles%\Inno Setup 6\ISCC.exe" set "ISCC=%ProgramFiles%\Inno Setup 6\ISCC.exe"
+
+if defined ISCC (
+    echo Building installer...
+    "%ISCC%" installer.iss
+    if errorlevel 1 (
+        echo ERROR: Inno Setup build failed
+        exit /b 1
+    )
+    echo.
+    echo === Installer Build Complete ===
+    echo Installer: Output\NCRomEditor-1.2.0-Setup.exe
+) else (
+    echo Skipping installer: Inno Setup 6 not found.
+    echo Install from https://jrsoftware.org/isinfo.php to build the installer.
+)

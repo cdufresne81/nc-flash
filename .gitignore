@@ -36,6 +36,9 @@ ENV/
 # PyInstaller
 *.manifest
 
+# Inno Setup output
+Output/
+
 # OS
 .DS_Store
 Thumbs.db
