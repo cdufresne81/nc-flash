@@ -76,3 +76,6 @@ docs/screenshots/*.jpeg
 # Projects directory (user projects, don't commit)
 projects/*
 !projects/.gitkeep
+
+# Workspace state file (written by app, read by MCP server)
+workspace.json

@@ -229,6 +229,21 @@ class SettingsDialog(QDialog):
         romdrop_layout.addRow("", romdrop_help)
 
         layout.addWidget(romdrop_group)
+
+        # MCP Server group
+        mcp_group = QGroupBox("MCP Server (AI Assistant Access)")
+        mcp_layout = QVBoxLayout()
+        mcp_group.setLayout(mcp_layout)
+
+        self.mcp_auto_start_checkbox = QCheckBox("Start MCP server automatically on app launch")
+        mcp_layout.addWidget(self.mcp_auto_start_checkbox)
+
+        mcp_help = QLabel("Enables AI assistants (Claude, ChatGPT, etc.) to read your open ROMs via the Model Context Protocol")
+        mcp_help.setStyleSheet("color: gray; font-size: 10px;")
+        mcp_help.setWordWrap(True)
+        mcp_layout.addWidget(mcp_help)
+
+        layout.addWidget(mcp_group)
         layout.addStretch()
 
         self.tabs.addTab(tab, "Tools")
@@ -264,6 +279,9 @@ class SettingsDialog(QDialog):
         # Load RomDrop executable path
         romdrop_path = self.settings.get_romdrop_executable_path()
         self.romdrop_path_edit.setText(romdrop_path)
+
+        # Load MCP auto-start setting
+        self.mcp_auto_start_checkbox.setChecked(self.settings.get_mcp_auto_start())
 
     def browse_projects_directory(self):
         """Open directory browser for projects directory"""
@@ -364,6 +382,9 @@ class SettingsDialog(QDialog):
         # Save RomDrop executable path
         romdrop_path = self.romdrop_path_edit.text().strip()
         self.settings.set_romdrop_executable_path(romdrop_path)
+
+        # Save MCP auto-start setting
+        self.settings.set_mcp_auto_start(self.mcp_auto_start_checkbox.isChecked())
 
         # Emit signal that settings changed
         self.settings_changed.emit()

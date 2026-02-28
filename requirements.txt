@@ -11,6 +11,9 @@ lxml>=6.0.0,<7.0.0
 # Safe expression evaluation for scaling formulas
 simpleeval>=1.0.0,<2.0.0
 
+# MCP server for AI assistant access
+mcp>=1.0.0,<2.0.0
+
 # Development and testing tools
 pytest>=9.0.0,<10.0.0
 pytest-cov>=7.0.0,<8.0.0

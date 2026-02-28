@@ -109,6 +109,12 @@ class SessionMixin:
         self.settings.set_session_files(open_files)
         logger.info(f"Session saved: {len(open_files)} file(s)")
 
+        # Delete workspace state file (no ROMs are "open" anymore)
+        self._delete_workspace_state()
+
+        # Stop MCP server if running
+        self._stop_mcp_server()
+
         # Accept close event
         event.accept()
 

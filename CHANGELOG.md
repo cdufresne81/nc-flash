@@ -2,6 +2,13 @@
 
 All notable changes to NC ROM Editor are documented here.
 
+## [Unreleased]
+
+### Added
+- **MCP server for AI assistant access** — Read-only Model Context Protocol server (`python -m src.mcp.server`) exposes 6 tools: `get_workspace`, `get_rom_info`, `list_tables`, `read_table`, `compare_tables`, `get_table_statistics`. Supports STDIO and SSE transports. Works with Claude Code, Claude Desktop, ChatGPT, and Gemini. LRU-cached ROM loading (4 entries). No Qt/GUI dependency.
+- **Workspace state file for MCP auto-discovery** — App writes `workspace.json` listing open ROMs (path, xmlid, make/model/year, modified flag, active tab). MCP server reads it via new `get_workspace` tool so AI assistants can discover open ROMs without manual path entry. File is written on open/close/save and deleted on app exit.
+- **MCP server toggle in app** — Start/stop the MCP server directly from the Tools menu or toolbar (broadcast antenna icon, green when running). Uses SSE transport on `http://127.0.0.1:8765/sse` so any MCP client can connect. Optional "Start MCP server on startup" setting in Settings > Tools. Server subprocess is automatically stopped on app exit.
+
 ## [v1.3.0] - 2026-02-28
 
 ### Added

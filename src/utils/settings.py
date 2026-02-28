@@ -261,6 +261,14 @@ class AppSettings:
         """
         self.settings.setValue("tools/romdrop_executable_path", path)
 
+    def get_mcp_auto_start(self) -> bool:
+        """Get whether the MCP server should start automatically on app launch."""
+        return self.settings.value("tools/mcp_auto_start", False, type=bool)
+
+    def set_mcp_auto_start(self, enabled: bool):
+        """Set whether the MCP server should start automatically on app launch."""
+        self.settings.setValue("tools/mcp_auto_start", enabled)
+
 
 # Global settings instance
 _settings = None

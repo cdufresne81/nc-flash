@@ -126,6 +126,7 @@ class ProjectMixin:
 
                 # Update UI state
                 self._update_project_ui()
+                self._write_workspace_state()
 
                 logger.info(f"Opened project: {project.name}")
                 self.statusBar().showMessage(f"Opened project: {project.name}")

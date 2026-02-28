@@ -5,6 +5,7 @@ NC ROM Editor - Main Application Entry Point
 An open-source ROM editor for NC Miata ECUs
 """
 
+import json
 import sys
 import subprocess
 import logging
@@ -16,6 +17,8 @@ from PySide6.QtWidgets import (
     QMainWindow,
     QWidget,
     QHBoxLayout,
+    QVBoxLayout,
+    QLabel,
     QSplitter,
     QFileDialog,
     QMessageBox,
@@ -27,6 +30,7 @@ from PySide6.QtCore import Qt, QTimer, QSize
 from PySide6.QtGui import QColor, QIcon, QPainter, QPen, QPixmap
 
 from src.utils.logging_config import setup_logging, get_logger
+from src.utils.paths import get_app_root
 from src.utils.settings import get_settings
 from src.utils.constants import (
     APP_NAME, APP_VERSION_STRING, APP_DESCRIPTION,
@@ -139,6 +143,9 @@ class MainWindow(QMainWindow, RecentFilesMixin, ProjectMixin, SessionMixin):
         # Singleton comparison window reference
         self.compare_window = None
 
+        # MCP server subprocess
+        self._mcp_process = None
+
         # Initialize UI (lightweight widget creation)
         self.init_ui()
         self.init_menu()
@@ -209,6 +216,10 @@ class MainWindow(QMainWindow, RecentFilesMixin, ProjectMixin, SessionMixin):
 
         # Restore previous session (file I/O)
         self._restore_session()
+
+        # Auto-start MCP server if enabled in settings
+        if self.settings.get_mcp_auto_start():
+            self._start_mcp_server()
 
     def check_definitions_directory(self) -> bool:
         """
@@ -366,6 +377,12 @@ class MainWindow(QMainWindow, RecentFilesMixin, ProjectMixin, SessionMixin):
         self.flash_action.triggered.connect(self._on_flash_rom)
         self.flash_action.setEnabled(False)
 
+        tools_menu.addSeparator()
+
+        self.mcp_action = tools_menu.addAction("&MCP Server")
+        self.mcp_action.setCheckable(True)
+        self.mcp_action.triggered.connect(self._toggle_mcp_server)
+
         # Help menu (Alt+H)
         help_menu = menubar.addMenu("&Help")
 
@@ -420,6 +437,10 @@ class MainWindow(QMainWindow, RecentFilesMixin, ProjectMixin, SessionMixin):
         self._toolbar_flash = act
 
         tb.addSeparator()
+
+        self._toolbar_mcp = tb.addAction(self._make_icon("mcp_off"), "")
+        self._toolbar_mcp.setToolTip("MCP Server (off)")
+        self._toolbar_mcp.triggered.connect(self._toggle_mcp_server)
 
         act = tb.addAction(self._make_icon("settings"), "")
         act.setToolTip("Settings")
@@ -498,6 +519,26 @@ class MainWindow(QMainWindow, RecentFilesMixin, ProjectMixin, SessionMixin):
             p.drawPolygon(poly)
             # Center circle
             p.drawEllipse(QPointF(cx, cy), 2.5, 2.5)
+
+        elif name in ("mcp_on", "mcp_off"):
+            # Broadcast / antenna icon — circle with signal waves
+            from PySide6.QtCore import QPointF, QRectF
+            cx, cy = 10, 14
+            # Antenna base dot
+            if name == "mcp_on":
+                p.setBrush(QColor(76, 175, 80))  # green fill when on
+                p.setPen(QPen(QColor(76, 175, 80), 1.6, Qt.SolidLine, Qt.RoundCap))
+            else:
+                p.setBrush(c)
+            p.drawEllipse(QPointF(cx, cy), 2, 2)
+            # Signal arcs
+            p.setBrush(Qt.NoBrush)
+            if name == "mcp_on":
+                p.setPen(QPen(QColor(76, 175, 80), 1.4, Qt.SolidLine, Qt.RoundCap))
+            else:
+                p.setPen(QPen(c, 1.4, Qt.SolidLine, Qt.RoundCap))
+            p.drawArc(QRectF(3, 7, 14, 14), 45 * 16, 90 * 16)
+            p.drawArc(QRectF(0, 4, 20, 20), 45 * 16, 90 * 16)
 
         p.end()
         return QIcon(pm)
@@ -617,6 +658,7 @@ class MainWindow(QMainWindow, RecentFilesMixin, ProjectMixin, SessionMixin):
 
         logger.info(f"Closed ROM tab: {document.file_name if document else 'unknown'}")
         self._update_compare_action()
+        self._write_workspace_state()
 
     def close_current_tab(self):
         """Close the currently active tab"""
@@ -722,6 +764,189 @@ class MainWindow(QMainWindow, RecentFilesMixin, ProjectMixin, SessionMixin):
         else:
             self._open_rom_file(file_path)
 
+    def _write_workspace_state(self):
+        """Write workspace.json listing all open ROMs for MCP server discovery.
+
+        Deletes the file if no ROMs are open. Never raises — this is a
+        convenience file and must not crash the app.
+        """
+        try:
+            workspace_path = get_app_root() / "workspace.json"
+            if self.tab_widget.count() == 0:
+                workspace_path.unlink(missing_ok=True)
+                return
+
+            active_index = self.tab_widget.currentIndex()
+            active_rom = None
+            open_roms = []
+
+            for i in range(self.tab_widget.count()):
+                doc = self.tab_widget.widget(i)
+                if not hasattr(doc, 'rom_path'):
+                    continue
+                romid = doc.rom_definition.romid
+                entry = {
+                    "rom_path": doc.rom_path,
+                    "file_name": doc.file_name,
+                    "xmlid": romid.xmlid,
+                    "make": romid.make,
+                    "model": romid.model,
+                    "year": romid.year,
+                    "is_modified": doc.is_modified(),
+                }
+                open_roms.append(entry)
+                if i == active_index:
+                    active_rom = doc.rom_path
+
+            if not open_roms:
+                workspace_path.unlink(missing_ok=True)
+                return
+
+            state = {
+                "updated_at": datetime.now().isoformat(timespec="seconds"),
+                "active_rom": active_rom,
+                "open_roms": open_roms,
+            }
+            workspace_path.write_text(json.dumps(state, indent=2), encoding="utf-8")
+        except Exception:
+            logger.debug("Failed to write workspace.json", exc_info=True)
+
+    def _delete_workspace_state(self):
+        """Delete workspace.json (called on app exit)."""
+        try:
+            (get_app_root() / "workspace.json").unlink(missing_ok=True)
+        except Exception:
+            pass
+
+    # ========== MCP Server Management ==========
+
+    def _is_mcp_running(self) -> bool:
+        """Check if the MCP server subprocess is alive."""
+        return self._mcp_process is not None and self._mcp_process.poll() is None
+
+    MCP_SSE_PORT = 8765
+
+    def _start_mcp_server(self):
+        """Start the MCP server subprocess with SSE transport."""
+        if self._is_mcp_running():
+            return
+        try:
+            self._mcp_process = subprocess.Popen(
+                [sys.executable, "-m", "src.mcp.server",
+                 "--transport", "sse", "--port", str(self.MCP_SSE_PORT)],
+                cwd=str(get_app_root()),
+                stderr=subprocess.PIPE,
+            )
+            logger.info(f"MCP server started (PID {self._mcp_process.pid},"
+                        f" SSE on http://127.0.0.1:{self.MCP_SSE_PORT}/sse)")
+            self._update_mcp_ui(running=True)
+        except Exception as e:
+            logger.error(f"Failed to start MCP server: {e}")
+            self._mcp_process = None
+            self._update_mcp_ui(running=False)
+
+    def _stop_mcp_server(self):
+        """Stop the MCP server subprocess."""
+        if self._mcp_process is None:
+            return
+        try:
+            self._mcp_process.terminate()
+            self._mcp_process.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            self._mcp_process.kill()
+        except Exception:
+            pass
+        pid = self._mcp_process.pid if self._mcp_process else "?"
+        self._mcp_process = None
+        logger.info(f"MCP server stopped (PID {pid})")
+        self._update_mcp_ui(running=False)
+
+    def _toggle_mcp_server(self):
+        """Toggle the MCP server on/off."""
+        if self._is_mcp_running():
+            self._stop_mcp_server()
+        else:
+            self._start_mcp_server()
+            if self._is_mcp_running():
+                self._show_mcp_connection_info()
+
+    def _update_mcp_ui(self, running: bool):
+        """Update menu, toolbar, and status bar to reflect MCP server state."""
+        self.mcp_action.setChecked(running)
+        url = f"http://127.0.0.1:{self.MCP_SSE_PORT}/sse"
+        if running:
+            self.mcp_action.setText(f"&MCP Server (Running on port {self.MCP_SSE_PORT})")
+            self._toolbar_mcp.setIcon(self._make_icon("mcp_on"))
+            self._toolbar_mcp.setToolTip(f"MCP Server running — {url}\nClick to stop")
+            self.statusBar().showMessage(f"MCP server started on {url}", 5000)
+        else:
+            self.mcp_action.setText("&MCP Server")
+            self._toolbar_mcp.setIcon(self._make_icon("mcp_off"))
+            self._toolbar_mcp.setToolTip("MCP Server (off) — click to start")
+
+    def _show_mcp_connection_info(self):
+        """Show connection instructions after manually starting the MCP server."""
+        url = f"http://127.0.0.1:{self.MCP_SSE_PORT}/sse"
+        config_snippet = json.dumps(
+            {"mcpServers": {"nc-rom-editor": {"url": url}}},
+            indent=2,
+        )
+
+        from PySide6.QtWidgets import QTextEdit, QPushButton, QDialogButtonBox
+
+        dlg = QDialog(self)
+        dlg.setWindowTitle("MCP Server Running")
+        dlg.setMinimumWidth(500)
+        layout = QVBoxLayout(dlg)
+
+        layout.addWidget(QLabel(f"MCP server is running at <b>{url}</b>"))
+        layout.addWidget(QLabel(""))
+
+        layout.addWidget(QLabel("<b>Claude Code</b> — already configured via .mcp.json"))
+        layout.addWidget(QLabel(""))
+
+        label = QLabel(
+            "<b>Claude Desktop</b> — Go to Settings > Developer > Edit Config "
+            "and merge the block below into your config file:"
+        )
+        label.setWordWrap(True)
+        layout.addWidget(label)
+
+        snippet_box = QTextEdit()
+        snippet_box.setPlainText(config_snippet)
+        snippet_box.setReadOnly(True)
+        snippet_box.setFixedHeight(110)
+        snippet_box.setStyleSheet(
+            "font-family: Consolas, monospace; font-size: 12px; background: #f5f5f5;"
+        )
+        layout.addWidget(snippet_box)
+
+        btn_row = QHBoxLayout()
+        copy_btn = QPushButton("Copy to Clipboard")
+        copy_btn.clicked.connect(lambda: QApplication.clipboard().setText(config_snippet))
+        copy_btn.clicked.connect(lambda: copy_btn.setText("Copied!"))
+        btn_row.addStretch()
+        btn_row.addWidget(copy_btn)
+        btn_row.addStretch()
+        layout.addLayout(btn_row)
+
+        note = QLabel(
+            "If your config file already has a <code>mcpServers</code> section, "
+            "just add the <code>nc-rom-editor</code> entry inside it."
+        )
+        note.setWordWrap(True)
+        note.setStyleSheet("color: gray; font-size: 11px;")
+        layout.addWidget(note)
+
+        layout.addWidget(QLabel(""))
+        layout.addWidget(QLabel("The server will stay running until you stop it or close the app."))
+
+        buttons = QDialogButtonBox(QDialogButtonBox.Ok)
+        buttons.accepted.connect(dlg.accept)
+        layout.addWidget(buttons)
+
+        dlg.exec()
+
     def _open_rom_file(self, file_path: str):
         """
         Open a ROM file from a given path
@@ -824,6 +1049,7 @@ class MainWindow(QMainWindow, RecentFilesMixin, ProjectMixin, SessionMixin):
             )
 
             self._update_compare_action()
+            self._write_workspace_state()
 
         except (DetectionError, RomFileError, DefinitionError) as e:
             handle_rom_operation_error(self, "open ROM file", e)
@@ -862,6 +1088,7 @@ class MainWindow(QMainWindow, RecentFilesMixin, ProjectMixin, SessionMixin):
             logger.info(f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
 
             self.statusBar().showMessage(f"Saved: {document.rom_path}")
+            self._write_workspace_state()
             QMessageBox.information(
                 self,
                 "Success",

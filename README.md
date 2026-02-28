@@ -109,6 +109,14 @@ python main.py
 - Keyboard shortcuts for all major operations
 - Cross-platform: Windows, Linux, and macOS
 
+### AI Assistant Integration (MCP)
+- Built-in MCP server for AI assistants (Claude, ChatGPT, Gemini)
+- Start/stop from the app via Tools menu or toolbar
+- Auto-discovery of open ROMs — AI can see what you're working on
+- 6 read-only tools: get workspace, ROM info, list tables, read table, compare tables, statistics
+- Works with Claude Code (`.mcp.json`) and Claude Desktop (`claude_desktop_config.json`)
+- Optional auto-start on app launch (Settings > Tools)
+
 ### In Development
 - Projects management
 
@@ -168,6 +176,9 @@ nc-rom-editor/
 │   │   ├── history_viewer.py          # Version history viewer
 │   │   ├── project_wizard.py          # Project creation dialog
 │   │   └── settings_dialog.py         # Settings/preferences
+│   ├── mcp/                           # MCP server for AI assistants
+│   │   ├── server.py                  # FastMCP server (STDIO + SSE)
+│   │   └── rom_context.py            # ROM loading, caching, tool logic
 │   └── utils/                         # Helper functions
 │       ├── settings.py                # Settings manager
 │       └── colormap.py                # Color scheme utilities

@@ -45,6 +45,8 @@ class _SessionHost(SessionMixin):
         self.tab_widget.widget.side_effect = lambda i: docs[i]
         self.open_project_path = MagicMock()
         self._open_rom_file = MagicMock()
+        self._delete_workspace_state = MagicMock()
+        self._stop_mcp_server = MagicMock()
         self.statusBar = MagicMock()
 
 
