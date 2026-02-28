@@ -147,6 +147,14 @@ class MainWindow(QMainWindow, RecentFilesMixin, ProjectMixin, SessionMixin):
         # - session restore (file I/O)
         QTimer.singleShot(0, self._deferred_init)
 
+    def closeEvent(self, event):
+        """Override QWidget.closeEvent — delegates to SessionMixin._handle_close.
+
+        Mixin methods named closeEvent are shadowed by QWidget's C++ slot in the MRO,
+        so this explicit override is required.
+        """
+        self._handle_close(event)
+
     def _deferred_init(self):
         """
         Perform heavy initialization after the window is shown.

@@ -58,6 +58,14 @@ def _format_value(value: float, format_spec: str) -> str:
         return f"{value:.2f}"
 
 
+def _all_nan(arr) -> bool:
+    """Check if a numpy array is entirely NaN (float arrays only)."""
+    try:
+        return np.all(np.isnan(arr))
+    except (TypeError, ValueError):
+        return False
+
+
 def _get_scaling_format(rom_definition: RomDefinition, scaling_name: str) -> str:
     """Get Python format spec for a scaling name."""
     if not rom_definition or not scaling_name:
@@ -198,6 +206,9 @@ class CompareWindow(QMainWindow):
                 values_a = data_a.get('values')
                 if values_a is None:
                     continue
+                # Skip one-sided tables that are entirely NaN
+                if _all_nan(values_a):
+                    continue
                 changed = set()
                 if values_a.ndim == 1:
                     for i in range(len(values_a)):
@@ -218,6 +229,9 @@ class CompareWindow(QMainWindow):
             if b_only:
                 values_b = data_b.get('values')
                 if values_b is None:
+                    continue
+                # Skip one-sided tables that are entirely NaN
+                if _all_nan(values_b):
                     continue
                 changed = set()
                 if values_b.ndim == 1:
@@ -240,6 +254,10 @@ class CompareWindow(QMainWindow):
             values_a = data_a.get('values')
             values_b = data_b.get('values')
             if values_a is None or values_b is None:
+                continue
+
+            # Skip tables where both sides are entirely NaN (unpatched tables)
+            if _all_nan(values_a) and _all_nan(values_b):
                 continue
 
             shape_mismatch = (values_a.shape != values_b.shape)

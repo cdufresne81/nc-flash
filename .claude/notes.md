@@ -23,6 +23,18 @@ See `docs/CODE_AUDIT_REPORT.md` for full details and batched action plan.
 ### Distribution
 - **Windows packaging** - Use PyInstaller to package as standalone .exe, test on clean Windows system
 
+## Recent Completed Work (Feb 27, 2026) - Project Management UI Fixes
+- **ROM comparison NaN filter** — `_compute_diffs()` now skips tables where both sides (or a one-sided table) have all-NaN values, preventing unpatched ROM tables from cluttering the comparison sidebar.
+- **Session restore for projects** — Session save uses `document.project_path` to detect project tabs; stores `project:<path>` entries; restore calls `open_project_path()` to reopen with full project context (`[P]` prefix, history, etc.).
+- **Project tab color swatch** — `open_project_path()` calls `_assign_rom_color()` and `_create_tab_color_button()` so project tabs get the same color swatch as standalone ROM tabs.
+- **Flat project structure** — Projects no longer create `history/` subfolder. `commits.json` and all snapshots live at project root. Backward compat: `_load_commits()` and `get_snapshot_path()` fall back to `history/` paths for old projects.
+- **v0/v1 project layout** — `create_project()` creates `v0_{romid}_original.bin` (pristine, never modified) and `v1_{romid}_working.bin` (editable copy). No more `original.bin` or `modified.bin`.
+- **New project gets [P] prefix** — `new_project()` now calls `open_project_path()` instead of `_open_rom_file()`, so newly created projects get the `[P]` tab prefix, color swatch, and recent files entry.
+- **Projects in recent files** — `open_project_path()` adds `project:<path>` to recent files. `RecentFilesMixin` displays them as `[P] folder_name` and opens via `open_project_path()`.
+- **RomDocument.project_path** — New attribute tracks project association per-document (used by session save and recent files).
+- **Fixed closeEvent MRO bug** — `SessionMixin.closeEvent` was shadowed by `QWidget.closeEvent` (C++ slot) in Python's MRO, meaning session data was *never* saved on app close. Renamed to `_handle_close()` with an explicit `MainWindow.closeEvent` override that delegates to it. Added MRO regression tests.
+- **Legacy session/recent data handling** — `_restore_session()` and `open_recent_file()` detect ROM files inside project folders (parent has `project.json`) and open them as projects. Covers stale QSettings data from before project-aware code.
+
 ## Environment Notes
 - Use `python` not `python3` (Windows environment)
 

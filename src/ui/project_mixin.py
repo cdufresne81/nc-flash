@@ -58,14 +58,8 @@ class ProjectMixin:
                     description=wizard.project_description
                 )
 
-                # Open the project's working ROM
-                self._open_rom_file(project.working_rom_path)
-
-                # Update UI state
-                self._update_project_ui()
-
-                logger.info(f"Created project: {project.name}")
-                self.statusBar().showMessage(f"Created project: {project.name}")
+                # Open the project (gets [P] prefix, color swatch, recent files)
+                self.open_project_path(project.project_path)
 
                 QMessageBox.information(
                     self,
@@ -84,7 +78,7 @@ class ProjectMixin:
                 )
 
     def open_project(self):
-        """Open an existing project"""
+        """Open an existing project via folder dialog"""
         project_path = QFileDialog.getExistingDirectory(
             self,
             "Open Project Folder",
@@ -104,6 +98,10 @@ class ProjectMixin:
             )
             return
 
+        self.open_project_path(project_path)
+
+    def open_project_path(self, project_path: str):
+        """Open a project from a given path (used by open_project dialog and session restore)"""
         try:
             # Open the project
             project = self.project_manager.open_project(project_path)
@@ -122,13 +120,22 @@ class ProjectMixin:
                 rom_document = RomDocument(
                     project.working_rom_path, rom_definition, rom_reader, self
                 )
+                rom_document.project_path = project.project_path
                 rom_document.table_selected.connect(self.on_table_selected)
 
-                # Add as new tab
+                # Assign color and add as new tab with swatch
+                rom_path = rom_reader.rom_path
+                self._assign_rom_color(rom_path)
+
                 tab_title = f"[P] {project.name}"
                 tab_index = self.tab_widget.addTab(rom_document, tab_title)
                 self.tab_widget.setTabToolTip(tab_index, project.project_path)
+                self._create_tab_color_button(rom_path, tab_index)
                 self.tab_widget.setCurrentIndex(tab_index)
+
+                # Add to recent files
+                self.settings.add_recent_file(f"project:{project.project_path}")
+                self.update_recent_files_menu()
 
                 # Update UI state
                 self._update_project_ui()

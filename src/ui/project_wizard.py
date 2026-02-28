@@ -56,12 +56,11 @@ class ProjectWizard(QWizard):
                 filename = Path(rom_path).stem
                 self.info_page.name_edit.setText(filename)
         elif page_id == 2:  # Location page
-            # Suggest location from ROM path
-            rom_path = self.field("rom_path")
+            # Suggest location from configured projects directory
             project_name = self.field("project_name")
-            if rom_path and project_name and not self.location_page.location_edit.text():
-                rom_dir = Path(rom_path).parent
-                suggested_path = rom_dir / project_name
+            if project_name and not self.location_page.location_edit.text():
+                projects_dir = get_settings().get_projects_directory()
+                suggested_path = Path(projects_dir) / project_name
                 self.location_page.location_edit.setText(str(suggested_path))
 
     def accept(self):

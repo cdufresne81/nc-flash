@@ -26,7 +26,7 @@ logger = logging.getLogger(__name__)
 
 PROJECT_VERSION = "1.0"
 PROJECT_FILE = "project.json"
-COMMITS_FILE = "history/commits.json"
+COMMITS_FILE = "commits.json"
 
 
 class ProjectManager:
@@ -63,30 +63,32 @@ class ProjectManager:
         project_dir = Path(project_path)
 
         try:
-            # Create project directory structure
+            # Create project directory (flat structure, no subdirectories)
             project_dir.mkdir(parents=True, exist_ok=True)
-            (project_dir / "history").mkdir(exist_ok=True)
-            (project_dir / "history" / "snapshots").mkdir(exist_ok=True)
 
-            # Copy original ROM
             source_path = Path(source_rom_path)
-            original_path = project_dir / "original.bin"
-            shutil.copy2(source_path, original_path)
+            rom_id = rom_definition.romid.internalidstring
 
-            # Create working copy
-            working_path = project_dir / "modified.bin"
+            # v0 = pristine backup (never modified)
+            v0_filename = f"v0_{rom_id}_original.bin"
+            v0_path = project_dir / v0_filename
+            shutil.copy2(source_path, v0_path)
+
+            # v1 = working ROM (editable copy)
+            working_filename = f"v1_{rom_id}_working.bin"
+            working_path = project_dir / working_filename
             shutil.copy2(source_path, working_path)
 
-            # Calculate checksum
-            with open(original_path, 'rb') as f:
+            # Calculate checksum from pristine copy
+            with open(v0_path, 'rb') as f:
                 checksum = hashlib.sha256(f.read()).hexdigest()
 
             # Create original ROM info
             original_info = OriginalRomInfo(
-                filename="original.bin",
-                size=original_path.stat().st_size,
+                filename=v0_filename,
+                size=v0_path.stat().st_size,
                 checksum_sha256=checksum,
-                rom_id=rom_definition.romid.internalidstring,
+                rom_id=rom_id,
                 definition_xmlid=rom_definition.romid.xmlid,
                 make=rom_definition.romid.make,
                 model=rom_definition.romid.model
@@ -94,7 +96,6 @@ class ProjectManager:
 
             # Create project
             now = datetime.now()
-            rom_id = rom_definition.romid.internalidstring
             project = Project(
                 version=PROJECT_VERSION,
                 name=project_name,
@@ -102,7 +103,7 @@ class ProjectManager:
                 created_at=now,
                 updated_at=now,
                 original_rom=original_info,
-                working_rom="modified.bin",
+                working_rom=working_filename,
                 head_commit_id=None,
                 project_path=str(project_dir),
                 head_version=0,
@@ -113,24 +114,16 @@ class ProjectManager:
             # Save project file
             self._save_project_file(project)
 
-            # Initialize empty commit history
-            self._save_commits([], project)
-
-            # Create initial commit (version 0 = original)
-            snapshot_filename = f"v0_{rom_id}_original.bin"
+            # Initialize commit history with v0 (pristine backup)
             initial_commit = Commit.create(
                 message="Original ROM",
                 changes=[],
                 version=0,
                 parent_id=None,
-                snapshot_filename=snapshot_filename
+                snapshot_filename=v0_filename
             )
             self.commits = [initial_commit]
             self._save_commits(self.commits, project)
-
-            # Create initial snapshot with new naming
-            snapshot_path = project_dir / "history" / "snapshots" / snapshot_filename
-            shutil.copy2(original_path, snapshot_path)
 
             # Update project head
             project.head_commit_id = initial_commit.id
@@ -176,9 +169,7 @@ class ProjectManager:
 
             project = Project.from_dict(data, str(project_dir))
 
-            # Verify ROM files exist
-            if not Path(project.original_rom_path).exists():
-                raise ProjectCorruptError(f"Original ROM not found: {project.original_rom_path}")
+            # Verify working ROM exists
             if not Path(project.working_rom_path).exists():
                 raise ProjectCorruptError(f"Working ROM not found: {project.working_rom_path}")
 
@@ -249,11 +240,11 @@ class ProjectManager:
                 snapshot_filename=snapshot_filename
             )
 
-            # Optionally create snapshot
+            # Optionally create snapshot at project root
             if create_snapshot and snapshot_filename:
                 project_dir = Path(self.current_project.project_path)
                 working_path = project_dir / self.current_project.working_rom
-                snapshot_path = project_dir / "history" / "snapshots" / snapshot_filename
+                snapshot_path = project_dir / snapshot_filename
                 shutil.copy2(working_path, snapshot_path)
                 logger.debug(f"Created snapshot: {snapshot_filename}")
 
@@ -330,24 +321,33 @@ class ProjectManager:
 
         project_dir = Path(self.current_project.project_path)
 
-        # For version 0, use original.bin
+        # For version 0, look up snapshot_filename from the commit
         if version == 0:
+            commit = self.get_commit_by_version(0)
+            if commit and commit.snapshot_filename:
+                v0_path = project_dir / commit.snapshot_filename
+                if v0_path.exists():
+                    return v0_path
+            # Fallback for old projects: original.bin
             original_path = project_dir / "original.bin"
             if original_path.exists():
                 return original_path
 
-        # Try new naming pattern: v{version}_*.bin
+        # Try v{version}_*.bin at project root (new flat structure)
+        for f in project_dir.glob(f"v{version}_*.bin"):
+            return f
+
+        # Fallback for old projects: history/snapshots/
         snapshots_dir = project_dir / "history" / "snapshots"
         if snapshots_dir.exists():
             for f in snapshots_dir.glob(f"v{version}_*.bin"):
                 return f
-
-        # Fall back to old naming pattern: commit_{uuid}.bin
-        commit = self.get_commit_by_version(version)
-        if commit:
-            old_path = snapshots_dir / f"commit_{commit.id}.bin"
-            if old_path.exists():
-                return old_path
+            # Fall back to old naming pattern: commit_{uuid}.bin
+            commit = self.get_commit_by_version(version)
+            if commit:
+                old_path = snapshots_dir / f"commit_{commit.id}.bin"
+                if old_path.exists():
+                    return old_path
 
         return None
 
@@ -423,8 +423,13 @@ class ProjectManager:
     def _load_commits(self, project_dir: Path) -> List[Commit]:
         """Load commits from history file with backward compatibility"""
         commits_file = project_dir / COMMITS_FILE
+        # Fallback for old projects that stored commits in history/
         if not commits_file.exists():
-            return []
+            legacy_file = project_dir / "history" / "commits.json"
+            if legacy_file.exists():
+                commits_file = legacy_file
+            else:
+                return []
         try:
             with open(commits_file, 'r') as f:
                 data = json.load(f)
