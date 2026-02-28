@@ -3,7 +3,12 @@
 ## Next Tasks
 
 - **Project/versioning system** - Full rewrite planned (current code excluded from audit)
-- **Windows packaging** - Use PyInstaller to package as standalone .exe, test on clean Windows system
+- **Cross-platform packaging (GitHub Actions CI)** - Triggers on tag/release only. Build with PyInstaller on Windows, macOS, Linux runners. Upload artifacts to GitHub Release.
+  - **Pre-requisite: Package manifest** — Define include/exclude lists for packaging. Exclude: `.claude/`, `.gitignore`, `docs/`, `tests/`, `tools/`, `Thinking-pad.md`, `*.bak`, `nul`, dev scripts (`run-dev.bat`), `htmlcov/`, `coverage.xml`, `.pytest_cache/`, `venv*/`. Include: `main.py`, `src/`, `definitions/`, `examples/`, `run.bat`, `requirements.txt`, `README.md`.
+  - **Pre-requisite: Local build validation** — Build installer locally on Windows first, test on a clean machine (no Python installed) to confirm it launches and opens a ROM before automating in CI.
+
+## Recent Completed Work (Feb 28, 2026) - Windows Packaging
+- **PyInstaller packaging support** — Added `src/utils/paths.py` with `get_app_root()` that resolves `sys._MEIPASS` when frozen or `Path(__file__)` tree when running from source. Replaced all 4 `Path(__file__).parent.parent.parent` references in `settings.py` with `get_app_root()`. Created `NCRomEditor.spec` (one-dir, windowed, bundles definitions/colormaps/examples, excludes tkinter/test/unittest), `build.bat` (activates venv, installs pyinstaller, runs build), and `requirements-build.txt` (pyinstaller>=6.0,<7.0).
 
 ## Recent Completed Work (Feb 28, 2026) - Unified Open Action
 - **Unified "Open" action** — Replaced separate "Open Project..." (folder picker) and "Open ROM..." (file picker) menu items with a single "Open..." (Ctrl+O) that shows a file picker. If the selected ROM's parent directory is a project folder (`project.json` present), opens as project via `open_project_path()`; otherwise opens as standalone ROM. Toolbar button updated to match. Removed `open_project()` from `ProjectMixin`.

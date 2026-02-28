@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/NCRomEditor.png" alt="NC ROM Editor" width="128">
+</p>
+
 # NC ROM Editor
 
 [![GitHub](https://img.shields.io/badge/GitHub-NCRomEditor-blue?logo=github)](https://github.com/cdufresne81/NCRomEditor)
@@ -240,8 +244,8 @@ Tests run automatically on GitHub Actions for:
 This version includes full table editing, project management with version history, interactive graph visualization, ROM comparison tool, and a polished toolbar-driven UI.
 
 **Next Priorities:**
-- Project management.
-- Windows standalone packaging (PyInstaller)
+- Project management
+- Windows installer (Inno Setup)
 
 ## Contributing
 
