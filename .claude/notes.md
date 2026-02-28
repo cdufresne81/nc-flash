@@ -2,29 +2,12 @@
 
 ## Next Tasks
 
-### Code Audit Round 2 (Feb 8, 2026) — 13 open findings
-See `docs/CODE_AUDIT_REPORT.md` for full details and batched action plan.
-- ~~**Batch D (main.py)** — DONE: Bug fix #43 + consolidated signal handlers~~
-- ~~**Batch A (rom_reader.py)** — DONE: Validate flatten size, improve error logging~~
-- ~~**Batch B (display.py)** — DONE: O(n^2) min/max caching, regex caching~~
-- ~~**Batch C (table_viewer.py)** — DONE: Removed redundant viewport repaints, optimized diff tooltips, removed dead info_label code~~
-- ~~**Batch E (table_undo_manager.py)** — DONE: Replaced pipe delimiter with null byte~~
-- ~~**Batch F (tests)** — DONE: Integration test + Windows path fix (246 tests, 0 failures)~~
-
-### UI Polish
-- ~~**Reduce menu bar item spacing** — DONE: Added `QMenuBar::item { padding: 2px 6px; }` to both main window and table viewer window menus~~
-
-### Features
-- ~~**Ctrl+S save** - DONE: Unified save — commits if project open with changes, otherwise saves ROM~~
-- ~~**ROM comparison tool** - DONE: Side-by-side comparison window with table diff~~
-- ~~**Cross-definition ROM comparison** - DONE: Name-based table matching, per-ROM definitions, one-sided/shape-mismatch support~~
 - **Project/versioning system** - Full rewrite planned (current code excluded from audit)
-
-### Distribution
 - **Windows packaging** - Use PyInstaller to package as standalone .exe, test on clean Windows system
 
 ## Recent Completed Work (Feb 28, 2026) - Unified Open Action
 - **Unified "Open" action** — Replaced separate "Open Project..." (folder picker) and "Open ROM..." (file picker) menu items with a single "Open..." (Ctrl+O) that shows a file picker. If the selected ROM's parent directory is a project folder (`project.json` present), opens as project via `open_project_path()`; otherwise opens as standalone ROM. Toolbar button updated to match. Removed `open_project()` from `ProjectMixin`.
+- **`--enable-projects` feature flag** — All project UI (New Project, Commit Changes, Commit History, project auto-detection in Open/Save/session restore/recent files) is hidden unless `--enable-projects` is passed on the command line. `run.bat` passes args through (`%*`); `run-dev.bat` launches with the flag enabled.
 
 ## Recent Completed Work (Feb 27, 2026) - Project Management UI Fixes
 - **ROM comparison NaN filter** — `_compute_diffs()` now skips tables where both sides (or a one-sided table) have all-NaN values, preventing unpatched ROM tables from cluttering the comparison sidebar.

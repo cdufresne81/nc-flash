@@ -98,6 +98,9 @@ class MainWindow(QMainWindow, RecentFilesMixin, ProjectMixin, SessionMixin):
         # Structure: {rom_path: {table_name: {"values": np.array, "x_axis": np.array, "y_axis": np.array}}}
         self.original_table_values = {}
 
+        # Feature flags
+        self.projects_enabled = "--enable-projects" in sys.argv
+
         # Project management
         self.project_manager = ProjectManager()
         self.change_tracker = ChangeTracker()
@@ -283,9 +286,10 @@ class MainWindow(QMainWindow, RecentFilesMixin, ProjectMixin, SessionMixin):
         # File menu (Alt+F)
         self.file_menu = menubar.addMenu("&File")
 
-        # Project section
-        new_project_action = self.file_menu.addAction("New Project...")
-        new_project_action.triggered.connect(self.new_project)
+        # Project section (hidden unless --enable-projects)
+        if self.projects_enabled:
+            new_project_action = self.file_menu.addAction("New Project...")
+            new_project_action.triggered.connect(self.new_project)
 
         open_action = self.file_menu.addAction("Open...")
         open_action.setShortcut("Ctrl+O")
@@ -300,10 +304,11 @@ class MainWindow(QMainWindow, RecentFilesMixin, ProjectMixin, SessionMixin):
 
         self.file_menu.addSeparator()
 
-        # Commit (for projects)
+        # Commit (for projects, hidden unless --enable-projects)
         self.commit_action = self.file_menu.addAction("Commit Changes...")
         self.commit_action.triggered.connect(self.commit_changes)
         self.commit_action.setEnabled(False)
+        self.commit_action.setVisible(self.projects_enabled)
 
         self.file_menu.addSeparator()
 
@@ -343,8 +348,9 @@ class MainWindow(QMainWindow, RecentFilesMixin, ProjectMixin, SessionMixin):
         # View menu (Alt+V)
         view_menu = menubar.addMenu("&View")
 
-        history_action = view_menu.addAction("Commit History...")
-        history_action.triggered.connect(self.show_history)
+        if self.projects_enabled:
+            history_action = view_menu.addAction("Commit History...")
+            history_action.triggered.connect(self.show_history)
 
         # Tools menu (Alt+T)
         tools_menu = menubar.addMenu("&Tools")
@@ -689,7 +695,7 @@ class MainWindow(QMainWindow, RecentFilesMixin, ProjectMixin, SessionMixin):
             return
 
         parent = Path(file_path).parent
-        if ProjectManager.is_project_folder(str(parent)):
+        if self.projects_enabled and ProjectManager.is_project_folder(str(parent)):
             self.open_project_path(str(parent))
         else:
             self._open_rom_file(file_path)
@@ -808,7 +814,7 @@ class MainWindow(QMainWindow, RecentFilesMixin, ProjectMixin, SessionMixin):
 
     def _save(self):
         """Unified save: commit if project is open with changes, otherwise save ROM."""
-        if self.project_manager.is_project_open() and self.change_tracker.has_pending_changes():
+        if self.projects_enabled and self.project_manager.is_project_open() and self.change_tracker.has_pending_changes():
             self.commit_changes()
         else:
             self.save_rom()

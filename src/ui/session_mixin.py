@@ -41,13 +41,16 @@ class SessionMixin:
 
         for entry in session_files:
             try:
-                if entry.startswith("project:"):
+                if self.projects_enabled and entry.startswith("project:"):
                     # Explicit project tab
                     project_path = entry[len("project:"):]
                     if Path(project_path).exists():
                         self.open_project_path(project_path)
                     else:
                         logger.warning(f"Session project folder no longer exists: {project_path}")
+                elif entry.startswith("project:"):
+                    # Projects disabled — skip project entries
+                    logger.info(f"Skipping project session entry (projects disabled): {entry}")
                 else:
                     path = Path(entry)
                     if not path.exists():
@@ -55,7 +58,7 @@ class SessionMixin:
                         continue
                     # Check if this ROM lives inside a project folder (legacy session data)
                     parent = path.parent
-                    if ProjectManager.is_project_folder(str(parent)):
+                    if self.projects_enabled and ProjectManager.is_project_folder(str(parent)):
                         logger.info(f"Session ROM is inside project folder, restoring as project: {parent}")
                         self.open_project_path(str(parent))
                     else:
