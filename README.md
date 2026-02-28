@@ -6,6 +6,8 @@
 
 [![GitHub](https://img.shields.io/badge/GitHub-NCRomEditor-blue?logo=github)](https://github.com/cdufresne81/NCRomEditor)
 
+> **Notice:** This project was built with AI assistance (vibe coded). Modifying and flashing ECU software carries real risk — incorrect tunes can damage your engine, ECU, or other vehicle components. The author assumes no responsibility for any damage to your vehicle, hardware, or any other consequence arising from the use of this software. **Use entirely at your own risk.** Always keep backups of your stock ROM and understand what you are changing before flashing.
+
 An open-source ROM editor for NC Miata (MX-5) ECUs, designed to replace the discontinued EcuFlash for ROM editing tasks.
 
 ## Overview
@@ -117,6 +119,7 @@ python main.py
 | `G` | Toggle graph panel |
 | `Ctrl+O` | Open ROM file |
 | `Ctrl+Shift+D` | Compare open ROMs |
+| `Ctrl+Shift+F` | Flash ROM to ECU via RomDrop |
 
 ## Tech Stack
 
@@ -175,7 +178,7 @@ nc-rom-editor/
 4. **Edit Values:** Click cells to edit, use shortcuts for bulk operations
 5. **Visualize:** Press `G` to toggle 3D/2D graph view
 6. **Save ROM:** File → Save ROM or Save ROM As...
-7. **Flash to ECU:** Use RomDrop to flash the modified ROM
+7. **Flash to ECU:** Tools → Flash ROM to ECU (or `Ctrl+Shift+F`) — launches RomDrop with your ROM file
 
 ### Using Projects (Experimental)
 
@@ -255,6 +258,3 @@ Contributions welcome! This is an open-source project to preserve and improve up
 
 This project is licensed under the [GNU General Public License v3.0](LICENSE).
 
-## Disclaimer
-
-Modifying your ECU can damage your vehicle or violate emissions regulations. Use this software at your own risk. Always keep backups of your stock ROM.

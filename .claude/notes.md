@@ -7,6 +7,10 @@
   - **Pre-requisite: Package manifest** — Define include/exclude lists for packaging. Exclude: `.claude/`, `.gitignore`, `docs/`, `tests/`, `tools/`, `Thinking-pad.md`, `*.bak`, `nul`, dev scripts (`run-dev.bat`), `htmlcov/`, `coverage.xml`, `.pytest_cache/`, `venv*/`. Include: `main.py`, `src/`, `definitions/`, `examples/`, `run.bat`, `requirements.txt`, `README.md`.
   - **Pre-requisite: Local build validation** — Build installer locally on Windows first, test on a clean machine (no Python installed) to confirm it launches and opens a ROM before automating in CI.
 
+## Recent Completed Work (Feb 28, 2026) - Flash ROM via RomDrop
+- **Flash ROM to ECU via RomDrop** — Added "Flash ROM to ECU..." action (Ctrl+Shift+F) in Tools menu and toolbar (lightning-bolt icon). Shows safety warning dialog before flashing (engine off, battery healthy, don't interrupt). Auto-saves unsaved changes ("Save and Flash" vs "Flash"). Launches `subprocess.Popen([romdrop.exe, rom_file], cwd=romdrop_dir)` with resolved absolute path. RomDrop executable path configurable in Settings → Tools tab.
+- **README disclaimer** — Added prominent vibe-coded / use-at-your-own-risk notice at the top of README.md.
+
 ## Recent Completed Work (Feb 28, 2026) - Windows Packaging
 - **PyInstaller packaging support** — Added `src/utils/paths.py` with `get_app_root()` that resolves `sys._MEIPASS` when frozen or `Path(__file__)` tree when running from source. Replaced all 4 `Path(__file__).parent.parent.parent` references in `settings.py` with `get_app_root()`. Created `NCRomEditor.spec` (one-dir, windowed, bundles definitions/colormaps/examples, excludes tkinter/test/unittest), `build.bat` (activates venv, installs pyinstaller, runs build), and `requirements-build.txt` (pyinstaller>=6.0,<7.0).
 

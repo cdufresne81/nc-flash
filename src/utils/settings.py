@@ -243,6 +243,24 @@ class AppSettings:
         """
         self.settings.setValue("display/toggle_categories", categories)
 
+    def get_romdrop_executable_path(self) -> str:
+        """
+        Get the configured RomDrop executable path
+
+        Returns:
+            str: Path to romdrop.exe, or empty string if not configured
+        """
+        return self.settings.value("tools/romdrop_executable_path", "")
+
+    def set_romdrop_executable_path(self, path: str):
+        """
+        Set the RomDrop executable path
+
+        Args:
+            path: Path to romdrop.exe
+        """
+        self.settings.setValue("tools/romdrop_executable_path", path)
+
 
 # Global settings instance
 _settings = None
