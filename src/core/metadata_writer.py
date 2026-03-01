@@ -8,7 +8,6 @@ from pathlib import Path
 from lxml import etree
 import logging
 import shutil
-from datetime import datetime
 
 logger = logging.getLogger(__name__)
 

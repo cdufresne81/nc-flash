@@ -16,6 +16,11 @@ NC ROM Editor is a desktop application that allows you to read, edit, and save E
 
 ## Installation
 
+### Windows Installer
+Download the latest installer from [GitHub Releases](https://github.com/cdufresne81/NCRomEditor/releases).
+
+> **Note:** The installer is not code-signed, so Windows SmartScreen may show an "Unknown publisher" warning. Click **"More info"** then **"Run anyway"** to proceed. This is normal for open-source software without a paid signing certificate.
+
 ### Clone the Repository
 ```bash
 git clone https://github.com/cdufresne81/NCRomEditor.git
@@ -104,6 +109,14 @@ python main.py
 - Keyboard shortcuts for all major operations
 - Cross-platform: Windows, Linux, and macOS
 
+### AI Assistant Integration (MCP)
+- Built-in MCP server for AI assistants (Claude, ChatGPT, Gemini)
+- Start/stop from the app via Tools menu or toolbar
+- Auto-discovery of open ROMs — AI can see what you're working on
+- 9 tools: read-only inspection (ROM info, list/read/compare tables, statistics) plus live read/write through the app with full undo support
+- Works with Claude Code (`.mcp.json`) and Claude Desktop (`claude_desktop_config.json`)
+- Optional auto-start on app launch (Settings > Tools)
+
 ### In Development
 - Projects management
 
@@ -163,6 +176,11 @@ nc-rom-editor/
 │   │   ├── history_viewer.py          # Version history viewer
 │   │   ├── project_wizard.py          # Project creation dialog
 │   │   └── settings_dialog.py         # Settings/preferences
+│   ├── api/                           # Command API (HTTP bridge for MCP)
+│   │   └── command_server.py          # HTTP server bridging to Qt thread
+│   ├── mcp/                           # MCP server for AI assistants
+│   │   ├── server.py                  # FastMCP server (STDIO + SSE)
+│   │   └── rom_context.py            # ROM loading, caching, tool logic
 │   └── utils/                         # Helper functions
 │       ├── settings.py                # Settings manager
 │       └── colormap.py                # Color scheme utilities
@@ -255,7 +273,6 @@ This version includes full table editing, project management with version histor
 
 **Next Priorities:**
 - Project management
-- Windows installer (Inno Setup)
 
 ## Contributing
 

@@ -16,7 +16,7 @@ import logging
 
 from .version_models import CellChange, AxisChange, TableChanges
 from .rom_definition import Table
-from .table_undo_manager import make_table_key, extract_table_address, extract_rom_path
+from .table_undo_manager import make_table_key, extract_rom_path
 
 logger = logging.getLogger(__name__)
 

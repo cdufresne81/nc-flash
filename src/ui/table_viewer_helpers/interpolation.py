@@ -5,7 +5,7 @@ Handles interpolation algorithms for TableViewer.
 """
 
 import logging
-from typing import TYPE_CHECKING, List, Tuple
+from typing import TYPE_CHECKING
 
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QBrush

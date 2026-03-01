@@ -6,7 +6,7 @@ Provides access to common state and the parent viewer's signals.
 """
 
 from contextlib import contextmanager
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Optional, Dict, Any, List
 
 from PySide6.QtWidgets import QTableWidget, QHeaderView

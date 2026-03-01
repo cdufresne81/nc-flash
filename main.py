@@ -5,6 +5,7 @@ NC ROM Editor - Main Application Entry Point
 An open-source ROM editor for NC Miata ECUs
 """
 
+import json
 import sys
 import subprocess
 import logging
@@ -16,6 +17,8 @@ from PySide6.QtWidgets import (
     QMainWindow,
     QWidget,
     QHBoxLayout,
+    QVBoxLayout,
+    QLabel,
     QSplitter,
     QFileDialog,
     QMessageBox,
@@ -27,6 +30,7 @@ from PySide6.QtCore import Qt, QTimer, QSize
 from PySide6.QtGui import QColor, QIcon, QPainter, QPen, QPixmap
 
 from src.utils.logging_config import setup_logging, get_logger
+from src.utils.paths import get_app_root
 from src.utils.settings import get_settings
 from src.utils.constants import (
     APP_NAME, APP_VERSION_STRING, APP_DESCRIPTION,
@@ -139,6 +143,12 @@ class MainWindow(QMainWindow, RecentFilesMixin, ProjectMixin, SessionMixin):
         # Singleton comparison window reference
         self.compare_window = None
 
+        # MCP server subprocess
+        self._mcp_process = None
+
+        # Command API server (HTTP bridge for MCP → Qt main thread)
+        self._command_server = None
+
         # Initialize UI (lightweight widget creation)
         self.init_ui()
         self.init_menu()
@@ -209,6 +219,10 @@ class MainWindow(QMainWindow, RecentFilesMixin, ProjectMixin, SessionMixin):
 
         # Restore previous session (file I/O)
         self._restore_session()
+
+        # Auto-start MCP server if enabled in settings
+        if self.settings.get_mcp_auto_start():
+            self._start_mcp_server()
 
     def check_definitions_directory(self) -> bool:
         """
@@ -366,6 +380,12 @@ class MainWindow(QMainWindow, RecentFilesMixin, ProjectMixin, SessionMixin):
         self.flash_action.triggered.connect(self._on_flash_rom)
         self.flash_action.setEnabled(False)
 
+        tools_menu.addSeparator()
+
+        self.mcp_action = tools_menu.addAction("&MCP Server")
+        self.mcp_action.setCheckable(True)
+        self.mcp_action.triggered.connect(self._toggle_mcp_server)
+
         # Help menu (Alt+H)
         help_menu = menubar.addMenu("&Help")
 
@@ -420,6 +440,10 @@ class MainWindow(QMainWindow, RecentFilesMixin, ProjectMixin, SessionMixin):
         self._toolbar_flash = act
 
         tb.addSeparator()
+
+        self._toolbar_mcp = tb.addAction(self._make_icon("mcp_off"), "")
+        self._toolbar_mcp.setToolTip("MCP Server (off)")
+        self._toolbar_mcp.triggered.connect(self._toggle_mcp_server)
 
         act = tb.addAction(self._make_icon("settings"), "")
         act.setToolTip("Settings")
@@ -498,6 +522,26 @@ class MainWindow(QMainWindow, RecentFilesMixin, ProjectMixin, SessionMixin):
             p.drawPolygon(poly)
             # Center circle
             p.drawEllipse(QPointF(cx, cy), 2.5, 2.5)
+
+        elif name in ("mcp_on", "mcp_off"):
+            # Broadcast / antenna icon — circle with signal waves
+            from PySide6.QtCore import QPointF, QRectF
+            cx, cy = 10, 14
+            # Antenna base dot
+            if name == "mcp_on":
+                p.setBrush(QColor(76, 175, 80))  # green fill when on
+                p.setPen(QPen(QColor(76, 175, 80), 1.6, Qt.SolidLine, Qt.RoundCap))
+            else:
+                p.setBrush(c)
+            p.drawEllipse(QPointF(cx, cy), 2, 2)
+            # Signal arcs
+            p.setBrush(Qt.NoBrush)
+            if name == "mcp_on":
+                p.setPen(QPen(QColor(76, 175, 80), 1.4, Qt.SolidLine, Qt.RoundCap))
+            else:
+                p.setPen(QPen(c, 1.4, Qt.SolidLine, Qt.RoundCap))
+            p.drawArc(QRectF(3, 7, 14, 14), 45 * 16, 90 * 16)
+            p.drawArc(QRectF(0, 4, 20, 20), 45 * 16, 90 * 16)
 
         p.end()
         return QIcon(pm)
@@ -617,6 +661,7 @@ class MainWindow(QMainWindow, RecentFilesMixin, ProjectMixin, SessionMixin):
 
         logger.info(f"Closed ROM tab: {document.file_name if document else 'unknown'}")
         self._update_compare_action()
+        self._write_workspace_state()
 
     def close_current_tab(self):
         """Close the currently active tab"""
@@ -722,6 +767,492 @@ class MainWindow(QMainWindow, RecentFilesMixin, ProjectMixin, SessionMixin):
         else:
             self._open_rom_file(file_path)
 
+    def _write_workspace_state(self):
+        """Write workspace.json listing all open ROMs for MCP server discovery.
+
+        Deletes the file if no ROMs are open. Never raises — this is a
+        convenience file and must not crash the app.
+        """
+        try:
+            workspace_path = get_app_root() / "workspace.json"
+            if self.tab_widget.count() == 0:
+                workspace_path.unlink(missing_ok=True)
+                return
+
+            active_index = self.tab_widget.currentIndex()
+            active_rom = None
+            open_roms = []
+
+            for i in range(self.tab_widget.count()):
+                doc = self.tab_widget.widget(i)
+                if not hasattr(doc, 'rom_path'):
+                    continue
+                romid = doc.rom_definition.romid
+                entry = {
+                    "rom_path": doc.rom_path,
+                    "file_name": doc.file_name,
+                    "xmlid": romid.xmlid,
+                    "make": romid.make,
+                    "model": romid.model,
+                    "year": romid.year,
+                    "is_modified": doc.is_modified(),
+                }
+                open_roms.append(entry)
+                if i == active_index:
+                    active_rom = doc.rom_path
+
+            if not open_roms:
+                workspace_path.unlink(missing_ok=True)
+                return
+
+            state = {
+                "updated_at": datetime.now().isoformat(timespec="seconds"),
+                "active_rom": active_rom,
+                "open_roms": open_roms,
+            }
+            # Include command API URL when the bridge server is running
+            if self._command_server is not None and self._command_server.is_running:
+                state["command_api_url"] = self._command_server.url
+            workspace_path.write_text(json.dumps(state, indent=2), encoding="utf-8")
+        except Exception:
+            logger.debug("Failed to write workspace.json", exc_info=True)
+
+    def _delete_workspace_state(self):
+        """Delete workspace.json (called on app exit)."""
+        try:
+            (get_app_root() / "workspace.json").unlink(missing_ok=True)
+        except Exception:
+            pass
+
+    # ========== MCP Server Management ==========
+
+    def _is_mcp_running(self) -> bool:
+        """Check if the MCP server subprocess is alive."""
+        return self._mcp_process is not None and self._mcp_process.poll() is None
+
+    MCP_SSE_PORT = 8765
+
+    def _start_mcp_server(self):
+        """Start the MCP server subprocess with SSE transport."""
+        if self._is_mcp_running():
+            return
+        try:
+            # Start command API server (HTTP bridge for live reads/writes)
+            self._start_command_server()
+
+            self._mcp_process = subprocess.Popen(
+                [sys.executable, "-m", "src.mcp.server",
+                 "--transport", "sse", "--port", str(self.MCP_SSE_PORT)],
+                cwd=str(get_app_root()),
+                stderr=subprocess.PIPE,
+            )
+            logger.info(f"MCP server started (PID {self._mcp_process.pid},"
+                        f" SSE on http://127.0.0.1:{self.MCP_SSE_PORT}/sse)")
+            self._update_mcp_ui(running=True)
+            self._write_workspace_state()
+        except Exception as e:
+            logger.error(f"Failed to start MCP server: {e}")
+            self._mcp_process = None
+            self._stop_command_server()
+            self._update_mcp_ui(running=False)
+
+    def _stop_mcp_server(self):
+        """Stop the MCP server subprocess and command API server."""
+        self._stop_command_server()
+        if self._mcp_process is None:
+            return
+        try:
+            self._mcp_process.terminate()
+            self._mcp_process.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            self._mcp_process.kill()
+        except Exception:
+            pass
+        pid = self._mcp_process.pid if self._mcp_process else "?"
+        self._mcp_process = None
+        logger.info(f"MCP server stopped (PID {pid})")
+        self._update_mcp_ui(running=False)
+        self._write_workspace_state()
+
+    def _toggle_mcp_server(self):
+        """Toggle the MCP server on/off."""
+        if self._is_mcp_running():
+            self._stop_mcp_server()
+        else:
+            self._start_mcp_server()
+            if self._is_mcp_running():
+                self._show_mcp_connection_info()
+
+    def _update_mcp_ui(self, running: bool):
+        """Update menu, toolbar, and status bar to reflect MCP server state."""
+        self.mcp_action.setChecked(running)
+        url = f"http://127.0.0.1:{self.MCP_SSE_PORT}/sse"
+        if running:
+            self.mcp_action.setText(f"&MCP Server (Running on port {self.MCP_SSE_PORT})")
+            self._toolbar_mcp.setIcon(self._make_icon("mcp_on"))
+            self._toolbar_mcp.setToolTip(f"MCP Server running — {url}\nClick to stop")
+            self.statusBar().showMessage(f"MCP server started on {url}", 5000)
+        else:
+            self.mcp_action.setText("&MCP Server")
+            self._toolbar_mcp.setIcon(self._make_icon("mcp_off"))
+            self._toolbar_mcp.setToolTip("MCP Server (off) — click to start")
+
+    def _show_mcp_connection_info(self):
+        """Show connection instructions after manually starting the MCP server."""
+        url = f"http://127.0.0.1:{self.MCP_SSE_PORT}/sse"
+        config_snippet = json.dumps(
+            {"mcpServers": {"nc-rom-editor": {"url": url}}},
+            indent=2,
+        )
+
+        from PySide6.QtWidgets import QTextEdit, QPushButton, QDialogButtonBox
+
+        dlg = QDialog(self)
+        dlg.setWindowTitle("MCP Server Running")
+        dlg.setMinimumWidth(500)
+        layout = QVBoxLayout(dlg)
+
+        layout.addWidget(QLabel(f"MCP server is running at <b>{url}</b>"))
+        layout.addWidget(QLabel(""))
+
+        layout.addWidget(QLabel("<b>Claude Code</b> — already configured via .mcp.json"))
+        layout.addWidget(QLabel(""))
+
+        label = QLabel(
+            "<b>Claude Desktop</b> — Go to Settings > Developer > Edit Config "
+            "and merge the block below into your config file:"
+        )
+        label.setWordWrap(True)
+        layout.addWidget(label)
+
+        snippet_box = QTextEdit()
+        snippet_box.setPlainText(config_snippet)
+        snippet_box.setReadOnly(True)
+        snippet_box.setFixedHeight(110)
+        snippet_box.setStyleSheet(
+            "font-family: Consolas, monospace; font-size: 12px; background: #f5f5f5;"
+        )
+        layout.addWidget(snippet_box)
+
+        btn_row = QHBoxLayout()
+        copy_btn = QPushButton("Copy to Clipboard")
+        copy_btn.clicked.connect(lambda: QApplication.clipboard().setText(config_snippet))
+        copy_btn.clicked.connect(lambda: copy_btn.setText("Copied!"))
+        btn_row.addStretch()
+        btn_row.addWidget(copy_btn)
+        btn_row.addStretch()
+        layout.addLayout(btn_row)
+
+        note = QLabel(
+            "If your config file already has a <code>mcpServers</code> section, "
+            "just add the <code>nc-rom-editor</code> entry inside it."
+        )
+        note.setWordWrap(True)
+        note.setStyleSheet("color: gray; font-size: 11px;")
+        layout.addWidget(note)
+
+        layout.addWidget(QLabel(""))
+        layout.addWidget(QLabel("The server will stay running until you stop it or close the app."))
+
+        buttons = QDialogButtonBox(QDialogButtonBox.Ok)
+        buttons.accepted.connect(dlg.accept)
+        layout.addWidget(buttons)
+
+        dlg.exec()
+
+    # ========== Command API Server (HTTP bridge for MCP) ==========
+
+    def _start_command_server(self):
+        """Start the command API HTTP server for MCP live reads/writes."""
+        if self._command_server is not None and self._command_server.is_running:
+            return
+        from src.api.command_server import CommandServer
+        self._command_server = CommandServer(self._handle_api_request, self)
+        if not self._command_server.start():
+            logger.warning("Command API server failed to start — live MCP tools will be unavailable")
+            self._command_server = None
+
+    def _stop_command_server(self):
+        """Stop the command API HTTP server."""
+        if self._command_server is not None:
+            self._command_server.stop()
+            self._command_server = None
+
+    def _handle_api_request(self, request: dict) -> dict:
+        """Central dispatcher for all command API requests.
+
+        Called on the Qt main thread by CommandServer's queue poller.
+
+        Args:
+            request: Dict with "endpoint" plus endpoint-specific fields.
+
+        Returns:
+            Response dict with "success" and endpoint-specific data.
+        """
+        endpoint = request.get("endpoint", "")
+        try:
+            if endpoint == "/api/modified":
+                return self._api_list_modified(request)
+            elif endpoint == "/api/read-table":
+                return self._api_read_table(request)
+            elif endpoint == "/api/edit-table":
+                return self._api_edit_table(request)
+            else:
+                return {"success": False, "error": f"Unknown endpoint: {endpoint}"}
+        except Exception as e:
+            logger.exception(f"API request error ({endpoint}): {e}")
+            return {"success": False, "error": str(e)}
+
+    def _api_list_modified(self, request: dict) -> dict:
+        """Handle /api/modified — list tables with unsaved modifications."""
+        rom_path = request.get("rom_path", "")
+        document = self._find_document_by_rom_path(rom_path)
+        if not document:
+            return {"success": False, "error": f"ROM not open in app: {rom_path}"}
+
+        from src.core.table_undo_manager import make_table_key, extract_rom_path as _extract_rom_path
+
+        rom_path_str = str(Path(rom_path))
+        tables = []
+        for key, pending in self.change_tracker._pending.items():
+            if not pending.has_changes():
+                continue
+            key_rom = _extract_rom_path(key)
+            if key_rom == rom_path_str or key_rom == str(Path(rom_path).resolve()):
+                tables.append({
+                    "name": pending.table_name,
+                    "changed_cells": len(pending.changes),
+                })
+
+        return {"success": True, "tables": tables}
+
+    def _api_read_table(self, request: dict) -> dict:
+        """Handle /api/read-table — read live in-memory values."""
+        rom_path = request.get("rom_path", "")
+        table_name = request.get("table_name", "")
+
+        document = self._find_document_by_rom_path(rom_path)
+        if not document:
+            return {"success": False, "error": f"ROM not open in app: {rom_path}"}
+
+        table = document.rom_definition.get_table_by_name(table_name)
+        if table is None:
+            return {"success": False, "error": f"Table not found: {table_name}"}
+
+        data = document.rom_reader.read_table_data(table)
+        if data is None:
+            return {"success": False, "error": f"Failed to read table data: {table_name}"}
+
+        # Format identically to RomContext.read_table()
+        from src.mcp.rom_context import _printf_to_python_format, _format_value
+        from src.core.rom_definition import TableType
+
+        scaling = document.rom_definition.get_scaling(table.scaling)
+        fmt_spec = _printf_to_python_format(scaling.format) if scaling else ".2f"
+
+        result = {
+            "success": True,
+            "metadata": {
+                "name": table.name,
+                "type": table.type.value,
+                "address": table.address,
+                "elements": table.elements,
+            },
+        }
+
+        if scaling:
+            result["metadata"]["units"] = scaling.units
+            result["metadata"]["scaling_expression"] = scaling.toexpr
+            result["metadata"]["storage_type"] = scaling.storagetype
+            result["metadata"]["min"] = scaling.min
+            result["metadata"]["max"] = scaling.max
+
+        values = data["values"]
+
+        if table.type == TableType.ONE_D:
+            result["metadata"]["dimensions"] = str(table.elements)
+            result["values"] = [_format_value(v, fmt_spec) for v in values.flat]
+
+        elif table.type == TableType.TWO_D:
+            y_axis_table = table.y_axis
+            result["metadata"]["dimensions"] = str(
+                y_axis_table.elements if y_axis_table else table.elements
+            )
+            result["values"] = [_format_value(v, fmt_spec) for v in values.flat]
+            if "y_axis" in data and y_axis_table:
+                result["y_axis"] = self._api_format_axis(y_axis_table, data["y_axis"], document.rom_definition)
+
+        elif table.type == TableType.THREE_D:
+            x_axis_table = table.x_axis
+            y_axis_table = table.y_axis
+            cols = x_axis_table.elements if x_axis_table else 0
+            rows = y_axis_table.elements if y_axis_table else 0
+            result["metadata"]["dimensions"] = f"{cols}x{rows}"
+
+            grid = []
+            for row_idx in range(values.shape[0]):
+                grid.append([_format_value(v, fmt_spec) for v in values[row_idx]])
+            result["values"] = grid
+
+            if "x_axis" in data and x_axis_table:
+                result["x_axis"] = self._api_format_axis(x_axis_table, data["x_axis"], document.rom_definition)
+            if "y_axis" in data and y_axis_table:
+                result["y_axis"] = self._api_format_axis(y_axis_table, data["y_axis"], document.rom_definition)
+
+        return result
+
+    def _api_format_axis(self, axis_table, axis_values, definition):
+        """Format an axis for API response (mirrors RomContext._format_axis)."""
+        from src.mcp.rom_context import _printf_to_python_format, _format_value
+        axis_scaling = definition.get_scaling(axis_table.scaling)
+        axis_fmt = _printf_to_python_format(axis_scaling.format) if axis_scaling else ".2f"
+        return {
+            "name": axis_table.name,
+            "units": axis_scaling.units if axis_scaling else "",
+            "scaling_expression": axis_scaling.toexpr if axis_scaling else "",
+            "values": [_format_value(v, axis_fmt) for v in axis_values.flat],
+        }
+
+    def _api_edit_table(self, request: dict) -> dict:
+        """Handle /api/edit-table — write values through the editing pipeline."""
+        import numpy as np
+        from src.core.rom_reader import ScalingConverter
+        from src.core.table_undo_manager import make_table_key
+
+        rom_path = request.get("rom_path", "")
+        table_name = request.get("table_name", "")
+        cells = request.get("cells", [])
+
+        if not cells:
+            return {"success": False, "error": "No cells provided"}
+
+        document = self._find_document_by_rom_path(rom_path)
+        if not document:
+            return {"success": False, "error": f"ROM not open in app: {rom_path}"}
+
+        table = document.rom_definition.get_table_by_name(table_name)
+        if table is None:
+            return {"success": False, "error": f"Table not found: {table_name}"}
+
+        # Read current values for undo tracking
+        old_data = document.rom_reader.read_table_data(table)
+        if old_data is None:
+            return {"success": False, "error": f"Failed to read table data: {table_name}"}
+
+        old_vals = old_data["values"]
+        scaling = document.rom_definition.get_scaling(table.scaling)
+        converter = ScalingConverter(scaling) if scaling else None
+
+        # Determine table dimensions for bounds checking
+        if table.type.value == "3D":
+            x_axis = table.x_axis
+            y_axis = table.y_axis
+            max_cols = x_axis.elements if x_axis else 1
+            max_rows = y_axis.elements if y_axis else 1
+        elif table.type.value == "2D":
+            max_rows = old_vals.shape[0] if old_vals.ndim >= 1 else 1
+            max_cols = 1
+        else:
+            max_rows = old_vals.shape[0] if old_vals.ndim >= 1 else table.elements
+            max_cols = 1
+
+        # Validate cells and build changes list
+        changes = []
+        errors = []
+        for cell in cells:
+            r = cell.get("row", 0)
+            c = cell.get("col", 0)
+            new_display_val = cell.get("value")
+
+            if new_display_val is None:
+                errors.append(f"Missing 'value' for cell ({r},{c})")
+                continue
+
+            if r < 0 or r >= max_rows or c < 0 or c >= max_cols:
+                errors.append(f"Cell ({r},{c}) out of range for {table_name} ({max_rows}x{max_cols})")
+                continue
+
+            try:
+                new_display_val = float(new_display_val)
+            except (ValueError, TypeError) as e:
+                errors.append(f"Failed to convert value {cell.get('value')}: {e}")
+                continue
+
+            # Get old display value
+            if old_vals.ndim == 1:
+                old_display_val = float(old_vals[r])
+            else:
+                old_display_val = float(old_vals[r, c])
+
+            # Convert display values to raw
+            try:
+                old_raw = float(converter.from_display(old_display_val)) if converter else old_display_val
+                new_raw = float(converter.from_display(new_display_val)) if converter else new_display_val
+            except Exception as e:
+                errors.append(f"Failed to convert value {new_display_val}: {e}")
+                continue
+
+            changes.append((r, c, old_display_val, new_display_val, old_raw, new_raw))
+
+        if errors and not changes:
+            return {"success": False, "error": "; ".join(errors)}
+
+        if not changes:
+            return {"success": True, "cells_modified": 0, "message": "No changes needed"}
+
+        # Capture originals for border tracking (same as apply_compare_copy)
+        rom_path_key = document.rom_reader.rom_path
+        if rom_path_key not in self.original_table_values:
+            self.original_table_values[rom_path_key] = {}
+        if table.address not in self.original_table_values[rom_path_key]:
+            self.original_table_values[rom_path_key][table.address] = {
+                "values": np.copy(old_data["values"]),
+                "x_axis": np.copy(old_data["x_axis"]) if old_data.get("x_axis") is not None else None,
+                "y_axis": np.copy(old_data["y_axis"]) if old_data.get("y_axis") is not None else None,
+            }
+
+        # Record undo + change tracking
+        desc = f"AI: edit {len(changes)} cell(s) in {table_name}"
+        table_key = make_table_key(rom_path_key, table.address)
+        self.table_undo_manager.record_bulk_cell_changes(table, changes, desc, rom_path=rom_path_key)
+        self.change_tracker.record_pending_bulk_changes(table, changes, rom_path=rom_path_key)
+        # Activate this table's undo stack so Ctrl+Z targets the AI edit
+        self.table_undo_manager.set_active_stack(table_key)
+
+        # Write to ROM
+        def write_cells():
+            for row, col, _ov, _nv, _or, new_raw in changes:
+                document.rom_reader.write_cell_value(table, row, col, new_raw)
+
+        self._write_to_rom_and_mark_modified(document, write_cells, desc)
+
+        # Update modified_cells for border highlighting
+        if rom_path_key not in self.modified_cells:
+            self.modified_cells[rom_path_key] = {}
+        if table.address not in self.modified_cells[rom_path_key]:
+            self.modified_cells[rom_path_key][table.address] = set()
+        for row, col, _ov, _nv, _or, _nr in changes:
+            self.modified_cells[rom_path_key][table.address].add((row, col))
+
+        # Refresh open table viewer window if visible
+        window = self._find_table_window(table_key)
+        if window:
+            viewer = window.viewer
+            viewer.begin_bulk_update()
+            try:
+                for row, col, _ov, new_val, _or, _nr in changes:
+                    viewer.update_cell_value(row, col, new_val)
+            finally:
+                viewer.end_bulk_update()
+
+        self._update_tab_title(document)
+        self._write_workspace_state()
+
+        result = {"success": True, "cells_modified": len(changes)}
+        if errors:
+            result["warnings"] = errors
+        return result
+
     def _open_rom_file(self, file_path: str):
         """
         Open a ROM file from a given path
@@ -824,6 +1355,7 @@ class MainWindow(QMainWindow, RecentFilesMixin, ProjectMixin, SessionMixin):
             )
 
             self._update_compare_action()
+            self._write_workspace_state()
 
         except (DetectionError, RomFileError, DefinitionError) as e:
             handle_rom_operation_error(self, "open ROM file", e)
@@ -862,6 +1394,7 @@ class MainWindow(QMainWindow, RecentFilesMixin, ProjectMixin, SessionMixin):
             logger.info(f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
 
             self.statusBar().showMessage(f"Saved: {document.rom_path}")
+            self._write_workspace_state()
             QMessageBox.information(
                 self,
                 "Success",

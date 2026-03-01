@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING, List, Tuple, Callable
 
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QBrush
-from PySide6.QtWidgets import QDialog, QTableWidgetSelectionRange, QTableWidgetItem
+from PySide6.QtWidgets import QDialog, QTableWidgetSelectionRange
 
 from ...core.rom_definition import TableType, AxisType
 from ..data_operation_dialogs import AddValueDialog, MultiplyDialog, SetValueDialog

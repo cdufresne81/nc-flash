@@ -9,14 +9,13 @@ import os
 import shutil
 import hashlib
 from pathlib import Path
-from typing import Optional, List, Tuple
+from typing import Optional, List
 from datetime import datetime
 import logging
 
 from .version_models import (
     Project, OriginalRomInfo, Commit, TableChanges
 )
-from .rom_reader import RomReader
 from .rom_definition import RomDefinition
 from .exceptions import (
     ProjectError, ProjectNotFoundError, ProjectCorruptError, ProjectSaveError

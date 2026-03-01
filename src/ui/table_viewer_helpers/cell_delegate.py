@@ -7,7 +7,7 @@ Also highlights cells that differ from a base version in diff mode.
 
 from PySide6.QtWidgets import QStyledItemDelegate
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QPen, QColor, QBrush
+from PySide6.QtGui import QPen, QColor
 
 from ...core.rom_definition import TableType
 

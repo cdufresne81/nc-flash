@@ -7,7 +7,7 @@ Handles loading, saving, and accessing application settings using QSettings.
 from PySide6.QtCore import QByteArray, QSettings
 
 from .constants import MAX_RECENT_FILES
-from .paths import get_app_root
+from .paths import get_app_root, get_user_data_dir
 
 
 class AppSettings:
@@ -205,7 +205,7 @@ class AppSettings:
         Returns:
             str: Path to directory where projects are stored
         """
-        default_path = str(get_app_root() / "projects")
+        default_path = str(get_user_data_dir() / "projects")
         return self.settings.value("paths/projects_directory", default_path)
 
     def set_projects_directory(self, path: str):
@@ -260,6 +260,14 @@ class AppSettings:
             path: Path to romdrop.exe
         """
         self.settings.setValue("tools/romdrop_executable_path", path)
+
+    def get_mcp_auto_start(self) -> bool:
+        """Get whether the MCP server should start automatically on app launch."""
+        return self.settings.value("tools/mcp_auto_start", False, type=bool)
+
+    def set_mcp_auto_start(self, enabled: bool):
+        """Set whether the MCP server should start automatically on app launch."""
+        self.settings.setValue("tools/mcp_auto_start", enabled)
 
 
 # Global settings instance

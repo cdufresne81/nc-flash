@@ -61,8 +61,25 @@ jobs:
         Write-Output "Installer built: $($installer.FullName) ($([math]::Round($installer.Length / 1MB, 1)) MB)"
       shell: pwsh
 
+    - name: Extract changelog for this version
+      id: changelog
+      run: |
+        $tag = "${{ github.ref_name }}"
+        $version = $tag.TrimStart("v")
+        $content = Get-Content -Path CHANGELOG.md -Raw
+        # Extract section between this version header and the next
+        if ($content -match "(?s)## \[v$([regex]::Escape($version))\].*?\n(.*?)(?=\n## \[|$)") {
+          $notes = $Matches[1].Trim()
+        } else {
+          $notes = "Release $tag"
+        }
+        # Write to file for the release action
+        $notes | Out-File -FilePath release_notes.md -Encoding utf8
+        Write-Output "Release notes extracted for $tag"
+      shell: pwsh
+
     - name: Create GitHub Release
       uses: softprops/action-gh-release@v2
       with:
         files: Output/*.exe
-        generate_release_notes: true
+        body_path: release_notes.md

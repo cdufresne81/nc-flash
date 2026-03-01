@@ -117,6 +117,7 @@ class CompareWindow(QMainWindow):
                  name_a: str, name_b: str,
                  parent=None):
         super().__init__(parent)
+        self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
 
         self._reader_a = rom_reader_a
         self._reader_b = rom_reader_b

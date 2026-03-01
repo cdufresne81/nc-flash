@@ -851,6 +851,9 @@ class TableViewerWindow(QMainWindow):
 
     def closeEvent(self, event):
         """Handle window close event - deactivate undo stack and clean up resources"""
+        # Stop debounce timers to prevent callbacks on destroyed widget
+        self._refresh_timer.stop()
+        self._selection_timer.stop()
         main_window = self.parent()
         if main_window and hasattr(main_window, 'table_undo_manager'):
             main_window.table_undo_manager.set_active_stack(None)

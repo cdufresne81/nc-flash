@@ -1,10 +1,11 @@
 """
 Application Path Resolution
 
-Provides a single source of truth for locating the application root directory,
-whether running from source or from a PyInstaller frozen executable.
+Provides a single source of truth for locating the application root directory
+and the user data directory for persistent storage.
 """
 
+import os
 import sys
 from pathlib import Path
 
@@ -23,3 +24,24 @@ def get_app_root() -> Path:
     if getattr(sys, 'frozen', False):
         return Path(sys._MEIPASS)
     return Path(__file__).resolve().parent.parent.parent
+
+
+def get_user_data_dir() -> Path:
+    """
+    Get the user data directory for persistent, writable storage.
+
+    Returns a platform-appropriate location:
+    - Windows: %APPDATA%/NCRomEditor
+    - Linux:   ~/.local/share/NCRomEditor
+    - macOS:   ~/Library/Application Support/NCRomEditor
+
+    Used for user-created content (projects) that must survive
+    app updates and uninstalls. Does NOT create the directory.
+    """
+    if sys.platform == "win32":
+        base = Path(os.environ.get("APPDATA", Path.home() / "AppData" / "Roaming"))
+    elif sys.platform == "darwin":
+        base = Path.home() / "Library" / "Application Support"
+    else:
+        base = Path(os.environ.get("XDG_DATA_HOME", Path.home() / ".local" / "share"))
+    return base / "NCRomEditor"

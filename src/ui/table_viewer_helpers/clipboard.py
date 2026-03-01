@@ -5,7 +5,6 @@ Handles copy/paste operations for TableViewer.
 """
 
 import logging
-import os
 import csv
 from pathlib import Path
 from typing import TYPE_CHECKING
