@@ -99,9 +99,7 @@ class SettingsDialog(QDialog):
         # Metadata directory setting
         metadata_layout = QHBoxLayout()
         self.metadata_path_edit = QLineEdit()
-        self.metadata_path_edit.setPlaceholderText(
-            "Path to ROM metadata XML files"
-        )
+        self.metadata_path_edit.setPlaceholderText("Path to ROM metadata XML files")
         metadata_layout.addWidget(self.metadata_path_edit)
 
         browse_button = QPushButton("Browse...")
@@ -118,9 +116,7 @@ class SettingsDialog(QDialog):
         # Export directory setting
         export_layout = QHBoxLayout()
         self.export_path_edit = QLineEdit()
-        self.export_path_edit.setPlaceholderText(
-            "Folder for CSV exports"
-        )
+        self.export_path_edit.setPlaceholderText("Folder for CSV exports")
         export_layout.addWidget(self.export_path_edit)
 
         browse_export_button = QPushButton("Browse...")

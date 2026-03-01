@@ -11,17 +11,19 @@ import sys
 
 block_cipher = None
 
+# Resolve paths relative to the repository root (one level up from this spec file)
+repo_root = os.path.abspath(os.path.join(SPECPATH, '..'))
+
 # Icon: .ico on Windows, skip on Linux (desktop icons use .desktop files)
-icon_file = 'assets/NCRomEditor.ico' if sys.platform == 'win32' else None
+icon_file = os.path.join(repo_root, 'assets', 'NCRomEditor.ico') if sys.platform == 'win32' else None
 
 a = Analysis(
-    ['main.py'],
-    pathex=[],
+    [os.path.join(repo_root, 'main.py')],
+    pathex=[repo_root],
     binaries=[],
     datas=[
-        ('examples/metadata', 'examples/metadata'),
-        ('colormaps', 'colormaps'),
-        ('examples', 'examples'),
+        (os.path.join(repo_root, 'colormaps'), 'colormaps'),
+        (os.path.join(repo_root, 'examples'), 'examples'),
     ],
     hiddenimports=[],
     hookspath=[],
