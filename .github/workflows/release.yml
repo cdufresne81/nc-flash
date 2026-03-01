@@ -147,9 +147,11 @@ jobs:
       run: |
         TAG="${GITHUB_REF_NAME}"
         VERSION="${TAG#v}"
-        CONTENT=$(cat CHANGELOG.md)
-        # Extract section between this version header and the next
-        NOTES=$(echo "$CONTENT" | sed -n "/^## \[v${VERSION}\]/,/^## \[/{/^## \[v${VERSION}\]/d;/^## \[/d;p;}" | sed '/^$/N;/^\n$/d')
+        # Try versioned section first, then fall back to [Unreleased]
+        NOTES=$(sed -n "/^## \[v${VERSION}\]/,/^## \[/{/^## \[v${VERSION}\]/d;/^## \[/d;p;}" CHANGELOG.md | sed '/^$/N;/^\n$/d')
+        if [ -z "$NOTES" ]; then
+          NOTES=$(sed -n "/^## \[Unreleased\]/,/^## \[/{/^## \[Unreleased\]/d;/^## \[/d;p;}" CHANGELOG.md | sed '/^$/N;/^\n$/d')
+        fi
         if [ -z "$NOTES" ]; then
           NOTES="Release $TAG"
         fi
