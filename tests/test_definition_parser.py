@@ -9,7 +9,7 @@ from src.core.rom_definition import RomDefinition, RomID, Scaling, Table, TableT
 from src.core.exceptions import (
     DefinitionNotFoundError,
     DefinitionParseError,
-    InvalidDefinitionError
+    InvalidDefinitionError,
 )
 
 
@@ -73,7 +73,7 @@ class TestRomIdParsing:
         definition = load_definition(str(sample_xml_path))
 
         # b8046 hex = 753734 decimal
-        assert definition.romid.internal_id_address_int == 0xb8046
+        assert definition.romid.internal_id_address_int == 0xB8046
         assert definition.romid.internal_id_address_int == 753734
 
 
@@ -119,7 +119,7 @@ class TestScalingParsing:
         # Find a float scaling
         float_scaling = None
         for scaling in definition.scalings.values():
-            if scaling.storagetype.lower() == 'float':
+            if scaling.storagetype.lower() == "float":
                 float_scaling = scaling
                 break
 
@@ -169,11 +169,7 @@ class TestTableParsing:
         definition = load_definition(str(sample_xml_path))
 
         # Count table types (excluding axis tables)
-        types = {
-            TableType.ONE_D: 0,
-            TableType.TWO_D: 0,
-            TableType.THREE_D: 0
-        }
+        types = {TableType.ONE_D: 0, TableType.TWO_D: 0, TableType.THREE_D: 0}
 
         for table in definition.tables:
             if not table.is_axis:

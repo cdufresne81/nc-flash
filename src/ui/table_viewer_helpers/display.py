@@ -16,13 +16,15 @@ from ...core.rom_definition import Table, TableType, AxisType
 from ...utils.settings import get_settings
 from ...utils.colormap import get_colormap
 from .context import (
-    TableViewerContext, save_header_resize_modes, set_headers_fixed,
+    TableViewerContext,
+    save_header_resize_modes,
+    set_headers_fixed,
     restore_header_resize_modes,
 )
 
 logger = logging.getLogger(__name__)
 
-_PRINTF_PATTERN = re.compile(r'%[-+0 #]*(\d*)\.?(\d*)([diouxXeEfFgGaAcspn%])')
+_PRINTF_PATTERN = re.compile(r"%[-+0 #]*(\d*)\.?(\d*)([diouxXeEfFgGaAcspn%])")
 
 
 class TableDisplayHelper:
@@ -64,8 +66,8 @@ class TableDisplayHelper:
         set_headers_fixed(h_header, v_header)
 
         # Cache min/max values for color calculations (avoids O(n^2) complexity)
-        if self.ctx.current_data and 'values' in self.ctx.current_data:
-            self.cache_value_range(self.ctx.current_data['values'])
+        if self.ctx.current_data and "values" in self.ctx.current_data:
+            self.cache_value_range(self.ctx.current_data["values"])
 
     def end_bulk_update(self):
         """
@@ -75,10 +77,12 @@ class TableDisplayHelper:
         self.clear_value_range_cache()
 
         # Restore header resize modes
-        if hasattr(self, '_saved_h_resize_modes'):
+        if hasattr(self, "_saved_h_resize_modes"):
             restore_header_resize_modes(
-                self._saved_h_header, self._saved_v_header,
-                self._saved_h_resize_modes, self._saved_v_resize_modes,
+                self._saved_h_header,
+                self._saved_v_header,
+                self._saved_h_resize_modes,
+                self._saved_v_resize_modes,
             )
             del self._saved_h_header
             del self._saved_v_header
@@ -122,14 +126,14 @@ class TableDisplayHelper:
         self.ctx.current_data = data
 
         # Update info label - TEMPORARILY HIDDEN (user request)
-        values = data['values']
+        values = data["values"]
 
         if table.type == TableType.ONE_D:
             self._display_1d(values)
         elif table.type == TableType.TWO_D:
-            self._display_2d(values, data.get('y_axis'))
+            self._display_2d(values, data.get("y_axis"))
         elif table.type == TableType.THREE_D:
-            self._display_3d(values, data.get('x_axis'), data.get('y_axis'))
+            self._display_3d(values, data.get("x_axis"), data.get("y_axis"))
 
     def clear(self):
         """Clear the viewer"""
@@ -229,7 +233,9 @@ class TableDisplayHelper:
             if y_scaling_range:
                 y_min, y_max = y_scaling_range
             elif display_y_axis is not None and len(display_y_axis) > 0:
-                y_min, y_max = float(np.min(display_y_axis)), float(np.max(display_y_axis))
+                y_min, y_max = float(np.min(display_y_axis)), float(
+                    np.max(display_y_axis)
+                )
             else:
                 y_min, y_max = 0, num_values - 1
 
@@ -239,7 +245,9 @@ class TableDisplayHelper:
             for i in range(num_values):
                 # Col 0: Y axis value with gradient and right border
                 if display_y_axis is not None and i < len(display_y_axis):
-                    y_item = QTableWidgetItem(self.format_value(display_y_axis[i], y_fmt))
+                    y_item = QTableWidgetItem(
+                        self.format_value(display_y_axis[i], y_fmt)
+                    )
                     # Apply gradient based on Y axis values
                     if y_max != y_min:
                         ratio = (display_y_axis[i] - y_min) / (y_max - y_min)
@@ -250,19 +258,27 @@ class TableDisplayHelper:
                     # Store axis identification: ('y_axis', data_index)
                     # Account for flip when storing the actual data index
                     data_idx = (num_values - 1 - i) if flipy else i
-                    y_item.setData(Qt.UserRole, ('y_axis', data_idx))
-                    y_item.setData(Qt.UserRole + 2, 'axis_separator')  # Mark for border styling
+                    y_item.setData(Qt.UserRole, ("y_axis", data_idx))
+                    y_item.setData(
+                        Qt.UserRole + 2, "axis_separator"
+                    )  # Mark for border styling
                     if self.ctx.read_only:
                         y_item.setFlags(y_item.flags() & ~Qt.ItemIsEditable)
                 else:
                     y_item = QTableWidgetItem(str(i))
                     y_item.setBackground(QBrush(QColor(240, 240, 240)))
-                    y_item.setFlags(y_item.flags() & ~Qt.ItemIsEditable)  # No axis data, not editable
-                    y_item.setData(Qt.UserRole + 2, 'axis_separator')  # Mark for border styling
+                    y_item.setFlags(
+                        y_item.flags() & ~Qt.ItemIsEditable
+                    )  # No axis data, not editable
+                    y_item.setData(
+                        Qt.UserRole + 2, "axis_separator"
+                    )  # Mark for border styling
                 self.ctx.table_widget.setItem(i, 0, y_item)
 
                 # Col 1: Data value with gradient color
-                value_item = QTableWidgetItem(self.format_value(display_values[i], value_fmt))
+                value_item = QTableWidgetItem(
+                    self.format_value(display_values[i], value_fmt)
+                )
                 color = self.get_cell_color(display_values[i], values, i, 0)
                 value_item.setBackground(QBrush(color))
                 # Store the actual data index (accounting for flip)
@@ -342,7 +358,9 @@ class TableDisplayHelper:
             empty_item = QTableWidgetItem("")
             empty_item.setFlags(empty_item.flags() & ~Qt.ItemIsEditable)
             empty_item.setBackground(label_bg)
-            empty_item.setData(Qt.UserRole + 2, 'axis_separator')  # Mark for border styling
+            empty_item.setData(
+                Qt.UserRole + 2, "axis_separator"
+            )  # Mark for border styling
             self.ctx.table_widget.setItem(0, 0, empty_item)
 
             # X-axis values in row 0 (columns 1+) with gradient and bottom border
@@ -355,9 +373,13 @@ class TableDisplayHelper:
                 if x_scaling_range:
                     x_min, x_max = x_scaling_range
                 else:
-                    x_min, x_max = float(np.min(display_x_axis)), float(np.max(display_x_axis))
+                    x_min, x_max = float(np.min(display_x_axis)), float(
+                        np.max(display_x_axis)
+                    )
                 for col in range(cols):
-                    x_item = QTableWidgetItem(self.format_value(display_x_axis[col], x_fmt))
+                    x_item = QTableWidgetItem(
+                        self.format_value(display_x_axis[col], x_fmt)
+                    )
                     if x_max != x_min:
                         ratio = (display_x_axis[col] - x_min) / (x_max - x_min)
                         ratio = max(0.0, min(1.0, ratio))
@@ -365,8 +387,10 @@ class TableDisplayHelper:
                         ratio = 0.5
                     x_item.setBackground(QBrush(self.ratio_to_color(ratio)))
                     data_idx = (cols - 1 - col) if flipx else col
-                    x_item.setData(Qt.UserRole, ('x_axis', data_idx))
-                    x_item.setData(Qt.UserRole + 2, 'axis_separator')  # Mark for border styling
+                    x_item.setData(Qt.UserRole, ("x_axis", data_idx))
+                    x_item.setData(
+                        Qt.UserRole + 2, "axis_separator"
+                    )  # Mark for border styling
                     if self.ctx.read_only:
                         x_item.setFlags(x_item.flags() & ~Qt.ItemIsEditable)
                     self.ctx.table_widget.setItem(0, col + 1, x_item)
@@ -375,7 +399,9 @@ class TableDisplayHelper:
                     x_item = QTableWidgetItem(str(col))
                     x_item.setFlags(x_item.flags() & ~Qt.ItemIsEditable)
                     x_item.setBackground(label_bg)
-                    x_item.setData(Qt.UserRole + 2, 'axis_separator')  # Mark for border styling
+                    x_item.setData(
+                        Qt.UserRole + 2, "axis_separator"
+                    )  # Mark for border styling
                     self.ctx.table_widget.setItem(0, col + 1, x_item)
 
             # === Column 0: Y-axis VALUES (rows 1+) with right border for separation ===
@@ -388,10 +414,14 @@ class TableDisplayHelper:
                 if y_scaling_range:
                     y_min, y_max = y_scaling_range
                 else:
-                    y_min, y_max = float(np.min(display_y_axis)), float(np.max(display_y_axis))
+                    y_min, y_max = float(np.min(display_y_axis)), float(
+                        np.max(display_y_axis)
+                    )
                 for row in range(rows):
                     # Col 0: Y-axis value (colored) with right border
-                    y_val_item = QTableWidgetItem(self.format_value(display_y_axis[row], y_fmt))
+                    y_val_item = QTableWidgetItem(
+                        self.format_value(display_y_axis[row], y_fmt)
+                    )
                     if y_max != y_min:
                         ratio = (display_y_axis[row] - y_min) / (y_max - y_min)
                         ratio = max(0.0, min(1.0, ratio))
@@ -399,8 +429,10 @@ class TableDisplayHelper:
                         ratio = 0.5
                     y_val_item.setBackground(QBrush(self.ratio_to_color(ratio)))
                     data_idx = (rows - 1 - row) if flipy else row
-                    y_val_item.setData(Qt.UserRole, ('y_axis', data_idx))
-                    y_val_item.setData(Qt.UserRole + 2, 'axis_separator')  # Mark for border styling
+                    y_val_item.setData(Qt.UserRole, ("y_axis", data_idx))
+                    y_val_item.setData(
+                        Qt.UserRole + 2, "axis_separator"
+                    )  # Mark for border styling
                     if self.ctx.read_only:
                         y_val_item.setFlags(y_val_item.flags() & ~Qt.ItemIsEditable)
                     self.ctx.table_widget.setItem(row + 1, 0, y_val_item)
@@ -410,7 +442,9 @@ class TableDisplayHelper:
                     y_val_item = QTableWidgetItem(str(row))
                     y_val_item.setFlags(y_val_item.flags() & ~Qt.ItemIsEditable)
                     y_val_item.setBackground(label_bg)
-                    y_val_item.setData(Qt.UserRole + 2, 'axis_separator')  # Mark for border styling
+                    y_val_item.setData(
+                        Qt.UserRole + 2, "axis_separator"
+                    )  # Mark for border styling
                     self.ctx.table_widget.setItem(row + 1, 0, y_val_item)
 
             # === Data cells (rows 1+, cols 1+) ===
@@ -418,8 +452,12 @@ class TableDisplayHelper:
             try:
                 for row in range(rows):
                     for col in range(cols):
-                        value_item = QTableWidgetItem(self.format_value(display_values[row, col], value_fmt))
-                        color = self.get_cell_color(display_values[row, col], values, row, col)
+                        value_item = QTableWidgetItem(
+                            self.format_value(display_values[row, col], value_fmt)
+                        )
+                        color = self.get_cell_color(
+                            display_values[row, col], values, row, col
+                        )
                         value_item.setBackground(QBrush(color))
                         data_row = (rows - 1 - row) if flipy else row
                         data_col = (cols - 1 - col) if flipx else col
@@ -560,7 +598,9 @@ class TableDisplayHelper:
         """
         if not self.ctx.rom_definition:
             return None
-        name = scaling_name or (self.ctx.current_table.scaling if self.ctx.current_table else None)
+        name = scaling_name or (
+            self.ctx.current_table.scaling if self.ctx.current_table else None
+        )
         if not name:
             return None
         scaling = self.ctx.rom_definition.get_scaling(name)
@@ -573,8 +613,9 @@ class TableDisplayHelper:
             return None
         return (scaling.min, scaling.max)
 
-    def get_cell_color(self, value: float, values: np.ndarray,
-                       row: int, col: int) -> QColor:
+    def get_cell_color(
+        self, value: float, values: np.ndarray, row: int, col: int
+    ) -> QColor:
         """Calculate cell background color based on gradient mode"""
         mode = get_settings().get_gradient_mode()
 
@@ -605,8 +646,9 @@ class TableDisplayHelper:
         """Public method to get axis format (used by editing helper)"""
         return self._get_axis_format(axis_type)
 
-    def get_axis_color(self, value: float, axis_values: np.ndarray,
-                       axis_type: AxisType = None) -> QColor:
+    def get_axis_color(
+        self, value: float, axis_values: np.ndarray, axis_type: AxisType = None
+    ) -> QColor:
         """Calculate axis cell color based on value within axis range"""
         if axis_values is None or len(axis_values) == 0:
             return QColor(240, 240, 240)
@@ -633,8 +675,9 @@ class TableDisplayHelper:
 
         return self.ratio_to_color(ratio)
 
-    def _get_neighbor_ratio(self, value: float, values: np.ndarray,
-                            row: int, col: int) -> float:
+    def _get_neighbor_ratio(
+        self, value: float, values: np.ndarray, row: int, col: int
+    ) -> float:
         """Calculate ratio relative to neighboring cells"""
         if values.ndim == 1:
             neighbors = []

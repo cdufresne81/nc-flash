@@ -51,7 +51,9 @@ class ToggleSwitch(QAbstractButton):
         super().setChecked(checked)
         # Snap position immediately (no animation) when set programmatically
         if checked:
-            self._handle_position = self._TRACK_WIDTH - self._HANDLE_SIZE - self._HANDLE_MARGIN
+            self._handle_position = (
+                self._TRACK_WIDTH - self._HANDLE_SIZE - self._HANDLE_MARGIN
+            )
         else:
             self._handle_position = self._HANDLE_MARGIN
         self.update()
@@ -92,8 +94,12 @@ class ToggleSwitch(QAbstractButton):
 
         # Draw handle
         handle_y = (self._TRACK_HEIGHT - self._HANDLE_SIZE) / 2
-        handle_rect = QRect(int(self._handle_position), int(handle_y),
-                            self._HANDLE_SIZE, self._HANDLE_SIZE)
+        handle_rect = QRect(
+            int(self._handle_position),
+            int(handle_y),
+            self._HANDLE_SIZE,
+            self._HANDLE_SIZE,
+        )
         painter.setBrush(self._HANDLE_COLOR)
         # Subtle shadow via border
         painter.setPen(QPen(QColor(0, 0, 0, 30), 1))

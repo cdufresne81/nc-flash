@@ -11,7 +11,7 @@ from src.core.definition_parser import load_definition
 from src.core.exceptions import (
     RomFileNotFoundError,
     ScalingNotFoundError,
-    ScalingConversionError
+    ScalingConversionError,
 )
 
 
@@ -30,7 +30,7 @@ class TestScalingConverter:
             max=100.0,
             inc=1.0,
             storagetype="float",
-            endian="big"
+            endian="big",
         )
         converter = ScalingConverter(scaling)
 
@@ -48,7 +48,7 @@ class TestScalingConverter:
             max=100.0,
             inc=1.0,
             storagetype="float",
-            endian="big"
+            endian="big",
         )
         converter = ScalingConverter(scaling)
 
@@ -67,7 +67,7 @@ class TestScalingConverter:
             max=100.0,
             inc=1.0,
             storagetype="float",
-            endian="big"
+            endian="big",
         )
         converter = ScalingConverter(scaling)
 
@@ -88,7 +88,7 @@ class TestScalingConverter:
             max=100.0,
             inc=1.0,
             storagetype="float",
-            endian="big"
+            endian="big",
         )
         converter = ScalingConverter(scaling)
 
@@ -107,7 +107,7 @@ class TestScalingConverter:
             max=100.0,
             inc=1.0,
             storagetype="float",
-            endian="big"
+            endian="big",
         )
         converter = ScalingConverter(scaling)
 
@@ -128,7 +128,7 @@ class TestScalingConverter:
             max=100.0,
             inc=1.0,
             storagetype="float",
-            endian="big"
+            endian="big",
         )
         converter = ScalingConverter(scaling)
 
@@ -149,7 +149,7 @@ class TestScalingConverter:
             max=300.0,
             inc=1.0,
             storagetype="uint8",
-            endian="big"
+            endian="big",
         )
         converter = ScalingConverter(scaling)
 
@@ -171,7 +171,7 @@ class TestScalingConverter:
             max=100.0,
             inc=1.0,
             storagetype="float",
-            endian="big"
+            endian="big",
         )
         converter = ScalingConverter(scaling)
 
@@ -256,9 +256,9 @@ class TestTableDataReading:
         data = reader.read_table_data(table_1d)
 
         assert data is not None
-        assert 'values' in data
-        assert 'raw_values' in data
-        assert len(data['values']) == table_1d.elements
+        assert "values" in data
+        assert "raw_values" in data
+        assert len(data["values"]) == table_1d.elements
 
     def test_read_2d_table(self, sample_rom_path, sample_xml_path):
         """Test reading 2D table data"""
@@ -277,9 +277,9 @@ class TestTableDataReading:
         data = reader.read_table_data(table_2d)
 
         assert data is not None
-        assert 'values' in data
-        assert 'y_axis' in data
-        assert len(data['values']) == table_2d.elements
+        assert "values" in data
+        assert "y_axis" in data
+        assert len(data["values"]) == table_2d.elements
 
     def test_read_3d_table(self, sample_rom_path, sample_xml_path):
         """Test reading 3D table data"""
@@ -298,17 +298,19 @@ class TestTableDataReading:
         data = reader.read_table_data(table_3d)
 
         assert data is not None
-        assert 'values' in data
-        assert 'x_axis' in data
-        assert 'y_axis' in data
+        assert "values" in data
+        assert "x_axis" in data
+        assert "y_axis" in data
 
         # 3D table values should be reshaped to 2D
-        if isinstance(data['values'], np.ndarray) and data['values'].ndim == 2:
-            x_len = len(data['x_axis'])
-            y_len = len(data['y_axis'])
-            assert data['values'].shape == (y_len, x_len)
+        if isinstance(data["values"], np.ndarray) and data["values"].ndim == 2:
+            x_len = len(data["x_axis"])
+            y_len = len(data["y_axis"])
+            assert data["values"].shape == (y_len, x_len)
 
-    def test_read_table_raises_error_for_invalid_scaling(self, sample_rom_path, sample_xml_path):
+    def test_read_table_raises_error_for_invalid_scaling(
+        self, sample_rom_path, sample_xml_path
+    ):
         """Test that reading table with invalid scaling raises exception"""
         definition = load_definition(str(sample_xml_path))
         reader = RomReader(str(sample_rom_path), definition)
@@ -341,14 +343,16 @@ class TestTableDataWriting:
         assert original_data is not None
 
         # Modify values
-        modified_values = original_data['values'] + 1.0
+        modified_values = original_data["values"] + 1.0
 
         # Write back (no return value, raises exception on error)
         reader.write_table_data(table, modified_values)
 
         # Read again and verify change
         new_data = reader.read_table_data(table)
-        np.testing.assert_array_almost_equal(new_data['values'], modified_values, decimal=2)
+        np.testing.assert_array_almost_equal(
+            new_data["values"], modified_values, decimal=2
+        )
 
     def test_write_table_with_2d_array(self, sample_rom_path, sample_xml_path):
         """Test writing 2D array is flattened correctly"""
@@ -365,8 +369,8 @@ class TestTableDataWriting:
         data = reader.read_table_data(table)
 
         # Modify and write back (no return value, raises exception on error)
-        if isinstance(data['values'], np.ndarray) and data['values'].ndim == 2:
-            modified = data['values'] + 0.5
+        if isinstance(data["values"], np.ndarray) and data["values"].ndim == 2:
+            modified = data["values"] + 0.5
             reader.write_table_data(table, modified)
 
 
@@ -383,7 +387,7 @@ class TestRomSaving:
         if not table.is_axis:
             data = reader.read_table_data(table)
             if data:
-                reader.write_table_data(table, data['values'] + 1.0)
+                reader.write_table_data(table, data["values"] + 1.0)
 
         # Save to new file
         output_path = tmp_path / "modified.bin"
@@ -439,16 +443,14 @@ class TestDataIntegrity:
         original_data = reader.read_table_data(table)
 
         # Write back unchanged
-        reader.write_table_data(table, original_data['values'])
+        reader.write_table_data(table, original_data["values"])
 
         # Read again
         roundtrip_data = reader.read_table_data(table)
 
         # Should be identical (allowing for floating point precision)
         np.testing.assert_array_almost_equal(
-            original_data['values'],
-            roundtrip_data['values'],
-            decimal=5
+            original_data["values"], roundtrip_data["values"], decimal=5
         )
 
     def test_multiple_modifications(self, sample_rom_path, sample_xml_path):
@@ -466,13 +468,13 @@ class TestDataIntegrity:
         data1 = reader.read_table_data(table)
 
         # Modify once
-        reader.write_table_data(table, data1['values'] + 10.0)
+        reader.write_table_data(table, data1["values"] + 10.0)
         data2 = reader.read_table_data(table)
 
         # Modify again
-        reader.write_table_data(table, data2['values'] - 5.0)
+        reader.write_table_data(table, data2["values"] - 5.0)
         data3 = reader.read_table_data(table)
 
         # Final should be original + 5
-        expected = data1['values'] + 5.0
-        np.testing.assert_array_almost_equal(data3['values'], expected, decimal=2)
+        expected = data1["values"] + 5.0
+        np.testing.assert_array_almost_equal(data3["values"], expected, decimal=2)

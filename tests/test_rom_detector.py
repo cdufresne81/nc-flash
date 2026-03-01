@@ -5,10 +5,7 @@ Unit tests for ROM detector module
 import pytest
 from pathlib import Path
 from src.core.rom_detector import RomDetector, RomIdInfo
-from src.core.exceptions import (
-    MetadataDirectoryError,
-    RomFileNotFoundError
-)
+from src.core.exceptions import MetadataDirectoryError, RomFileNotFoundError
 
 
 class TestRomDetectorInitialization:
@@ -84,7 +81,9 @@ class TestRomIdDetection:
         with pytest.raises(RomFileNotFoundError):
             detector.detect_rom_id("nonexistent.bin")
 
-    def test_detect_rom_id_returns_none_for_unknown_rom(self, definitions_dir, tmp_path):
+    def test_detect_rom_id_returns_none_for_unknown_rom(
+        self, definitions_dir, tmp_path
+    ):
         """Test that unknown ROM returns None"""
         detector = RomDetector(str(definitions_dir))
 
@@ -146,11 +145,11 @@ class TestDefinitionSummary:
 
         # Check required keys in summary
         first_summary = summary[0]
-        assert 'xmlid' in first_summary
-        assert 'make' in first_summary
-        assert 'model' in first_summary
-        assert 'internalid' in first_summary
-        assert 'xml_file' in first_summary
+        assert "xmlid" in first_summary
+        assert "make" in first_summary
+        assert "model" in first_summary
+        assert "internalid" in first_summary
+        assert "xml_file" in first_summary
 
     def test_summary_contains_correct_data(self, definitions_dir):
         """Test that summary contains correct data for known ROM"""
@@ -160,14 +159,14 @@ class TestDefinitionSummary:
         # Find LF9VEB in summary
         lf9veb_summary = None
         for s in summary:
-            if s['xmlid'] == 'LF9VEB':
+            if s["xmlid"] == "LF9VEB":
                 lf9veb_summary = s
                 break
 
         assert lf9veb_summary is not None
-        assert lf9veb_summary['make'] == 'Mazda'
-        assert lf9veb_summary['model'] == 'MX5'
-        assert lf9veb_summary['internalid'] == 'LF9VEB'
+        assert lf9veb_summary["make"] == "Mazda"
+        assert lf9veb_summary["model"] == "MX5"
+        assert lf9veb_summary["internalid"] == "LF9VEB"
 
 
 class TestErrorHandling:
@@ -205,7 +204,7 @@ class TestErrorHandling:
         test_metadata.mkdir()
 
         incomplete_xml = test_metadata / "incomplete.xml"
-        incomplete_xml.write_text('''<?xml version="1.0"?>
+        incomplete_xml.write_text("""<?xml version="1.0"?>
 <roms>
     <rom>
         <romid>
@@ -213,7 +212,7 @@ class TestErrorHandling:
             <!-- Missing internalidaddress and internalidstring -->
         </romid>
     </rom>
-</roms>''')
+</roms>""")
 
         detector = RomDetector(str(test_metadata))
         # Should skip this incomplete definition

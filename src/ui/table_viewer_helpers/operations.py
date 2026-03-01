@@ -25,14 +25,22 @@ logger = logging.getLogger(__name__)
 class TableOperationsHelper:
     """Helper class for bulk data operations"""
 
-    def __init__(self, ctx: TableViewerContext, display: 'TableDisplayHelper', edit: 'TableEditHelper'):
+    def __init__(
+        self,
+        ctx: TableViewerContext,
+        display: "TableDisplayHelper",
+        edit: "TableEditHelper",
+    ):
         self.ctx = ctx
         self.display = display
         self.edit = edit
 
-    def apply_bulk_operation(self, operation_fn: Callable[[float], float],
-                             operation_name: str,
-                             axis_operation_fn: Callable[[float, str], float] = None) -> Tuple[List[Tuple], List[Tuple]]:
+    def apply_bulk_operation(
+        self,
+        operation_fn: Callable[[float], float],
+        operation_name: str,
+        axis_operation_fn: Callable[[float, str], float] = None,
+    ) -> Tuple[List[Tuple], List[Tuple]]:
         """
         Apply an operation to all selected cells (data and axis)
 
@@ -47,7 +55,11 @@ class TableOperationsHelper:
             - data_changes: List of (row, col, old_value, new_value, old_raw, new_raw) tuples
             - axis_changes: List of (axis_type, index, old_value, new_value, old_raw, new_raw) tuples
         """
-        if self.ctx.read_only or not self.ctx.current_table or not self.ctx.current_data:
+        if (
+            self.ctx.read_only
+            or not self.ctx.current_table
+            or not self.ctx.current_data
+        ):
             return [], []
 
         # Get selected ranges
@@ -64,11 +76,13 @@ class TableOperationsHelper:
 
         data_changes = []
         axis_changes = []
-        changed_items = []  # Track (item, new_value, data_row, data_col) for color updates
+        changed_items = (
+            []
+        )  # Track (item, new_value, data_row, data_col) for color updates
 
         # Cache min/max values before bulk operation to avoid O(n²) complexity in color calculations
-        if 'values' in self.ctx.current_data:
-            self.display.cache_value_range(self.ctx.current_data['values'])
+        if "values" in self.ctx.current_data:
+            self.display.cache_value_range(self.ctx.current_data["values"])
 
         # Cache format string to avoid repeated lookups
         value_fmt = self.display.get_value_format()
@@ -91,7 +105,11 @@ class TableOperationsHelper:
                         if isinstance(data_indices[0], str):
                             # Axis cell: ('x_axis', index) or ('y_axis', index)
                             axis_type_str, data_idx = data_indices
-                            axis_type = AxisType.X_AXIS if axis_type_str == 'x_axis' else AxisType.Y_AXIS
+                            axis_type = (
+                                AxisType.X_AXIS
+                                if axis_type_str == "x_axis"
+                                else AxisType.Y_AXIS
+                            )
 
                             # Get axis table for scaling
                             axis_table = self.ctx.current_table.get_axis(axis_type)
@@ -109,11 +127,15 @@ class TableOperationsHelper:
                             # Apply operation - use axis_operation_fn if provided, otherwise fall back to operation_fn
                             try:
                                 if axis_operation_fn:
-                                    new_value = float(axis_operation_fn(old_value, axis_type_str))
+                                    new_value = float(
+                                        axis_operation_fn(old_value, axis_type_str)
+                                    )
                                 else:
                                     new_value = float(operation_fn(old_value))
                             except Exception as e:
-                                logger.warning(f"Operation failed for axis cell [{axis_type_str}][{data_idx}]: {e}")
+                                logger.warning(
+                                    f"Operation failed for axis cell [{axis_type_str}][{data_idx}]: {e}"
+                                )
                                 continue
 
                             # Skip if no change
@@ -121,8 +143,12 @@ class TableOperationsHelper:
                                 continue
 
                             # Convert to raw values using axis scaling
-                            old_raw = self.edit._axis_display_to_raw(old_value, axis_table)
-                            new_raw = self.edit._axis_display_to_raw(new_value, axis_table)
+                            old_raw = self.edit._axis_display_to_raw(
+                                old_value, axis_table
+                            )
+                            new_raw = self.edit._axis_display_to_raw(
+                                new_value, axis_table
+                            )
                             if old_raw is None or new_raw is None:
                                 continue
 
@@ -133,21 +159,36 @@ class TableOperationsHelper:
                             self.ctx.editing_in_progress = True
                             try:
                                 axis_fmt = self.display.get_axis_format(axis_type)
-                                item.setText(self.display.format_value(new_value, axis_fmt))
-                                color = self.display.get_axis_color(new_value, self.ctx.current_data[axis_key], axis_type)
+                                item.setText(
+                                    self.display.format_value(new_value, axis_fmt)
+                                )
+                                color = self.display.get_axis_color(
+                                    new_value,
+                                    self.ctx.current_data[axis_key],
+                                    axis_type,
+                                )
                                 item.setBackground(QBrush(color))
                             finally:
                                 self.ctx.editing_in_progress = False
 
                             # Record axis change
-                            axis_changes.append((axis_type_str, data_idx, old_value, new_value, float(old_raw), float(new_raw)))
+                            axis_changes.append(
+                                (
+                                    axis_type_str,
+                                    data_idx,
+                                    old_value,
+                                    new_value,
+                                    float(old_raw),
+                                    float(new_raw),
+                                )
+                            )
 
                         else:
                             # Data cell: (data_row, data_col)
                             data_row, data_col = data_indices
 
                             # Get current value
-                            values = self.ctx.current_data['values']
+                            values = self.ctx.current_data["values"]
                             if values.ndim == 1:
                                 old_value = float(values[data_row])
                             else:
@@ -157,7 +198,9 @@ class TableOperationsHelper:
                             try:
                                 new_value = float(operation_fn(old_value))
                             except Exception as e:
-                                logger.warning(f"Operation failed for cell [{data_row},{data_col}]: {e}")
+                                logger.warning(
+                                    f"Operation failed for cell [{data_row},{data_col}]: {e}"
+                                )
                                 continue
 
                             # Skip if no change
@@ -172,27 +215,47 @@ class TableOperationsHelper:
 
                             # Update internal data
                             if values.ndim == 1:
-                                self.ctx.current_data['values'][data_row] = new_value
+                                self.ctx.current_data["values"][data_row] = new_value
                             else:
-                                self.ctx.current_data['values'][data_row, data_col] = new_value
+                                self.ctx.current_data["values"][
+                                    data_row, data_col
+                                ] = new_value
 
                             # Track cell for batch update at end (skip per-cell widget updates)
-                            changed_items.append((row, col, new_value, data_row, data_col))
+                            changed_items.append(
+                                (row, col, new_value, data_row, data_col)
+                            )
 
                             # Record data change
-                            data_changes.append((data_row, data_col, old_value, new_value, old_raw, new_raw))
+                            data_changes.append(
+                                (
+                                    data_row,
+                                    data_col,
+                                    old_value,
+                                    new_value,
+                                    old_raw,
+                                    new_raw,
+                                )
+                            )
 
                 # Batch update: set text and colors for all changed cells at once
-                if changed_items and 'values' in self.ctx.current_data:
-                    self.display.cache_value_range(self.ctx.current_data['values'])
+                if changed_items and "values" in self.ctx.current_data:
+                    self.display.cache_value_range(self.ctx.current_data["values"])
                     self.ctx.editing_in_progress = True
                     try:
                         for row, col, new_value, data_row, data_col in changed_items:
                             item = self.ctx.table_widget.item(row, col)
                             if item:
-                                formatted = self.display.format_value(new_value, value_fmt)
+                                formatted = self.display.format_value(
+                                    new_value, value_fmt
+                                )
                                 item.setText(formatted)
-                                color = self.display.get_cell_color(new_value, self.ctx.current_data['values'], data_row, data_col)
+                                color = self.display.get_cell_color(
+                                    new_value,
+                                    self.ctx.current_data["values"],
+                                    data_row,
+                                    data_col,
+                                )
                                 item.setBackground(QBrush(color))
                     finally:
                         self.ctx.editing_in_progress = False
@@ -207,7 +270,7 @@ class TableOperationsHelper:
         if not self.ctx.rom_definition or not self.ctx.current_table:
             return 1.0
 
-        axis_type = AxisType.X_AXIS if axis_type_str == 'x_axis' else AxisType.Y_AXIS
+        axis_type = AxisType.X_AXIS if axis_type_str == "x_axis" else AxisType.Y_AXIS
         axis_table = self.ctx.current_table.get_axis(axis_type)
         if axis_table and axis_table.scaling:
             scaling = self.ctx.rom_definition.get_scaling(axis_table.scaling)
@@ -223,7 +286,9 @@ class TableOperationsHelper:
         # Get data increment from scaling metadata if available
         data_increment = 1.0
         if self.ctx.rom_definition and self.ctx.current_table.scaling:
-            scaling = self.ctx.rom_definition.get_scaling(self.ctx.current_table.scaling)
+            scaling = self.ctx.rom_definition.get_scaling(
+                self.ctx.current_table.scaling
+            )
             if scaling and scaling.inc:
                 data_increment = scaling.inc
 
@@ -236,7 +301,7 @@ class TableOperationsHelper:
         data_changes, axis_changes = self.apply_bulk_operation(
             lambda v: v + data_increment,
             f"Increment",
-            axis_operation_fn=axis_increment_op
+            axis_operation_fn=axis_increment_op,
         )
 
         # Emit signals
@@ -253,7 +318,9 @@ class TableOperationsHelper:
         # Get data decrement from scaling metadata if available
         data_decrement = 1.0
         if self.ctx.rom_definition and self.ctx.current_table.scaling:
-            scaling = self.ctx.rom_definition.get_scaling(self.ctx.current_table.scaling)
+            scaling = self.ctx.rom_definition.get_scaling(
+                self.ctx.current_table.scaling
+            )
             if scaling and scaling.inc:
                 data_decrement = scaling.inc
 
@@ -266,7 +333,7 @@ class TableOperationsHelper:
         data_changes, axis_changes = self.apply_bulk_operation(
             lambda v: v - data_decrement,
             f"Decrement",
-            axis_operation_fn=axis_decrement_op
+            axis_operation_fn=axis_decrement_op,
         )
 
         # Emit signals
@@ -292,8 +359,7 @@ class TableOperationsHelper:
 
             # Apply operation
             data_changes, axis_changes = self.apply_bulk_operation(
-                lambda v: v + value,
-                f"Add {value}"
+                lambda v: v + value, f"Add {value}"
             )
 
             # Emit signals
@@ -319,8 +385,7 @@ class TableOperationsHelper:
 
             # Apply operation
             data_changes, axis_changes = self.apply_bulk_operation(
-                lambda v: v * factor,
-                f"Multiply by {factor}"
+                lambda v: v * factor, f"Multiply by {factor}"
             )
 
             # Emit signals
@@ -350,8 +415,7 @@ class TableOperationsHelper:
 
             # Apply operation
             data_changes, axis_changes = self.apply_bulk_operation(
-                lambda v: value,
-                f"Set to {value}"
+                lambda v: value, f"Set to {value}"
             )
 
             # Emit signals
@@ -403,7 +467,11 @@ class TableOperationsHelper:
         Only affects data cells (not axis cells).
         Works best on 3D tables but also works on 2D tables.
         """
-        if self.ctx.read_only or not self.ctx.current_table or not self.ctx.current_data:
+        if (
+            self.ctx.read_only
+            or not self.ctx.current_table
+            or not self.ctx.current_data
+        ):
             return
 
         # Only 2D and 3D tables benefit from smoothing
@@ -419,7 +487,7 @@ class TableOperationsHelper:
             return
 
         # Collect selected data cells with their coordinates
-        values = self.ctx.current_data['values']
+        values = self.ctx.current_data["values"]
         selected_cells = []
 
         for sel_range in selected:
@@ -514,9 +582,9 @@ class TableOperationsHelper:
 
                 # Update internal data
                 if values.ndim == 1:
-                    self.ctx.current_data['values'][data_row] = new_value
+                    self.ctx.current_data["values"][data_row] = new_value
                 else:
-                    self.ctx.current_data['values'][data_row, data_col] = new_value
+                    self.ctx.current_data["values"][data_row, data_col] = new_value
 
                 # Update cell display
                 item = self.ctx.table_widget.item(ui_row, ui_col)
@@ -525,13 +593,20 @@ class TableOperationsHelper:
                     try:
                         value_fmt = self.display.get_value_format()
                         item.setText(self.display.format_value(new_value, value_fmt))
-                        color = self.display.get_cell_color(new_value, self.ctx.current_data['values'], data_row, data_col)
+                        color = self.display.get_cell_color(
+                            new_value,
+                            self.ctx.current_data["values"],
+                            data_row,
+                            data_col,
+                        )
                         item.setBackground(QBrush(color))
                     finally:
                         self.ctx.editing_in_progress = False
 
                     # Record change
-                    data_changes.append((data_row, data_col, old_value, new_value, old_raw, new_raw))
+                    data_changes.append(
+                        (data_row, data_col, old_value, new_value, old_raw, new_raw)
+                    )
 
             # Emit signal for all changes
             if data_changes:

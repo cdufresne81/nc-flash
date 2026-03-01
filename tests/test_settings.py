@@ -30,7 +30,7 @@ def _restore_settings_globals():
 @pytest.fixture
 def mock_qsettings():
     """Mock QSettings to avoid writing to actual system settings"""
-    with patch('src.utils.settings.QSettings') as mock:
+    with patch("src.utils.settings.QSettings") as mock:
         # Create a dict to store settings values
         settings_store = {}
 
@@ -71,7 +71,10 @@ class TestDefinitionsDirectory:
 
         app_settings.set_definitions_directory("/custom/path/definitions")
 
-        assert settings_store.get("paths/definitions_directory") == "/custom/path/definitions"
+        assert (
+            settings_store.get("paths/definitions_directory")
+            == "/custom/path/definitions"
+        )
         assert app_settings.get_definitions_directory() == "/custom/path/definitions"
 
 
@@ -335,7 +338,9 @@ class TestToggleCategories:
         mock_instance, settings_store = mock_qsettings
         app_settings = AppSettings()
 
-        app_settings.set_toggle_categories(["DTC - Activation Flags", "Custom Category"])
+        app_settings.set_toggle_categories(
+            ["DTC - Activation Flags", "Custom Category"]
+        )
 
         result = app_settings.get_toggle_categories()
         assert result == ["DTC - Activation Flags", "Custom Category"]
@@ -383,9 +388,10 @@ class TestGlobalSettingsInstance:
 
     def test_get_settings_returns_instance(self):
         """Test that get_settings returns an AppSettings instance"""
-        with patch('src.utils.settings.QSettings'):
+        with patch("src.utils.settings.QSettings"):
             # Reset the global instance
             import src.utils.settings as settings_module
+
             settings_module._settings = None
 
             result = get_settings()
@@ -393,8 +399,9 @@ class TestGlobalSettingsInstance:
 
     def test_get_settings_returns_same_instance(self):
         """Test that get_settings returns the same instance"""
-        with patch('src.utils.settings.QSettings'):
+        with patch("src.utils.settings.QSettings"):
             import src.utils.settings as settings_module
+
             settings_module._settings = None
 
             result1 = get_settings()

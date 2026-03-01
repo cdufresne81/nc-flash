@@ -13,6 +13,7 @@ import os
 
 # Import the TestRunner class
 import sys
+
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from tools.test_runner import TestRunner
 
@@ -77,14 +78,16 @@ class TestScriptExecution:
         runner = TestRunner(quiet=True)
 
         # Create a temp script file
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as f:
             f.write("\n\n\n")
             script_path = f.name
 
         try:
             # Mock start_app to avoid Qt initialization
-            with patch.object(runner, 'start_app', return_value=True):
-                with patch.object(runner, '_execute_command', return_value=True) as mock_exec:
+            with patch.object(runner, "start_app", return_value=True):
+                with patch.object(
+                    runner, "_execute_command", return_value=True
+                ) as mock_exec:
                     runner.run_script(script_path)
                     # Should not have executed any commands
                     mock_exec.assert_not_called()
@@ -95,14 +98,16 @@ class TestScriptExecution:
         """Script should skip comment lines starting with #"""
         runner = TestRunner(quiet=True)
 
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as f:
             f.write("# This is a comment\n")
             f.write("# Another comment\n")
             script_path = f.name
 
         try:
-            with patch.object(runner, 'start_app', return_value=True):
-                with patch.object(runner, '_execute_command', return_value=True) as mock_exec:
+            with patch.object(runner, "start_app", return_value=True):
+                with patch.object(
+                    runner, "_execute_command", return_value=True
+                ) as mock_exec:
                     runner.run_script(script_path)
                     mock_exec.assert_not_called()
         finally:
@@ -112,7 +117,7 @@ class TestScriptExecution:
         """Script should execute non-empty, non-comment lines"""
         runner = TestRunner(quiet=True)
 
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as f:
             f.write("# Comment\n")
             f.write("\n")
             f.write("command1\n")
@@ -120,8 +125,10 @@ class TestScriptExecution:
             script_path = f.name
 
         try:
-            with patch.object(runner, 'start_app', return_value=True):
-                with patch.object(runner, '_execute_command', return_value=True) as mock_exec:
+            with patch.object(runner, "start_app", return_value=True):
+                with patch.object(
+                    runner, "_execute_command", return_value=True
+                ) as mock_exec:
                     runner.run_script(script_path)
                     assert mock_exec.call_count == 2
                     mock_exec.assert_any_call("command1")

@@ -31,7 +31,7 @@ def sample_xml_content():
 @pytest.fixture
 def temp_xml_file(sample_xml_content):
     """Create a temporary XML file for testing"""
-    with tempfile.NamedTemporaryFile(mode='w', suffix='.xml', delete=False) as f:
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".xml", delete=False) as f:
         f.write(sample_xml_content)
         temp_path = Path(f.name)
     yield temp_path
@@ -50,7 +50,9 @@ class TestUpdateScaling:
 
     def test_update_scaling_min_max(self, temp_xml_file):
         """Test updating min and max attributes"""
-        result = update_scaling(temp_xml_file, "TestScaling", {"min": "10", "max": "200"})
+        result = update_scaling(
+            temp_xml_file, "TestScaling", {"min": "10", "max": "200"}
+        )
 
         assert result is True
 
@@ -96,7 +98,7 @@ class TestUpdateScaling:
             "max": "95",
             "units": "degrees",
             "format": "%0.1f",
-            "inc": "2"
+            "inc": "2",
         }
         result = update_scaling(temp_xml_file, "TestScaling", updates)
 
@@ -162,13 +164,17 @@ class TestUpdateScaling:
 
     def test_update_scaling_nonexistent_file(self):
         """Test updating a file that doesn't exist"""
-        result = update_scaling(Path("/nonexistent/path/file.xml"), "TestScaling", {"min": "10"})
+        result = update_scaling(
+            Path("/nonexistent/path/file.xml"), "TestScaling", {"min": "10"}
+        )
 
         assert result is False
 
     def test_update_different_scaling(self, temp_xml_file):
         """Test updating a different scaling in the file"""
-        result = update_scaling(temp_xml_file, "FuelScaling", {"min": "0.5", "max": "30"})
+        result = update_scaling(
+            temp_xml_file, "FuelScaling", {"min": "0.5", "max": "30"}
+        )
 
         assert result is True
 
@@ -200,7 +206,9 @@ class TestGetScalingAttributes:
 
     def test_get_from_nonexistent_file(self):
         """Test getting attributes from nonexistent file"""
-        attrs = get_scaling_attributes(Path("/nonexistent/path/file.xml"), "TestScaling")
+        attrs = get_scaling_attributes(
+            Path("/nonexistent/path/file.xml"), "TestScaling"
+        )
 
         assert attrs == {}
 
@@ -238,7 +246,7 @@ class TestEdgeCases:
 
     def test_malformed_xml(self):
         """Test handling of malformed XML file"""
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.xml', delete=False) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".xml", delete=False) as f:
             f.write("This is not valid XML <broken>")
             temp_path = Path(f.name)
 

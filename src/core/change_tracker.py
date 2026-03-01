@@ -27,15 +27,18 @@ AXIS_COL_X = -2
 
 def _axis_type_to_col(axis_type: str) -> int:
     """Encode axis type as a special column value for storage in CellChange."""
-    return AXIS_COL_Y if axis_type == 'y_axis' else AXIS_COL_X
+    return AXIS_COL_Y if axis_type == "y_axis" else AXIS_COL_X
 
 
 @dataclass
 class PendingChanges:
     """Tracks uncommitted changes for a table"""
+
     table_name: str
     table_address: str  # Raw hex address (for ROM I/O and display)
-    changes: Dict[tuple, CellChange] = field(default_factory=dict)  # (row, col) -> CellChange
+    changes: Dict[tuple, CellChange] = field(
+        default_factory=dict
+    )  # (row, col) -> CellChange
 
     def add_change(self, change: CellChange):
         """Add or update a cell change"""
@@ -71,7 +74,7 @@ class PendingChanges:
         return TableChanges(
             table_name=self.table_name,
             table_address=self.table_address,
-            cell_changes=list(self.changes.values())
+            cell_changes=list(self.changes.values()),
         )
 
 
@@ -95,10 +98,17 @@ class ChangeTracker:
         # Callbacks for UI updates
         self._change_callbacks: List[Callable] = []
 
-    def record_pending_change(self, table: Table, row: int, col: int,
-                              old_value: float, new_value: float,
-                              old_raw: float, new_raw: float,
-                              rom_path=None):
+    def record_pending_change(
+        self,
+        table: Table,
+        row: int,
+        col: int,
+        old_value: float,
+        new_value: float,
+        old_raw: float,
+        new_raw: float,
+        rom_path=None,
+    ):
         """
         Record a cell value change for pending/commit tracking.
 
@@ -129,18 +139,20 @@ class ChangeTracker:
         # Add to pending changes (keyed by composite key for multi-ROM isolation)
         if table_key not in self._pending:
             self._pending[table_key] = PendingChanges(
-                table_name=table.name,
-                table_address=table.address
+                table_name=table.name, table_address=table.address
             )
         self._pending[table_key].add_change(change)
 
         # Notify listeners
         self._notify_change()
 
-        logger.debug(f"Recorded pending change: {table.name}[{row},{col}] {old_value} -> {new_value}")
+        logger.debug(
+            f"Recorded pending change: {table.name}[{row},{col}] {old_value} -> {new_value}"
+        )
 
-    def record_pending_bulk_changes(self, table: Table, changes: List[tuple],
-                                    rom_path=None):
+    def record_pending_bulk_changes(
+        self, table: Table, changes: List[tuple], rom_path=None
+    ):
         """
         Record multiple cell changes for pending/commit tracking.
 
@@ -170,8 +182,7 @@ class ChangeTracker:
             # Add to pending changes (keyed by composite key)
             if table_key not in self._pending:
                 self._pending[table_key] = PendingChanges(
-                    table_name=table.name,
-                    table_address=table.address
+                    table_name=table.name, table_address=table.address
                 )
             self._pending[table_key].add_change(change)
 
@@ -180,10 +191,17 @@ class ChangeTracker:
 
         logger.debug(f"Recorded {len(changes)} pending bulk changes in {table.name}")
 
-    def record_pending_axis_change(self, table: Table, axis_type: str, index: int,
-                                   old_value: float, new_value: float,
-                                   old_raw: float, new_raw: float,
-                                   rom_path=None):
+    def record_pending_axis_change(
+        self,
+        table: Table,
+        axis_type: str,
+        index: int,
+        old_value: float,
+        new_value: float,
+        old_raw: float,
+        new_raw: float,
+        rom_path=None,
+    ):
         """
         Record an axis value change for pending/commit tracking.
 
@@ -209,16 +227,18 @@ class ChangeTracker:
 
         if table_key not in self._pending:
             self._pending[table_key] = PendingChanges(
-                table_name=table.name,
-                table_address=table.address
+                table_name=table.name, table_address=table.address
             )
         self._pending[table_key].add_change(change)
         self._notify_change()
 
-        logger.debug(f"Recorded pending axis change: {table.name}[{axis_type}][{index}] {old_value} -> {new_value}")
+        logger.debug(
+            f"Recorded pending axis change: {table.name}[{axis_type}][{index}] {old_value} -> {new_value}"
+        )
 
-    def record_pending_axis_bulk_changes(self, table: Table, changes: List[tuple],
-                                         rom_path=None):
+    def record_pending_axis_bulk_changes(
+        self, table: Table, changes: List[tuple], rom_path=None
+    ):
         """
         Record multiple axis changes for pending/commit tracking.
 
@@ -248,13 +268,14 @@ class ChangeTracker:
 
             if table_key not in self._pending:
                 self._pending[table_key] = PendingChanges(
-                    table_name=table.name,
-                    table_address=table.address
+                    table_name=table.name, table_address=table.address
                 )
             self._pending[table_key].add_change(change)
 
         self._notify_change()
-        logger.debug(f"Recorded {len(changes)} pending axis bulk changes in {table.name}")
+        logger.debug(
+            f"Recorded {len(changes)} pending axis bulk changes in {table.name}"
+        )
 
     def update_pending_from_axis_undo(self, change: AxisChange, is_undo: bool):
         """
@@ -334,8 +355,7 @@ class ChangeTracker:
         # Re-apply the change to pending
         if key not in self._pending:
             self._pending[key] = PendingChanges(
-                table_name=change.table_name,
-                table_address=change.table_address
+                table_name=change.table_name, table_address=change.table_address
             )
         self._pending[key].add_change(change)
 

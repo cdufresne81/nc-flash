@@ -43,14 +43,18 @@ class SessionMixin:
             try:
                 if self.projects_enabled and entry.startswith("project:"):
                     # Explicit project tab
-                    project_path = entry[len("project:"):]
+                    project_path = entry[len("project:") :]
                     if Path(project_path).exists():
                         self.open_project_path(project_path)
                     else:
-                        logger.warning(f"Session project folder no longer exists: {project_path}")
+                        logger.warning(
+                            f"Session project folder no longer exists: {project_path}"
+                        )
                 elif entry.startswith("project:"):
                     # Projects disabled — skip project entries
-                    logger.info(f"Skipping project session entry (projects disabled): {entry}")
+                    logger.info(
+                        f"Skipping project session entry (projects disabled): {entry}"
+                    )
                 else:
                     path = Path(entry)
                     if not path.exists():
@@ -58,15 +62,21 @@ class SessionMixin:
                         continue
                     # Check if this ROM lives inside a project folder (legacy session data)
                     parent = path.parent
-                    if self.projects_enabled and ProjectManager.is_project_folder(str(parent)):
-                        logger.info(f"Session ROM is inside project folder, restoring as project: {parent}")
+                    if self.projects_enabled and ProjectManager.is_project_folder(
+                        str(parent)
+                    ):
+                        logger.info(
+                            f"Session ROM is inside project folder, restoring as project: {parent}"
+                        )
                         self.open_project_path(str(parent))
                     else:
                         self._open_rom_file(entry)
             except RomEditorError as e:
                 logger.warning(f"Failed to restore session entry: {entry} - {e}")
             except Exception as e:
-                logger.exception(f"Unexpected error restoring session entry: {entry} - {type(e).__name__}: {e}")
+                logger.exception(
+                    f"Unexpected error restoring session entry: {entry} - {type(e).__name__}: {e}"
+                )
 
     def _handle_close(self, event):
         """Check for unsaved changes across all tabs, then save session state before closing.
@@ -84,7 +94,7 @@ class SessionMixin:
                     "Unsaved Changes",
                     f"'{document.file_name}' has unsaved changes.\n\nDo you want to save before closing?",
                     QMessageBox.Save | QMessageBox.Discard | QMessageBox.Cancel,
-                    QMessageBox.Save
+                    QMessageBox.Save,
                 )
 
                 if response == QMessageBox.Cancel:
@@ -98,8 +108,8 @@ class SessionMixin:
         open_files = []
         for i in range(self.tab_widget.count()):
             document = self.tab_widget.widget(i)
-            if document and hasattr(document, 'rom_path'):
-                project_path = getattr(document, 'project_path', None)
+            if document and hasattr(document, "rom_path"):
+                project_path = getattr(document, "project_path", None)
                 if project_path:
                     open_files.append(f"project:{project_path}")
                 else:
@@ -130,15 +140,19 @@ class SessionMixin:
         try:
             definitions_dir = self.settings.get_definitions_directory()
             self.rom_detector = RomDetector(definitions_dir)
-            logger.info(f"ROM detector reinitialized with definitions directory: {definitions_dir}")
-            self.statusBar().showMessage(f"Settings updated. Definitions directory: {definitions_dir}")
+            logger.info(
+                f"ROM detector reinitialized with definitions directory: {definitions_dir}"
+            )
+            self.statusBar().showMessage(
+                f"Settings updated. Definitions directory: {definitions_dir}"
+            )
         except DetectionError as e:
             logger.error(f"Failed to reinitialize ROM detector: {e}")
             QMessageBox.warning(
                 self,
                 "Settings Error",
                 f"Failed to load definitions from new directory:\n{str(e)}\n\n"
-                "Please check the definitions directory path in settings."
+                "Please check the definitions directory path in settings.",
             )
 
     def show_about(self):
@@ -149,5 +163,5 @@ class SessionMixin:
             f"{APP_NAME} {APP_VERSION_STRING}\n\n"
             f"{APP_DESCRIPTION}\n\n"
             "Designed to replace EcuFlash for ROM editing tasks.\n"
-            "Works with RomDrop for ECU flashing."
+            "Works with RomDrop for ECU flashing.",
         )

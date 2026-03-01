@@ -27,7 +27,9 @@ class TestRomLifecycle:
                 return table
         return None
 
-    def test_read_edit_save_readback_1d(self, sample_rom_path, sample_xml_path, tmp_path):
+    def test_read_edit_save_readback_1d(
+        self, sample_rom_path, sample_xml_path, tmp_path
+    ):
         """Test full lifecycle with a 1D table: read -> edit -> save -> re-read."""
         # Work on a copy so the original ROM is never modified
         rom_copy = tmp_path / "lf9veb.bin"
@@ -44,7 +46,7 @@ class TestRomLifecycle:
         # Step 1: Read original data
         original_data = reader.read_table_data(table)
         assert original_data is not None
-        original_values = original_data['values'].copy()
+        original_values = original_data["values"].copy()
 
         # Step 2: Modify a single value (increment first element by 1.0)
         modified_values = original_values.copy()
@@ -63,22 +65,28 @@ class TestRomLifecycle:
         # Step 6: Re-read the same table
         table2 = self._find_table_by_type(definition2, TableType.ONE_D)
         readback_data = reader2.read_table_data(table2)
-        readback_values = readback_data['values']
+        readback_values = readback_data["values"]
 
         # Step 7: Assert the modification persisted
         np.testing.assert_almost_equal(
-            readback_values[0], modified_values[0], decimal=2,
-            err_msg="Modified value did not persist after save and re-read"
+            readback_values[0],
+            modified_values[0],
+            decimal=2,
+            err_msg="Modified value did not persist after save and re-read",
         )
 
         # Also verify remaining values are unchanged
         if len(original_values) > 1:
             np.testing.assert_array_almost_equal(
-                readback_values[1:], original_values[1:], decimal=2,
-                err_msg="Unmodified values changed after save and re-read"
+                readback_values[1:],
+                original_values[1:],
+                decimal=2,
+                err_msg="Unmodified values changed after save and re-read",
             )
 
-    def test_read_edit_save_readback_2d(self, sample_rom_path, sample_xml_path, tmp_path):
+    def test_read_edit_save_readback_2d(
+        self, sample_rom_path, sample_xml_path, tmp_path
+    ):
         """Test full lifecycle with a 2D table: read -> edit -> save -> re-read."""
         rom_copy = tmp_path / "lf9veb.bin"
         shutil.copy2(sample_rom_path, rom_copy)
@@ -93,7 +101,7 @@ class TestRomLifecycle:
         # Read original
         original_data = reader.read_table_data(table)
         assert original_data is not None
-        original_values = original_data['values'].copy()
+        original_values = original_data["values"].copy()
 
         # Modify first element
         modified_values = original_values.copy()
@@ -110,8 +118,10 @@ class TestRomLifecycle:
         readback_data = reader2.read_table_data(table2)
 
         np.testing.assert_almost_equal(
-            readback_data['values'][0], modified_values[0], decimal=2,
-            err_msg="Modified 2D table value did not persist after save and re-read"
+            readback_data["values"][0],
+            modified_values[0],
+            decimal=2,
+            err_msg="Modified 2D table value did not persist after save and re-read",
         )
 
     def test_save_preserves_rom_size(self, sample_rom_path, sample_xml_path, tmp_path):
@@ -127,14 +137,17 @@ class TestRomLifecycle:
         table = self._find_table_by_type(definition, TableType.ONE_D)
         assert table is not None
         data = reader.read_table_data(table)
-        reader.write_table_data(table, data['values'] + 1.0)
+        reader.write_table_data(table, data["values"] + 1.0)
         reader.save_rom(str(rom_copy))
 
         # File size must remain identical
-        assert rom_copy.stat().st_size == original_size, \
-            "ROM file size changed after edit-save cycle"
+        assert (
+            rom_copy.stat().st_size == original_size
+        ), "ROM file size changed after edit-save cycle"
 
-    def test_multiple_tables_independent(self, sample_rom_path, sample_xml_path, tmp_path):
+    def test_multiple_tables_independent(
+        self, sample_rom_path, sample_xml_path, tmp_path
+    ):
         """Verify editing one table does not corrupt another table's data."""
         rom_copy = tmp_path / "lf9veb.bin"
         shutil.copy2(sample_rom_path, rom_copy)
@@ -144,8 +157,7 @@ class TestRomLifecycle:
 
         # Find two different 1D tables
         tables_1d = [
-            t for t in definition.tables
-            if t.type == TableType.ONE_D and not t.is_axis
+            t for t in definition.tables if t.type == TableType.ONE_D and not t.is_axis
         ]
         if len(tables_1d) < 2:
             pytest.skip("Need at least 2 non-axis 1D tables for this test")
@@ -158,7 +170,7 @@ class TestRomLifecycle:
         data_b_original = reader.read_table_data(table_b)
 
         # Modify only table A
-        reader.write_table_data(table_a, data_a['values'] + 5.0)
+        reader.write_table_data(table_a, data_a["values"] + 5.0)
         reader.save_rom(str(rom_copy))
 
         # Re-read from disk
@@ -167,14 +179,15 @@ class TestRomLifecycle:
 
         # Find the same tables in the fresh definition
         tables_1d_2 = [
-            t for t in definition2.tables
-            if t.type == TableType.ONE_D and not t.is_axis
+            t for t in definition2.tables if t.type == TableType.ONE_D and not t.is_axis
         ]
         table_b2 = tables_1d_2[1]
 
         # Table B should be unchanged
         data_b_readback = reader2.read_table_data(table_b2)
         np.testing.assert_array_almost_equal(
-            data_b_readback['values'], data_b_original['values'], decimal=2,
-            err_msg="Unrelated table data was corrupted by editing a different table"
+            data_b_readback["values"],
+            data_b_original["values"],
+            decimal=2,
+            err_msg="Unrelated table data was corrupted by editing a different table",
         )

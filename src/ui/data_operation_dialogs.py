@@ -5,8 +5,12 @@ Dialogs for entering values for data manipulation operations.
 """
 
 from PySide6.QtWidgets import (
-    QDialog, QVBoxLayout, QHBoxLayout, QLabel,
-    QLineEdit, QDialogButtonBox
+    QDialog,
+    QVBoxLayout,
+    QHBoxLayout,
+    QLabel,
+    QLineEdit,
+    QDialogButtonBox,
 )
 from PySide6.QtGui import QDoubleValidator
 
@@ -26,7 +30,9 @@ class AddValueDialog(QDialog):
         self.setLayout(layout)
 
         # Instructions
-        info = QLabel("Enter value to add to selected cells\n(use negative values to subtract)")
+        info = QLabel(
+            "Enter value to add to selected cells\n(use negative values to subtract)"
+        )
         info.setWordWrap(True)
         layout.addWidget(info)
 
@@ -43,9 +49,7 @@ class AddValueDialog(QDialog):
         layout.addLayout(input_layout)
 
         # Buttons
-        button_box = QDialogButtonBox(
-            QDialogButtonBox.Ok | QDialogButtonBox.Cancel
-        )
+        button_box = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
         button_box.accepted.connect(self._on_accept)
         button_box.rejected.connect(self.reject)
         layout.addWidget(button_box)
@@ -116,9 +120,7 @@ class MultiplyDialog(QDialog):
         layout.addWidget(examples)
 
         # Buttons
-        button_box = QDialogButtonBox(
-            QDialogButtonBox.Ok | QDialogButtonBox.Cancel
-        )
+        button_box = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
         button_box.accepted.connect(self._on_accept)
         button_box.rejected.connect(self.reject)
         layout.addWidget(button_box)
@@ -190,14 +192,14 @@ class SetValueDialog(QDialog):
 
         # Preview label
         if self._selected_count > 0:
-            self.preview_label = QLabel(f"This will affect {self._selected_count} cell(s)")
+            self.preview_label = QLabel(
+                f"This will affect {self._selected_count} cell(s)"
+            )
             self.preview_label.setStyleSheet("color: #666; font-size: 11px;")
             layout.addWidget(self.preview_label)
 
         # Buttons
-        button_box = QDialogButtonBox(
-            QDialogButtonBox.Ok | QDialogButtonBox.Cancel
-        )
+        button_box = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
         button_box.accepted.connect(self._on_accept)
         button_box.rejected.connect(self.reject)
         layout.addWidget(button_box)

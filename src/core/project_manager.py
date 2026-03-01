@@ -13,12 +13,13 @@ from typing import Optional, List
 from datetime import datetime
 import logging
 
-from .version_models import (
-    Project, OriginalRomInfo, Commit, TableChanges
-)
+from .version_models import Project, OriginalRomInfo, Commit, TableChanges
 from .rom_definition import RomDefinition
 from .exceptions import (
-    ProjectError, ProjectNotFoundError, ProjectCorruptError, ProjectSaveError
+    ProjectError,
+    ProjectNotFoundError,
+    ProjectCorruptError,
+    ProjectSaveError,
 )
 
 logger = logging.getLogger(__name__)
@@ -41,7 +42,7 @@ class ProjectManager:
         project_name: str,
         source_rom_path: str,
         rom_definition: RomDefinition,
-        description: str = ""
+        description: str = "",
     ) -> Project:
         """
         Create a new project from a ROM file
@@ -79,7 +80,7 @@ class ProjectManager:
             shutil.copy2(source_path, working_path)
 
             # Calculate checksum from pristine copy
-            with open(v0_path, 'rb') as f:
+            with open(v0_path, "rb") as f:
                 checksum = hashlib.sha256(f.read()).hexdigest()
 
             # Create original ROM info
@@ -90,7 +91,7 @@ class ProjectManager:
                 rom_id=rom_id,
                 definition_xmlid=rom_definition.romid.xmlid,
                 make=rom_definition.romid.make,
-                model=rom_definition.romid.model
+                model=rom_definition.romid.model,
             )
 
             # Create project
@@ -107,7 +108,7 @@ class ProjectManager:
                 project_path=str(project_dir),
                 head_version=0,
                 last_suffix="original",
-                settings={"auto_snapshot_interval": 10}
+                settings={"auto_snapshot_interval": 10},
             )
 
             # Save project file
@@ -119,7 +120,7 @@ class ProjectManager:
                 changes=[],
                 version=0,
                 parent_id=None,
-                snapshot_filename=v0_filename
+                snapshot_filename=v0_filename,
             )
             self.commits = [initial_commit]
             self._save_commits(self.commits, project)
@@ -163,14 +164,16 @@ class ProjectManager:
 
         try:
             # Load project metadata
-            with open(project_file, 'r') as f:
+            with open(project_file, "r") as f:
                 data = json.load(f)
 
             project = Project.from_dict(data, str(project_dir))
 
             # Verify working ROM exists
             if not Path(project.working_rom_path).exists():
-                raise ProjectCorruptError(f"Working ROM not found: {project.working_rom_path}")
+                raise ProjectCorruptError(
+                    f"Working ROM not found: {project.working_rom_path}"
+                )
 
             # Load commit history
             self.commits = self._load_commits(project_dir)
@@ -200,7 +203,7 @@ class ProjectManager:
         message: str,
         changes: List[TableChanges],
         create_snapshot: bool = False,
-        snapshot_suffix: str = ""
+        snapshot_suffix: str = "",
     ) -> Commit:
         """
         Create a new commit with pending changes
@@ -236,7 +239,7 @@ class ProjectManager:
                 changes=changes,
                 version=next_version,
                 parent_id=self.current_project.head_commit_id,
-                snapshot_filename=snapshot_filename
+                snapshot_filename=snapshot_filename,
             )
 
             # Optionally create snapshot at project root
@@ -262,7 +265,9 @@ class ProjectManager:
             if len(commit.tables_modified) > 3:
                 tables_str += f" (+{len(commit.tables_modified) - 3} more)"
 
-            logger.info(f"Committed v{next_version}: {message[:50]}... ({len(changes)} tables: {tables_str})")
+            logger.info(
+                f"Committed v{next_version}: {message[:50]}... ({len(changes)} tables: {tables_str})"
+            )
 
             return commit
 
@@ -287,10 +292,7 @@ class ProjectManager:
 
     def get_table_history(self, table_name: str) -> List[Commit]:
         """Get all commits that modified a specific table"""
-        return [
-            c for c in self.commits
-            if table_name in c.tables_modified
-        ]
+        return [c for c in self.commits if table_name in c.tables_modified]
 
     def get_next_version(self) -> int:
         """Get the next version number for a new commit"""
@@ -362,7 +364,7 @@ class ProjectManager:
         """
         snapshot_path = self.get_snapshot_path(version)
         if snapshot_path and snapshot_path.exists():
-            with open(snapshot_path, 'rb') as f:
+            with open(snapshot_path, "rb") as f:
                 return f.read()
         return None
 
@@ -380,9 +382,9 @@ class ProjectManager:
     def _save_project_file(self, project: Project):
         """Save project.json (atomic write)"""
         project_file = Path(project.project_path) / PROJECT_FILE
-        tmp_path = str(project_file) + '.tmp'
+        tmp_path = str(project_file) + ".tmp"
         try:
-            with open(tmp_path, 'w') as f:
+            with open(tmp_path, "w") as f:
                 json.dump(project.to_dict(), f, indent=2)
                 f.flush()
                 os.fsync(f.fileno())
@@ -400,13 +402,10 @@ class ProjectManager:
         commits_file = Path(project.project_path) / COMMITS_FILE
         commits_file.parent.mkdir(parents=True, exist_ok=True)
 
-        data = {
-            "version": "1.0",
-            "commits": [c.to_dict() for c in commits]
-        }
-        tmp_path = str(commits_file) + '.tmp'
+        data = {"version": "1.0", "commits": [c.to_dict() for c in commits]}
+        tmp_path = str(commits_file) + ".tmp"
         try:
-            with open(tmp_path, 'w') as f:
+            with open(tmp_path, "w") as f:
                 json.dump(data, f, indent=2)
                 f.flush()
                 os.fsync(f.fileno())
@@ -430,7 +429,7 @@ class ProjectManager:
             else:
                 return []
         try:
-            with open(commits_file, 'r') as f:
+            with open(commits_file, "r") as f:
                 data = json.load(f)
 
             commits = []

@@ -81,7 +81,7 @@ class FakeMainWindow:
 
     def _on_changes_updated(self):
         """Mirrors main.py _on_changes_updated exactly"""
-        if not getattr(self, '_in_bulk_undo', False):
+        if not getattr(self, "_in_bulk_undo", False):
             self._update_project_ui()
 
     def _begin_bulk_update(self, table_address=None):
@@ -168,9 +168,7 @@ def test_single_cell_undo_calls_update_project_ui_once(qapp, table):
     """Single cell undo should also call _update_project_ui exactly once."""
     window = FakeMainWindow()
 
-    window.change_tracker.record_pending_change(
-        table, 0, 0, 10.0, 20.0, 100, 200
-    )
+    window.change_tracker.record_pending_change(table, 0, 0, 10.0, 20.0, 100, 200)
     window.undo_manager.record_cell_change(table, 0, 0, 10.0, 20.0, 100, 200)
     window.undo_manager.set_active_stack(table.address)
 

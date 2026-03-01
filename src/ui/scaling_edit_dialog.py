@@ -6,8 +6,17 @@ for a table and its axes. Uses tabs to show all scalings in one window.
 """
 
 from PySide6.QtWidgets import (
-    QDialog, QVBoxLayout, QHBoxLayout, QFormLayout, QWidget,
-    QLineEdit, QPushButton, QLabel, QMessageBox, QCheckBox, QTabWidget
+    QDialog,
+    QVBoxLayout,
+    QHBoxLayout,
+    QFormLayout,
+    QWidget,
+    QLineEdit,
+    QPushButton,
+    QLabel,
+    QMessageBox,
+    QCheckBox,
+    QTabWidget,
 )
 from PySide6.QtCore import Qt
 
@@ -45,7 +54,9 @@ class ScalingTab(QWidget):
         min_layout.addWidget(self.min_enabled)
         min_layout.addWidget(self.min_edit)
         form.addRow("Minimum:", min_layout)
-        self.min_enabled.toggled.connect(lambda checked: self.min_edit.setEnabled(checked))
+        self.min_enabled.toggled.connect(
+            lambda checked: self.min_edit.setEnabled(checked)
+        )
 
         # Maximum value
         self.max_enabled = QCheckBox()
@@ -55,7 +66,9 @@ class ScalingTab(QWidget):
         max_layout.addWidget(self.max_enabled)
         max_layout.addWidget(self.max_edit)
         form.addRow("Maximum:", max_layout)
-        self.max_enabled.toggled.connect(lambda checked: self.max_edit.setEnabled(checked))
+        self.max_enabled.toggled.connect(
+            lambda checked: self.max_edit.setEnabled(checked)
+        )
 
         # Units
         self.units_edit = QLineEdit()
@@ -114,7 +127,9 @@ class ScalingTab(QWidget):
             try:
                 float(self.min_edit.text().strip())
             except ValueError:
-                QMessageBox.warning(self, "Invalid Value", "Minimum must be a valid number.")
+                QMessageBox.warning(
+                    self, "Invalid Value", "Minimum must be a valid number."
+                )
                 return False
 
         # Validate max if enabled
@@ -122,7 +137,9 @@ class ScalingTab(QWidget):
             try:
                 float(self.max_edit.text().strip())
             except ValueError:
-                QMessageBox.warning(self, "Invalid Value", "Maximum must be a valid number.")
+                QMessageBox.warning(
+                    self, "Invalid Value", "Maximum must be a valid number."
+                )
                 return False
 
         # Validate increment if provided
@@ -130,15 +147,18 @@ class ScalingTab(QWidget):
             try:
                 float(self.inc_edit.text().strip())
             except ValueError:
-                QMessageBox.warning(self, "Invalid Value", "Increment must be a valid number.")
+                QMessageBox.warning(
+                    self, "Invalid Value", "Increment must be a valid number."
+                )
                 return False
 
         # Validate format string (basic check)
         fmt = self.format_edit.text().strip()
-        if fmt and '%' not in fmt:
+        if fmt and "%" not in fmt:
             QMessageBox.warning(
-                self, "Invalid Format",
-                "Format string should contain a % specifier (e.g., %0.2f, %d)."
+                self,
+                "Invalid Format",
+                "Format string should contain a % specifier (e.g., %0.2f, %d).",
             )
             return False
 
@@ -150,25 +170,25 @@ class ScalingTab(QWidget):
 
         # Min
         if self.min_enabled.isChecked() and self.min_edit.text().strip():
-            result['min'] = self.min_edit.text().strip()
+            result["min"] = self.min_edit.text().strip()
         else:
-            result['min'] = None
+            result["min"] = None
 
         # Max
         if self.max_enabled.isChecked() and self.max_edit.text().strip():
-            result['max'] = self.max_edit.text().strip()
+            result["max"] = self.max_edit.text().strip()
         else:
-            result['max'] = None
+            result["max"] = None
 
         # Units
-        result['units'] = self.units_edit.text().strip()
+        result["units"] = self.units_edit.text().strip()
 
         # Format
-        result['format'] = self.format_edit.text().strip()
+        result["format"] = self.format_edit.text().strip()
 
         # Increment
         inc_text = self.inc_edit.text().strip()
-        result['inc'] = inc_text if inc_text else None
+        result["inc"] = inc_text if inc_text else None
 
         return result
 
@@ -202,7 +222,7 @@ class TableScalingDialog(QDialog):
             if scaling:
                 tab = ScalingTab(scaling, self.table.scaling)
                 self.tab_widget.addTab(tab, "Data")
-                self.tabs['data'] = (tab, self.table.scaling, scaling)
+                self.tabs["data"] = (tab, self.table.scaling, scaling)
 
         # Add X Axis tab for 3D tables
         if self.table.type == TableType.THREE_D:
@@ -212,7 +232,7 @@ class TableScalingDialog(QDialog):
                 if scaling:
                     tab = ScalingTab(scaling, x_axis.scaling)
                     self.tab_widget.addTab(tab, "X Axis")
-                    self.tabs['x_axis'] = (tab, x_axis.scaling, scaling)
+                    self.tabs["x_axis"] = (tab, x_axis.scaling, scaling)
 
         # Add Y Axis tab for 2D and 3D tables
         if self.table.type in (TableType.TWO_D, TableType.THREE_D):
@@ -222,7 +242,7 @@ class TableScalingDialog(QDialog):
                 if scaling:
                     tab = ScalingTab(scaling, y_axis.scaling)
                     self.tab_widget.addTab(tab, "Y Axis")
-                    self.tabs['y_axis'] = (tab, y_axis.scaling, scaling)
+                    self.tabs["y_axis"] = (tab, y_axis.scaling, scaling)
 
         # Info label
         info_label = QLabel(

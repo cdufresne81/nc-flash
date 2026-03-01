@@ -6,10 +6,7 @@ Each ROM is displayed in its own tab.
 """
 
 from pathlib import Path
-from PySide6.QtWidgets import (
-    QWidget,
-    QHBoxLayout
-)
+from PySide6.QtWidgets import QWidget, QHBoxLayout
 from PySide6.QtCore import Signal
 
 from .table_browser import TableBrowser
@@ -26,7 +23,13 @@ class RomDocument(QWidget):
     # Signal emitted when modified state changes
     modified_changed = Signal(bool)
 
-    def __init__(self, rom_path: str, rom_definition: RomDefinition, rom_reader: RomReader, parent=None):
+    def __init__(
+        self,
+        rom_path: str,
+        rom_definition: RomDefinition,
+        rom_reader: RomReader,
+        parent=None,
+    ):
         super().__init__(parent)
         self.rom_path = rom_path
         self.rom_definition = rom_definition

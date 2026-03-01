@@ -72,7 +72,11 @@ class HighlightDelegate(QStyledItemDelegate):
         text_rect = option.rect.adjusted(4, 0, -4, 0)  # Add padding
 
         # If search text exists and column is 0 (name column), highlight matches
-        if self.search_text and index.column() == 0 and self.search_text in text.lower():
+        if (
+            self.search_text
+            and index.column() == 0
+            and self.search_text in text.lower()
+        ):
             # Find all occurrences of search text
             search_len = len(self.search_text)
             lower_text = text.lower()
@@ -90,21 +94,27 @@ class HighlightDelegate(QStyledItemDelegate):
                     # No more matches, draw remaining text
                     remaining_text = text[pos:]
                     if remaining_text:
-                        painter.drawText(x_offset, y_pos + font_metrics.ascent() // 2, remaining_text)
+                        painter.drawText(
+                            x_offset, y_pos + font_metrics.ascent() // 2, remaining_text
+                        )
                     break
 
                 # Draw text before match
                 if match_pos > pos:
                     before_text = text[pos:match_pos]
-                    painter.drawText(x_offset, y_pos + font_metrics.ascent() // 2, before_text)
+                    painter.drawText(
+                        x_offset, y_pos + font_metrics.ascent() // 2, before_text
+                    )
                     x_offset += font_metrics.horizontalAdvance(before_text)
 
                 # Draw highlighted match
-                match_text = text[match_pos:match_pos + search_len]
+                match_text = text[match_pos : match_pos + search_len]
                 match_width = font_metrics.horizontalAdvance(match_text)
 
                 # Draw highlight background
-                highlight_rect = QRect(x_offset, text_rect.top(), match_width, text_rect.height())
+                highlight_rect = QRect(
+                    x_offset, text_rect.top(), match_width, text_rect.height()
+                )
                 painter.fillRect(highlight_rect, self.highlight_color)
 
                 # Draw match text (with bold if not selected)
@@ -112,11 +122,15 @@ class HighlightDelegate(QStyledItemDelegate):
                     font = painter.font()
                     font.setBold(True)
                     painter.setFont(font)
-                    painter.drawText(x_offset, y_pos + font_metrics.ascent() // 2, match_text)
+                    painter.drawText(
+                        x_offset, y_pos + font_metrics.ascent() // 2, match_text
+                    )
                     font.setBold(False)
                     painter.setFont(font)
                 else:
-                    painter.drawText(x_offset, y_pos + font_metrics.ascent() // 2, match_text)
+                    painter.drawText(
+                        x_offset, y_pos + font_metrics.ascent() // 2, match_text
+                    )
 
                 x_offset += match_width
                 pos = match_pos + search_len
@@ -230,11 +244,9 @@ class TableBrowser(QWidget):
             # Sort tables by name within category
             for table in sorted(tables, key=lambda t: t.name):
                 # Create table item
-                table_item = QTreeWidgetItem([
-                    table.name,
-                    table.type.value,
-                    f"0x{table.address}"
-                ])
+                table_item = QTreeWidgetItem(
+                    [table.name, table.type.value, f"0x{table.address}"]
+                )
                 # Store table object
                 table_item.setData(0, 100, table)
                 # Store modified flag (will be updated when tables are modified)
@@ -297,7 +309,9 @@ class TableBrowser(QWidget):
             category_has_visible = False
 
             # Check if category name matches search
-            category_matches_search = not search_text or search_text in category_name.lower()
+            category_matches_search = (
+                not search_text or search_text in category_name.lower()
+            )
 
             # Check all table children
             for j in range(category_item.childCount()):
@@ -313,16 +327,18 @@ class TableBrowser(QWidget):
                     type_text = table_item.text(1)
                     address = table_item.text(2)
                     search_ok = (
-                        search_text in name.lower() or
-                        search_text in type_text.lower() or
-                        search_text in address.lower() or
-                        category_matches_search
+                        search_text in name.lower()
+                        or search_text in type_text.lower()
+                        or search_text in address.lower()
+                        or category_matches_search
                     )
                 else:
                     search_ok = True
 
                 # Check modified filter
-                modified_ok = not self._modified_only or (table and table.address in self.modified_tables)
+                modified_ok = not self._modified_only or (
+                    table and table.address in self.modified_tables
+                )
 
                 # Item is visible if it passes all filters
                 is_visible = level_ok and search_ok and modified_ok
@@ -417,7 +433,7 @@ class TableBrowser(QWidget):
             address: Table address (e.g., "1000" or "0x1000")
         """
         # Normalize address (remove 0x prefix if present for comparison)
-        target_address = address.lower().removeprefix('0x')
+        target_address = address.lower().removeprefix("0x")
 
         # Search through all category items
         for i in range(self.tree.topLevelItemCount()):
@@ -429,7 +445,7 @@ class TableBrowser(QWidget):
 
                 if table:
                     # Normalize stored address for comparison
-                    item_address = table.address.lower().removeprefix('0x')
+                    item_address = table.address.lower().removeprefix("0x")
 
                     if item_address == target_address:
                         # Expand the category if not already expanded

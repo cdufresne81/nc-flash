@@ -27,10 +27,11 @@ class TableViewerContext:
     - ROM definition and current table/data state
     - Editing flags
     """
-    viewer: 'TableViewer'
+
+    viewer: "TableViewer"
     table_widget: QTableWidget
-    rom_definition: Optional['RomDefinition'] = None
-    current_table: Optional['Table'] = None
+    rom_definition: Optional["RomDefinition"] = None
+    current_table: Optional["Table"] = None
     current_data: Optional[Dict[str, Any]] = None
 
     @property
@@ -47,7 +48,6 @@ class TableViewerContext:
     def read_only(self) -> bool:
         """Check if viewer is in read-only mode"""
         return self.viewer._read_only
-
 
 
 def save_header_resize_modes(table_widget: QTableWidget):
@@ -72,8 +72,9 @@ def set_headers_fixed(h_header, v_header):
         v_header.setSectionResizeMode(i, QHeaderView.Fixed)
 
 
-def restore_header_resize_modes(h_header, v_header,
-                                h_resize_modes: List, v_resize_modes: List):
+def restore_header_resize_modes(
+    h_header, v_header, h_resize_modes: List, v_resize_modes: List
+):
     """Restore previously saved per-section resize modes."""
     for i, mode in enumerate(h_resize_modes):
         if i < h_header.count():

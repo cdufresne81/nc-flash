@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/NCRomEditor3D.png" alt="NC ROM Editor" width="128">
+  <img src="assets/NCRomEditor3D.png" alt="NC ROM Editor">
 </p>
 
 # NC ROM Editor
@@ -143,7 +143,7 @@ python main.py
 
 ## Tech Stack
 
-- **Python 3.10+**
+- **Python 3.12+**
 - **PySide6** - Qt6 bindings for Python (GUI framework)
 - **NumPy** - Numerical operations on table data
 - **Matplotlib** - 3D/2D visualization of maps

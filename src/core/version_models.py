@@ -17,7 +17,7 @@ from typing import Optional, List, Dict, Any, Protocol, TypeVar, runtime_checkab
 from datetime import datetime
 import uuid
 
-T = TypeVar('T')
+T = TypeVar("T")
 
 
 @runtime_checkable
@@ -29,7 +29,7 @@ class Serializable(Protocol):
         ...
 
     @classmethod
-    def from_dict(cls, data: dict) -> 'Serializable':
+    def from_dict(cls, data: dict) -> "Serializable":
         """Deserialize from dictionary"""
         ...
 
@@ -37,14 +37,15 @@ class Serializable(Protocol):
 @dataclass
 class CellChange:
     """Represents a single cell value change"""
+
     table_name: str
     table_address: str  # Hex address
     row: int
     col: int
     old_value: float  # Display value
     new_value: float  # Display value
-    old_raw: float    # Raw binary value
-    new_raw: float    # Raw binary value
+    old_raw: float  # Raw binary value
+    new_raw: float  # Raw binary value
     table_key: str = ""  # Composite key (rom_path|address) for multi-ROM isolation
 
     def to_dict(self) -> dict:
@@ -57,11 +58,11 @@ class CellChange:
             "old_value": self.old_value,
             "new_value": self.new_value,
             "old_raw": self.old_raw,
-            "new_raw": self.new_raw
+            "new_raw": self.new_raw,
         }
 
     @classmethod
-    def from_dict(cls, data: dict) -> 'CellChange':
+    def from_dict(cls, data: dict) -> "CellChange":
         """Deserialize from dictionary"""
         return cls(
             table_name=data["table_name"],
@@ -71,13 +72,14 @@ class CellChange:
             old_value=data["old_value"],
             new_value=data["new_value"],
             old_raw=data["old_raw"],
-            new_raw=data["new_raw"]
+            new_raw=data["new_raw"],
         )
 
 
 @dataclass
 class TableChanges:
     """Groups all changes for a single table"""
+
     table_name: str
     table_address: str
     cell_changes: List[CellChange] = field(default_factory=list)
@@ -86,21 +88,22 @@ class TableChanges:
         return {
             "table_name": self.table_name,
             "table_address": self.table_address,
-            "cell_changes": [c.to_dict() for c in self.cell_changes]
+            "cell_changes": [c.to_dict() for c in self.cell_changes],
         }
 
     @classmethod
-    def from_dict(cls, data: dict) -> 'TableChanges':
+    def from_dict(cls, data: dict) -> "TableChanges":
         return cls(
             table_name=data["table_name"],
             table_address=data["table_address"],
-            cell_changes=[CellChange.from_dict(c) for c in data["cell_changes"]]
+            cell_changes=[CellChange.from_dict(c) for c in data["cell_changes"]],
         )
 
 
 @dataclass
 class Commit:
     """Represents a single commit (save point)"""
+
     id: str
     version: int  # Linear version number (0, 1, 2...)
     parent_id: Optional[str]
@@ -113,10 +116,15 @@ class Commit:
     snapshot_filename: Optional[str] = None  # Custom filename like v1_LF9VEB_stage1.bin
 
     @classmethod
-    def create(cls, message: str, changes: List[TableChanges],
-               version: int = 0,
-               parent_id: Optional[str] = None, author: str = "User",
-               snapshot_filename: Optional[str] = None) -> 'Commit':
+    def create(
+        cls,
+        message: str,
+        changes: List[TableChanges],
+        version: int = 0,
+        parent_id: Optional[str] = None,
+        author: str = "User",
+        snapshot_filename: Optional[str] = None,
+    ) -> "Commit":
         """Factory method to create a new commit"""
         return cls(
             id=uuid.uuid4().hex,
@@ -128,7 +136,7 @@ class Commit:
             tables_modified=list(set(tc.table_name for tc in changes)),
             changes=changes,
             has_snapshot=snapshot_filename is not None,
-            snapshot_filename=snapshot_filename
+            snapshot_filename=snapshot_filename,
         )
 
     def to_dict(self) -> dict:
@@ -142,11 +150,11 @@ class Commit:
             "tables_modified": self.tables_modified,
             "changes": [c.to_dict() for c in self.changes],
             "has_snapshot": self.has_snapshot,
-            "snapshot_filename": self.snapshot_filename
+            "snapshot_filename": self.snapshot_filename,
         }
 
     @classmethod
-    def from_dict(cls, data: dict, fallback_version: int = 0) -> 'Commit':
+    def from_dict(cls, data: dict, fallback_version: int = 0) -> "Commit":
         """
         Deserialize from dictionary.
 
@@ -164,21 +172,22 @@ class Commit:
             tables_modified=data["tables_modified"],
             changes=[TableChanges.from_dict(c) for c in data["changes"]],
             has_snapshot=data.get("has_snapshot", False),
-            snapshot_filename=data.get("snapshot_filename")  # Backward compatibility
+            snapshot_filename=data.get("snapshot_filename"),  # Backward compatibility
         )
 
 
 @dataclass
 class AxisChange:
     """Represents a single axis value change"""
+
     table_name: str
     table_address: str  # Hex address
     axis_type: str  # 'x_axis' or 'y_axis'
     index: int  # Index in the axis array
     old_value: float  # Display value
     new_value: float  # Display value
-    old_raw: float    # Raw binary value
-    new_raw: float    # Raw binary value
+    old_raw: float  # Raw binary value
+    new_raw: float  # Raw binary value
     table_key: str = ""  # Composite key (rom_path|address) for multi-ROM isolation
 
     def to_dict(self) -> dict:
@@ -191,11 +200,11 @@ class AxisChange:
             "old_value": self.old_value,
             "new_value": self.new_value,
             "old_raw": self.old_raw,
-            "new_raw": self.new_raw
+            "new_raw": self.new_raw,
         }
 
     @classmethod
-    def from_dict(cls, data: dict) -> 'AxisChange':
+    def from_dict(cls, data: dict) -> "AxisChange":
         """Deserialize from dictionary"""
         return cls(
             table_name=data["table_name"],
@@ -205,13 +214,14 @@ class AxisChange:
             old_value=data["old_value"],
             new_value=data["new_value"],
             old_raw=data["old_raw"],
-            new_raw=data["new_raw"]
+            new_raw=data["new_raw"],
         )
 
 
 @dataclass
 class UndoableChange:
     """Wrapper for changes in undo/redo stack"""
+
     cell_change: CellChange
     timestamp: datetime = field(default_factory=datetime.now)
 
@@ -219,6 +229,7 @@ class UndoableChange:
 @dataclass
 class UndoableAxisChange:
     """Wrapper for axis changes in undo/redo stack"""
+
     axis_change: AxisChange
     timestamp: datetime = field(default_factory=datetime.now)
 
@@ -226,6 +237,7 @@ class UndoableAxisChange:
 @dataclass
 class BulkChange:
     """Multiple cell changes grouped as one undo operation"""
+
     changes: List[CellChange]
     description: str  # e.g., "Multiply by 1.1", "Interpolate Vertically"
     timestamp: datetime = field(default_factory=datetime.now)
@@ -234,6 +246,7 @@ class BulkChange:
 @dataclass
 class AxisBulkChange:
     """Multiple axis changes grouped as one undo operation"""
+
     changes: List[AxisChange]
     description: str  # e.g., "Interpolate Y-Axis"
     timestamp: datetime = field(default_factory=datetime.now)
@@ -242,6 +255,7 @@ class AxisBulkChange:
 @dataclass
 class OriginalRomInfo:
     """Metadata about the original ROM file"""
+
     filename: str
     size: int
     checksum_sha256: str
@@ -258,11 +272,11 @@ class OriginalRomInfo:
             "rom_id": self.rom_id,
             "definition_xmlid": self.definition_xmlid,
             "make": self.make,
-            "model": self.model
+            "model": self.model,
         }
 
     @classmethod
-    def from_dict(cls, data: dict) -> 'OriginalRomInfo':
+    def from_dict(cls, data: dict) -> "OriginalRomInfo":
         return cls(
             filename=data["filename"],
             size=data["size"],
@@ -270,13 +284,14 @@ class OriginalRomInfo:
             rom_id=data["rom_id"],
             definition_xmlid=data["definition_xmlid"],
             make=data["make"],
-            model=data["model"]
+            model=data["model"],
         )
 
 
 @dataclass
 class Project:
     """Represents a ROM editing project"""
+
     version: str
     name: str
     description: str
@@ -302,11 +317,11 @@ class Project:
             "head_commit_id": self.head_commit_id,
             "head_version": self.head_version,
             "last_suffix": self.last_suffix,
-            "settings": self.settings
+            "settings": self.settings,
         }
 
     @classmethod
-    def from_dict(cls, data: dict, project_path: str) -> 'Project':
+    def from_dict(cls, data: dict, project_path: str) -> "Project":
         return cls(
             version=data["version"],
             name=data["name"],
@@ -319,7 +334,7 @@ class Project:
             project_path=project_path,
             head_version=data.get("head_version", 0),  # Backward compatibility
             last_suffix=data.get("last_suffix", ""),  # Backward compatibility
-            settings=data.get("settings", {})
+            settings=data.get("settings", {}),
         )
 
     @property

@@ -10,7 +10,6 @@ import urllib.error
 
 import pytest
 
-
 # ---------------------------------------------------------------------------
 # CommandServer unit tests (no Qt dependency — use a simple callback)
 # ---------------------------------------------------------------------------
@@ -33,6 +32,7 @@ class TestCommandServer:
         self.parent = QObject()
 
         from src.api.command_server import CommandServer
+
         self.CommandServer = CommandServer
 
     def _make_server(self, callback=None):
@@ -57,6 +57,7 @@ class TestCommandServer:
         """Process Qt events so the QTimer can fire."""
         import time
         from PySide6.QtWidgets import QApplication
+
         end = time.monotonic() + duration
         while time.monotonic() < end:
             QApplication.processEvents()
@@ -84,8 +85,7 @@ class TestCommandServer:
             def do_post():
                 try:
                     result_holder[0] = self._post(
-                        self.TEST_PORT, "/api/read-table",
-                        {"table_name": "Fuel VE"}
+                        self.TEST_PORT, "/api/read-table", {"table_name": "Fuel VE"}
                     )
                 except Exception as e:
                     error_holder[0] = e
@@ -188,8 +188,7 @@ class TestCommandServer:
             def do_post():
                 try:
                     result_holder[0] = self._post(
-                        self.TEST_PORT, "/api/modified",
-                        {"rom_path": "/some/path"}
+                        self.TEST_PORT, "/api/modified", {"rom_path": "/some/path"}
                     )
                 except Exception as e:
                     error_holder[0] = e
@@ -225,24 +224,19 @@ class TestRomContextLiveBridge:
     @pytest.fixture
     def ctx(self, definitions_dir):
         from src.mcp.rom_context import RomContext
+
         return RomContext(definitions_dir=str(definitions_dir))
 
     def test_post_to_app_no_workspace(self, ctx, tmp_path, monkeypatch):
         """When workspace.json has no command_api_url, returns error."""
-        monkeypatch.setattr(
-            "src.mcp.rom_context.get_app_root",
-            lambda: tmp_path
-        )
+        monkeypatch.setattr("src.mcp.rom_context.get_app_root", lambda: tmp_path)
         result = ctx._post_to_app({"endpoint": "/api/modified", "rom_path": "x"})
         assert result["success"] is False
         assert "not available" in result["error"]
 
     def test_post_to_app_connection_refused(self, ctx, tmp_path, monkeypatch):
         """When the app is not running, returns connection error."""
-        monkeypatch.setattr(
-            "src.mcp.rom_context.get_app_root",
-            lambda: tmp_path
-        )
+        monkeypatch.setattr("src.mcp.rom_context.get_app_root", lambda: tmp_path)
         # Write workspace.json with a URL that won't connect
         workspace = {"command_api_url": "http://127.0.0.1:19999"}
         (tmp_path / "workspace.json").write_text(json.dumps(workspace))
@@ -254,7 +248,9 @@ class TestRomContextLiveBridge:
     def test_list_modified_tables_delegates(self, ctx, monkeypatch):
         """list_modified_tables builds the correct payload."""
         captured = []
-        monkeypatch.setattr(ctx, "_post_to_app", lambda p: (captured.append(p), {"success": True})[1])
+        monkeypatch.setattr(
+            ctx, "_post_to_app", lambda p: (captured.append(p), {"success": True})[1]
+        )
         ctx.list_modified_tables("/path/to/rom.bin")
         assert len(captured) == 1
         assert captured[0]["endpoint"] == "/api/modified"
@@ -263,7 +259,9 @@ class TestRomContextLiveBridge:
     def test_read_live_table_delegates(self, ctx, monkeypatch):
         """read_live_table builds the correct payload."""
         captured = []
-        monkeypatch.setattr(ctx, "_post_to_app", lambda p: (captured.append(p), {"success": True})[1])
+        monkeypatch.setattr(
+            ctx, "_post_to_app", lambda p: (captured.append(p), {"success": True})[1]
+        )
         ctx.read_live_table("/path/to/rom.bin", "Fuel VE")
         assert len(captured) == 1
         assert captured[0]["endpoint"] == "/api/read-table"
@@ -272,7 +270,9 @@ class TestRomContextLiveBridge:
     def test_write_table_delegates(self, ctx, monkeypatch):
         """write_table builds the correct payload."""
         captured = []
-        monkeypatch.setattr(ctx, "_post_to_app", lambda p: (captured.append(p), {"success": True})[1])
+        monkeypatch.setattr(
+            ctx, "_post_to_app", lambda p: (captured.append(p), {"success": True})[1]
+        )
         cells = [{"row": 0, "col": 0, "value": 42.5}]
         ctx.write_table("/path/to/rom.bin", "Fuel VE", cells)
         assert len(captured) == 1

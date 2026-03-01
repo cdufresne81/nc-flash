@@ -9,18 +9,11 @@ from typing import Optional
 from pathlib import Path
 import logging
 
-from .rom_definition import (
-    RomDefinition,
-    RomID,
-    Scaling,
-    Table,
-    TableType,
-    AxisType
-)
+from .rom_definition import RomDefinition, RomID, Scaling, Table, TableType, AxisType
 from .exceptions import (
     DefinitionNotFoundError,
     DefinitionParseError,
-    InvalidDefinitionError
+    InvalidDefinitionError,
 )
 
 logger = logging.getLogger(__name__)
@@ -74,12 +67,12 @@ class DefinitionParser:
         # Handle two formats:
         # 1. <roms><rom>...</rom></roms> (our format with wrapper)
         # 2. <rom>...</rom> (standard RomDrop format)
-        if root.tag == 'rom':
+        if root.tag == "rom":
             # Root is the rom element (RomDrop format)
             rom_element = root
         else:
             # Look for rom element inside wrapper (our format)
-            rom_element = root.find('.//rom')
+            rom_element = root.find(".//rom")
             if rom_element is None:
                 logger.error(f"No <rom> element found in {self.xml_path}")
                 raise InvalidDefinitionError("No <rom> element found in XML")
@@ -97,10 +90,7 @@ class DefinitionParser:
 
         logger.info(f"Successfully parsed ROM definition: {romid.xmlid}")
         return RomDefinition(
-            romid=romid,
-            scalings=scalings,
-            tables=tables,
-            xml_path=str(self.xml_path)
+            romid=romid, scalings=scalings, tables=tables, xml_path=str(self.xml_path)
         )
 
     def _parse_romid(self, rom_element) -> RomID:
@@ -116,7 +106,7 @@ class DefinitionParser:
         Raises:
             InvalidDefinitionError: If <romid> element is missing
         """
-        romid_elem = rom_element.find('romid')
+        romid_elem = rom_element.find("romid")
         if romid_elem is None:
             logger.error("No <romid> element found in ROM definition")
             raise InvalidDefinitionError("No <romid> element found")
@@ -126,19 +116,19 @@ class DefinitionParser:
             return elem.text.strip() if elem is not None and elem.text else default
 
         return RomID(
-            xmlid=get_text('xmlid'),
-            internalidaddress=get_text('internalidaddress'),
-            internalidstring=get_text('internalidstring'),
-            ecuid=get_text('ecuid'),
-            make=get_text('make'),
-            model=get_text('model'),
-            flashmethod=get_text('flashmethod'),
-            memmodel=get_text('memmodel'),
-            checksummodule=get_text('checksummodule'),
-            market=get_text('market') or None,
-            submodel=get_text('submodel') or None,
-            transmission=get_text('transmission') or None,
-            year=get_text('year') or None,
+            xmlid=get_text("xmlid"),
+            internalidaddress=get_text("internalidaddress"),
+            internalidstring=get_text("internalidstring"),
+            ecuid=get_text("ecuid"),
+            make=get_text("make"),
+            model=get_text("model"),
+            flashmethod=get_text("flashmethod"),
+            memmodel=get_text("memmodel"),
+            checksummodule=get_text("checksummodule"),
+            market=get_text("market") or None,
+            submodel=get_text("submodel") or None,
+            transmission=get_text("transmission") or None,
+            year=get_text("year") or None,
         )
 
     def _parse_scalings(self, rom_element) -> dict:
@@ -153,8 +143,8 @@ class DefinitionParser:
         """
         scalings = {}
 
-        for scaling_elem in rom_element.findall('.//scaling'):
-            name = scaling_elem.get('name')
+        for scaling_elem in rom_element.findall(".//scaling"):
+            name = scaling_elem.get("name")
             if not name:
                 logger.debug("Skipping scaling element without name attribute")
                 continue  # Skip scalings without names
@@ -162,15 +152,15 @@ class DefinitionParser:
             try:
                 scaling = Scaling(
                     name=name,
-                    units=scaling_elem.get('units', ''),
-                    toexpr=scaling_elem.get('toexpr', 'x'),
-                    frexpr=scaling_elem.get('frexpr', 'x'),
-                    format=scaling_elem.get('format', '%0.2f'),
-                    min=float(scaling_elem.get('min', '0')),
-                    max=float(scaling_elem.get('max', '0')),
-                    inc=float(scaling_elem.get('inc', '1')),
-                    storagetype=scaling_elem.get('storagetype', 'float'),
-                    endian=scaling_elem.get('endian', 'big'),
+                    units=scaling_elem.get("units", ""),
+                    toexpr=scaling_elem.get("toexpr", "x"),
+                    frexpr=scaling_elem.get("frexpr", "x"),
+                    format=scaling_elem.get("format", "%0.2f"),
+                    min=float(scaling_elem.get("min", "0")),
+                    max=float(scaling_elem.get("max", "0")),
+                    inc=float(scaling_elem.get("inc", "1")),
+                    storagetype=scaling_elem.get("storagetype", "float"),
+                    endian=scaling_elem.get("endian", "big"),
                 )
 
                 scalings[name] = scaling
@@ -195,9 +185,9 @@ class DefinitionParser:
 
         # Find all top-level table elements (direct children of rom, not nested in other tables)
         # We need to handle the hierarchy: some tables contain child axis tables
-        for table_elem in rom_element.findall('./table'):
+        for table_elem in rom_element.findall("./table"):
             # Only parse if it has required attributes (top-level tables)
-            if table_elem.get('address') and table_elem.get('type'):
+            if table_elem.get("address") and table_elem.get("type"):
                 table = self._parse_table(table_elem)
                 if table:
                     tables.append(table)
@@ -216,15 +206,15 @@ class DefinitionParser:
             Table object if successful, None if table is invalid
         """
         # Get table type
-        type_str = table_elem.get('type')
+        type_str = table_elem.get("type")
         if not type_str:
             logger.debug("Skipping table element without type attribute")
             return None
 
         # Determine if this is an axis table
         axis_type = None
-        if type_str in ['X Axis', 'Y Axis']:
-            axis_type = AxisType.X_AXIS if type_str == 'X Axis' else AxisType.Y_AXIS
+        if type_str in ["X Axis", "Y Axis"]:
+            axis_type = AxisType.X_AXIS if type_str == "X Axis" else AxisType.Y_AXIS
             table_type = TableType.ONE_D  # Axes are always 1D
         else:
             try:
@@ -235,21 +225,21 @@ class DefinitionParser:
 
         # Parse basic attributes
         table = Table(
-            name=table_elem.get('name', 'Unnamed'),
-            address=table_elem.get('address', '0'),
-            elements=int(table_elem.get('elements', '0')),
-            scaling=table_elem.get('scaling', ''),
+            name=table_elem.get("name", "Unnamed"),
+            address=table_elem.get("address", "0"),
+            elements=int(table_elem.get("elements", "0")),
+            scaling=table_elem.get("scaling", ""),
             type=table_type,
-            level=int(table_elem.get('level', '1')),
-            category=table_elem.get('category', ''),
-            swapxy=table_elem.get('swapxy', 'false').lower() == 'true',
-            flipx=table_elem.get('flipx', 'false').lower() == 'true',
-            flipy=table_elem.get('flipy', 'false').lower() == 'true',
+            level=int(table_elem.get("level", "1")),
+            category=table_elem.get("category", ""),
+            swapxy=table_elem.get("swapxy", "false").lower() == "true",
+            flipx=table_elem.get("flipx", "false").lower() == "true",
+            flipy=table_elem.get("flipy", "false").lower() == "true",
             axis_type=axis_type,
         )
 
         # Parse child tables (axes for 2D/3D tables)
-        for child_elem in table_elem.findall('./table'):
+        for child_elem in table_elem.findall("./table"):
             child_table = self._parse_table(child_elem)
             if child_table:
                 table.children.append(child_table)

@@ -28,8 +28,7 @@ from ..core.rom_detector import RomDetector
 from ..core.rom_reader import RomReader
 from ..utils.paths import get_app_root
 
-
-_PRINTF_PATTERN = re.compile(r'%[-+0 #]*(\d*)\.?(\d*)([diouxXeEfFgGaAcspn%])')
+_PRINTF_PATTERN = re.compile(r"%[-+0 #]*(\d*)\.?(\d*)([diouxXeEfFgGaAcspn%])")
 
 
 def _printf_to_python_format(printf_format: str) -> str:
@@ -101,9 +100,7 @@ class RomContext:
 
         rom_id_string, xml_path = self._detector.detect_rom_id(rom_path)
         if xml_path is None:
-            raise RomEditorError(
-                f"No matching definition found for ROM: {rom_path}"
-            )
+            raise RomEditorError(f"No matching definition found for ROM: {rom_path}")
 
         definition = load_definition(xml_path)
         reader = RomReader(rom_path, definition)
@@ -156,9 +153,7 @@ class RomContext:
         }
 
         # Count non-axis tables
-        table_count = sum(
-            1 for t in defn.tables if not t.is_axis
-        )
+        table_count = sum(1 for t in defn.tables if not t.is_axis)
 
         file_size = Path(rom_path).resolve().stat().st_size
 
@@ -304,22 +299,16 @@ class RomContext:
 
         if table.type == TableType.ONE_D:
             result["metadata"]["dimensions"] = str(table.elements)
-            result["values"] = [
-                _format_value(v, fmt_spec) for v in values.flat
-            ]
+            result["values"] = [_format_value(v, fmt_spec) for v in values.flat]
 
         elif table.type == TableType.TWO_D:
             y_axis_table = table.y_axis
             result["metadata"]["dimensions"] = str(
                 y_axis_table.elements if y_axis_table else table.elements
             )
-            result["values"] = [
-                _format_value(v, fmt_spec) for v in values.flat
-            ]
+            result["values"] = [_format_value(v, fmt_spec) for v in values.flat]
             if "y_axis" in data and y_axis_table:
-                result["y_axis"] = self._format_axis(
-                    y_axis_table, data["y_axis"], defn
-                )
+                result["y_axis"] = self._format_axis(y_axis_table, data["y_axis"], defn)
 
         elif table.type == TableType.THREE_D:
             x_axis_table = table.x_axis
@@ -331,19 +320,13 @@ class RomContext:
             # values is shaped (rows, cols) from read_table_data
             grid = []
             for row_idx in range(values.shape[0]):
-                grid.append([
-                    _format_value(v, fmt_spec) for v in values[row_idx]
-                ])
+                grid.append([_format_value(v, fmt_spec) for v in values[row_idx]])
             result["values"] = grid
 
             if "x_axis" in data and x_axis_table:
-                result["x_axis"] = self._format_axis(
-                    x_axis_table, data["x_axis"], defn
-                )
+                result["x_axis"] = self._format_axis(x_axis_table, data["x_axis"], defn)
             if "y_axis" in data and y_axis_table:
-                result["y_axis"] = self._format_axis(
-                    y_axis_table, data["y_axis"], defn
-                )
+                result["y_axis"] = self._format_axis(y_axis_table, data["y_axis"], defn)
 
         return result
 
@@ -353,9 +336,7 @@ class RomContext:
         """Format an axis with name, units, and formatted values."""
         axis_scaling = defn.get_scaling(axis_table.scaling)
         axis_fmt = (
-            _printf_to_python_format(axis_scaling.format)
-            if axis_scaling
-            else ".2f"
+            _printf_to_python_format(axis_scaling.format) if axis_scaling else ".2f"
         )
         return {
             "name": axis_table.name,
@@ -415,17 +396,27 @@ class RomContext:
             vals_b = data_b["values"].flat
 
             if len(vals_a) != len(vals_b):
-                changed_tables.append({
-                    "name": name,
-                    "reason": "shape_mismatch",
-                    "dimensions_a": str(data_a["values"].shape),
-                    "dimensions_b": str(data_b["values"].shape),
-                })
+                changed_tables.append(
+                    {
+                        "name": name,
+                        "reason": "shape_mismatch",
+                        "dimensions_a": str(data_a["values"].shape),
+                        "dimensions_b": str(data_b["values"].shape),
+                    }
+                )
                 continue
 
             # Skip tables where both are all-NaN
-            all_nan_a = np.all(np.isnan(vals_a)) if np.issubdtype(data_a["values"].dtype, np.floating) else False
-            all_nan_b = np.all(np.isnan(vals_b)) if np.issubdtype(data_b["values"].dtype, np.floating) else False
+            all_nan_a = (
+                np.all(np.isnan(vals_a))
+                if np.issubdtype(data_a["values"].dtype, np.floating)
+                else False
+            )
+            all_nan_b = (
+                np.all(np.isnan(vals_b))
+                if np.issubdtype(data_b["values"].dtype, np.floating)
+                else False
+            )
             if all_nan_a and all_nan_b:
                 continue
 
@@ -433,12 +424,14 @@ class RomContext:
             if np.any(diffs):
                 total = len(vals_a)
                 changed = int(np.sum(diffs))
-                changed_tables.append({
-                    "name": name,
-                    "changed_cells": changed,
-                    "total_cells": total,
-                    "change_percent": round(changed / total * 100, 1),
-                })
+                changed_tables.append(
+                    {
+                        "name": name,
+                        "changed_cells": changed,
+                        "total_cells": total,
+                        "change_percent": round(changed / total * 100, 1),
+                    }
+                )
 
         return {
             "rom_a": str(Path(entry_a.reader.rom_path).name),
@@ -470,13 +463,9 @@ class RomContext:
         if table_a is None and table_b is None:
             raise RomEditorError(f"Table not found in either ROM: {table_name}")
         if table_a is None:
-            raise RomEditorError(
-                f"Table '{table_name}' only exists in ROM B"
-            )
+            raise RomEditorError(f"Table '{table_name}' only exists in ROM B")
         if table_b is None:
-            raise RomEditorError(
-                f"Table '{table_name}' only exists in ROM A"
-            )
+            raise RomEditorError(f"Table '{table_name}' only exists in ROM A")
 
         data_a = entry_a.reader.read_table_data(table_a)
         data_b = entry_b.reader.read_table_data(table_b)
@@ -496,12 +485,14 @@ class RomContext:
         for i in range(min_len):
             if vals_a[i] != vals_b[i]:
                 delta = vals_b[i] - vals_a[i]
-                diffs.append({
-                    "index": i,
-                    "value_a": _format_value(vals_a[i], fmt_a),
-                    "value_b": _format_value(vals_b[i], fmt_b),
-                    "delta": _format_value(delta, fmt_a),
-                })
+                diffs.append(
+                    {
+                        "index": i,
+                        "value_a": _format_value(vals_a[i], fmt_a),
+                        "value_b": _format_value(vals_b[i], fmt_b),
+                        "delta": _format_value(delta, fmt_a),
+                    }
+                )
 
         result: Dict[str, Any] = {
             "table_name": table_name,
@@ -527,9 +518,7 @@ class RomContext:
     # Tool 5: get_table_statistics
     # ------------------------------------------------------------------
 
-    def get_table_statistics(
-        self, rom_path: str, table_name: str
-    ) -> Dict[str, Any]:
+    def get_table_statistics(self, rom_path: str, table_name: str) -> Dict[str, Any]:
         """Statistical analysis of a table's values."""
         entry = self._get_entry(rom_path)
         defn = entry.definition
@@ -631,24 +620,30 @@ class RomContext:
 
     def list_modified_tables(self, rom_path: str) -> dict:
         """List tables with unsaved modifications in the running app."""
-        return self._post_to_app({
-            "endpoint": "/api/modified",
-            "rom_path": rom_path,
-        })
+        return self._post_to_app(
+            {
+                "endpoint": "/api/modified",
+                "rom_path": rom_path,
+            }
+        )
 
     def read_live_table(self, rom_path: str, table_name: str) -> dict:
         """Read a table's current in-memory values from the running app."""
-        return self._post_to_app({
-            "endpoint": "/api/read-table",
-            "rom_path": rom_path,
-            "table_name": table_name,
-        })
+        return self._post_to_app(
+            {
+                "endpoint": "/api/read-table",
+                "rom_path": rom_path,
+                "table_name": table_name,
+            }
+        )
 
     def write_table(self, rom_path: str, table_name: str, cells: list) -> dict:
         """Write values to a ROM table through the app's editing pipeline."""
-        return self._post_to_app({
-            "endpoint": "/api/edit-table",
-            "rom_path": rom_path,
-            "table_name": table_name,
-            "cells": cells,
-        })
+        return self._post_to_app(
+            {
+                "endpoint": "/api/edit-table",
+                "rom_path": rom_path,
+                "table_name": table_name,
+                "cells": cells,
+            }
+        )

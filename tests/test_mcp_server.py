@@ -235,9 +235,7 @@ class TestCompareTables:
 
     def test_compare_nonexistent_table_raises(self, ctx, rom_path):
         with pytest.raises(Exception):
-            ctx.compare_tables(
-                rom_path, rom_path, table_name="Nonexistent XYZ"
-            )
+            ctx.compare_tables(rom_path, rom_path, table_name="Nonexistent XYZ")
 
 
 # ------------------------------------------------------------------
@@ -318,6 +316,7 @@ class TestGetWorkspace:
     def test_no_file_returns_empty(self, ctx, monkeypatch):
         """When workspace.json does not exist, return empty open_roms with message."""
         import src.mcp.rom_context as rc_mod
+
         monkeypatch.setattr(rc_mod, "get_app_root", lambda: Path("/nonexistent/path"))
         result = ctx.get_workspace()
         assert result["open_roms"] == []
@@ -326,6 +325,7 @@ class TestGetWorkspace:
     def test_reads_valid_workspace(self, ctx, tmp_path, monkeypatch):
         """When workspace.json exists with valid data, return its contents."""
         import src.mcp.rom_context as rc_mod
+
         workspace_data = {
             "updated_at": "2026-02-28T14:30:00",
             "active_rom": "C:/test/rom.bin",
@@ -353,6 +353,7 @@ class TestGetWorkspace:
     def test_corrupt_json_returns_empty(self, ctx, tmp_path, monkeypatch):
         """When workspace.json contains invalid JSON, return empty gracefully."""
         import src.mcp.rom_context as rc_mod
+
         workspace_file = tmp_path / "workspace.json"
         workspace_file.write_text("not valid json {{{", encoding="utf-8")
         monkeypatch.setattr(rc_mod, "get_app_root", lambda: tmp_path)

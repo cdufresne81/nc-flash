@@ -86,7 +86,9 @@ def test_separate_undo_stacks(manager, table_a, table_b):
     manager.undo_group.undo()
 
     # Check that the applied change was for table A (filter out pending updates)
-    cell_changes = [e for e in manager._test_applied_changes[initial_count:] if e[0] == "cell"]
+    cell_changes = [
+        e for e in manager._test_applied_changes[initial_count:] if e[0] == "cell"
+    ]
     assert len(cell_changes) == 1
     last_cell = cell_changes[-1]
     assert last_cell[1].table_address == table_a.address
@@ -98,7 +100,9 @@ def test_separate_undo_stacks(manager, table_a, table_b):
 
     count_before = len(manager._test_applied_changes)
     manager.undo_group.undo()
-    cell_changes = [e for e in manager._test_applied_changes[count_before:] if e[0] == "cell"]
+    cell_changes = [
+        e for e in manager._test_applied_changes[count_before:] if e[0] == "cell"
+    ]
     assert len(cell_changes) == 1
     last_cell = cell_changes[-1]
     assert last_cell[1].table_address == table_b.address
@@ -198,9 +202,7 @@ def test_undo_limit(manager, table_a):
     """Test that undo stack respects limit"""
     # Record more changes than limit
     for i in range(MAX_UNDO_PER_TABLE + 10):
-        manager.record_cell_change(
-            table_a, i % 10, 0, float(i), float(i + 1), i, i + 1
-        )
+        manager.record_cell_change(table_a, i % 10, 0, float(i), float(i + 1), i, i + 1)
 
     manager.set_active_stack(table_a.address)
 
