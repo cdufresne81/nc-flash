@@ -42,14 +42,16 @@ class RecentFilesMixin:
             for i, entry in enumerate(recent_files, 1):
                 # Detect project entries (project:<path>) vs standalone ROM paths
                 if self.projects_enabled and entry.startswith("project:"):
-                    project_path = entry[len("project:"):]
+                    project_path = entry[len("project:") :]
                     folder_name = Path(project_path).name
                     action_text = f"{i}. [P] {folder_name}"
                     status_text = project_path
                 elif entry.startswith("project:"):
                     # Projects disabled — skip project entries in menu
                     continue
-                elif self.projects_enabled and ProjectManager.is_project_folder(str(Path(entry).parent)):
+                elif self.projects_enabled and ProjectManager.is_project_folder(
+                    str(Path(entry).parent)
+                ):
                     # Legacy entry: ROM file inside a project folder
                     folder_name = Path(entry).parent.name
                     action_text = f"{i}. [P] {folder_name}"
@@ -59,9 +61,13 @@ class RecentFilesMixin:
                     status_text = entry
 
                 action = self.file_menu.addAction(action_text)
-                action.setData(entry)  # Store full entry (with project: prefix if applicable)
+                action.setData(
+                    entry
+                )  # Store full entry (with project: prefix if applicable)
                 action.setStatusTip(status_text)  # Show full path in status bar
-                action.triggered.connect(lambda checked=False, path=entry: self.open_recent_file(path))
+                action.triggered.connect(
+                    lambda checked=False, path=entry: self.open_recent_file(path)
+                )
 
                 # Insert before the separator
                 self.file_menu.insertAction(self.recent_files_separator, action)
@@ -81,13 +87,13 @@ class RecentFilesMixin:
             entry: Full path to ROM file, or "project:<path>" for projects
         """
         if self.projects_enabled and entry.startswith("project:"):
-            project_path = entry[len("project:"):]
+            project_path = entry[len("project:") :]
             if not Path(project_path).exists():
                 QMessageBox.warning(
                     self,
                     "Project Not Found",
                     f"The project folder no longer exists:\n{project_path}\n\n"
-                    "It will be removed from recent files."
+                    "It will be removed from recent files.",
                 )
                 self._remove_recent_entry(entry)
                 return
@@ -99,12 +105,14 @@ class RecentFilesMixin:
                     self,
                     "File Not Found",
                     f"The file no longer exists:\n{entry}\n\n"
-                    "It will be removed from recent files."
+                    "It will be removed from recent files.",
                 )
                 self._remove_recent_entry(entry)
                 return
             # Check if ROM lives inside a project folder (legacy entry)
-            if self.projects_enabled and ProjectManager.is_project_folder(str(path.parent)):
+            if self.projects_enabled and ProjectManager.is_project_folder(
+                str(path.parent)
+            ):
                 self.open_project_path(str(path.parent))
             else:
                 self._open_rom_file(entry)

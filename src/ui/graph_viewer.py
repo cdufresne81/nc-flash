@@ -67,7 +67,11 @@ class _GraphPlotMixin:
         if self.table.type == TableType.THREE_D:
             self._plot_3d()
             # Restore view angles if we had them
-            if saved_elev is not None and saved_azim is not None and self.ax_3d is not None:
+            if (
+                saved_elev is not None
+                and saved_azim is not None
+                and self.ax_3d is not None
+            ):
                 self.ax_3d.view_init(elev=saved_elev, azim=saved_azim)
         elif self.table.type == TableType.TWO_D:
             self._plot_2d()
@@ -78,11 +82,11 @@ class _GraphPlotMixin:
 
     def _plot_3d(self):
         """Plot 3D table as surface with uniform cell sizes"""
-        ax = self.figure.add_subplot(111, projection='3d')
+        ax = self.figure.add_subplot(111, projection="3d")
 
-        values = self.data['values']
-        x_axis = self.data.get('x_axis')
-        y_axis = self.data.get('y_axis')
+        values = self.data["values"]
+        x_axis = self.data.get("x_axis")
+        y_axis = self.data.get("y_axis")
 
         rows, cols = values.shape
 
@@ -108,9 +112,16 @@ class _GraphPlotMixin:
                     colors[row, col] = blue_color
 
         # Plot surface
-        ax.plot_surface(X, Y, Z, facecolors=colors,
-                        linewidth=0.5, edgecolor='gray',
-                        antialiased=True, shade=False)
+        ax.plot_surface(
+            X,
+            Y,
+            Z,
+            facecolors=colors,
+            linewidth=0.5,
+            edgecolor="gray",
+            antialiased=True,
+            shade=False,
+        )
 
         # Set tick labels to actual axis values
         if x_axis is not None:
@@ -120,7 +131,7 @@ class _GraphPlotMixin:
             else:
                 tick_idx = np.arange(len(x_axis))
             ax.set_xticks(tick_idx + 0.5)
-            ax.set_xticklabels([f'{x_axis[i]:.4g}' for i in tick_idx])
+            ax.set_xticklabels([f"{x_axis[i]:.4g}" for i in tick_idx])
 
         if y_axis is not None:
             if len(y_axis) > 6:
@@ -129,16 +140,18 @@ class _GraphPlotMixin:
             else:
                 tick_idx = np.arange(len(y_axis))
             ax.set_yticks(tick_idx + 0.5)
-            ax.set_yticklabels([f'{y_axis[i]:.4g}' for i in tick_idx])
+            ax.set_yticklabels([f"{y_axis[i]:.4g}" for i in tick_idx])
 
         # Labels
-        x_label = self._get_axis_label(AxisType.X_AXIS) if x_axis is not None else 'Column'
-        y_label = self._get_axis_label(AxisType.Y_AXIS) if y_axis is not None else 'Row'
+        x_label = (
+            self._get_axis_label(AxisType.X_AXIS) if x_axis is not None else "Column"
+        )
+        y_label = self._get_axis_label(AxisType.Y_AXIS) if y_axis is not None else "Row"
         ax.set_xlabel(x_label)
         ax.set_ylabel(y_label)
-        ax.set_zlabel('Value')
+        ax.set_zlabel("Value")
         if self._show_plot_title:
-            ax.set_title(f'{self.table.name}')
+            ax.set_title(f"{self.table.name}")
 
         ax.mouse_init()
         self.ax_3d = ax
@@ -147,8 +160,8 @@ class _GraphPlotMixin:
         """Plot 2D table as line"""
         ax = self.figure.add_subplot(111)
 
-        values = self.data['values']
-        y_axis = self.data.get('y_axis')
+        values = self.data["values"]
+        y_axis = self.data.get("y_axis")
 
         if y_axis is not None:
             x = y_axis
@@ -158,7 +171,7 @@ class _GraphPlotMixin:
         colors = self._calculate_colors_1d(values)
 
         for i in range(len(x) - 1):
-            ax.plot(x[i:i+2], values[i:i+2], color=colors[i], linewidth=2)
+            ax.plot(x[i : i + 2], values[i : i + 2], color=colors[i], linewidth=2)
 
         # Highlight selected cells
         if self.selected_cells:
@@ -169,24 +182,28 @@ class _GraphPlotMixin:
                     selected_x.append(x[row])
                     selected_y.append(values[row])
             if selected_x:
-                ax.scatter(selected_x, selected_y, color='blue', s=100, zorder=10, alpha=0.8)
+                ax.scatter(
+                    selected_x, selected_y, color="blue", s=100, zorder=10, alpha=0.8
+                )
 
-        y_label = self._get_axis_label(AxisType.Y_AXIS) if y_axis is not None else 'Index'
+        y_label = (
+            self._get_axis_label(AxisType.Y_AXIS) if y_axis is not None else "Index"
+        )
         ax.set_xlabel(y_label)
-        ax.set_ylabel('Value')
+        ax.set_ylabel("Value")
         if self._show_plot_title:
-            ax.set_title(f'{self.table.name}')
+            ax.set_title(f"{self.table.name}")
         ax.grid(True, alpha=0.3)
 
     def _plot_1d(self):
         """Plot 1D table as single bar"""
         ax = self.figure.add_subplot(111)
-        values = self.data['values']
+        values = self.data["values"]
         color = self._ratio_to_color(0.5)
         ax.bar([0], [values[0]], color=color, width=0.5)
-        ax.set_ylabel('Value')
+        ax.set_ylabel("Value")
         if self._show_plot_title:
-            ax.set_title(f'{self.table.name}')
+            ax.set_title(f"{self.table.name}")
         ax.set_xticks([])
 
     def _calculate_colors(self, values: np.ndarray):
@@ -317,9 +334,9 @@ class _GraphPlotMixin:
         y_range = (ylim[1] - ylim[0]) / factor
         z_range = (zlim[1] - zlim[0]) / factor
 
-        self.ax_3d.set_xlim(x_center - x_range/2, x_center + x_range/2)
-        self.ax_3d.set_ylim(y_center - y_range/2, y_center + y_range/2)
-        self.ax_3d.set_zlim(z_center - z_range/2, z_center + z_range/2)
+        self.ax_3d.set_xlim(x_center - x_range / 2, x_center + x_range / 2)
+        self.ax_3d.set_ylim(y_center - y_range / 2, y_center + y_range / 2)
+        self.ax_3d.set_zlim(z_center - z_range / 2, z_center + z_range / 2)
 
         self.canvas.draw()
 
@@ -347,7 +364,7 @@ class _GraphPlotMixin:
         if not ax.collections:
             return
 
-        values = self.data['values']
+        values = self.data["values"]
         colors = self._calculate_colors(values)
 
         if self.selected_cells:
@@ -380,7 +397,7 @@ class _GraphPlotMixin:
             ax.collections[0].remove()
 
         # Rebuild surface with updated data on the same axes
-        values = self.data['values']
+        values = self.data["values"]
         rows, cols = values.shape
         X, Y = np.meshgrid(np.arange(cols + 1), np.arange(rows + 1))
 
@@ -398,9 +415,16 @@ class _GraphPlotMixin:
                 if row < colors.shape[0] and col < colors.shape[1]:
                     colors[row, col] = blue_color
 
-        ax.plot_surface(X, Y, Z_extended, facecolors=colors,
-                        linewidth=0.5, edgecolor='gray',
-                        antialiased=True, shade=False)
+        ax.plot_surface(
+            X,
+            Y,
+            Z_extended,
+            facecolors=colors,
+            linewidth=0.5,
+            edgecolor="gray",
+            antialiased=True,
+            shade=False,
+        )
 
         # Restore axis limits to prevent auto-rescale
         ax.set_xlim(xlim)
@@ -453,10 +477,15 @@ class GraphWidget(_GraphPlotMixin, QWidget):
         self.setFocusPolicy(Qt.StrongFocus)
 
         # Connect canvas mouse press to grab focus
-        self.canvas.mpl_connect('button_press_event', self._on_canvas_click)
+        self.canvas.mpl_connect("button_press_event", self._on_canvas_click)
 
-    def set_data(self, table: Table, data: dict, rom_definition: RomDefinition = None,
-                 selected_cells: list = None):
+    def set_data(
+        self,
+        table: Table,
+        data: dict,
+        rom_definition: RomDefinition = None,
+        selected_cells: list = None,
+    ):
         """Set or update the graph data"""
         self.table = table
         self.data = data
@@ -512,8 +541,14 @@ class GraphViewer(_GraphPlotMixin, QMainWindow):
 
     _show_plot_title = True
 
-    def __init__(self, table: Table, data: dict, rom_definition: RomDefinition = None,
-                 selected_cells: list = None, parent=None):
+    def __init__(
+        self,
+        table: Table,
+        data: dict,
+        rom_definition: RomDefinition = None,
+        selected_cells: list = None,
+        parent=None,
+    ):
         super().__init__(parent)
 
         self.table = table
@@ -526,10 +561,10 @@ class GraphViewer(_GraphPlotMixin, QMainWindow):
         # Set window properties
         self.setWindowTitle(f"{table.name} - Graph View - {APP_NAME}")
         self.setWindowFlags(
-            Qt.Window |
-            Qt.WindowCloseButtonHint |
-            Qt.CustomizeWindowHint |
-            Qt.WindowTitleHint
+            Qt.Window
+            | Qt.WindowCloseButtonHint
+            | Qt.CustomizeWindowHint
+            | Qt.WindowTitleHint
         )
         self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
 

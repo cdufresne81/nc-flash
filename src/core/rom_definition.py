@@ -14,6 +14,7 @@ from .storage_types import STORAGE_TYPE_BYTES, DEFAULT_BYTE_SIZE
 
 class TableType(Enum):
     """Type of calibration table"""
+
     ONE_D = "1D"
     TWO_D = "2D"
     THREE_D = "3D"
@@ -21,6 +22,7 @@ class TableType(Enum):
 
 class AxisType(Enum):
     """Axis type for child tables"""
+
     X_AXIS = "X Axis"
     Y_AXIS = "Y Axis"
 
@@ -28,6 +30,7 @@ class AxisType(Enum):
 @dataclass
 class RomID:
     """ROM identification metadata"""
+
     xmlid: str
     internalidaddress: str  # Hex address as string
     internalidstring: str
@@ -56,6 +59,7 @@ class Scaling:
     toexpr: Expression to convert from raw to display (e.g., "x*0.01")
     frexpr: Expression to convert from display to raw (e.g., "x/0.01")
     """
+
     name: str
     units: str
     toexpr: str  # To display expression
@@ -75,12 +79,12 @@ class Scaling:
     @property
     def is_float(self) -> bool:
         """Check if storage type is floating point"""
-        return self.storagetype.lower() in ['float', 'double']
+        return self.storagetype.lower() in ["float", "double"]
 
     @property
     def is_signed(self) -> bool:
         """Check if storage type is signed integer"""
-        return self.storagetype.lower() in ['int8', 'int16', 'int32']
+        return self.storagetype.lower() in ["int8", "int16", "int32"]
 
 
 @dataclass
@@ -91,6 +95,7 @@ class Table:
     For 2D tables: has 1 child (Y axis)
     For 3D tables: has 2 children (X axis and Y axis)
     """
+
     name: str
     address: str  # Hex address as string
     elements: int  # Total number of elements
@@ -103,7 +108,7 @@ class Table:
     flipy: bool = False  # Reverse Y axis order
 
     # Child tables (axes for 2D/3D tables)
-    children: List['Table'] = field(default_factory=list)
+    children: List["Table"] = field(default_factory=list)
     axis_type: Optional[AxisType] = None  # For child axis tables
 
     @property
@@ -116,7 +121,7 @@ class Table:
         """Check if this is an axis table"""
         return self.axis_type is not None
 
-    def get_axis(self, axis_type: AxisType) -> Optional['Table']:
+    def get_axis(self, axis_type: AxisType) -> Optional["Table"]:
         """Get child axis table by type"""
         for child in self.children:
             if child.axis_type == axis_type:
@@ -124,12 +129,12 @@ class Table:
         return None
 
     @property
-    def x_axis(self) -> Optional['Table']:
+    def x_axis(self) -> Optional["Table"]:
         """Get X axis child table (for 3D tables)"""
         return self.get_axis(AxisType.X_AXIS)
 
     @property
-    def y_axis(self) -> Optional['Table']:
+    def y_axis(self) -> Optional["Table"]:
         """Get Y axis child table (for 2D/3D tables)"""
         return self.get_axis(AxisType.Y_AXIS)
 
@@ -139,16 +144,17 @@ class RomDefinition:
     """
     Complete ROM definition containing all metadata
     """
+
     romid: RomID
     scalings: Dict[str, Scaling] = field(default_factory=dict)
     tables: List[Table] = field(default_factory=list)
     xml_path: Optional[str] = None  # Path to source XML file
 
     # Lazy lookup caches (built on first access)
-    _cache_by_category: Optional[Dict[str, List['Table']]] = field(
+    _cache_by_category: Optional[Dict[str, List["Table"]]] = field(
         default=None, init=False, repr=False, compare=False
     )
-    _cache_by_name: Optional[Dict[str, 'Table']] = field(
+    _cache_by_name: Optional[Dict[str, "Table"]] = field(
         default=None, init=False, repr=False, compare=False
     )
 

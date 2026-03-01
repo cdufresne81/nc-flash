@@ -226,8 +226,9 @@ class AppSettings:
         Returns:
             list: Category names where 1D tables use toggle ON/OFF display
         """
-        value = self.settings.value("display/toggle_categories",
-                                    self._DEFAULT_TOGGLE_CATEGORIES)
+        value = self.settings.value(
+            "display/toggle_categories", self._DEFAULT_TOGGLE_CATEGORIES
+        )
         if value is None:
             return list(self._DEFAULT_TOGGLE_CATEGORIES)
         if isinstance(value, str):

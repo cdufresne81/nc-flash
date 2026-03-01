@@ -5,9 +5,17 @@ Multi-step wizard for creating a new ROM editing project.
 """
 
 from PySide6.QtWidgets import (
-    QWizard, QWizardPage, QVBoxLayout, QHBoxLayout,
-    QLabel, QLineEdit, QTextEdit, QPushButton,
-    QFileDialog, QMessageBox, QGroupBox
+    QWizard,
+    QWizardPage,
+    QVBoxLayout,
+    QHBoxLayout,
+    QLabel,
+    QLineEdit,
+    QTextEdit,
+    QPushButton,
+    QFileDialog,
+    QMessageBox,
+    QGroupBox,
 )
 from pathlib import Path
 import logging
@@ -120,8 +128,7 @@ class RomSelectionPage(QWizardPage):
     def _browse(self):
         """Open file dialog to select ROM"""
         path, _ = QFileDialog.getOpenFileName(
-            self, "Select ROM File", "",
-            "ROM Files (*.bin *.rom);;All Files (*)"
+            self, "Select ROM File", "", "ROM Files (*.bin *.rom);;All Files (*)"
         )
         if path:
             self.path_edit.setText(path)
@@ -180,13 +187,14 @@ class RomSelectionPage(QWizardPage):
         if self.rom_definition is None:
             # Allow creating project even without definition
             reply = QMessageBox.question(
-                self, "Unknown ROM",
+                self,
+                "Unknown ROM",
                 "No ROM definition found for this file.\n\n"
                 "You can create a project, but table editing won't be available "
                 "until a matching definition is added.\n\n"
                 "Continue anyway?",
                 QMessageBox.Yes | QMessageBox.No,
-                QMessageBox.No
+                QMessageBox.No,
             )
             return reply == QMessageBox.Yes
 
@@ -235,8 +243,9 @@ class ProjectInfoPage(QWizardPage):
         invalid_chars = '<>:"/\\|?*'
         if any(c in name for c in invalid_chars):
             QMessageBox.warning(
-                self, "Error",
-                f"Project name cannot contain these characters: {invalid_chars}"
+                self,
+                "Error",
+                f"Project name cannot contain these characters: {invalid_chars}",
             )
             return False
 
@@ -259,7 +268,9 @@ class ProjectLocationPage(QWizardPage):
 
         path_layout = QHBoxLayout()
         self.location_edit = QLineEdit()
-        self.location_edit.setPlaceholderText("Path where project folder will be created")
+        self.location_edit.setPlaceholderText(
+            "Path where project folder will be created"
+        )
         path_layout.addWidget(self.location_edit)
 
         browse_btn = QPushButton("Browse...")
@@ -287,8 +298,7 @@ class ProjectLocationPage(QWizardPage):
     def _browse(self):
         """Open directory dialog"""
         path = QFileDialog.getExistingDirectory(
-            self, "Select Project Location",
-            str(Path.home())
+            self, "Select Project Location", str(Path.home())
         )
         if path:
             # Append project name if available
@@ -310,30 +320,30 @@ class ProjectLocationPage(QWizardPage):
         if path.exists():
             if path.is_file():
                 QMessageBox.warning(
-                    self, "Error",
-                    "Selected location is a file, not a folder"
+                    self, "Error", "Selected location is a file, not a folder"
                 )
                 return False
 
             # Check if folder is not empty
             if any(path.iterdir()):
                 reply = QMessageBox.question(
-                    self, "Folder Exists",
+                    self,
+                    "Folder Exists",
                     "The selected folder already exists and is not empty.\n\n"
                     "Continue anyway? Existing files may be overwritten.",
                     QMessageBox.Yes | QMessageBox.No,
-                    QMessageBox.No
+                    QMessageBox.No,
                 )
                 return reply == QMessageBox.Yes
 
         # Check if parent directory exists
         if not path.parent.exists():
             reply = QMessageBox.question(
-                self, "Create Folders",
-                f"The parent folder does not exist:\n{path.parent}\n\n"
-                "Create it?",
+                self,
+                "Create Folders",
+                f"The parent folder does not exist:\n{path.parent}\n\n" "Create it?",
                 QMessageBox.Yes | QMessageBox.No,
-                QMessageBox.Yes
+                QMessageBox.Yes,
             )
             return reply == QMessageBox.Yes
 

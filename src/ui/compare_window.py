@@ -10,15 +10,33 @@ import re
 
 import numpy as np
 from PySide6.QtWidgets import (
-    QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QSplitter,
-    QTableWidget, QTableWidgetItem, QHeaderView, QTreeWidget,
-    QTreeWidgetItem, QLabel, QToolBar, QToolButton, QApplication,
-    QStyledItemDelegate, QMessageBox,
+    QMainWindow,
+    QWidget,
+    QVBoxLayout,
+    QHBoxLayout,
+    QSplitter,
+    QTableWidget,
+    QTableWidgetItem,
+    QHeaderView,
+    QTreeWidget,
+    QTreeWidgetItem,
+    QLabel,
+    QToolBar,
+    QToolButton,
+    QApplication,
+    QStyledItemDelegate,
+    QMessageBox,
 )
 from PySide6.QtCore import Qt, QSize
 from PySide6.QtGui import (
-    QColor, QBrush, QIcon, QPainter, QPen, QPixmap,
-    QKeySequence, QShortcut,
+    QColor,
+    QBrush,
+    QIcon,
+    QPainter,
+    QPen,
+    QPixmap,
+    QKeySequence,
+    QShortcut,
 )
 
 from ..core.rom_definition import Table, TableType, AxisType, RomDefinition
@@ -28,7 +46,7 @@ from ..utils.settings import get_settings
 
 logger = logging.getLogger(__name__)
 
-_PRINTF_PATTERN = re.compile(r'%[-+0 #]*(\d*)\.?(\d*)([diouxXeEfFgGaAcspn%])')
+_PRINTF_PATTERN = re.compile(r"%[-+0 #]*(\d*)\.?(\d*)([diouxXeEfFgGaAcspn%])")
 
 
 def _printf_to_python_format(printf_format: str) -> str:
@@ -111,11 +129,18 @@ class _CompareCellDelegate(QStyledItemDelegate):
 class CompareWindow(QMainWindow):
     """Side-by-side ROM comparison window"""
 
-    def __init__(self, rom_reader_a: RomReader, rom_reader_b: RomReader,
-                 definition_a: RomDefinition, definition_b: RomDefinition,
-                 color_a: QColor, color_b: QColor,
-                 name_a: str, name_b: str,
-                 parent=None):
+    def __init__(
+        self,
+        rom_reader_a: RomReader,
+        rom_reader_b: RomReader,
+        definition_a: RomDefinition,
+        definition_b: RomDefinition,
+        color_a: QColor,
+        color_b: QColor,
+        name_a: str,
+        name_b: str,
+        parent=None,
+    ):
         super().__init__(parent)
         self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
 
@@ -127,17 +152,17 @@ class CompareWindow(QMainWindow):
         self._color_b = color_b
         self._name_a = name_a
         self._name_b = name_b
-        self._cross_def = (definition_a.romid.xmlid != definition_b.romid.xmlid)
+        self._cross_def = definition_a.romid.xmlid != definition_b.romid.xmlid
         self._changed_only = False
         self._syncing_scroll = False
         self._current_index = -1
 
         self.setWindowFlags(
-            Qt.Window |
-            Qt.WindowCloseButtonHint |
-            Qt.WindowMaximizeButtonHint |
-            Qt.CustomizeWindowHint |
-            Qt.WindowTitleHint
+            Qt.Window
+            | Qt.WindowCloseButtonHint
+            | Qt.WindowMaximizeButtonHint
+            | Qt.CustomizeWindowHint
+            | Qt.WindowTitleHint
         )
         title = f"ROM Compare \u2014 {name_a} vs {name_b}"
         if self._cross_def:
@@ -175,7 +200,7 @@ class CompareWindow(QMainWindow):
         for name in all_names:
             ta = by_name_a.get(name)
             tb = by_name_b.get(name)
-            cat = (ta or tb).category or ''
+            cat = (ta or tb).category or ""
             matched.append((name, cat, ta, tb))
         matched.sort(key=lambda m: (m[1], m[0]))
         return matched
@@ -204,7 +229,7 @@ class CompareWindow(QMainWindow):
 
             # One-sided: mark all cells as changed
             if a_only:
-                values_a = data_a.get('values')
+                values_a = data_a.get("values")
                 if values_a is None:
                     continue
                 # Skip one-sided tables that are entirely NaN
@@ -217,18 +242,26 @@ class CompareWindow(QMainWindow):
                 else:
                     for idx in np.ndindex(values_a.shape):
                         changed.add(idx)
-                self._modified_tables.append({
-                    'table_a': table_a, 'table_b': None,
-                    'name': name, 'category': category,
-                    'data_a': data_a, 'data_b': None,
-                    'changed_cells': changed, 'changed_axes': {},
-                    'change_count': len(changed),
-                    'shape_mismatch': False, 'a_only': True, 'b_only': False,
-                })
+                self._modified_tables.append(
+                    {
+                        "table_a": table_a,
+                        "table_b": None,
+                        "name": name,
+                        "category": category,
+                        "data_a": data_a,
+                        "data_b": None,
+                        "changed_cells": changed,
+                        "changed_axes": {},
+                        "change_count": len(changed),
+                        "shape_mismatch": False,
+                        "a_only": True,
+                        "b_only": False,
+                    }
+                )
                 continue
 
             if b_only:
-                values_b = data_b.get('values')
+                values_b = data_b.get("values")
                 if values_b is None:
                     continue
                 # Skip one-sided tables that are entirely NaN
@@ -241,19 +274,27 @@ class CompareWindow(QMainWindow):
                 else:
                     for idx in np.ndindex(values_b.shape):
                         changed.add(idx)
-                self._modified_tables.append({
-                    'table_a': None, 'table_b': table_b,
-                    'name': name, 'category': category,
-                    'data_a': None, 'data_b': data_b,
-                    'changed_cells': changed, 'changed_axes': {},
-                    'change_count': len(changed),
-                    'shape_mismatch': False, 'a_only': False, 'b_only': True,
-                })
+                self._modified_tables.append(
+                    {
+                        "table_a": None,
+                        "table_b": table_b,
+                        "name": name,
+                        "category": category,
+                        "data_a": None,
+                        "data_b": data_b,
+                        "changed_cells": changed,
+                        "changed_axes": {},
+                        "change_count": len(changed),
+                        "shape_mismatch": False,
+                        "a_only": False,
+                        "b_only": True,
+                    }
+                )
                 continue
 
             # Both sides exist
-            values_a = data_a.get('values')
-            values_b = data_b.get('values')
+            values_a = data_a.get("values")
+            values_b = data_b.get("values")
             if values_a is None or values_b is None:
                 continue
 
@@ -261,7 +302,7 @@ class CompareWindow(QMainWindow):
             if _all_nan(values_a) and _all_nan(values_b):
                 continue
 
-            shape_mismatch = (values_a.shape != values_b.shape)
+            shape_mismatch = values_a.shape != values_b.shape
 
             if shape_mismatch:
                 # Mark all cells as changed on both sides
@@ -273,7 +314,7 @@ class CompareWindow(QMainWindow):
             elif np.array_equal(values_a, values_b):
                 # Also check axes
                 axes_differ = False
-                for key in ('x_axis', 'y_axis'):
+                for key in ("x_axis", "y_axis"):
                     ax_a = data_a.get(key)
                     ax_b = data_b.get(key)
                     if ax_a is not None and ax_b is not None:
@@ -297,10 +338,14 @@ class CompareWindow(QMainWindow):
 
             # Check axis changes
             changed_axes = {}
-            for key in ('x_axis', 'y_axis'):
+            for key in ("x_axis", "y_axis"):
                 ax_a = data_a.get(key)
                 ax_b = data_b.get(key)
-                if ax_a is not None and ax_b is not None and not np.array_equal(ax_a, ax_b):
+                if (
+                    ax_a is not None
+                    and ax_b is not None
+                    and not np.array_equal(ax_a, ax_b)
+                ):
                     axis_changed = set()
                     for i in range(min(len(ax_a), len(ax_b))):
                         if ax_a[i] != ax_b[i]:
@@ -312,17 +357,25 @@ class CompareWindow(QMainWindow):
             if total_changes == 0 and not changed_axes:
                 continue
 
-            self._modified_tables.append({
-                'table_a': table_a, 'table_b': table_b,
-                'name': name, 'category': category,
-                'data_a': data_a, 'data_b': data_b,
-                'changed_cells': changed, 'changed_axes': changed_axes,
-                'change_count': total_changes,
-                'shape_mismatch': shape_mismatch, 'a_only': False, 'b_only': False,
-            })
+            self._modified_tables.append(
+                {
+                    "table_a": table_a,
+                    "table_b": table_b,
+                    "name": name,
+                    "category": category,
+                    "data_a": data_a,
+                    "data_b": data_b,
+                    "changed_cells": changed,
+                    "changed_axes": changed_axes,
+                    "change_count": total_changes,
+                    "shape_mismatch": shape_mismatch,
+                    "a_only": False,
+                    "b_only": False,
+                }
+            )
 
         # Sort by category then name for consistent ordering
-        self._modified_tables.sort(key=lambda d: (d['category'] or '', d['name']))
+        self._modified_tables.sort(key=lambda d: (d["category"] or "", d["name"]))
 
     def _build_ui(self):
         """Build the complete window UI."""
@@ -366,7 +419,9 @@ class CompareWindow(QMainWindow):
         self._shortcut_label = QLabel()
         self._shortcut_label.setStyleSheet("color: #888; font-size: 11px;")
         self.statusBar().addPermanentWidget(self._shortcut_label)
-        self._shortcut_label.setText("\u2191\u2193 Navigate   T Toggle changed only   Esc Close")
+        self._shortcut_label.setText(
+            "\u2191\u2193 Navigate   T Toggle changed only   Esc Close"
+        )
 
     def _build_toolbar(self):
         """Create the toolbar with navigation and toggle controls."""
@@ -408,8 +463,10 @@ class CompareWindow(QMainWindow):
 
         # Spacer
         spacer = QWidget()
-        spacer.setSizePolicy(spacer.sizePolicy().horizontalPolicy().Expanding,
-                             spacer.sizePolicy().verticalPolicy().Preferred)
+        spacer.setSizePolicy(
+            spacer.sizePolicy().horizontalPolicy().Expanding,
+            spacer.sizePolicy().verticalPolicy().Preferred,
+        )
         tb.addWidget(spacer)
 
         # Navigation
@@ -418,7 +475,9 @@ class CompareWindow(QMainWindow):
         prev_btn.triggered.connect(self._prev_table)
 
         self._counter_label = QLabel(" 0 / 0 ")
-        self._counter_label.setStyleSheet("color: #555; font-size: 12px; padding: 0 4px;")
+        self._counter_label.setStyleSheet(
+            "color: #555; font-size: 12px; padding: 0 4px;"
+        )
         tb.addWidget(self._counter_label)
 
         next_btn = tb.addAction(self._make_nav_icon("down"), "")
@@ -434,6 +493,7 @@ class CompareWindow(QMainWindow):
         tb.addWidget(toggle_label)
 
         from .widgets.toggle_switch import ToggleSwitch
+
         self._toggle = ToggleSwitch()
         self._toggle.setChecked(False)
         self._toggle.toggled.connect(self._on_toggle_changed)
@@ -546,7 +606,7 @@ class CompareWindow(QMainWindow):
         self._tree_items = {}  # diff index -> QTreeWidgetItem
         categories = {}
         for i, entry in enumerate(self._modified_tables):
-            cat = entry['category'] or 'Uncategorized'
+            cat = entry["category"] or "Uncategorized"
             if cat not in categories:
                 categories[cat] = []
             categories[cat].append((i, entry))
@@ -558,15 +618,15 @@ class CompareWindow(QMainWindow):
             self._tree.addTopLevelItem(cat_item)
 
             for idx, entry in entries:
-                name = entry['name']
-                count = entry['change_count']
+                name = entry["name"]
+                count = entry["change_count"]
                 suffix = "cell" if count == 1 else "cells"
                 label = f"{name}  ({count} {suffix})"
-                if entry['a_only']:
-                    label += "  \u25C0"  # ◀ ROM A only
-                elif entry['b_only']:
-                    label += "  \u25B6"  # ▶ ROM B only
-                elif entry['shape_mismatch']:
+                if entry["a_only"]:
+                    label += "  \u25c0"  # ◀ ROM A only
+                elif entry["b_only"]:
+                    label += "  \u25b6"  # ▶ ROM B only
+                elif entry["shape_mismatch"]:
                     label += "  \u2260"  # ≠ shape mismatch
                 item = QTreeWidgetItem([label])
                 item.setData(0, Qt.UserRole, idx)
@@ -644,8 +704,10 @@ class CompareWindow(QMainWindow):
         self._copy_a_to_b_btn = QToolButton()
         self._copy_a_to_b_btn.setIcon(self._make_nav_icon("copy_right"))
         self._copy_a_to_b_btn.setIconSize(QSize(20, 20))
-        self._copy_a_to_b_btn.setToolTip(f"Copy table from {self._name_a} \u2192 {self._name_b}")
-        self._copy_a_to_b_btn.clicked.connect(lambda: self._copy_table('a_to_b'))
+        self._copy_a_to_b_btn.setToolTip(
+            f"Copy table from {self._name_a} \u2192 {self._name_b}"
+        )
+        self._copy_a_to_b_btn.clicked.connect(lambda: self._copy_table("a_to_b"))
         self._copy_a_to_b_btn.setStyleSheet("""
             QToolButton {
                 padding: 4px; border: 1px solid transparent; border-radius: 3px;
@@ -661,8 +723,10 @@ class CompareWindow(QMainWindow):
         self._copy_b_to_a_btn = QToolButton()
         self._copy_b_to_a_btn.setIcon(self._make_nav_icon("copy_left"))
         self._copy_b_to_a_btn.setIconSize(QSize(20, 20))
-        self._copy_b_to_a_btn.setToolTip(f"Copy table from {self._name_b} \u2192 {self._name_a}")
-        self._copy_b_to_a_btn.clicked.connect(lambda: self._copy_table('b_to_a'))
+        self._copy_b_to_a_btn.setToolTip(
+            f"Copy table from {self._name_b} \u2192 {self._name_a}"
+        )
+        self._copy_b_to_a_btn.clicked.connect(lambda: self._copy_table("b_to_a"))
         self._copy_b_to_a_btn.setStyleSheet(self._copy_a_to_b_btn.styleSheet())
         center_layout.addWidget(self._copy_b_to_a_btn)
 
@@ -691,6 +755,7 @@ class CompareWindow(QMainWindow):
 
     def _connect_scroll_sync(self, bar_a, bar_b):
         """Synchronize two scrollbars without recursive loops."""
+
         def sync_a_to_b(value):
             if not self._syncing_scroll:
                 self._syncing_scroll = True
@@ -715,7 +780,9 @@ class CompareWindow(QMainWindow):
         down.activated.connect(self._next_table)
 
         toggle = QShortcut(QKeySequence(Qt.Key_T), self)
-        toggle.activated.connect(lambda: self._toggle.setChecked(not self._toggle.isChecked()))
+        toggle.activated.connect(
+            lambda: self._toggle.setChecked(not self._toggle.isChecked())
+        )
 
         close = QShortcut(QKeySequence(Qt.Key_Escape), self)
         close.activated.connect(self.close)
@@ -742,20 +809,30 @@ class CompareWindow(QMainWindow):
         self._counter_label.setText(f" {index + 1} / {len(self._modified_tables)} ")
 
         # Display table data in both panels
-        table_a = entry['table_a']
-        table_b = entry['table_b']
+        table_a = entry["table_a"]
+        table_b = entry["table_b"]
 
-        if table_a is not None and entry['data_a'] is not None:
-            self._populate_table(self._table_left, table_a,
-                                 self._definition_a, entry['data_a'],
-                                 entry['changed_cells'], entry['changed_axes'])
+        if table_a is not None and entry["data_a"] is not None:
+            self._populate_table(
+                self._table_left,
+                table_a,
+                self._definition_a,
+                entry["data_a"],
+                entry["changed_cells"],
+                entry["changed_axes"],
+            )
         else:
             self._clear_panel(self._table_left)
 
-        if table_b is not None and entry['data_b'] is not None:
-            self._populate_table(self._table_right, table_b,
-                                 self._definition_b, entry['data_b'],
-                                 entry['changed_cells'], entry['changed_axes'])
+        if table_b is not None and entry["data_b"] is not None:
+            self._populate_table(
+                self._table_right,
+                table_b,
+                self._definition_b,
+                entry["data_b"],
+                entry["changed_cells"],
+                entry["changed_axes"],
+            )
         else:
             self._clear_panel(self._table_right)
 
@@ -764,16 +841,16 @@ class CompareWindow(QMainWindow):
             self._sync_column_widths()
 
         # Update status bar
-        name = entry['name']
-        count = entry['change_count']
+        name = entry["name"]
+        count = entry["change_count"]
         suffix = "cell" if count == 1 else "cells"
-        if entry['a_only']:
+        if entry["a_only"]:
             status = f"  {name} \u2014 {self._name_a} only ({count} {suffix})"
-        elif entry['b_only']:
+        elif entry["b_only"]:
             status = f"  {name} \u2014 {self._name_b} only ({count} {suffix})"
-        elif entry['shape_mismatch']:
-            shape_a = entry['data_a']['values'].shape if entry['data_a'] else '?'
-            shape_b = entry['data_b']['values'].shape if entry['data_b'] else '?'
+        elif entry["shape_mismatch"]:
+            shape_a = entry["data_a"]["values"].shape if entry["data_a"] else "?"
+            shape_b = entry["data_b"]["values"].shape if entry["data_b"] else "?"
             status = f"  {name} \u2014 shape mismatch {shape_a} vs {shape_b}"
         else:
             addr = table_a.address if table_a else table_b.address
@@ -834,13 +911,17 @@ class CompareWindow(QMainWindow):
         entry = self._modified_tables[self._current_index]
         # Can copy A→B only if A has data and B's table exists (to write into)
         self._copy_a_to_b_btn.setEnabled(
-            entry['table_a'] is not None and entry['table_b'] is not None
-            and entry['data_a'] is not None and not entry['shape_mismatch']
+            entry["table_a"] is not None
+            and entry["table_b"] is not None
+            and entry["data_a"] is not None
+            and not entry["shape_mismatch"]
         )
         # Can copy B→A only if B has data and A's table exists (to write into)
         self._copy_b_to_a_btn.setEnabled(
-            entry['table_a'] is not None and entry['table_b'] is not None
-            and entry['data_b'] is not None and not entry['shape_mismatch']
+            entry["table_a"] is not None
+            and entry["table_b"] is not None
+            and entry["data_b"] is not None
+            and not entry["shape_mismatch"]
         )
 
     def _copy_table(self, direction: str):
@@ -854,56 +935,63 @@ class CompareWindow(QMainWindow):
             return
         entry = self._modified_tables[self._current_index]
 
-        if direction == 'a_to_b':
+        if direction == "a_to_b":
             src_name, dst_name = self._name_a, self._name_b
-            src_data = entry['data_a']
-            dst_table, dst_reader, dst_def = entry['table_b'], self._reader_b, self._definition_b
+            src_data = entry["data_a"]
+            dst_table, dst_reader, dst_def = (
+                entry["table_b"],
+                self._reader_b,
+                self._definition_b,
+            )
         else:
             src_name, dst_name = self._name_b, self._name_a
-            src_data = entry['data_b']
-            dst_table, dst_reader, dst_def = entry['table_a'], self._reader_a, self._definition_a
+            src_data = entry["data_b"]
+            dst_table, dst_reader, dst_def = (
+                entry["table_a"],
+                self._reader_a,
+                self._definition_a,
+            )
 
         if src_data is None or dst_table is None:
             return
 
-        name = entry['name']
+        name = entry["name"]
 
         try:
             # Route through MainWindow for full undo/tracking pipeline
             main_window = self.parent()
-            if main_window and hasattr(main_window, 'apply_compare_copy'):
+            if main_window and hasattr(main_window, "apply_compare_copy"):
                 main_window.apply_compare_copy(dst_reader, dst_table, dst_def, src_data)
 
             # Re-read destination data and refresh display
-            if direction == 'a_to_b':
-                entry['data_b'] = dst_reader.read_table_data(dst_table)
+            if direction == "a_to_b":
+                entry["data_b"] = dst_reader.read_table_data(dst_table)
             else:
-                entry['data_a'] = dst_reader.read_table_data(dst_table)
+                entry["data_a"] = dst_reader.read_table_data(dst_table)
 
             # Recompute changed cells for this entry
             self._recompute_entry_diff(entry)
             self._select_table(self._current_index)
 
             self.statusBar().showMessage(
-                f"Copied \"{name}\" from {src_name} to {dst_name}"
+                f'Copied "{name}" from {src_name} to {dst_name}'
             )
         except Exception as e:
             logger.error(f"Failed to copy table {name}: {e}")
             QMessageBox.warning(
-                self, "Copy Failed",
-                f"Failed to copy table:\n{type(e).__name__}: {e}"
+                self, "Copy Failed", f"Failed to copy table:\n{type(e).__name__}: {e}"
             )
 
     def _recompute_entry_diff(self, entry: dict):
         """Recompute changed_cells/changed_axes for an entry after a copy."""
-        data_a = entry['data_a']
-        data_b = entry['data_b']
+        data_a = entry["data_a"]
+        data_b = entry["data_b"]
 
         if data_a is None or data_b is None:
             return
 
-        values_a = data_a.get('values')
-        values_b = data_b.get('values')
+        values_a = data_a.get("values")
+        values_b = data_b.get("values")
         if values_a is None or values_b is None:
             return
 
@@ -913,10 +1001,10 @@ class CompareWindow(QMainWindow):
                 changed.add(idx)
             for idx in np.ndindex(values_b.shape):
                 changed.add(idx)
-            entry['shape_mismatch'] = True
+            entry["shape_mismatch"] = True
         elif np.array_equal(values_a, values_b):
             changed = set()
-            entry['shape_mismatch'] = False
+            entry["shape_mismatch"] = False
         else:
             changed = set()
             if values_a.ndim == 1:
@@ -927,10 +1015,10 @@ class CompareWindow(QMainWindow):
                 diff_mask = values_a != values_b
                 for idx in zip(*np.where(diff_mask)):
                     changed.add(tuple(idx))
-            entry['shape_mismatch'] = False
+            entry["shape_mismatch"] = False
 
         changed_axes = {}
-        for key in ('x_axis', 'y_axis'):
+        for key in ("x_axis", "y_axis"):
             ax_a = data_a.get(key)
             ax_b = data_b.get(key)
             if ax_a is not None and ax_b is not None and not np.array_equal(ax_a, ax_b):
@@ -941,38 +1029,65 @@ class CompareWindow(QMainWindow):
                 if axis_changed:
                     changed_axes[key] = axis_changed
 
-        entry['changed_cells'] = changed
-        entry['changed_axes'] = changed_axes
-        entry['change_count'] = len(changed) + sum(len(v) for v in changed_axes.values())
+        entry["changed_cells"] = changed
+        entry["changed_axes"] = changed_axes
+        entry["change_count"] = len(changed) + sum(
+            len(v) for v in changed_axes.values()
+        )
 
     # ========== Table Population ==========
 
-    def _populate_table(self, widget: QTableWidget, table: Table,
-                        rom_definition: RomDefinition,
-                        data: dict, changed_cells: set, changed_axes: dict):
+    def _populate_table(
+        self,
+        widget: QTableWidget,
+        table: Table,
+        rom_definition: RomDefinition,
+        data: dict,
+        changed_cells: set,
+        changed_axes: dict,
+    ):
         """Populate a QTableWidget with table data, highlighting changed cells."""
         widget.blockSignals(True)
         widget.setUpdatesEnabled(False)
         try:
-            values = data['values']
+            values = data["values"]
 
             if table.type == TableType.ONE_D:
                 self._populate_1d(widget, table, rom_definition, values, changed_cells)
             elif table.type == TableType.TWO_D:
-                self._populate_2d(widget, table, rom_definition, values,
-                                  data.get('y_axis'), changed_cells, changed_axes)
+                self._populate_2d(
+                    widget,
+                    table,
+                    rom_definition,
+                    values,
+                    data.get("y_axis"),
+                    changed_cells,
+                    changed_axes,
+                )
             elif table.type == TableType.THREE_D:
-                self._populate_3d(widget, table, rom_definition, values,
-                                  data.get('x_axis'), data.get('y_axis'),
-                                  changed_cells, changed_axes)
+                self._populate_3d(
+                    widget,
+                    table,
+                    rom_definition,
+                    values,
+                    data.get("x_axis"),
+                    data.get("y_axis"),
+                    changed_cells,
+                    changed_axes,
+                )
         finally:
             widget.blockSignals(False)
             widget.setUpdatesEnabled(True)
             widget.viewport().update()
 
-    def _populate_1d(self, widget: QTableWidget, table: Table,
-                     rom_definition: RomDefinition,
-                     values: np.ndarray, changed_cells: set):
+    def _populate_1d(
+        self,
+        widget: QTableWidget,
+        table: Table,
+        rom_definition: RomDefinition,
+        values: np.ndarray,
+        changed_cells: set,
+    ):
         """Populate 1D table (single value)."""
         widget.setRowCount(1)
         widget.setColumnCount(1)
@@ -995,10 +1110,16 @@ class CompareWindow(QMainWindow):
         widget.setItem(0, 0, item)
         widget.resizeColumnsToContents()
 
-    def _populate_2d(self, widget: QTableWidget, table: Table,
-                     rom_definition: RomDefinition,
-                     values: np.ndarray, y_axis: np.ndarray,
-                     changed_cells: set, changed_axes: dict):
+    def _populate_2d(
+        self,
+        widget: QTableWidget,
+        table: Table,
+        rom_definition: RomDefinition,
+        values: np.ndarray,
+        y_axis: np.ndarray,
+        changed_cells: set,
+        changed_axes: dict,
+    ):
         """Populate 2D table (Y-axis + data column)."""
         num_values = len(values)
         widget.setRowCount(num_values)
@@ -1013,8 +1134,10 @@ class CompareWindow(QMainWindow):
         display_y = y_axis[::-1] if (y_axis is not None and flipy) else y_axis
 
         # Y-axis gradient range
-        y_min, y_max = self._get_axis_range(table, AxisType.Y_AXIS, display_y, rom_definition)
-        y_changed = changed_axes.get('y_axis', set())
+        y_min, y_max = self._get_axis_range(
+            table, AxisType.Y_AXIS, display_y, rom_definition
+        )
+        y_changed = changed_axes.get("y_axis", set())
 
         for i in range(num_values):
             data_idx = (num_values - 1 - i) if flipy else i
@@ -1039,7 +1162,9 @@ class CompareWindow(QMainWindow):
 
             # Data cell
             val_item = QTableWidgetItem(_format_value(display_values[i], value_fmt))
-            color = self._get_cell_color(display_values[i], values, table, rom_definition)
+            color = self._get_cell_color(
+                display_values[i], values, table, rom_definition
+            )
             is_changed = (data_idx, 0) in changed_cells
 
             if self._changed_only and not is_changed:
@@ -1054,13 +1179,22 @@ class CompareWindow(QMainWindow):
 
         widget.resizeColumnsToContents()
 
-    def _populate_3d(self, widget: QTableWidget, table: Table,
-                     rom_definition: RomDefinition,
-                     values: np.ndarray, x_axis: np.ndarray, y_axis: np.ndarray,
-                     changed_cells: set, changed_axes: dict):
+    def _populate_3d(
+        self,
+        widget: QTableWidget,
+        table: Table,
+        rom_definition: RomDefinition,
+        values: np.ndarray,
+        x_axis: np.ndarray,
+        y_axis: np.ndarray,
+        changed_cells: set,
+        changed_axes: dict,
+    ):
         """Populate 3D table with ECUFlash-style layout."""
         if values.ndim != 2:
-            self._populate_1d(widget, table, rom_definition, values.flatten(), changed_cells)
+            self._populate_1d(
+                widget, table, rom_definition, values.flatten(), changed_cells
+            )
             return
 
         rows, cols = values.shape
@@ -1084,8 +1218,8 @@ class CompareWindow(QMainWindow):
             display_values = display_values[:, ::-1]
 
         label_bg = QBrush(QColor(220, 220, 220))
-        x_changed = changed_axes.get('x_axis', set())
-        y_changed = changed_axes.get('y_axis', set())
+        x_changed = changed_axes.get("x_axis", set())
+        y_changed = changed_axes.get("y_axis", set())
 
         # Cell (0,0) - empty corner
         corner = QTableWidgetItem("")
@@ -1094,7 +1228,9 @@ class CompareWindow(QMainWindow):
         widget.setItem(0, 0, corner)
 
         # X-axis range
-        x_min, x_max = self._get_axis_range(table, AxisType.X_AXIS, display_x, rom_definition)
+        x_min, x_max = self._get_axis_range(
+            table, AxisType.X_AXIS, display_x, rom_definition
+        )
 
         # Row 0: X-axis values
         if display_x is not None and len(display_x) == cols:
@@ -1121,7 +1257,9 @@ class CompareWindow(QMainWindow):
                 widget.setItem(0, col + 1, x_item)
 
         # Y-axis range
-        y_min, y_max = self._get_axis_range(table, AxisType.Y_AXIS, display_y, rom_definition)
+        y_min, y_max = self._get_axis_range(
+            table, AxisType.Y_AXIS, display_y, rom_definition
+        )
 
         # Column 0: Y-axis values (rows 1+)
         if display_y is not None and len(display_y) == rows:
@@ -1215,8 +1353,13 @@ class CompareWindow(QMainWindow):
 
     # ========== Color Helpers ==========
 
-    def _get_cell_color(self, value: float, values: np.ndarray,
-                        table: Table, rom_definition: RomDefinition) -> QColor:
+    def _get_cell_color(
+        self,
+        value: float,
+        values: np.ndarray,
+        table: Table,
+        rom_definition: RomDefinition,
+    ) -> QColor:
         """Get thermal gradient color for a data cell value."""
         scaling_range = _get_scaling_range(rom_definition, table.scaling)
         if scaling_range:
@@ -1232,8 +1375,9 @@ class CompareWindow(QMainWindow):
             ratio = max(0.0, min(1.0, ratio))
         return get_colormap().ratio_to_color(ratio)
 
-    def _axis_gradient_color(self, value: float, min_val: float,
-                             max_val: float) -> QColor:
+    def _axis_gradient_color(
+        self, value: float, min_val: float, max_val: float
+    ) -> QColor:
         """Get gradient color for an axis value."""
         if max_val == min_val:
             ratio = 0.5
@@ -1242,8 +1386,13 @@ class CompareWindow(QMainWindow):
             ratio = max(0.0, min(1.0, ratio))
         return get_colormap().ratio_to_color(ratio)
 
-    def _get_axis_range(self, table: Table, axis_type: AxisType,
-                        display_axis: np.ndarray, rom_definition: RomDefinition):
+    def _get_axis_range(
+        self,
+        table: Table,
+        axis_type: AxisType,
+        display_axis: np.ndarray,
+        rom_definition: RomDefinition,
+    ):
         """Get min/max for axis gradient coloring."""
         axis_table = table.get_axis(axis_type)
         if axis_table and axis_table.scaling:
@@ -1254,8 +1403,9 @@ class CompareWindow(QMainWindow):
             return float(np.min(display_axis)), float(np.max(display_axis))
         return 0.0, 1.0
 
-    def _get_axis_format(self, table: Table, axis_type: AxisType,
-                         rom_definition: RomDefinition) -> str:
+    def _get_axis_format(
+        self, table: Table, axis_type: AxisType, rom_definition: RomDefinition
+    ) -> str:
         """Get format spec for axis values."""
         axis_table = table.get_axis(axis_type)
         if axis_table and axis_table.scaling:
@@ -1292,7 +1442,7 @@ class CompareWindow(QMainWindow):
     def closeEvent(self, event):
         """Clean up on close."""
         parent = self.parent()
-        if parent and hasattr(parent, 'compare_window'):
+        if parent and hasattr(parent, "compare_window"):
             parent.compare_window = None
         event.accept()
         self.deleteLater()

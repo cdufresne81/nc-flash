@@ -25,7 +25,12 @@ logger = logging.getLogger(__name__)
 class TableClipboardHelper:
     """Helper class for clipboard operations"""
 
-    def __init__(self, ctx: TableViewerContext, display: 'TableDisplayHelper', edit: 'TableEditHelper'):
+    def __init__(
+        self,
+        ctx: TableViewerContext,
+        display: "TableDisplayHelper",
+        edit: "TableEditHelper",
+    ):
         self.ctx = ctx
         self.display = display
         self.edit = edit
@@ -56,7 +61,9 @@ class TableClipboardHelper:
 
         clipboard_text = "\n".join(rows_text)
         QApplication.clipboard().setText(clipboard_text)
-        logger.debug(f"Copied {max_row - min_row + 1}x{max_col - min_col + 1} cells to clipboard")
+        logger.debug(
+            f"Copied {max_row - min_row + 1}x{max_col - min_col + 1} cells to clipboard"
+        )
 
     def paste_selection(self):
         """Paste clipboard content into selected cells"""
@@ -118,7 +125,7 @@ class TableClipboardHelper:
                     data_row, data_col = data_indices
 
                     # Get old value
-                    values = self.ctx.current_data['values']
+                    values = self.ctx.current_data["values"]
                     if values.ndim == 1:
                         old_value = float(values[data_row])
                     else:
@@ -130,7 +137,9 @@ class TableClipboardHelper:
 
                     # Validate against scaling if available
                     if self.ctx.rom_definition and self.ctx.current_table.scaling:
-                        scaling = self.ctx.rom_definition.get_scaling(self.ctx.current_table.scaling)
+                        scaling = self.ctx.rom_definition.get_scaling(
+                            self.ctx.current_table.scaling
+                        )
                         if scaling:
                             if scaling.min is not None and new_value < scaling.min:
                                 continue
@@ -145,22 +154,29 @@ class TableClipboardHelper:
 
                     # Update the internal data
                     if values.ndim == 1:
-                        self.ctx.current_data['values'][data_row] = new_value
+                        self.ctx.current_data["values"][data_row] = new_value
                     else:
-                        self.ctx.current_data['values'][data_row, data_col] = new_value
+                        self.ctx.current_data["values"][data_row, data_col] = new_value
 
                     # Update cell display
                     self.ctx.editing_in_progress = True
                     try:
                         value_fmt = self.display.get_value_format()
                         item.setText(self.display.format_value(new_value, value_fmt))
-                        color = self.display.get_cell_color(new_value, self.ctx.current_data['values'], data_row, data_col)
+                        color = self.display.get_cell_color(
+                            new_value,
+                            self.ctx.current_data["values"],
+                            data_row,
+                            data_col,
+                        )
                         item.setBackground(QBrush(color))
                     finally:
                         self.ctx.editing_in_progress = False
 
                         # Record change for signaling
-                        changes_made.append((data_row, data_col, old_value, new_value, old_raw, new_raw))
+                        changes_made.append(
+                            (data_row, data_col, old_value, new_value, old_raw, new_raw)
+                        )
 
             # Emit single bulk signal for atomic undo (matches operations.py pattern)
             if changes_made:
@@ -194,7 +210,9 @@ class TableClipboardHelper:
         QApplication.clipboard().setText(clipboard_text)
 
         table_name = self.ctx.current_table.name if self.ctx.current_table else "table"
-        logger.info(f"Copied entire table '{table_name}' ({row_count}x{col_count}) to clipboard")
+        logger.info(
+            f"Copied entire table '{table_name}' ({row_count}x{col_count}) to clipboard"
+        )
 
     def export_to_csv(self, rom_path: str = None):
         """
@@ -222,8 +240,10 @@ class TableClipboardHelper:
 
         # Sanitize table name for filename
         table_name = self.ctx.current_table.name
-        safe_table_name = "".join(c if c.isalnum() or c in (' ', '-', '_') else '_' for c in table_name)
-        safe_table_name = safe_table_name.replace(' ', '_')
+        safe_table_name = "".join(
+            c if c.isalnum() or c in (" ", "-", "_") else "_" for c in table_name
+        )
+        safe_table_name = safe_table_name.replace(" ", "_")
 
         filename = f"{rom_id}_{safe_table_name}.csv"
         filepath = export_dir / filename
@@ -233,7 +253,7 @@ class TableClipboardHelper:
         col_count = self.ctx.table_widget.columnCount()
 
         try:
-            with open(filepath, 'w', newline='', encoding='utf-8') as f:
+            with open(filepath, "w", newline="", encoding="utf-8") as f:
                 writer = csv.writer(f)
                 for row in range(row_count):
                     row_values = []

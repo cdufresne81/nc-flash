@@ -34,9 +34,15 @@ from src.utils.logging_config import setup_logging, get_logger
 from src.utils.paths import get_app_root
 from src.utils.settings import get_settings
 from src.utils.constants import (
-    APP_NAME, APP_VERSION_STRING, APP_DESCRIPTION,
-    MAIN_WINDOW_X, MAIN_WINDOW_Y, MAIN_WINDOW_WIDTH, MAIN_WINDOW_HEIGHT,
-    MAIN_SPLITTER_LEFT, MAIN_SPLITTER_RIGHT
+    APP_NAME,
+    APP_VERSION_STRING,
+    APP_DESCRIPTION,
+    MAIN_WINDOW_X,
+    MAIN_WINDOW_Y,
+    MAIN_WINDOW_WIDTH,
+    MAIN_WINDOW_HEIGHT,
+    MAIN_SPLITTER_LEFT,
+    MAIN_SPLITTER_RIGHT,
 )
 from src.core.definition_parser import load_definition
 from src.core.rom_reader import RomReader
@@ -55,7 +61,12 @@ from src.ui.setup_wizard import SetupWizard
 from src.ui.rom_document import RomDocument
 from src.core.project_manager import ProjectManager
 from src.core.change_tracker import ChangeTracker
-from src.core.table_undo_manager import TableUndoManager, make_table_key, extract_table_address, extract_rom_path
+from src.core.table_undo_manager import (
+    TableUndoManager,
+    make_table_key,
+    extract_table_address,
+    extract_rom_path,
+)
 from src.core.version_models import CellChange, AxisChange
 
 # Mixin classes — each handles one responsibility group
@@ -76,7 +87,7 @@ def handle_rom_operation_error(parent, operation: str, exception: Exception):
         exception: The exception that was raised
     """
     error_msg = f"Failed to {operation}:\n{str(exception)}"
-    logger.error(error_msg.replace('\n', ' '))
+    logger.error(error_msg.replace("\n", " "))
     QMessageBox.critical(parent, "Error", error_msg)
 
 
@@ -86,7 +97,9 @@ class MainWindow(QMainWindow, RecentFilesMixin, ProjectMixin, SessionMixin):
     def __init__(self):
         super().__init__()
         self.setWindowTitle(APP_NAME)
-        self.setGeometry(MAIN_WINDOW_X, MAIN_WINDOW_Y, MAIN_WINDOW_WIDTH, MAIN_WINDOW_HEIGHT)
+        self.setGeometry(
+            MAIN_WINDOW_X, MAIN_WINDOW_Y, MAIN_WINDOW_WIDTH, MAIN_WINDOW_HEIGHT
+        )
 
         logger.info("Initializing NC ROM Editor")
 
@@ -187,7 +200,7 @@ class MainWindow(QMainWindow, RecentFilesMixin, ProjectMixin, SessionMixin):
                     self,
                     "Setup Required",
                     f"{APP_NAME} requires a definitions directory to function.\n"
-                    "Application will now exit."
+                    "Application will now exit.",
                 )
                 # Defer exit to the event loop so Qt can clean up properly
                 QTimer.singleShot(0, lambda: sys.exit(1))
@@ -197,21 +210,25 @@ class MainWindow(QMainWindow, RecentFilesMixin, ProjectMixin, SessionMixin):
         try:
             definitions_dir = self.settings.get_definitions_directory()
             self.rom_detector = RomDetector(definitions_dir)
-            logger.info(f"ROM detector initialized successfully (definitions: {definitions_dir})")
+            logger.info(
+                f"ROM detector initialized successfully (definitions: {definitions_dir})"
+            )
         except DetectionError as e:
             logger.error(f"Failed to initialize ROM detector: {e}")
             QMessageBox.critical(
                 self,
                 "Initialization Error",
-                f"Failed to initialize ROM detector:\n{str(e)}"
+                f"Failed to initialize ROM detector:\n{str(e)}",
             )
             self.rom_detector = None
         except Exception as e:
-            logger.exception(f"Unexpected error initializing ROM detector: {type(e).__name__}: {e}")
+            logger.exception(
+                f"Unexpected error initializing ROM detector: {type(e).__name__}: {e}"
+            )
             QMessageBox.critical(
                 self,
                 "Initialization Error",
-                f"Unexpected error initializing ROM detector:\n{type(e).__name__}: {e}"
+                f"Unexpected error initializing ROM detector:\n{type(e).__name__}: {e}",
             )
             self.rom_detector = None
 
@@ -243,7 +260,9 @@ class MainWindow(QMainWindow, RecentFilesMixin, ProjectMixin, SessionMixin):
         # Check if directory contains at least one XML file
         xml_files = list(definitions_path.glob("*.xml"))
         if not xml_files:
-            logger.warning(f"No XML files found in definitions directory: {definitions_dir}")
+            logger.warning(
+                f"No XML files found in definitions directory: {definitions_dir}"
+            )
             return False
 
         return True
@@ -348,11 +367,15 @@ class MainWindow(QMainWindow, RecentFilesMixin, ProjectMixin, SessionMixin):
 
         # Use QUndoGroup's createUndoAction/createRedoAction for per-table undo/redo
         # These actions automatically enable/disable based on active stack state
-        self.undo_action = self.table_undo_manager.undo_group.createUndoAction(self, "Undo")
+        self.undo_action = self.table_undo_manager.undo_group.createUndoAction(
+            self, "Undo"
+        )
         self.undo_action.setShortcut("Ctrl+Z")
         edit_menu.addAction(self.undo_action)
 
-        self.redo_action = self.table_undo_manager.undo_group.createRedoAction(self, "Redo")
+        self.redo_action = self.table_undo_manager.undo_group.createRedoAction(
+            self, "Redo"
+        )
         self.redo_action.setShortcut("Ctrl+Y")
         edit_menu.addAction(self.redo_action)
 
@@ -493,10 +516,17 @@ class MainWindow(QMainWindow, RecentFilesMixin, ProjectMixin, SessionMixin):
             # Lightning bolt
             from PySide6.QtCore import QPointF
             from PySide6.QtGui import QPolygonF
-            bolt = QPolygonF([
-                QPointF(11, 2), QPointF(6, 10), QPointF(10, 10),
-                QPointF(9, 18), QPointF(14, 9), QPointF(10, 9),
-            ])
+
+            bolt = QPolygonF(
+                [
+                    QPointF(11, 2),
+                    QPointF(6, 10),
+                    QPointF(10, 10),
+                    QPointF(9, 18),
+                    QPointF(14, 9),
+                    QPointF(10, 9),
+                ]
+            )
             p.setBrush(c)
             p.drawPolygon(bolt)
 
@@ -505,6 +535,7 @@ class MainWindow(QMainWindow, RecentFilesMixin, ProjectMixin, SessionMixin):
             from math import cos, sin, pi
             from PySide6.QtCore import QPointF
             from PySide6.QtGui import QPolygonF
+
             cx, cy, r_out, r_in = 10, 10, 8.5, 5.5
             teeth = 6
             tooth_half = 0.28  # half-width of tooth in radians fraction
@@ -512,12 +543,31 @@ class MainWindow(QMainWindow, RecentFilesMixin, ProjectMixin, SessionMixin):
             for i in range(teeth):
                 a = 2 * pi * i / teeth - pi / 2
                 # Outer edge of tooth (two corners)
-                pts.append(QPointF(cx + r_out * cos(a - tooth_half), cy + r_out * sin(a - tooth_half)))
-                pts.append(QPointF(cx + r_out * cos(a + tooth_half), cy + r_out * sin(a + tooth_half)))
+                pts.append(
+                    QPointF(
+                        cx + r_out * cos(a - tooth_half),
+                        cy + r_out * sin(a - tooth_half),
+                    )
+                )
+                pts.append(
+                    QPointF(
+                        cx + r_out * cos(a + tooth_half),
+                        cy + r_out * sin(a + tooth_half),
+                    )
+                )
                 # Inner edge (valley between teeth)
                 a_next = 2 * pi * (i + 0.5) / teeth - pi / 2
-                pts.append(QPointF(cx + r_in * cos(a + tooth_half), cy + r_in * sin(a + tooth_half)))
-                pts.append(QPointF(cx + r_in * cos(a_next + tooth_half), cy + r_in * sin(a_next + tooth_half)))
+                pts.append(
+                    QPointF(
+                        cx + r_in * cos(a + tooth_half), cy + r_in * sin(a + tooth_half)
+                    )
+                )
+                pts.append(
+                    QPointF(
+                        cx + r_in * cos(a_next + tooth_half),
+                        cy + r_in * sin(a_next + tooth_half),
+                    )
+                )
             poly = QPolygonF(pts)
             p.setBrush(Qt.NoBrush)
             p.drawPolygon(poly)
@@ -527,6 +577,7 @@ class MainWindow(QMainWindow, RecentFilesMixin, ProjectMixin, SessionMixin):
         elif name in ("mcp_on", "mcp_off"):
             # Broadcast / antenna icon — circle with signal waves
             from PySide6.QtCore import QPointF, QRectF
+
             cx, cy = 10, 14
             # Antenna base dot
             if name == "mcp_on":
@@ -573,10 +624,11 @@ class MainWindow(QMainWindow, RecentFilesMixin, ProjectMixin, SessionMixin):
         # Use Path comparison to handle slash normalization on Windows
         # (QFileDialog returns forward slashes, Path uses backslashes)
         from pathlib import Path as _Path
+
         target = _Path(rom_path)
         for i in range(self.tab_widget.count()):
             doc = self.tab_widget.widget(i)
-            if hasattr(doc, 'rom_path') and _Path(doc.rom_path) == target:
+            if hasattr(doc, "rom_path") and _Path(doc.rom_path) == target:
                 return doc
         logger.warning(f"No document found for rom_path={rom_path}")
         return None
@@ -588,11 +640,15 @@ class MainWindow(QMainWindow, RecentFilesMixin, ProjectMixin, SessionMixin):
         """
         for i in range(self.tab_widget.count()):
             doc = self.tab_widget.widget(i)
-            if not hasattr(doc, 'rom_path'):
+            if not hasattr(doc, "rom_path"):
                 continue
             if rom_path and Path(doc.rom_path) == Path(rom_path):
                 return i
-            if project_path and getattr(doc, 'project_path', None) and Path(doc.project_path) == Path(project_path):
+            if (
+                project_path
+                and getattr(doc, "project_path", None)
+                and Path(doc.project_path) == Path(project_path)
+            ):
                 return i
         return -1
 
@@ -613,7 +669,7 @@ class MainWindow(QMainWindow, RecentFilesMixin, ProjectMixin, SessionMixin):
                 "Unsaved Changes",
                 f"'{document.file_name}' has unsaved changes.\n\nDo you want to save before closing?",
                 QMessageBox.Save | QMessageBox.Discard | QMessageBox.Cancel,
-                QMessageBox.Save
+                QMessageBox.Save,
             )
 
             if response == QMessageBox.Cancel:
@@ -625,17 +681,22 @@ class MainWindow(QMainWindow, RecentFilesMixin, ProjectMixin, SessionMixin):
         if document:
             # Use rom_reader.rom_path (Path) for consistent comparison
             # (document.rom_path is str, window.rom_path is Path)
-            rom_path = document.rom_reader.rom_path if hasattr(document, 'rom_reader') and document.rom_reader else None
+            rom_path = (
+                document.rom_reader.rom_path
+                if hasattr(document, "rom_reader") and document.rom_reader
+                else None
+            )
 
             # Close all open table windows belonging to this ROM
-            windows_to_close = [w for w in self.open_table_windows
-                                if w.rom_path == rom_path]
+            windows_to_close = [
+                w for w in self.open_table_windows if w.rom_path == rom_path
+            ]
             for window in windows_to_close:
                 window.close()
 
             # Collect composite keys for this ROM's tables
             table_keys = set()
-            if hasattr(document, 'rom_reader') and document.rom_reader:
+            if hasattr(document, "rom_reader") and document.rom_reader:
                 definition = document.rom_reader.definition
                 if definition:
                     for table in definition.tables:
@@ -688,7 +749,9 @@ class MainWindow(QMainWindow, RecentFilesMixin, ProjectMixin, SessionMixin):
             # First ROM — keep default gray
             self.rom_colors[rom_path] = None
         else:
-            color = self._color_palette[self._next_color_index % len(self._color_palette)]
+            color = self._color_palette[
+                self._next_color_index % len(self._color_palette)
+            ]
             self.rom_colors[rom_path] = color
             self._next_color_index += 1
         return self.rom_colors[rom_path]
@@ -701,7 +764,9 @@ class MainWindow(QMainWindow, RecentFilesMixin, ProjectMixin, SessionMixin):
         btn.setAutoRaise(True)
         self._style_color_button(btn, color)
         btn.clicked.connect(lambda: self._pick_rom_color(rom_path))
-        self.tab_widget.tabBar().setTabButton(tab_index, self.tab_widget.tabBar().ButtonPosition.LeftSide, btn)
+        self.tab_widget.tabBar().setTabButton(
+            tab_index, self.tab_widget.tabBar().ButtonPosition.LeftSide, btn
+        )
 
     def _style_color_button(self, btn, color):
         """Apply color swatch styling to a tab button."""
@@ -729,8 +794,15 @@ class MainWindow(QMainWindow, RecentFilesMixin, ProjectMixin, SessionMixin):
         # Update the tab color button
         for i in range(self.tab_widget.count()):
             doc = self.tab_widget.widget(i)
-            if doc and hasattr(doc, 'rom_reader') and doc.rom_reader and doc.rom_reader.rom_path == rom_path:
-                btn = self.tab_widget.tabBar().tabButton(i, self.tab_widget.tabBar().ButtonPosition.LeftSide)
+            if (
+                doc
+                and hasattr(doc, "rom_reader")
+                and doc.rom_reader
+                and doc.rom_reader.rom_path == rom_path
+            ):
+                btn = self.tab_widget.tabBar().tabButton(
+                    i, self.tab_widget.tabBar().ButtonPosition.LeftSide
+                )
                 if btn:
                     self._style_color_button(btn, color)
                 break
@@ -754,10 +826,7 @@ class MainWindow(QMainWindow, RecentFilesMixin, ProjectMixin, SessionMixin):
     def open_file(self):
         """Open a ROM file or project via file dialog."""
         file_path, _ = QFileDialog.getOpenFileName(
-            self,
-            "Open ROM File",
-            "",
-            "ROM Files (*.bin *.rom);;All Files (*)"
+            self, "Open ROM File", "", "ROM Files (*.bin *.rom);;All Files (*)"
         )
         if not file_path:
             return
@@ -786,7 +855,7 @@ class MainWindow(QMainWindow, RecentFilesMixin, ProjectMixin, SessionMixin):
 
             for i in range(self.tab_widget.count()):
                 doc = self.tab_widget.widget(i)
-                if not hasattr(doc, 'rom_path'):
+                if not hasattr(doc, "rom_path"):
                     continue
                 romid = doc.rom_definition.romid
                 entry = {
@@ -842,13 +911,22 @@ class MainWindow(QMainWindow, RecentFilesMixin, ProjectMixin, SessionMixin):
             self._start_command_server()
 
             self._mcp_process = subprocess.Popen(
-                [sys.executable, "-m", "src.mcp.server",
-                 "--transport", "sse", "--port", str(self.MCP_SSE_PORT)],
+                [
+                    sys.executable,
+                    "-m",
+                    "src.mcp.server",
+                    "--transport",
+                    "sse",
+                    "--port",
+                    str(self.MCP_SSE_PORT),
+                ],
                 cwd=str(get_app_root()),
                 stderr=subprocess.PIPE,
             )
-            logger.info(f"MCP server started (PID {self._mcp_process.pid},"
-                        f" SSE on http://127.0.0.1:{self.MCP_SSE_PORT}/sse)")
+            logger.info(
+                f"MCP server started (PID {self._mcp_process.pid},"
+                f" SSE on http://127.0.0.1:{self.MCP_SSE_PORT}/sse)"
+            )
             self._update_mcp_ui(running=True)
             self._write_workspace_state()
         except Exception as e:
@@ -889,7 +967,9 @@ class MainWindow(QMainWindow, RecentFilesMixin, ProjectMixin, SessionMixin):
         self.mcp_action.setChecked(running)
         url = f"http://127.0.0.1:{self.MCP_SSE_PORT}/sse"
         if running:
-            self.mcp_action.setText(f"&MCP Server (Running on port {self.MCP_SSE_PORT})")
+            self.mcp_action.setText(
+                f"&MCP Server (Running on port {self.MCP_SSE_PORT})"
+            )
             self._toolbar_mcp.setIcon(self._make_icon("mcp_on"))
             self._toolbar_mcp.setToolTip(f"MCP Server running — {url}\nClick to stop")
             self.statusBar().showMessage(f"MCP server started on {url}", 5000)
@@ -920,7 +1000,9 @@ class MainWindow(QMainWindow, RecentFilesMixin, ProjectMixin, SessionMixin):
         layout.addWidget(QLabel(f"MCP server is running at <b>{url}</b>"))
         layout.addWidget(QLabel(""))
 
-        layout.addWidget(QLabel("<b>Claude Code</b> — already configured via .mcp.json"))
+        layout.addWidget(
+            QLabel("<b>Claude Code</b> — already configured via .mcp.json")
+        )
         layout.addWidget(QLabel(""))
 
         label = QLabel(
@@ -941,7 +1023,9 @@ class MainWindow(QMainWindow, RecentFilesMixin, ProjectMixin, SessionMixin):
 
         btn_row = QHBoxLayout()
         copy_btn = QPushButton("Copy to Clipboard")
-        copy_btn.clicked.connect(lambda: QApplication.clipboard().setText(config_snippet))
+        copy_btn.clicked.connect(
+            lambda: QApplication.clipboard().setText(config_snippet)
+        )
         copy_btn.clicked.connect(lambda: copy_btn.setText("Copied!"))
         btn_row.addStretch()
         btn_row.addWidget(copy_btn)
@@ -957,7 +1041,9 @@ class MainWindow(QMainWindow, RecentFilesMixin, ProjectMixin, SessionMixin):
         layout.addWidget(note)
 
         layout.addWidget(QLabel(""))
-        layout.addWidget(QLabel("The server will stay running until you stop it or close the app."))
+        layout.addWidget(
+            QLabel("The server will stay running until you stop it or close the app.")
+        )
 
         buttons = QDialogButtonBox(QDialogButtonBox.Ok)
         buttons.accepted.connect(dlg.accept)
@@ -972,9 +1058,12 @@ class MainWindow(QMainWindow, RecentFilesMixin, ProjectMixin, SessionMixin):
         if self._command_server is not None and self._command_server.is_running:
             return
         from src.api.command_server import CommandServer
+
         self._command_server = CommandServer(self._handle_api_request, self)
         if not self._command_server.start():
-            logger.warning("Command API server failed to start — live MCP tools will be unavailable")
+            logger.warning(
+                "Command API server failed to start — live MCP tools will be unavailable"
+            )
             self._command_server = None
 
     def _stop_command_server(self):
@@ -1015,7 +1104,10 @@ class MainWindow(QMainWindow, RecentFilesMixin, ProjectMixin, SessionMixin):
         if not document:
             return {"success": False, "error": f"ROM not open in app: {rom_path}"}
 
-        from src.core.table_undo_manager import make_table_key, extract_rom_path as _extract_rom_path
+        from src.core.table_undo_manager import (
+            make_table_key,
+            extract_rom_path as _extract_rom_path,
+        )
 
         rom_path_str = str(Path(rom_path))
         tables = []
@@ -1024,10 +1116,12 @@ class MainWindow(QMainWindow, RecentFilesMixin, ProjectMixin, SessionMixin):
                 continue
             key_rom = _extract_rom_path(key)
             if key_rom == rom_path_str or key_rom == str(Path(rom_path).resolve()):
-                tables.append({
-                    "name": pending.table_name,
-                    "changed_cells": len(pending.changes),
-                })
+                tables.append(
+                    {
+                        "name": pending.table_name,
+                        "changed_cells": len(pending.changes),
+                    }
+                )
 
         return {"success": True, "tables": tables}
 
@@ -1046,7 +1140,10 @@ class MainWindow(QMainWindow, RecentFilesMixin, ProjectMixin, SessionMixin):
 
         data = document.rom_reader.read_table_data(table)
         if data is None:
-            return {"success": False, "error": f"Failed to read table data: {table_name}"}
+            return {
+                "success": False,
+                "error": f"Failed to read table data: {table_name}",
+            }
 
         # Format identically to RomContext.read_table()
         from src.mcp.rom_context import _printf_to_python_format, _format_value
@@ -1085,7 +1182,9 @@ class MainWindow(QMainWindow, RecentFilesMixin, ProjectMixin, SessionMixin):
             )
             result["values"] = [_format_value(v, fmt_spec) for v in values.flat]
             if "y_axis" in data and y_axis_table:
-                result["y_axis"] = self._api_format_axis(y_axis_table, data["y_axis"], document.rom_definition)
+                result["y_axis"] = self._api_format_axis(
+                    y_axis_table, data["y_axis"], document.rom_definition
+                )
 
         elif table.type == TableType.THREE_D:
             x_axis_table = table.x_axis
@@ -1100,17 +1199,24 @@ class MainWindow(QMainWindow, RecentFilesMixin, ProjectMixin, SessionMixin):
             result["values"] = grid
 
             if "x_axis" in data and x_axis_table:
-                result["x_axis"] = self._api_format_axis(x_axis_table, data["x_axis"], document.rom_definition)
+                result["x_axis"] = self._api_format_axis(
+                    x_axis_table, data["x_axis"], document.rom_definition
+                )
             if "y_axis" in data and y_axis_table:
-                result["y_axis"] = self._api_format_axis(y_axis_table, data["y_axis"], document.rom_definition)
+                result["y_axis"] = self._api_format_axis(
+                    y_axis_table, data["y_axis"], document.rom_definition
+                )
 
         return result
 
     def _api_format_axis(self, axis_table, axis_values, definition):
         """Format an axis for API response (mirrors RomContext._format_axis)."""
         from src.mcp.rom_context import _printf_to_python_format, _format_value
+
         axis_scaling = definition.get_scaling(axis_table.scaling)
-        axis_fmt = _printf_to_python_format(axis_scaling.format) if axis_scaling else ".2f"
+        axis_fmt = (
+            _printf_to_python_format(axis_scaling.format) if axis_scaling else ".2f"
+        )
         return {
             "name": axis_table.name,
             "units": axis_scaling.units if axis_scaling else "",
@@ -1142,7 +1248,10 @@ class MainWindow(QMainWindow, RecentFilesMixin, ProjectMixin, SessionMixin):
         # Read current values for undo tracking
         old_data = document.rom_reader.read_table_data(table)
         if old_data is None:
-            return {"success": False, "error": f"Failed to read table data: {table_name}"}
+            return {
+                "success": False,
+                "error": f"Failed to read table data: {table_name}",
+            }
 
         old_vals = old_data["values"]
         scaling = document.rom_definition.get_scaling(table.scaling)
@@ -1174,7 +1283,9 @@ class MainWindow(QMainWindow, RecentFilesMixin, ProjectMixin, SessionMixin):
                 continue
 
             if r < 0 or r >= max_rows or c < 0 or c >= max_cols:
-                errors.append(f"Cell ({r},{c}) out of range for {table_name} ({max_rows}x{max_cols})")
+                errors.append(
+                    f"Cell ({r},{c}) out of range for {table_name} ({max_rows}x{max_cols})"
+                )
                 continue
 
             try:
@@ -1191,8 +1302,16 @@ class MainWindow(QMainWindow, RecentFilesMixin, ProjectMixin, SessionMixin):
 
             # Convert display values to raw
             try:
-                old_raw = float(converter.from_display(old_display_val)) if converter else old_display_val
-                new_raw = float(converter.from_display(new_display_val)) if converter else new_display_val
+                old_raw = (
+                    float(converter.from_display(old_display_val))
+                    if converter
+                    else old_display_val
+                )
+                new_raw = (
+                    float(converter.from_display(new_display_val))
+                    if converter
+                    else new_display_val
+                )
             except Exception as e:
                 errors.append(f"Failed to convert value {new_display_val}: {e}")
                 continue
@@ -1203,7 +1322,11 @@ class MainWindow(QMainWindow, RecentFilesMixin, ProjectMixin, SessionMixin):
             return {"success": False, "error": "; ".join(errors)}
 
         if not changes:
-            return {"success": True, "cells_modified": 0, "message": "No changes needed"}
+            return {
+                "success": True,
+                "cells_modified": 0,
+                "message": "No changes needed",
+            }
 
         # Capture originals for border tracking (same as apply_compare_copy)
         rom_path_key = document.rom_reader.rom_path
@@ -1212,15 +1335,27 @@ class MainWindow(QMainWindow, RecentFilesMixin, ProjectMixin, SessionMixin):
         if table.address not in self.original_table_values[rom_path_key]:
             self.original_table_values[rom_path_key][table.address] = {
                 "values": np.copy(old_data["values"]),
-                "x_axis": np.copy(old_data["x_axis"]) if old_data.get("x_axis") is not None else None,
-                "y_axis": np.copy(old_data["y_axis"]) if old_data.get("y_axis") is not None else None,
+                "x_axis": (
+                    np.copy(old_data["x_axis"])
+                    if old_data.get("x_axis") is not None
+                    else None
+                ),
+                "y_axis": (
+                    np.copy(old_data["y_axis"])
+                    if old_data.get("y_axis") is not None
+                    else None
+                ),
             }
 
         # Record undo + change tracking
         desc = f"AI: edit {len(changes)} cell(s) in {table_name}"
         table_key = make_table_key(rom_path_key, table.address)
-        self.table_undo_manager.record_bulk_cell_changes(table, changes, desc, rom_path=rom_path_key)
-        self.change_tracker.record_pending_bulk_changes(table, changes, rom_path=rom_path_key)
+        self.table_undo_manager.record_bulk_cell_changes(
+            table, changes, desc, rom_path=rom_path_key
+        )
+        self.change_tracker.record_pending_bulk_changes(
+            table, changes, rom_path=rom_path_key
+        )
         # Activate this table's undo stack so Ctrl+Z targets the AI edit
         self.table_undo_manager.set_active_stack(table_key)
 
@@ -1270,8 +1405,9 @@ class MainWindow(QMainWindow, RecentFilesMixin, ProjectMixin, SessionMixin):
         if existing >= 0:
             self.tab_widget.setCurrentIndex(existing)
             QMessageBox.information(
-                self, "Already Open",
-                f"This ROM is already open.\n\n{Path(file_path).name}"
+                self,
+                "Already Open",
+                f"This ROM is already open.\n\n{Path(file_path).name}",
             )
             return
 
@@ -1285,7 +1421,7 @@ class MainWindow(QMainWindow, RecentFilesMixin, ProjectMixin, SessionMixin):
                 QMessageBox.critical(
                     self,
                     "Error",
-                    "ROM detector not initialized. Cannot auto-detect ROM type."
+                    "ROM detector not initialized. Cannot auto-detect ROM type.",
                 )
                 return
 
@@ -1297,15 +1433,21 @@ class MainWindow(QMainWindow, RecentFilesMixin, ProjectMixin, SessionMixin):
                     self,
                     "Unknown ROM",
                     "Could not identify ROM type. No matching definition found.\n\n"
-                    "Supported ROM IDs:\n" +
-                    "\n".join([f"  - {info['xmlid']} ({info['make']} {info['model']})"
-                               for info in self.rom_detector.get_definitions_summary()])
+                    "Supported ROM IDs:\n"
+                    + "\n".join(
+                        [
+                            f"  - {info['xmlid']} ({info['make']} {info['model']})"
+                            for info in self.rom_detector.get_definitions_summary()
+                        ]
+                    ),
                 )
                 return
 
             # Load the matching definition
             logger.info(f"Detected ROM ID: {rom_id}")
-            self.statusBar().showMessage(f"Detected ROM ID: {rom_id}, loading definition...")
+            self.statusBar().showMessage(
+                f"Detected ROM ID: {rom_id}, loading definition..."
+            )
             rom_definition = load_definition(xml_path)
 
             # Create ROM reader
@@ -1320,13 +1462,15 @@ class MainWindow(QMainWindow, RecentFilesMixin, ProjectMixin, SessionMixin):
                     "ROM ID Warning",
                     f"ROM ID verification failed. This should not happen after auto-detection.\n"
                     f"Expected: {rom_definition.romid.internalidstring}\n"
-                    f"This may indicate a detection bug."
+                    f"This may indicate a detection bug.",
                 )
 
             # Create ROM document widget
             rom_document = RomDocument(file_path, rom_definition, rom_reader, self)
             rom_document.table_selected.connect(self.on_table_selected)
-            rom_document.modified_changed.connect(lambda modified, doc=rom_document: self._update_tab_title(doc))
+            rom_document.modified_changed.connect(
+                lambda modified, doc=rom_document: self._update_tab_title(doc)
+            )
 
             # Assign a color for this ROM (first ROM = default gray)
             rom_path = rom_reader.rom_path
@@ -1348,7 +1492,9 @@ class MainWindow(QMainWindow, RecentFilesMixin, ProjectMixin, SessionMixin):
             logger.info(f"ROM LOADED: {file_name}")
             logger.info(f"  ROM ID: {rom_id}")
             logger.info(f"  Definition: {rom_definition.romid.xmlid}")
-            logger.info(f"  Make/Model: {rom_definition.romid.make} {rom_definition.romid.model}")
+            logger.info(
+                f"  Make/Model: {rom_definition.romid.make} {rom_definition.romid.model}"
+            )
             logger.info(f"  Tables: {len(rom_definition.tables)}")
             logger.info(f"  Size: {len(rom_reader.rom_data):,} bytes")
             logger.info(f"  Tab: {tab_index + 1}")
@@ -1365,15 +1511,23 @@ class MainWindow(QMainWindow, RecentFilesMixin, ProjectMixin, SessionMixin):
         except (DetectionError, RomFileError, DefinitionError) as e:
             handle_rom_operation_error(self, "open ROM file", e)
         except Exception as e:
-            logger.error(f"Unexpected error opening ROM file: {type(e).__name__}: {e}", exc_info=True)
+            logger.error(
+                f"Unexpected error opening ROM file: {type(e).__name__}: {e}",
+                exc_info=True,
+            )
             QMessageBox.critical(
-                self, "Error",
-                f"Unexpected error opening ROM file:\n{type(e).__name__}: {e}"
+                self,
+                "Error",
+                f"Unexpected error opening ROM file:\n{type(e).__name__}: {e}",
             )
 
     def _save(self):
         """Unified save: commit if project is open with changes, otherwise save ROM."""
-        if self.projects_enabled and self.project_manager.is_project_open() and self.change_tracker.has_pending_changes():
+        if (
+            self.projects_enabled
+            and self.project_manager.is_project_open()
+            and self.change_tracker.has_pending_changes()
+        ):
             self.commit_changes()
         else:
             self.save_rom()
@@ -1401,17 +1555,19 @@ class MainWindow(QMainWindow, RecentFilesMixin, ProjectMixin, SessionMixin):
             self.statusBar().showMessage(f"Saved: {document.rom_path}")
             self._write_workspace_state()
             QMessageBox.information(
-                self,
-                "Success",
-                f"ROM saved successfully to:\n{document.rom_path}"
+                self, "Success", f"ROM saved successfully to:\n{document.rom_path}"
             )
         except RomFileError as e:
             handle_rom_operation_error(self, "save ROM file", e)
         except Exception as e:
-            logger.error(f"Unexpected error saving ROM file: {type(e).__name__}: {e}", exc_info=True)
+            logger.error(
+                f"Unexpected error saving ROM file: {type(e).__name__}: {e}",
+                exc_info=True,
+            )
             QMessageBox.critical(
-                self, "Error",
-                f"Unexpected error saving ROM file:\n{type(e).__name__}: {e}"
+                self,
+                "Error",
+                f"Unexpected error saving ROM file:\n{type(e).__name__}: {e}",
             )
 
     def save_rom_as(self):
@@ -1422,10 +1578,7 @@ class MainWindow(QMainWindow, RecentFilesMixin, ProjectMixin, SessionMixin):
             return
 
         file_path, _ = QFileDialog.getSaveFileName(
-            self,
-            "Save ROM File As",
-            "",
-            "ROM Files (*.bin);;All Files (*)"
+            self, "Save ROM File As", "", "ROM Files (*.bin);;All Files (*)"
         )
 
         if file_path:
@@ -1448,17 +1601,19 @@ class MainWindow(QMainWindow, RecentFilesMixin, ProjectMixin, SessionMixin):
 
                 self.statusBar().showMessage(f"Saved: {file_path}")
                 QMessageBox.information(
-                    self,
-                    "Success",
-                    f"ROM saved successfully to:\n{file_path}"
+                    self, "Success", f"ROM saved successfully to:\n{file_path}"
                 )
             except RomFileError as e:
                 handle_rom_operation_error(self, "save ROM file", e)
             except Exception as e:
-                logger.error(f"Unexpected error saving ROM file: {type(e).__name__}: {e}", exc_info=True)
+                logger.error(
+                    f"Unexpected error saving ROM file: {type(e).__name__}: {e}",
+                    exc_info=True,
+                )
                 QMessageBox.critical(
-                    self, "Error",
-                    f"Unexpected error saving ROM file:\n{type(e).__name__}: {e}"
+                    self,
+                    "Error",
+                    f"Unexpected error saving ROM file:\n{type(e).__name__}: {e}",
                 )
 
     # ========== ROM Comparison ==========
@@ -1467,16 +1622,21 @@ class MainWindow(QMainWindow, RecentFilesMixin, ProjectMixin, SessionMixin):
         """Enable/disable the Compare and Flash actions based on open ROM count."""
         compare_enabled = self.tab_widget.count() >= 2
         self.compare_action.setEnabled(compare_enabled)
-        if hasattr(self, '_toolbar_compare'):
+        if hasattr(self, "_toolbar_compare"):
             self._toolbar_compare.setEnabled(compare_enabled)
 
         flash_enabled = self.tab_widget.count() >= 1
         self.flash_action.setEnabled(flash_enabled)
-        if hasattr(self, '_toolbar_flash'):
+        if hasattr(self, "_toolbar_flash"):
             self._toolbar_flash.setEnabled(flash_enabled)
 
-    def apply_compare_copy(self, dst_reader: 'RomReader', dst_table: 'Table',
-                           dst_definition: 'RomDefinition', src_data: dict):
+    def apply_compare_copy(
+        self,
+        dst_reader: "RomReader",
+        dst_table: "Table",
+        dst_definition: "RomDefinition",
+        src_data: dict,
+    ):
         """Apply a table copy from the compare window through the full edit pipeline.
 
         This routes through undo, change tracking, ROM write, and modified
@@ -1500,19 +1660,28 @@ class MainWindow(QMainWindow, RecentFilesMixin, ProjectMixin, SessionMixin):
         # Must happen before ROM writes so _check_and_remove_border_if_original
         # uses the true original when undoing (even if the table viewer opens later).
         import numpy as np
+
         old_data = dst_reader.read_table_data(dst_table)
         if rom_path not in self.original_table_values:
             self.original_table_values[rom_path] = {}
         if dst_table.address not in self.original_table_values[rom_path]:
             self.original_table_values[rom_path][dst_table.address] = {
                 "values": np.copy(old_data["values"]),
-                "x_axis": np.copy(old_data["x_axis"]) if old_data.get("x_axis") is not None else None,
-                "y_axis": np.copy(old_data["y_axis"]) if old_data.get("y_axis") is not None else None,
+                "x_axis": (
+                    np.copy(old_data["x_axis"])
+                    if old_data.get("x_axis") is not None
+                    else None
+                ),
+                "y_axis": (
+                    np.copy(old_data["y_axis"])
+                    if old_data.get("y_axis") is not None
+                    else None
+                ),
             }
 
         # --- Value cells ---
-        old_vals = old_data['values']
-        new_vals = src_data['values']
+        old_vals = old_data["values"]
+        new_vals = src_data["values"]
 
         scaling = dst_definition.get_scaling(dst_table.scaling)
         converter = ScalingConverter(scaling) if scaling else None
@@ -1521,31 +1690,74 @@ class MainWindow(QMainWindow, RecentFilesMixin, ProjectMixin, SessionMixin):
         if old_vals.ndim == 1:
             for i in range(len(old_vals)):
                 if old_vals[i] != new_vals[i]:
-                    old_raw = converter.from_display(float(old_vals[i])) if converter else float(old_vals[i])
-                    new_raw = converter.from_display(float(new_vals[i])) if converter else float(new_vals[i])
-                    cell_changes.append((i, 0, float(old_vals[i]), float(new_vals[i]), float(old_raw), float(new_raw)))
+                    old_raw = (
+                        converter.from_display(float(old_vals[i]))
+                        if converter
+                        else float(old_vals[i])
+                    )
+                    new_raw = (
+                        converter.from_display(float(new_vals[i]))
+                        if converter
+                        else float(new_vals[i])
+                    )
+                    cell_changes.append(
+                        (
+                            i,
+                            0,
+                            float(old_vals[i]),
+                            float(new_vals[i]),
+                            float(old_raw),
+                            float(new_raw),
+                        )
+                    )
         else:
             rows, cols = old_vals.shape
             for r in range(rows):
                 for c in range(cols):
                     if old_vals[r, c] != new_vals[r, c]:
-                        old_raw = converter.from_display(float(old_vals[r, c])) if converter else float(old_vals[r, c])
-                        new_raw = converter.from_display(float(new_vals[r, c])) if converter else float(new_vals[r, c])
-                        cell_changes.append((r, c, float(old_vals[r, c]), float(new_vals[r, c]), float(old_raw), float(new_raw)))
+                        old_raw = (
+                            converter.from_display(float(old_vals[r, c]))
+                            if converter
+                            else float(old_vals[r, c])
+                        )
+                        new_raw = (
+                            converter.from_display(float(new_vals[r, c]))
+                            if converter
+                            else float(new_vals[r, c])
+                        )
+                        cell_changes.append(
+                            (
+                                r,
+                                c,
+                                float(old_vals[r, c]),
+                                float(new_vals[r, c]),
+                                float(old_raw),
+                                float(new_raw),
+                            )
+                        )
 
         if cell_changes:
             desc = f"Compare Copy: {dst_table.name}"
-            self.table_undo_manager.record_bulk_cell_changes(dst_table, cell_changes, desc, rom_path=rom_path)
-            self.change_tracker.record_pending_bulk_changes(dst_table, cell_changes, rom_path=rom_path)
+            self.table_undo_manager.record_bulk_cell_changes(
+                dst_table, cell_changes, desc, rom_path=rom_path
+            )
+            self.change_tracker.record_pending_bulk_changes(
+                dst_table, cell_changes, rom_path=rom_path
+            )
 
             def write_cells():
                 for row, col, _ov, _nv, _or, new_raw in cell_changes:
                     document.rom_reader.write_cell_value(dst_table, row, col, new_raw)
 
-            self._write_to_rom_and_mark_modified(document, write_cells, f"compare copy in {dst_table.name}")
+            self._write_to_rom_and_mark_modified(
+                document, write_cells, f"compare copy in {dst_table.name}"
+            )
 
         # --- Axis cells ---
-        for axis_type, axis_key in [(AxisType.Y_AXIS, 'y_axis'), (AxisType.X_AXIS, 'x_axis')]:
+        for axis_type, axis_key in [
+            (AxisType.Y_AXIS, "y_axis"),
+            (AxisType.X_AXIS, "x_axis"),
+        ]:
             src_axis = src_data.get(axis_key)
             old_axis = old_data.get(axis_key)
             axis_table = dst_table.get_axis(axis_type)
@@ -1558,20 +1770,45 @@ class MainWindow(QMainWindow, RecentFilesMixin, ProjectMixin, SessionMixin):
             axis_changes = []
             for i in range(min(len(old_axis), len(src_axis))):
                 if old_axis[i] != src_axis[i]:
-                    old_raw = axis_converter.from_display(float(old_axis[i])) if axis_converter else float(old_axis[i])
-                    new_raw = axis_converter.from_display(float(src_axis[i])) if axis_converter else float(src_axis[i])
-                    axis_changes.append((axis_key, i, float(old_axis[i]), float(src_axis[i]), float(old_raw), float(new_raw)))
+                    old_raw = (
+                        axis_converter.from_display(float(old_axis[i]))
+                        if axis_converter
+                        else float(old_axis[i])
+                    )
+                    new_raw = (
+                        axis_converter.from_display(float(src_axis[i]))
+                        if axis_converter
+                        else float(src_axis[i])
+                    )
+                    axis_changes.append(
+                        (
+                            axis_key,
+                            i,
+                            float(old_axis[i]),
+                            float(src_axis[i]),
+                            float(old_raw),
+                            float(new_raw),
+                        )
+                    )
 
             if axis_changes:
                 desc = f"Compare Copy Axis: {dst_table.name}"
-                self.table_undo_manager.record_axis_bulk_changes(dst_table, axis_changes, desc, rom_path=rom_path)
-                self.change_tracker.record_pending_axis_bulk_changes(dst_table, axis_changes, rom_path=rom_path)
+                self.table_undo_manager.record_axis_bulk_changes(
+                    dst_table, axis_changes, desc, rom_path=rom_path
+                )
+                self.change_tracker.record_pending_axis_bulk_changes(
+                    dst_table, axis_changes, rom_path=rom_path
+                )
 
                 def write_axes(changes=axis_changes):
                     for ax_type, idx, _ov, _nv, _or, new_raw in changes:
-                        document.rom_reader.write_axis_value(dst_table, ax_type, idx, new_raw)
+                        document.rom_reader.write_axis_value(
+                            dst_table, ax_type, idx, new_raw
+                        )
 
-                self._write_to_rom_and_mark_modified(document, write_axes, f"compare copy axis in {dst_table.name}")
+                self._write_to_rom_and_mark_modified(
+                    document, write_axes, f"compare copy axis in {dst_table.name}"
+                )
 
         # --- Update modified_cells for cell border highlighting ---
         if rom_path not in self.modified_cells:
@@ -1584,7 +1821,10 @@ class MainWindow(QMainWindow, RecentFilesMixin, ProjectMixin, SessionMixin):
                 self.modified_cells[rom_path][dst_table.address].add((row, col))
 
         # Update axis modified tracking
-        for axis_type, axis_key in [(AxisType.Y_AXIS, 'y_axis'), (AxisType.X_AXIS, 'x_axis')]:
+        for axis_type, axis_key in [
+            (AxisType.Y_AXIS, "y_axis"),
+            (AxisType.X_AXIS, "x_axis"),
+        ]:
             ak = f"{dst_table.address}:{axis_key}"
             src_axis = src_data.get(axis_key)
             old_axis = old_data.get(axis_key)
@@ -1598,6 +1838,7 @@ class MainWindow(QMainWindow, RecentFilesMixin, ProjectMixin, SessionMixin):
 
         # --- Refresh open table viewer windows showing this table ---
         from src.core.table_undo_manager import make_table_key
+
         table_key = make_table_key(rom_path, dst_table.address)
         window = self._find_table_window(table_key)
         if window:
@@ -1618,8 +1859,7 @@ class MainWindow(QMainWindow, RecentFilesMixin, ProjectMixin, SessionMixin):
         count = self.tab_widget.count()
         if count < 2:
             QMessageBox.information(
-                self, "Compare",
-                "Open at least two ROM files to compare."
+                self, "Compare", "Open at least two ROM files to compare."
             )
             return
 
@@ -1639,9 +1879,9 @@ class MainWindow(QMainWindow, RecentFilesMixin, ProjectMixin, SessionMixin):
                 rom_names.append(doc.file_name)
 
             from PySide6.QtWidgets import QInputDialog
+
             name_a, ok = QInputDialog.getItem(
-                self, "Compare ROMs", "Select original (base) ROM:",
-                rom_names, 0, False
+                self, "Compare ROMs", "Select original (base) ROM:", rom_names, 0, False
             )
             if not ok:
                 return
@@ -1649,8 +1889,7 @@ class MainWindow(QMainWindow, RecentFilesMixin, ProjectMixin, SessionMixin):
 
             remaining = [n for i, n in enumerate(rom_names) if i != idx_a]
             name_b, ok = QInputDialog.getItem(
-                self, "Compare ROMs", "Select modified ROM:",
-                remaining, 0, False
+                self, "Compare ROMs", "Select modified ROM:", remaining, 0, False
             )
             if not ok:
                 return
@@ -1663,22 +1902,28 @@ class MainWindow(QMainWindow, RecentFilesMixin, ProjectMixin, SessionMixin):
         color_a = self.rom_colors.get(doc_a.rom_reader.rom_path)
         color_b = self.rom_colors.get(doc_b.rom_reader.rom_path)
 
-        cross_def = (doc_a.rom_definition.romid.xmlid != doc_b.rom_definition.romid.xmlid)
+        cross_def = doc_a.rom_definition.romid.xmlid != doc_b.rom_definition.romid.xmlid
         self.statusBar().showMessage("Computing ROM differences...")
 
         window = CompareWindow(
-            doc_a.rom_reader, doc_b.rom_reader,
-            doc_a.rom_definition, doc_b.rom_definition,
-            color_a, color_b,
-            doc_a.file_name, doc_b.file_name,
+            doc_a.rom_reader,
+            doc_b.rom_reader,
+            doc_a.rom_definition,
+            doc_b.rom_definition,
+            color_a,
+            color_b,
+            doc_a.file_name,
+            doc_b.file_name,
             parent=self,
         )
 
         if not window.has_diffs:
             window.deleteLater()
-            msg = ("No comparable tables found between definitions."
-                   if cross_def else
-                   "ROMs are identical \u2014 no differences found.")
+            msg = (
+                "No comparable tables found between definitions."
+                if cross_def
+                else "ROMs are identical \u2014 no differences found."
+            )
             QMessageBox.information(self, "Compare", msg)
             self.statusBar().showMessage("No differences found.")
             return
@@ -1690,7 +1935,9 @@ class MainWindow(QMainWindow, RecentFilesMixin, ProjectMixin, SessionMixin):
         self.statusBar().showMessage(
             f"Comparing {doc_a.file_name} vs {doc_b.file_name} \u2014 {n} tables differ"
         )
-        logger.info(f"ROM comparison opened: {doc_a.file_name} vs {doc_b.file_name} ({n} tables differ)")
+        logger.info(
+            f"ROM comparison opened: {doc_a.file_name} vs {doc_b.file_name} ({n} tables differ)"
+        )
 
     def _on_flash_rom(self):
         """Launch RomDrop to flash the current ROM to the ECU."""
@@ -1703,18 +1950,20 @@ class MainWindow(QMainWindow, RecentFilesMixin, ProjectMixin, SessionMixin):
         romdrop_path = self.settings.get_romdrop_executable_path()
         if not romdrop_path:
             QMessageBox.warning(
-                self, "RomDrop Not Configured",
+                self,
+                "RomDrop Not Configured",
                 "RomDrop executable path is not configured.\n\n"
-                "Go to Edit → Settings → Tools to set the path to romdrop.exe."
+                "Go to Edit → Settings → Tools to set the path to romdrop.exe.",
             )
             return
 
         romdrop_exe = Path(romdrop_path)
         if not romdrop_exe.is_file():
             QMessageBox.warning(
-                self, "RomDrop Not Found",
+                self,
+                "RomDrop Not Found",
                 f"RomDrop executable not found at:\n{romdrop_path}\n\n"
-                "Check the path in Edit → Settings → Tools."
+                "Check the path in Edit → Settings → Tools.",
             )
             return
 
@@ -1757,8 +2006,9 @@ class MainWindow(QMainWindow, RecentFilesMixin, ProjectMixin, SessionMixin):
                 logger.info(f"Auto-saved ROM before flashing: {document.file_name}")
             except Exception as e:
                 QMessageBox.warning(
-                    self, "Save Failed",
-                    f"Failed to save ROM before flashing:\n{e}\n\nFlash aborted."
+                    self,
+                    "Save Failed",
+                    f"Failed to save ROM before flashing:\n{e}\n\nFlash aborted.",
                 )
                 return
 
@@ -1769,9 +2019,14 @@ class MainWindow(QMainWindow, RecentFilesMixin, ProjectMixin, SessionMixin):
                 # ShellExecuteW launches like a double-click:
                 # fully detached, own process group, and receives window focus
                 import ctypes
+
                 result = ctypes.windll.shell32.ShellExecuteW(
-                    None, "open", str(romdrop_exe), rom_file,
-                    str(romdrop_exe.parent), 1,  # SW_SHOWNORMAL
+                    None,
+                    "open",
+                    str(romdrop_exe),
+                    rom_file,
+                    str(romdrop_exe.parent),
+                    1,  # SW_SHOWNORMAL
                 )
                 if result <= 32:
                     raise OSError(f"ShellExecute failed with code {result}")
@@ -1786,8 +2041,7 @@ class MainWindow(QMainWindow, RecentFilesMixin, ProjectMixin, SessionMixin):
             self.statusBar().showMessage(f"Launched RomDrop with {document.file_name}")
         except OSError as e:
             QMessageBox.warning(
-                self, "Launch Failed",
-                f"Failed to launch RomDrop:\n{e}"
+                self, "Launch Failed", f"Failed to launch RomDrop:\n{e}"
             )
 
     # ========== Table Selection and Window Management ==========
@@ -1801,12 +2055,17 @@ class MainWindow(QMainWindow, RecentFilesMixin, ProjectMixin, SessionMixin):
             # Check if this table is already open for this ROM
             # Use address for comparison since table names may not be unique across categories
             for window in self.open_table_windows:
-                if window.rom_path == rom_path and window.table.address == table.address:
+                if (
+                    window.rom_path == rom_path
+                    and window.table.address == table.address
+                ):
                     # Window already exists - bring to focus
                     window.raise_()
                     window.activateWindow()
                     rom_label = Path(rom_path).stem
-                    logger.info(f"[{rom_label}] Table already open, bringing to focus: {table.name}")
+                    logger.info(
+                        f"[{rom_label}] Table already open, bringing to focus: {table.name}"
+                    )
                     self.statusBar().showMessage(f"Table already open: {table.name}")
                     return
 
@@ -1822,11 +2081,20 @@ class MainWindow(QMainWindow, RecentFilesMixin, ProjectMixin, SessionMixin):
                     self.original_table_values[rom_path] = {}
                 if table.address not in self.original_table_values[rom_path]:
                     import numpy as np
+
                     # Deep copy the original values
                     self.original_table_values[rom_path][table.address] = {
                         "values": np.copy(data["values"]),
-                        "x_axis": np.copy(data["x_axis"]) if data.get("x_axis") is not None else None,
-                        "y_axis": np.copy(data["y_axis"]) if data.get("y_axis") is not None else None,
+                        "x_axis": (
+                            np.copy(data["x_axis"])
+                            if data.get("x_axis") is not None
+                            else None
+                        ),
+                        "y_axis": (
+                            np.copy(data["y_axis"])
+                            if data.get("y_axis") is not None
+                            else None
+                        ),
                     }
 
                 # Initialize modified cells tracking for this ROM if needed
@@ -1835,8 +2103,11 @@ class MainWindow(QMainWindow, RecentFilesMixin, ProjectMixin, SessionMixin):
 
                 # Create and show new table viewer window
                 viewer_window = TableViewerWindow(
-                    table, data, rom_reader.definition,
-                    rom_path=rom_path, parent=self,
+                    table,
+                    data,
+                    rom_reader.definition,
+                    rom_path=rom_path,
+                    parent=self,
                     modified_cells_dict=self.modified_cells[rom_path],
                     original_values_dict=self.original_table_values[rom_path],
                     bg_color=self.rom_colors.get(rom_path),
@@ -1852,7 +2123,9 @@ class MainWindow(QMainWindow, RecentFilesMixin, ProjectMixin, SessionMixin):
                 viewer_window.axis_changed.connect(self._on_table_axis_changed)
 
                 # Connect axis_bulk_changes signal to change tracker
-                viewer_window.axis_bulk_changes.connect(self._on_table_axis_bulk_changes)
+                viewer_window.axis_bulk_changes.connect(
+                    self._on_table_axis_bulk_changes
+                )
 
                 # Connect window focus signal to highlight table in tree and activate undo stack
                 viewer_window.window_focused.connect(self._on_table_window_focused)
@@ -1864,7 +2137,9 @@ class MainWindow(QMainWindow, RecentFilesMixin, ProjectMixin, SessionMixin):
 
                 # Log to console
                 rom_label = Path(rom_path).stem
-                logger.info(f"[{rom_label}] Opened table: {table.name} ({table.address})")
+                logger.info(
+                    f"[{rom_label}] Opened table: {table.name} ({table.address})"
+                )
                 logger.debug(f"  Category: {table.category}")
                 logger.debug(f"  Type: {table.type.value}")
                 logger.debug(f"  Address: {table.address}")
@@ -1877,18 +2152,20 @@ class MainWindow(QMainWindow, RecentFilesMixin, ProjectMixin, SessionMixin):
             else:
                 logger.warning(f"No data returned for table: {table.name}")
                 QMessageBox.warning(
-                    self,
-                    "Error",
-                    f"Failed to read table data for: {table.name}"
+                    self, "Error", f"Failed to read table data for: {table.name}"
                 )
 
         except (ScalingNotFoundError, RomReadError) as e:
             handle_rom_operation_error(self, "load table", e)
         except Exception as e:
-            logger.error(f"Unexpected error loading table: {type(e).__name__}: {e}", exc_info=True)
+            logger.error(
+                f"Unexpected error loading table: {type(e).__name__}: {e}",
+                exc_info=True,
+            )
             QMessageBox.critical(
-                self, "Error",
-                f"Unexpected error loading table:\n{type(e).__name__}: {e}"
+                self,
+                "Error",
+                f"Unexpected error loading table:\n{type(e).__name__}: {e}",
             )
 
     def log_startup_message(self):
@@ -1920,7 +2197,7 @@ class MainWindow(QMainWindow, RecentFilesMixin, ProjectMixin, SessionMixin):
         table_address = extract_table_address(table_key)
 
         # Use cache during bulk operations to avoid per-cell window scans
-        cache = getattr(self, '_bulk_window_cache', None)
+        cache = getattr(self, "_bulk_window_cache", None)
         if cache is not None:
             if table_key in cache:
                 return cache[table_key]
@@ -1947,9 +2224,7 @@ class MainWindow(QMainWindow, RecentFilesMixin, ProjectMixin, SessionMixin):
         window = self._find_table_window(change.table_key or change.table_address)
         if window:
             # Update the viewer display
-            window.viewer.update_cell_value(
-                change.row, change.col, change.new_value
-            )
+            window.viewer.update_cell_value(change.row, change.col, change.new_value)
 
             # Write to the ROM that owns this table (not the active tab)
             document = self._find_document_by_rom_path(window.rom_path)
@@ -1961,9 +2236,13 @@ class MainWindow(QMainWindow, RecentFilesMixin, ProjectMixin, SessionMixin):
                 except RomWriteError as e:
                     logger.error(f"Failed to write cell value during undo/redo: {e}")
                 except Exception as e:
-                    logger.exception(f"Unexpected error writing cell value during undo/redo: {type(e).__name__}: {e}")
+                    logger.exception(
+                        f"Unexpected error writing cell value during undo/redo: {type(e).__name__}: {e}"
+                    )
 
-        logger.debug(f"Applied cell change: {change.table_name}[{change.row},{change.col}]")
+        logger.debug(
+            f"Applied cell change: {change.table_name}[{change.row},{change.col}]"
+        )
 
     def _apply_axis_change_from_undo(self, change: AxisChange):
         """
@@ -1987,9 +2266,13 @@ class MainWindow(QMainWindow, RecentFilesMixin, ProjectMixin, SessionMixin):
                 except RomWriteError as e:
                     logger.error(f"Failed to write axis value during undo/redo: {e}")
                 except Exception as e:
-                    logger.exception(f"Unexpected error writing axis value during undo/redo: {type(e).__name__}: {e}")
+                    logger.exception(
+                        f"Unexpected error writing axis value during undo/redo: {type(e).__name__}: {e}"
+                    )
 
-        logger.debug(f"Applied axis change: {change.table_name}[{change.axis_type}][{change.index}]")
+        logger.debug(
+            f"Applied axis change: {change.table_name}[{change.axis_type}][{change.index}]"
+        )
 
     def _update_pending_from_undo(self, change: CellChange, is_undo: bool):
         """
@@ -2026,8 +2309,8 @@ class MainWindow(QMainWindow, RecentFilesMixin, ProjectMixin, SessionMixin):
         for window in self.open_table_windows:
             if window.isVisible():
                 if table_key is None or (
-                    window.table.address == table_address and
-                    (rom_path_str is None or str(window.rom_path) == rom_path_str)
+                    window.table.address == table_address
+                    and (rom_path_str is None or str(window.rom_path) == rom_path_str)
                 ):
                     window.viewer.begin_bulk_update()
                     self._bulk_update_windows.append(window)
@@ -2041,7 +2324,7 @@ class MainWindow(QMainWindow, RecentFilesMixin, ProjectMixin, SessionMixin):
             table_key: Composite key (unused, we use tracked windows)
         """
         # End bulk update on exactly the windows we started (not based on visibility)
-        for window in getattr(self, '_bulk_update_windows', []):
+        for window in getattr(self, "_bulk_update_windows", []):
             try:
                 window.viewer.end_bulk_update()
             except RuntimeError:
@@ -2058,7 +2341,7 @@ class MainWindow(QMainWindow, RecentFilesMixin, ProjectMixin, SessionMixin):
     def _on_changes_updated(self):
         """Called when change tracker state changes (via _notify_change callback)"""
         # During bulk undo, defer UI updates until _end_bulk_update calls it once
-        if not getattr(self, '_in_bulk_undo', False):
+        if not getattr(self, "_in_bulk_undo", False):
             self._update_project_ui()
 
     def _update_project_ui(self):
@@ -2090,10 +2373,18 @@ class MainWindow(QMainWindow, RecentFilesMixin, ProjectMixin, SessionMixin):
         # Update each ROM document's table browser with only its own modified addresses
         for i in range(self.tab_widget.count()):
             document = self.tab_widget.widget(i)
-            if hasattr(document, 'table_browser') and hasattr(document, 'rom_reader') and document.rom_reader:
+            if (
+                hasattr(document, "table_browser")
+                and hasattr(document, "rom_reader")
+                and document.rom_reader
+            ):
                 rom_path = document.rom_reader.rom_path
-                modified_addresses = self.change_tracker.get_modified_addresses_for_rom(rom_path)
-                document.table_browser.update_modified_tables_by_address(modified_addresses)
+                modified_addresses = self.change_tracker.get_modified_addresses_for_rom(
+                    rom_path
+                )
+                document.table_browser.update_modified_tables_by_address(
+                    modified_addresses
+                )
 
     # ========== Cell/Axis Change Handlers ==========
 
@@ -2105,8 +2396,12 @@ class MainWindow(QMainWindow, RecentFilesMixin, ProjectMixin, SessionMixin):
         on the sender, and document may be None if not found.
         """
         sender = self.sender()
-        rom_path = getattr(sender, 'rom_path', None)
-        document = self._find_document_by_rom_path(rom_path) if rom_path else self.get_current_document()
+        rom_path = getattr(sender, "rom_path", None)
+        document = (
+            self._find_document_by_rom_path(rom_path)
+            if rom_path
+            else self.get_current_document()
+        )
         return rom_path, document
 
     def _write_to_rom_and_mark_modified(self, document, write_fn, description: str):
@@ -2126,21 +2421,28 @@ class MainWindow(QMainWindow, RecentFilesMixin, ProjectMixin, SessionMixin):
         except RomWriteError as e:
             logger.error(f"Failed to write {description}: {e}")
         except Exception as e:
-            logger.exception(f"Unexpected error writing {description}: {type(e).__name__}: {e}")
+            logger.exception(
+                f"Unexpected error writing {description}: {type(e).__name__}: {e}"
+            )
 
-    def _on_table_cell_changed(self, table, row: int, col: int,
-                               old_value: float, new_value: float,
-                               old_raw: float, new_raw: float):
+    def _on_table_cell_changed(
+        self,
+        table,
+        row: int,
+        col: int,
+        old_value: float,
+        new_value: float,
+        old_raw: float,
+        new_raw: float,
+    ):
         """Handle cell change from table viewer window"""
         rom_path, document = self._get_sender_rom_context()
 
         self.table_undo_manager.record_cell_change(
-            table, row, col, old_value, new_value, old_raw, new_raw,
-            rom_path=rom_path
+            table, row, col, old_value, new_value, old_raw, new_raw, rom_path=rom_path
         )
         self.change_tracker.record_pending_change(
-            table, row, col, old_value, new_value, old_raw, new_raw,
-            rom_path=rom_path
+            table, row, col, old_value, new_value, old_raw, new_raw, rom_path=rom_path
         )
         self._write_to_rom_and_mark_modified(
             document,
@@ -2148,59 +2450,98 @@ class MainWindow(QMainWindow, RecentFilesMixin, ProjectMixin, SessionMixin):
             f"cell value in {table.name}",
         )
 
-    def _on_table_bulk_changes(self, table, changes: list, description: str = "Bulk Operation"):
+    def _on_table_bulk_changes(
+        self, table, changes: list, description: str = "Bulk Operation"
+    ):
         """Handle bulk changes from table viewer window (data manipulation operations)"""
         if not changes:
             return
 
         rom_path, document = self._get_sender_rom_context()
 
-        self.table_undo_manager.record_bulk_cell_changes(table, changes, description, rom_path=rom_path)
-        self.change_tracker.record_pending_bulk_changes(table, changes, rom_path=rom_path)
+        self.table_undo_manager.record_bulk_cell_changes(
+            table, changes, description, rom_path=rom_path
+        )
+        self.change_tracker.record_pending_bulk_changes(
+            table, changes, rom_path=rom_path
+        )
 
         def write_bulk():
             for row, col, old_value, new_value, old_raw, new_raw in changes:
                 document.rom_reader.write_cell_value(table, row, col, new_raw)
             logger.debug(f"Applied bulk changes: {len(changes)} cells in {table.name}")
 
-        self._write_to_rom_and_mark_modified(document, write_bulk, f"bulk changes in {table.name}")
+        self._write_to_rom_and_mark_modified(
+            document, write_bulk, f"bulk changes in {table.name}"
+        )
 
-    def _on_table_axis_changed(self, table, axis_type: str, index: int,
-                               old_value: float, new_value: float,
-                               old_raw: float, new_raw: float):
+    def _on_table_axis_changed(
+        self,
+        table,
+        axis_type: str,
+        index: int,
+        old_value: float,
+        new_value: float,
+        old_raw: float,
+        new_raw: float,
+    ):
         """Handle axis change from table viewer window"""
         rom_path, document = self._get_sender_rom_context()
 
         self.table_undo_manager.record_axis_change(
-            table, axis_type, index, old_value, new_value, old_raw, new_raw,
-            rom_path=rom_path
+            table,
+            axis_type,
+            index,
+            old_value,
+            new_value,
+            old_raw,
+            new_raw,
+            rom_path=rom_path,
         )
         self.change_tracker.record_pending_axis_change(
-            table, axis_type, index, old_value, new_value, old_raw, new_raw,
-            rom_path=rom_path
+            table,
+            axis_type,
+            index,
+            old_value,
+            new_value,
+            old_raw,
+            new_raw,
+            rom_path=rom_path,
         )
         self._write_to_rom_and_mark_modified(
             document,
-            lambda: document.rom_reader.write_axis_value(table, axis_type, index, new_raw),
+            lambda: document.rom_reader.write_axis_value(
+                table, axis_type, index, new_raw
+            ),
             f"axis value in {table.name}",
         )
 
-    def _on_table_axis_bulk_changes(self, table, changes: list, description: str = "Axis Bulk Operation"):
+    def _on_table_axis_bulk_changes(
+        self, table, changes: list, description: str = "Axis Bulk Operation"
+    ):
         """Handle axis bulk changes from table viewer window (interpolation, etc.)"""
         if not changes:
             return
 
         rom_path, document = self._get_sender_rom_context()
 
-        self.table_undo_manager.record_axis_bulk_changes(table, changes, description, rom_path=rom_path)
-        self.change_tracker.record_pending_axis_bulk_changes(table, changes, rom_path=rom_path)
+        self.table_undo_manager.record_axis_bulk_changes(
+            table, changes, description, rom_path=rom_path
+        )
+        self.change_tracker.record_pending_axis_bulk_changes(
+            table, changes, rom_path=rom_path
+        )
 
         def write_bulk():
             for axis_type, index, old_value, new_value, old_raw, new_raw in changes:
                 document.rom_reader.write_axis_value(table, axis_type, index, new_raw)
-            logger.debug(f"Applied axis bulk changes: {len(changes)} cells in {table.name}")
+            logger.debug(
+                f"Applied axis bulk changes: {len(changes)} cells in {table.name}"
+            )
 
-        self._write_to_rom_and_mark_modified(document, write_bulk, f"axis bulk changes in {table.name}")
+        self._write_to_rom_and_mark_modified(
+            document, write_bulk, f"axis bulk changes in {table.name}"
+        )
 
     def _on_table_window_focused(self, table_key: str):
         """
@@ -2216,7 +2557,7 @@ class MainWindow(QMainWindow, RecentFilesMixin, ProjectMixin, SessionMixin):
         # Find the document containing this table and select it in the tree
         table_address = extract_table_address(table_key)
         document = self.get_current_document()
-        if document and hasattr(document, 'table_browser'):
+        if document and hasattr(document, "table_browser"):
             document.table_browser.select_table_by_address(table_address)
 
 
@@ -2226,10 +2567,7 @@ def main():
     # Default: INFO level to console, optionally to file
     log_file = Path.home() / ".nc-rom-editor" / "nc-rom-editor.log"
     setup_logging(
-        level=logging.INFO,
-        log_file=str(log_file),
-        console=True,
-        detailed=False
+        level=logging.INFO, log_file=str(log_file), console=True, detailed=False
     )
 
     logger.info("=" * 60)

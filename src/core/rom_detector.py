@@ -14,7 +14,7 @@ from .exceptions import (
     MetadataDirectoryError,
     DefinitionParseError,
     RomFileNotFoundError,
-    AddressConversionError
+    AddressConversionError,
 )
 
 logger = logging.getLogger(__name__)
@@ -23,6 +23,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class RomIdInfo:
     """ROM ID information extracted from XML definition"""
+
     xml_path: Path
     xmlid: str
     internalidaddress: str
@@ -64,11 +65,11 @@ class RomDetector:
             )
 
         if not self.definitions_dir.is_dir():
-            raise MetadataDirectoryError(
-                f"Path is not a directory: {definitions_dir}"
-            )
+            raise MetadataDirectoryError(f"Path is not a directory: {definitions_dir}")
 
-        logger.info(f"Initializing ROM detector with definitions dir: {definitions_dir}")
+        logger.info(
+            f"Initializing ROM detector with definitions dir: {definitions_dir}"
+        )
         self.rom_definitions: List[RomIdInfo] = []
         self._scan_definitions()
         logger.info(f"Found {len(self.rom_definitions)} ROM definition(s)")
@@ -85,13 +86,19 @@ class RomDetector:
                 rom_info = self._extract_rom_id_from_xml(xml_file)
                 if rom_info:
                     self.rom_definitions.append(rom_info)
-                    logger.debug(f"Loaded definition: {rom_info.xmlid} from {xml_file.name}")
+                    logger.debug(
+                        f"Loaded definition: {rom_info.xmlid} from {xml_file.name}"
+                    )
                 else:
-                    logger.warning(f"Skipping {xml_file.name}: missing required ROM ID fields")
+                    logger.warning(
+                        f"Skipping {xml_file.name}: missing required ROM ID fields"
+                    )
             except etree.XMLSyntaxError as e:
                 logger.warning(f"Skipping {xml_file.name}: XML parse error: {e}")
             except Exception as e:
-                logger.warning(f"Skipping {xml_file.name}: {type(e).__name__}: {e}", exc_info=True)
+                logger.warning(
+                    f"Skipping {xml_file.name}: {type(e).__name__}: {e}", exc_info=True
+                )
 
     def _extract_rom_id_from_xml(self, xml_path: Path) -> Optional[RomIdInfo]:
         """
@@ -112,7 +119,7 @@ class RomDetector:
         root = tree.getroot()
 
         # Find romid element
-        romid_elem = root.find('.//romid')
+        romid_elem = root.find(".//romid")
         if romid_elem is None:
             logger.debug(f"No <romid> element found in {xml_path.name}")
             return None
@@ -121,9 +128,9 @@ class RomDetector:
             elem = romid_elem.find(tag)
             return elem.text.strip() if elem is not None and elem.text else default
 
-        xmlid = get_text('xmlid')
-        internalidaddress = get_text('internalidaddress')
-        internalidstring = get_text('internalidstring')
+        xmlid = get_text("xmlid")
+        internalidaddress = get_text("internalidaddress")
+        internalidstring = get_text("internalidstring")
 
         # Must have these essential fields
         if not xmlid or not internalidaddress or not internalidstring:
@@ -138,8 +145,8 @@ class RomDetector:
             xmlid=xmlid,
             internalidaddress=internalidaddress,
             internalidstring=internalidstring,
-            make=get_text('make'),
-            model=get_text('model')
+            make=get_text("make"),
+            model=get_text("model"),
         )
 
     def detect_rom_id(self, rom_path: str) -> Tuple[Optional[str], Optional[str]]:
@@ -162,7 +169,7 @@ class RomDetector:
         logger.info(f"Detecting ROM ID from: {rom_file.name}")
 
         # Load ROM data
-        with open(rom_file, 'rb') as f:
+        with open(rom_file, "rb") as f:
             rom_data = f.read()
 
         logger.debug(f"ROM file size: {len(rom_data)} bytes")
@@ -180,7 +187,9 @@ class RomDetector:
                     continue
 
                 # Read ID from ROM
-                actual_id = rom_data[address:address + id_length].decode('ascii', errors='ignore')
+                actual_id = rom_data[address : address + id_length].decode(
+                    "ascii", errors="ignore"
+                )
 
                 # Check if it matches
                 if actual_id == expected_id:
@@ -190,7 +199,9 @@ class RomDetector:
                 logger.warning(f"Skipping {rom_info.xmlid}: {e}")
                 continue
             except Exception as e:
-                logger.warning(f"Error checking {rom_info.xmlid}: {type(e).__name__}: {e}")
+                logger.warning(
+                    f"Error checking {rom_info.xmlid}: {type(e).__name__}: {e}"
+                )
                 continue
 
         logger.warning(f"No matching ROM definition found for {rom_file.name}")
@@ -229,11 +240,11 @@ class RomDetector:
         """
         return [
             {
-                'xmlid': info.xmlid,
-                'make': info.make,
-                'model': info.model,
-                'internalid': info.internalidstring,
-                'xml_file': info.xml_path.name
+                "xmlid": info.xmlid,
+                "make": info.make,
+                "model": info.model,
+                "internalid": info.internalidstring,
+                "xml_file": info.xml_path.name,
             }
             for info in self.rom_definitions
         ]

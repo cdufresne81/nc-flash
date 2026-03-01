@@ -37,7 +37,7 @@ logger = get_logger(__name__)
 def _handle_rom_operation_error(parent, operation: str, exception: Exception):
     """Handle common ROM operation errors with consistent logging and user feedback"""
     error_msg = f"Failed to {operation}:\n{str(exception)}"
-    logger.error(error_msg.replace('\n', ' '))
+    logger.error(error_msg.replace("\n", " "))
     QMessageBox.critical(parent, "Error", error_msg)
 
 
@@ -55,7 +55,7 @@ class ProjectMixin:
                     project_name=wizard.project_name,
                     source_rom_path=wizard.rom_path,
                     rom_definition=wizard.rom_definition,
-                    description=wizard.project_description
+                    description=wizard.project_description,
                 )
 
                 # Open the project (gets [P] prefix, color swatch, recent files)
@@ -65,16 +65,19 @@ class ProjectMixin:
                     self,
                     "Project Created",
                     f"Project '{project.name}' created successfully.\n\n"
-                    f"Location: {project.project_path}"
+                    f"Location: {project.project_path}",
                 )
 
             except RomEditorError as e:
                 _handle_rom_operation_error(self, "create project", e)
             except Exception as e:
-                logger.exception(f"Unexpected error creating project: {type(e).__name__}: {e}")
+                logger.exception(
+                    f"Unexpected error creating project: {type(e).__name__}: {e}"
+                )
                 QMessageBox.critical(
-                    self, "Error",
-                    f"Unexpected error creating project:\n{type(e).__name__}: {e}"
+                    self,
+                    "Error",
+                    f"Unexpected error creating project:\n{type(e).__name__}: {e}",
                 )
 
     def open_project_path(self, project_path: str):
@@ -84,8 +87,9 @@ class ProjectMixin:
         if existing >= 0:
             self.tab_widget.setCurrentIndex(existing)
             QMessageBox.information(
-                self, "Already Open",
-                f"This project is already open.\n\n{Path(project_path).name}"
+                self,
+                "Already Open",
+                f"This project is already open.\n\n{Path(project_path).name}",
             )
             return
 
@@ -135,16 +139,19 @@ class ProjectMixin:
                     self,
                     "Definition Not Found",
                     f"Could not find ROM definition for ID: {rom_id}\n\n"
-                    "The project was created with a ROM definition that is no longer available."
+                    "The project was created with a ROM definition that is no longer available.",
                 )
 
         except RomEditorError as e:
             _handle_rom_operation_error(self, "open project", e)
         except Exception as e:
-            logger.exception(f"Unexpected error opening project: {type(e).__name__}: {e}")
+            logger.exception(
+                f"Unexpected error opening project: {type(e).__name__}: {e}"
+            )
             QMessageBox.critical(
-                self, "Error",
-                f"Unexpected error opening project:\n{type(e).__name__}: {e}"
+                self,
+                "Error",
+                f"Unexpected error opening project:\n{type(e).__name__}: {e}",
             )
 
     def commit_changes(self):
@@ -154,15 +161,13 @@ class ProjectMixin:
                 self,
                 "No Project",
                 "No project is currently open.\n\n"
-                "Use File > New Project to create a project first."
+                "Use File > New Project to create a project first.",
             )
             return
 
         if not self.change_tracker.has_pending_changes():
             QMessageBox.information(
-                self,
-                "No Changes",
-                "There are no pending changes to commit."
+                self, "No Changes", "There are no pending changes to commit."
             )
             return
 
@@ -180,7 +185,7 @@ class ProjectMixin:
             next_version=next_version,
             rom_id=rom_id,
             suggested_suffix=suggested_suffix,
-            parent=self
+            parent=self,
         )
         if dialog.exec() == QDialog.Accepted:
             try:
@@ -198,7 +203,7 @@ class ProjectMixin:
                     message=message,
                     changes=pending,
                     create_snapshot=create_snapshot,
-                    snapshot_suffix=snapshot_suffix
+                    snapshot_suffix=snapshot_suffix,
                 )
 
                 # Clear pending changes
@@ -213,19 +218,20 @@ class ProjectMixin:
             except RomEditorError as e:
                 _handle_rom_operation_error(self, "commit changes", e)
             except Exception as e:
-                logger.exception(f"Unexpected error committing changes: {type(e).__name__}: {e}")
+                logger.exception(
+                    f"Unexpected error committing changes: {type(e).__name__}: {e}"
+                )
                 QMessageBox.critical(
-                    self, "Error",
-                    f"Unexpected error committing changes:\n{type(e).__name__}: {e}"
+                    self,
+                    "Error",
+                    f"Unexpected error committing changes:\n{type(e).__name__}: {e}",
                 )
 
     def show_history(self):
         """Show commit history viewer"""
         if not self.project_manager.is_project_open():
             QMessageBox.information(
-                self,
-                "No Project",
-                "Open a project to view commit history."
+                self, "No Project", "Open a project to view commit history."
             )
             return
 
@@ -249,9 +255,7 @@ class ProjectMixin:
         table = document.rom_definition.get_table_by_name(table_name)
         if not table:
             QMessageBox.warning(
-                self,
-                "Table Not Found",
-                f"Could not find table: {table_name}"
+                self, "Table Not Found", f"Could not find table: {table_name}"
             )
             return
 
@@ -264,7 +268,7 @@ class ProjectMixin:
                 QMessageBox.warning(
                     self,
                     "Version Not Found",
-                    f"Could not load base version {base_version} data."
+                    f"Could not load base version {base_version} data.",
                 )
                 return
 
@@ -273,7 +277,7 @@ class ProjectMixin:
             import os
 
             # Write base ROM to temp file and read table data
-            with tempfile.NamedTemporaryFile(delete=False, suffix='.bin') as tmp:
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".bin") as tmp:
                 tmp.write(base_rom_data)
                 tmp_path = tmp.name
 
@@ -294,21 +298,22 @@ class ProjectMixin:
                 rom_path=document.rom_path,
                 parent=self,
                 diff_mode=True,
-                diff_base_data=base_data
+                diff_base_data=base_data,
             )
-            viewer_window.setWindowTitle(f"{table_name} (v{base_version} -> v{commit.version})")
+            viewer_window.setWindowTitle(
+                f"{table_name} (v{base_version} -> v{commit.version})"
+            )
             viewer_window.show()
 
         except RomEditorError as e:
             logger.error(f"Failed to open diff view: {e}")
-            QMessageBox.warning(
+            QMessageBox.warning(self, "Error", f"Failed to open diff view:\n{e}")
+        except Exception as e:
+            logger.exception(
+                f"Unexpected error opening diff view: {type(e).__name__}: {e}"
+            )
+            QMessageBox.critical(
                 self,
                 "Error",
-                f"Failed to open diff view:\n{e}"
-            )
-        except Exception as e:
-            logger.exception(f"Unexpected error opening diff view: {type(e).__name__}: {e}")
-            QMessageBox.critical(
-                self, "Error",
-                f"Unexpected error opening diff view:\n{type(e).__name__}: {e}"
+                f"Unexpected error opening diff view:\n{type(e).__name__}: {e}",
             )

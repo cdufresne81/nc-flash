@@ -40,7 +40,7 @@ class ModifiedCellDelegate(QStyledItemDelegate):
                     painter.fillRect(option.rect, self.DIFF_HIGHLIGHT_COLOR)
 
         # Check if this cell is an axis separator (needs border for visual separation)
-        is_axis_separator = index.data(Qt.UserRole + 2) == 'axis_separator'
+        is_axis_separator = index.data(Qt.UserRole + 2) == "axis_separator"
         if is_axis_separator:
             # Determine border position based on row/column and table type
             # Use window background color for subtle separation

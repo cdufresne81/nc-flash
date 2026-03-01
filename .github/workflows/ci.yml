@@ -13,8 +13,15 @@ jobs:
 
     strategy:
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
-        python-version: ['3.10', '3.11', '3.12']
+        include:
+          - os: ubuntu-latest
+            python-version: '3.10'
+          - os: ubuntu-latest
+            python-version: '3.12'
+          - os: windows-latest
+            python-version: '3.12'
+          - os: macos-latest
+            python-version: '3.12'
 
     steps:
     - uses: actions/checkout@v4
@@ -34,7 +41,7 @@ jobs:
         pytest
 
     - name: Upload coverage reports to Codecov
-      if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.11'
+      if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.12'
       uses: codecov/codecov-action@v4
       with:
         files: ./coverage.xml
@@ -52,7 +59,7 @@ jobs:
     - name: Set up Python
       uses: actions/setup-python@v5
       with:
-        python-version: '3.11'
+        python-version: '3.12'
 
     - name: Install dependencies
       run: |
@@ -61,7 +68,7 @@ jobs:
 
     - name: Check code formatting with black
       run: |
-        black --check src/ tests/
+        black --check src/ tests/ main.py
 
     - name: Lint with flake8
       run: |

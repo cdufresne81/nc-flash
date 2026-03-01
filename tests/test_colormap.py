@@ -31,7 +31,7 @@ def _restore_colormap_globals():
 @pytest.fixture
 def valid_map_file():
     """Create a valid .map file with 256 color entries"""
-    with tempfile.NamedTemporaryFile(mode='w', suffix='.map', delete=False) as f:
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".map", delete=False) as f:
         # Create a simple gradient from blue to red
         for i in range(256):
             r = i
@@ -46,7 +46,7 @@ def valid_map_file():
 @pytest.fixture
 def partial_map_file():
     """Create a .map file with fewer than 256 entries"""
-    with tempfile.NamedTemporaryFile(mode='w', suffix='.map', delete=False) as f:
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".map", delete=False) as f:
         # Only 100 entries
         for i in range(100):
             f.write(f"{i} {i} {i}\n")
@@ -58,7 +58,7 @@ def partial_map_file():
 @pytest.fixture
 def empty_map_file():
     """Create an empty .map file"""
-    with tempfile.NamedTemporaryFile(mode='w', suffix='.map', delete=False) as f:
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".map", delete=False) as f:
         pass  # Empty file
         temp_path = Path(f.name)
     yield temp_path
@@ -68,7 +68,7 @@ def empty_map_file():
 @pytest.fixture
 def invalid_map_file():
     """Create a .map file with invalid data"""
-    with tempfile.NamedTemporaryFile(mode='w', suffix='.map', delete=False) as f:
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".map", delete=False) as f:
         f.write("invalid data\n")
         f.write("not numbers\n")
         temp_path = Path(f.name)
@@ -305,7 +305,7 @@ class TestGlobalColormapFunctions:
         # Reset the global colormap
         colormap_module._current_colormap = None
 
-        with patch('src.utils.settings.get_settings') as mock_get_settings:
+        with patch("src.utils.settings.get_settings") as mock_get_settings:
             mock_settings = MagicMock()
             mock_settings.get_colormap_path.return_value = None
             mock_get_settings.return_value = mock_settings
@@ -321,7 +321,7 @@ class TestFileFormatEdgeCases:
 
     def test_extra_columns_ignored(self):
         """Test that extra columns in map file are ignored"""
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.map', delete=False) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".map", delete=False) as f:
             for i in range(256):
                 f.write(f"{i} {i} {i} extra_data 123\n")
             temp_path = Path(f.name)
@@ -336,7 +336,7 @@ class TestFileFormatEdgeCases:
 
     def test_blank_lines_skipped(self):
         """Test that blank lines in map file are skipped"""
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.map', delete=False) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".map", delete=False) as f:
             count = 0
             for i in range(300):  # More lines than needed
                 if i % 3 == 0:

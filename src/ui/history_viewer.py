@@ -5,10 +5,20 @@ Displays commit history with ability to view details.
 """
 
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QSplitter,
-    QTreeWidget, QTreeWidgetItem, QTextEdit, QLabel,
-    QListWidget, QListWidgetItem, QGroupBox,
-    QDialog, QPushButton, QLineEdit
+    QWidget,
+    QVBoxLayout,
+    QHBoxLayout,
+    QSplitter,
+    QTreeWidget,
+    QTreeWidgetItem,
+    QTextEdit,
+    QLabel,
+    QListWidget,
+    QListWidgetItem,
+    QGroupBox,
+    QDialog,
+    QPushButton,
+    QLineEdit,
 )
 from PySide6.QtCore import Qt, Signal
 
@@ -112,7 +122,7 @@ class HistoryViewer(QDialog):
             tables_str = str(tables_count)
 
         # Truncate message for display
-        msg = commit.message.split('\n')[0]  # First line only
+        msg = commit.message.split("\n")[0]  # First line only
         if len(msg) > 35:
             msg = msg[:32] + "..."
 
@@ -143,9 +153,8 @@ class HistoryViewer(QDialog):
             commit = item.data(0, Qt.UserRole + 1)
 
             if commit:
-                visible = (
-                    text in commit.message.lower() or
-                    any(text in t.lower() for t in commit.tables_modified)
+                visible = text in commit.message.lower() or any(
+                    text in t.lower() for t in commit.tables_modified
                 )
                 item.setHidden(not visible)
             else:
@@ -308,7 +317,7 @@ class HistoryPanel(QWidget):
 
         for commit in commits:
             date_str = commit.timestamp.strftime("%m/%d %H:%M")
-            msg = commit.message.split('\n')[0][:25]
+            msg = commit.message.split("\n")[0][:25]
 
             item = QTreeWidgetItem([f"v{commit.version} - {date_str} - {msg}"])
             item.setData(0, Qt.UserRole, commit.id)

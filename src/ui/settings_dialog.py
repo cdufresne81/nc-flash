@@ -20,7 +20,7 @@ from PySide6.QtWidgets import (
     QGroupBox,
     QComboBox,
     QSpinBox,
-    QCheckBox
+    QCheckBox,
 )
 from PySide6.QtCore import Qt, Signal
 
@@ -97,7 +97,9 @@ class SettingsDialog(QDialog):
         # Definitions directory setting
         definitions_layout = QHBoxLayout()
         self.definitions_path_edit = QLineEdit()
-        self.definitions_path_edit.setPlaceholderText("Path to ROM definition XML files")
+        self.definitions_path_edit.setPlaceholderText(
+            "Path to ROM definition XML files"
+        )
         definitions_layout.addWidget(self.definitions_path_edit)
 
         browse_button = QPushButton("Browse...")
@@ -149,7 +151,9 @@ class SettingsDialog(QDialog):
         # Color map file selection
         colormap_file_layout = QHBoxLayout()
         self.colormap_path_edit = QLineEdit()
-        self.colormap_path_edit.setPlaceholderText("Path to .map file (or empty for built-in)")
+        self.colormap_path_edit.setPlaceholderText(
+            "Path to .map file (or empty for built-in)"
+        )
         colormap_file_layout.addWidget(self.colormap_path_edit)
 
         browse_colormap_button = QPushButton("Browse...")
@@ -185,7 +189,9 @@ class SettingsDialog(QDialog):
         toggle_layout = QVBoxLayout()
         toggle_group.setLayout(toggle_layout)
 
-        self.dtc_toggle_checkbox = QCheckBox("Use toggle switches for DTC Activation Flags")
+        self.dtc_toggle_checkbox = QCheckBox(
+            "Use toggle switches for DTC Activation Flags"
+        )
         toggle_layout.addWidget(self.dtc_toggle_checkbox)
 
         toggle_help = QLabel(
@@ -235,10 +241,14 @@ class SettingsDialog(QDialog):
         mcp_layout = QVBoxLayout()
         mcp_group.setLayout(mcp_layout)
 
-        self.mcp_auto_start_checkbox = QCheckBox("Start MCP server automatically on app launch")
+        self.mcp_auto_start_checkbox = QCheckBox(
+            "Start MCP server automatically on app launch"
+        )
         mcp_layout.addWidget(self.mcp_auto_start_checkbox)
 
-        mcp_help = QLabel("Enables AI assistants (Claude, ChatGPT, etc.) to read your open ROMs via the Model Context Protocol")
+        mcp_help = QLabel(
+            "Enables AI assistants (Claude, ChatGPT, etc.) to read your open ROMs via the Model Context Protocol"
+        )
         mcp_help.setStyleSheet("color: gray; font-size: 10px;")
         mcp_help.setWordWrap(True)
         mcp_layout.addWidget(mcp_help)
@@ -293,7 +303,7 @@ class SettingsDialog(QDialog):
             self,
             "Select Projects Directory",
             current_path,
-            QFileDialog.ShowDirsOnly | QFileDialog.DontResolveSymlinks
+            QFileDialog.ShowDirsOnly | QFileDialog.DontResolveSymlinks,
         )
 
         if directory:
@@ -309,7 +319,7 @@ class SettingsDialog(QDialog):
             self,
             "Select Definitions Directory",
             current_path,
-            QFileDialog.ShowDirsOnly | QFileDialog.DontResolveSymlinks
+            QFileDialog.ShowDirsOnly | QFileDialog.DontResolveSymlinks,
         )
 
         if directory:
@@ -326,7 +336,7 @@ class SettingsDialog(QDialog):
             self,
             "Select Color Map File",
             current_path,
-            "Color Map Files (*.map);;All Files (*)"
+            "Color Map Files (*.map);;All Files (*)",
         )
 
         if file_path:
@@ -342,7 +352,7 @@ class SettingsDialog(QDialog):
             self,
             "Select RomDrop Executable",
             current_path,
-            "Executable Files (*.exe);;All Files (*)"
+            "Executable Files (*.exe);;All Files (*)",
         )
 
         if file_path:

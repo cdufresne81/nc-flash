@@ -10,13 +10,25 @@ import logging
 from pathlib import Path
 
 from PySide6.QtWidgets import (
-    QMainWindow, QVBoxLayout, QHBoxLayout, QWidget, QApplication,
-    QSplitter, QMessageBox, QToolBar
+    QMainWindow,
+    QVBoxLayout,
+    QHBoxLayout,
+    QWidget,
+    QApplication,
+    QSplitter,
+    QMessageBox,
+    QToolBar,
 )
 from PySide6.QtCore import Qt, Signal, QTimer, QSize
 from PySide6.QtGui import (
-    QColor, QIcon, QKeySequence, QPainter, QPainterPath,
-    QPen, QPixmap, QShortcut
+    QColor,
+    QIcon,
+    QKeySequence,
+    QPainter,
+    QPainterPath,
+    QPen,
+    QPixmap,
+    QShortcut,
 )
 
 from ..utils.constants import APP_NAME
@@ -62,11 +74,19 @@ class TableViewerWindow(QMainWindow):
     # Args: table_address (str)
     window_focused = Signal(str)
 
-    def __init__(self, table: Table, data: dict, rom_definition: RomDefinition,
-                 rom_path: str = None, parent=None,
-                 modified_cells_dict: dict = None, original_values_dict: dict = None,
-                 diff_mode: bool = False, diff_base_data: dict = None,
-                 bg_color: QColor = None):
+    def __init__(
+        self,
+        table: Table,
+        data: dict,
+        rom_definition: RomDefinition,
+        rom_path: str = None,
+        parent=None,
+        modified_cells_dict: dict = None,
+        original_values_dict: dict = None,
+        diff_mode: bool = False,
+        diff_base_data: dict = None,
+        bg_color: QColor = None,
+    ):
         """
         Initialize table viewer window
 
@@ -94,10 +114,10 @@ class TableViewerWindow(QMainWindow):
 
         # Remove minimize/maximize buttons, keep only close button
         self.setWindowFlags(
-            Qt.Window |
-            Qt.WindowCloseButtonHint |
-            Qt.CustomizeWindowHint |
-            Qt.WindowTitleHint
+            Qt.Window
+            | Qt.WindowCloseButtonHint
+            | Qt.CustomizeWindowHint
+            | Qt.WindowTitleHint
         )
 
         # Set window properties - use ROM filename instead of app name
@@ -136,7 +156,7 @@ class TableViewerWindow(QMainWindow):
             modified_cells_dict=modified_cells_dict,
             original_values_dict=original_values_dict,
             diff_mode=diff_mode,
-            diff_base_data=diff_base_data
+            diff_base_data=diff_base_data,
         )
 
         # In diff mode, make the table read-only
@@ -147,6 +167,7 @@ class TableViewerWindow(QMainWindow):
 
         # Create graph widget only for 2D and 3D tables (initially hidden)
         from ..core.rom_definition import TableType
+
         if table.type != TableType.ONE_D:
             self.graph_widget = GraphWidget()
             self.splitter.addWidget(self.graph_widget)
@@ -167,7 +188,9 @@ class TableViewerWindow(QMainWindow):
         self.viewer.axis_bulk_changes.connect(self._on_axis_bulk_changes)
 
         # Connect selection changed to update graph
-        self.viewer.table_widget.itemSelectionChanged.connect(self._on_table_selection_changed)
+        self.viewer.table_widget.itemSelectionChanged.connect(
+            self._on_table_selection_changed
+        )
 
         # Set up debounce timer for graph refresh (prevents multiple refreshes during undo/redo)
         self._refresh_timer = QTimer()
@@ -271,6 +294,7 @@ class TableViewerWindow(QMainWindow):
 
         # View menu (Alt+V) - only for 2D/3D tables or diff mode
         from ..core.rom_definition import TableType
+
         has_view_options = self.table.type != TableType.ONE_D or self._diff_mode
 
         if has_view_options:
@@ -295,7 +319,9 @@ class TableViewerWindow(QMainWindow):
                 self.toggle_diff_action.setCheckable(True)
                 self.toggle_diff_action.setChecked(True)
                 self.toggle_diff_action.setShortcut("D")
-                self.toggle_diff_action.triggered.connect(self._on_toggle_diff_highlights)
+                self.toggle_diff_action.triggered.connect(
+                    self._on_toggle_diff_highlights
+                )
         else:
             self.graph_action = None
 
@@ -404,8 +430,7 @@ class TableViewerWindow(QMainWindow):
         # --- View actions ---
         if self.table.type != TableType.ONE_D:
             tb.addSeparator()
-            self._tb_graph_action = tb.addAction(
-                self._make_toolbar_icon("graph"), "")
+            self._tb_graph_action = tb.addAction(self._make_toolbar_icon("graph"), "")
             self._tb_graph_action.setToolTip("Show Graph  (G)")
             self._tb_graph_action.setCheckable(True)
             self._tb_graph_action.triggered.connect(self._toggle_graph)
@@ -632,9 +657,16 @@ class TableViewerWindow(QMainWindow):
         # Set focus on graph so arrow keys work immediately
         self.graph_widget.setFocus()
 
-    def _on_cell_changed(self, table_name: str, row: int, col: int,
-                         old_value: float, new_value: float,
-                         old_raw: float, new_raw: float):
+    def _on_cell_changed(
+        self,
+        table_name: str,
+        row: int,
+        col: int,
+        old_value: float,
+        new_value: float,
+        old_raw: float,
+        new_raw: float,
+    ):
         """Forward cell change signal with table object"""
         self.cell_changed.emit(
             self.table, row, col, old_value, new_value, old_raw, new_raw
@@ -670,9 +702,16 @@ class TableViewerWindow(QMainWindow):
         """Schedule a debounced graph refresh (restarts timer on each call)"""
         self._refresh_timer.start()
 
-    def _on_axis_changed(self, table_name: str, axis_type: str, index: int,
-                         old_value: float, new_value: float,
-                         old_raw: float, new_raw: float):
+    def _on_axis_changed(
+        self,
+        table_name: str,
+        axis_type: str,
+        index: int,
+        old_value: float,
+        new_value: float,
+        old_raw: float,
+        new_raw: float,
+    ):
         """Forward axis change signal with table object"""
         self.axis_changed.emit(
             self.table, axis_type, index, old_value, new_value, old_raw, new_raw
@@ -742,7 +781,7 @@ class TableViewerWindow(QMainWindow):
 
         # Menu bar + toolbar
         content_h += self.menuBar().sizeHint().height()
-        if hasattr(self, '_toolbar'):
+        if hasattr(self, "_toolbar"):
             content_h += self._toolbar.sizeHint().height()
 
         # Screen limits — availableGeometry() excludes the OS taskbar.
@@ -760,7 +799,6 @@ class TableViewerWindow(QMainWindow):
         final_w = max(80, min(content_w, max_w))
         final_h = max(60, min(content_h, max_h))
 
-
         self.resize(final_w, final_h)
 
     def _edit_scaling(self):
@@ -768,8 +806,7 @@ class TableViewerWindow(QMainWindow):
         # Check if we have the XML path
         if not self.rom_definition.xml_path:
             QMessageBox.warning(
-                self, "No XML Path",
-                "Cannot edit scaling: XML path not available."
+                self, "No XML Path", "Cannot edit scaling: XML path not available."
             )
             return
 
@@ -790,46 +827,49 @@ class TableViewerWindow(QMainWindow):
 
             if success_count == len(all_updates):
                 QMessageBox.information(
-                    self, "Scalings Updated",
+                    self,
+                    "Scalings Updated",
                     f"All scalings have been updated.\n"
-                    "Changes are saved to the metadata file."
+                    "Changes are saved to the metadata file.",
                 )
             elif success_count > 0:
                 QMessageBox.warning(
-                    self, "Partial Update",
+                    self,
+                    "Partial Update",
                     f"Only {success_count} of {len(all_updates)} scalings were updated.\n"
-                    "Check the log for details."
+                    "Check the log for details.",
                 )
             else:
                 QMessageBox.critical(
-                    self, "Update Failed",
+                    self,
+                    "Update Failed",
                     "Failed to update scalings in metadata file.\n"
-                    "Check the log for details."
+                    "Check the log for details.",
                 )
 
     def _apply_scaling_updates(self, scaling, updates: dict):
         """Apply updates to in-memory scaling object"""
-        if 'min' in updates:
-            scaling.min = float(updates['min']) if updates['min'] else None
-        if 'max' in updates:
-            scaling.max = float(updates['max']) if updates['max'] else None
-        if 'units' in updates:
-            scaling.units = updates['units'] or ""
-        if 'format' in updates:
-            scaling.format = updates['format'] or "%0.2f"
-        if 'inc' in updates:
-            scaling.inc = float(updates['inc']) if updates['inc'] else None
+        if "min" in updates:
+            scaling.min = float(updates["min"]) if updates["min"] else None
+        if "max" in updates:
+            scaling.max = float(updates["max"]) if updates["max"] else None
+        if "units" in updates:
+            scaling.units = updates["units"] or ""
+        if "format" in updates:
+            scaling.format = updates["format"] or "%0.2f"
+        if "inc" in updates:
+            scaling.inc = float(updates["inc"]) if updates["inc"] else None
 
     def _do_undo(self):
         """Perform undo via main window's undo group"""
         main_window = self.parent()
-        if main_window and hasattr(main_window, 'table_undo_manager'):
+        if main_window and hasattr(main_window, "table_undo_manager"):
             main_window.table_undo_manager.undo_group.undo()
 
     def _do_redo(self):
         """Perform redo via main window's undo group"""
         main_window = self.parent()
-        if main_window and hasattr(main_window, 'table_undo_manager'):
+        if main_window and hasattr(main_window, "table_undo_manager"):
             main_window.table_undo_manager.undo_group.redo()
 
     def _apply_color_icon(self, color):
@@ -855,17 +895,18 @@ class TableViewerWindow(QMainWindow):
         self._refresh_timer.stop()
         self._selection_timer.stop()
         main_window = self.parent()
-        if main_window and hasattr(main_window, 'table_undo_manager'):
+        if main_window and hasattr(main_window, "table_undo_manager"):
             main_window.table_undo_manager.set_active_stack(None)
         # Remove from parent's tracking list before deletion
-        if main_window and hasattr(main_window, 'open_table_windows'):
+        if main_window and hasattr(main_window, "open_table_windows"):
             try:
                 main_window.open_table_windows.remove(self)
             except ValueError:
                 pass
         # Clean up matplotlib figure to prevent leak in global registry
-        if self.graph_widget and hasattr(self.graph_widget, 'figure'):
+        if self.graph_widget and hasattr(self.graph_widget, "figure"):
             import matplotlib.pyplot as plt
+
             plt.close(self.graph_widget.figure)
         event.accept()
         # Schedule widget destruction for next event loop iteration
@@ -874,6 +915,7 @@ class TableViewerWindow(QMainWindow):
     def event(self, event):
         """Handle window events to detect activation/focus"""
         from PySide6.QtCore import QEvent
+
         # WindowActivate is fired when the window gains focus (clicked, alt-tabbed to, etc.)
         if event.type() == QEvent.WindowActivate:
             self.window_focused.emit(make_table_key(self.rom_path, self.table.address))

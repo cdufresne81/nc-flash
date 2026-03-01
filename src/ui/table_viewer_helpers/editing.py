@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 class TableEditHelper:
     """Helper class for cell editing operations"""
 
-    def __init__(self, ctx: TableViewerContext, display: 'TableDisplayHelper'):
+    def __init__(self, ctx: TableViewerContext, display: "TableDisplayHelper"):
         self.ctx = ctx
         self.display = display
 
@@ -65,7 +65,7 @@ class TableEditHelper:
             return
 
         # Get the old value from current_data
-        values = self.ctx.current_data['values']
+        values = self.ctx.current_data["values"]
         if values.ndim == 1:
             old_value = float(values[data_row])
         else:
@@ -85,9 +85,9 @@ class TableEditHelper:
 
         # Update the internal data
         if values.ndim == 1:
-            self.ctx.current_data['values'][data_row] = new_value
+            self.ctx.current_data["values"][data_row] = new_value
         else:
-            self.ctx.current_data['values'][data_row, data_col] = new_value
+            self.ctx.current_data["values"][data_row, data_col] = new_value
 
         # Update cell display with proper formatting
         self.ctx.editing_in_progress = True
@@ -96,7 +96,9 @@ class TableEditHelper:
             item.setText(self.display.format_value(new_value, value_fmt))
 
             # Update cell color based on new value
-            color = self.display.get_cell_color(new_value, self.ctx.current_data['values'], data_row, data_col)
+            color = self.display.get_cell_color(
+                new_value, self.ctx.current_data["values"], data_row, data_col
+            )
             item.setBackground(QBrush(color))
         finally:
             self.ctx.editing_in_progress = False
@@ -104,16 +106,21 @@ class TableEditHelper:
         # Emit the change signal (use address as unique identifier)
         self.ctx.viewer.cell_changed.emit(
             self.ctx.current_table.address,
-            data_row, data_col,
-            old_value, new_value,
-            old_raw, new_raw
+            data_row,
+            data_col,
+            old_value,
+            new_value,
+            old_raw,
+            new_raw,
         )
 
-        logger.debug(f"Cell changed: {self.ctx.current_table.name}[{data_row},{data_col}] {old_value} -> {new_value}")
+        logger.debug(
+            f"Cell changed: {self.ctx.current_table.name}[{data_row},{data_col}] {old_value} -> {new_value}"
+        )
 
     def _revert_cell(self, row: int, col: int, data_row: int, data_col: int):
         """Revert cell to its original value"""
-        values = self.ctx.current_data['values']
+        values = self.ctx.current_data["values"]
         if values.ndim == 1:
             old_value = values[data_row]
         else:
@@ -138,7 +145,7 @@ class TableEditHelper:
             return display_value
 
         try:
-            return simple_eval(scaling.frexpr, names={'x': display_value})
+            return simple_eval(scaling.frexpr, names={"x": display_value})
         except Exception as e:
             logger.error(f"Error converting to raw: {e}")
             return None
@@ -156,7 +163,7 @@ class TableEditHelper:
             return
 
         # Update internal data
-        values = self.ctx.current_data['values']
+        values = self.ctx.current_data["values"]
         if values.ndim == 1:
             values[data_row] = new_value
         else:
@@ -174,7 +181,9 @@ class TableEditHelper:
             if item:
                 value_fmt = self.display.get_value_format()
                 item.setText(self.display.format_value(new_value, value_fmt))
-                color = self.display.get_cell_color(new_value, values, data_row, data_col)
+                color = self.display.get_cell_color(
+                    new_value, values, data_row, data_col
+                )
                 item.setBackground(QBrush(color))
 
             # Sync toggle switch if visible (undo/redo for toggle categories)
@@ -191,7 +200,9 @@ class TableEditHelper:
             self.ctx.current_table.address, data_row, data_col, new_value
         )
 
-    def data_to_ui_coords(self, data_row: int, data_col: int) -> Tuple[Optional[int], Optional[int]]:
+    def data_to_ui_coords(
+        self, data_row: int, data_col: int
+    ) -> Tuple[Optional[int], Optional[int]]:
         """Convert data coordinates to UI table coordinates"""
         if not self.ctx.current_table:
             return None, None
@@ -203,12 +214,12 @@ class TableEditHelper:
         if table_type == TableType.ONE_D:
             return 0, 0
         elif table_type == TableType.TWO_D:
-            values = self.ctx.current_data['values']
+            values = self.ctx.current_data["values"]
             num_values = len(values)
             ui_row = (num_values - 1 - data_row) if flipy else data_row
             return ui_row, 1  # Column 1 is the value column (col 0 = Y-axis)
         elif table_type == TableType.THREE_D:
-            values = self.ctx.current_data['values']
+            values = self.ctx.current_data["values"]
             rows, cols = values.shape
             ui_row = (rows - 1 - data_row) if flipy else data_row
             ui_col = (cols - 1 - data_col) if flipx else data_col
@@ -219,7 +230,7 @@ class TableEditHelper:
     def _on_axis_cell_changed(self, row: int, col: int, item, data_indices: tuple):
         """Handle axis cell value change from user edit"""
         axis_type_str, data_idx = data_indices
-        axis_type = AxisType.X_AXIS if axis_type_str == 'x_axis' else AxisType.Y_AXIS
+        axis_type = AxisType.X_AXIS if axis_type_str == "x_axis" else AxisType.Y_AXIS
 
         # Get the axis table for scaling
         axis_table = self.ctx.current_table.get_axis(axis_type)
@@ -238,7 +249,7 @@ class TableEditHelper:
             return
 
         # Get the old value from current_data
-        axis_key = 'x_axis' if axis_type == AxisType.X_AXIS else 'y_axis'
+        axis_key = "x_axis" if axis_type == AxisType.X_AXIS else "y_axis"
         axis_data = self.ctx.current_data.get(axis_key)
         if axis_data is None:
             return
@@ -267,7 +278,9 @@ class TableEditHelper:
             item.setText(self.display.format_value(new_value, axis_fmt))
 
             # Update cell color based on new value
-            color = self.display.get_axis_color(new_value, self.ctx.current_data[axis_key], axis_type)
+            color = self.display.get_axis_color(
+                new_value, self.ctx.current_data[axis_key], axis_type
+            )
             item.setBackground(QBrush(color))
         finally:
             self.ctx.editing_in_progress = False
@@ -277,15 +290,19 @@ class TableEditHelper:
             self.ctx.current_table.address,
             axis_type_str,
             data_idx,
-            old_value, new_value,
-            old_raw, new_raw
+            old_value,
+            new_value,
+            old_raw,
+            new_raw,
         )
 
-        logger.debug(f"Axis changed: {self.ctx.current_table.name}[{axis_type_str}][{data_idx}] {old_value} -> {new_value}")
+        logger.debug(
+            f"Axis changed: {self.ctx.current_table.name}[{axis_type_str}][{data_idx}] {old_value} -> {new_value}"
+        )
 
     def _revert_axis_cell(self, row: int, col: int, axis_type: AxisType, data_idx: int):
         """Revert axis cell to its original value"""
-        axis_key = 'x_axis' if axis_type == AxisType.X_AXIS else 'y_axis'
+        axis_key = "x_axis" if axis_type == AxisType.X_AXIS else "y_axis"
         axis_data = self.ctx.current_data.get(axis_key)
         if axis_data is None:
             return
@@ -311,7 +328,7 @@ class TableEditHelper:
             return display_value
 
         try:
-            return simple_eval(scaling.frexpr, names={'x': display_value})
+            return simple_eval(scaling.frexpr, names={"x": display_value})
         except Exception as e:
             logger.error(f"Error converting axis to raw: {e}")
             return None
@@ -346,10 +363,14 @@ class TableEditHelper:
         try:
             item = self.ctx.table_widget.item(ui_row, ui_col)
             if item:
-                axis_type_enum = AxisType.X_AXIS if axis_type == 'x_axis' else AxisType.Y_AXIS
+                axis_type_enum = (
+                    AxisType.X_AXIS if axis_type == "x_axis" else AxisType.Y_AXIS
+                )
                 axis_fmt = self.display.get_axis_format(axis_type_enum)
                 item.setText(self.display.format_value(new_value, axis_fmt))
-                color = self.display.get_axis_color(new_value, axis_data, axis_type_enum)
+                color = self.display.get_axis_color(
+                    new_value, axis_data, axis_type_enum
+                )
                 item.setBackground(QBrush(color))
         finally:
             self.ctx.editing_in_progress = False
@@ -359,7 +380,9 @@ class TableEditHelper:
             self.ctx.current_table.address, axis_type, data_idx, new_value
         )
 
-    def _axis_data_to_ui_coords(self, axis_type: str, data_idx: int) -> Tuple[Optional[int], Optional[int]]:
+    def _axis_data_to_ui_coords(
+        self, axis_type: str, data_idx: int
+    ) -> Tuple[Optional[int], Optional[int]]:
         """Convert axis data index to UI table coordinates"""
         if not self.ctx.current_table:
             return None, None
@@ -370,24 +393,24 @@ class TableEditHelper:
 
         if table_type == TableType.TWO_D:
             # Y axis is in column 0
-            if axis_type == 'y_axis':
-                values = self.ctx.current_data['values']
+            if axis_type == "y_axis":
+                values = self.ctx.current_data["values"]
                 num_values = len(values)
                 ui_row = (num_values - 1 - data_idx) if flipy else data_idx
                 return ui_row, 0
             return None, None
 
         elif table_type == TableType.THREE_D:
-            if axis_type == 'x_axis':
+            if axis_type == "x_axis":
                 # X axis is in row 0, columns 1+
-                x_axis = self.ctx.current_data.get('x_axis')
+                x_axis = self.ctx.current_data.get("x_axis")
                 if x_axis is not None:
                     cols = len(x_axis)
                     ui_col = (cols - 1 - data_idx) if flipx else data_idx
                     return 0, ui_col + 1
-            elif axis_type == 'y_axis':
+            elif axis_type == "y_axis":
                 # Y axis is in column 0, rows 1+
-                y_axis = self.ctx.current_data.get('y_axis')
+                y_axis = self.ctx.current_data.get("y_axis")
                 if y_axis is not None:
                     rows = len(y_axis)
                     ui_row = (rows - 1 - data_idx) if flipy else data_idx

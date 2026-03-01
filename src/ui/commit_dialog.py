@@ -5,9 +5,16 @@ Dialog for entering commit message when saving changes.
 """
 
 from PySide6.QtWidgets import (
-    QDialog, QVBoxLayout, QHBoxLayout, QLabel,
-    QTextEdit, QDialogButtonBox, QListWidget,
-    QGroupBox, QCheckBox, QLineEdit
+    QDialog,
+    QVBoxLayout,
+    QHBoxLayout,
+    QLabel,
+    QTextEdit,
+    QDialogButtonBox,
+    QListWidget,
+    QGroupBox,
+    QCheckBox,
+    QLineEdit,
 )
 from typing import List
 
@@ -23,7 +30,7 @@ class CommitDialog(QDialog):
         next_version: int = 1,
         rom_id: str = "",
         suggested_suffix: str = "",
-        parent=None
+        parent=None,
     ):
         super().__init__(parent)
         self.setWindowTitle("Save Changes")
@@ -85,7 +92,9 @@ class CommitDialog(QDialog):
         snapshot_layout = QVBoxLayout()
         snapshot_group.setLayout(snapshot_layout)
 
-        self.snapshot_checkbox = QCheckBox("Save ROM snapshot (recommended for major changes)")
+        self.snapshot_checkbox = QCheckBox(
+            "Save ROM snapshot (recommended for major changes)"
+        )
         self.snapshot_checkbox.setToolTip(
             "Creates a full copy of the ROM at this version.\n"
             "Allows you to revert to this exact state later."
@@ -119,9 +128,7 @@ class CommitDialog(QDialog):
         layout.addStretch()
 
         # Buttons
-        button_box = QDialogButtonBox(
-            QDialogButtonBox.Ok | QDialogButtonBox.Cancel
-        )
+        button_box = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
         button_box.button(QDialogButtonBox.Ok).setText("Commit")
         button_box.accepted.connect(self._on_accept)
         button_box.rejected.connect(self.reject)
@@ -213,9 +220,7 @@ class QuickCommitDialog(QDialog):
         layout.addWidget(self.message_edit)
 
         # Buttons
-        button_box = QDialogButtonBox(
-            QDialogButtonBox.Ok | QDialogButtonBox.Cancel
-        )
+        button_box = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
         button_box.button(QDialogButtonBox.Ok).setText("Commit")
         button_box.accepted.connect(self._on_accept)
         button_box.rejected.connect(self.reject)

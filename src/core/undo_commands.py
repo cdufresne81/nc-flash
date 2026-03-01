@@ -143,9 +143,7 @@ class AxisEditCommand(QUndoCommand):
         apply_callback: Callable[[AxisChange], None],
         update_pending_callback: Optional[Callable[[AxisChange, bool], None]] = None,
     ):
-        super().__init__(
-            f"Edit {change.table_name} {change.axis_type}[{change.index}]"
-        )
+        super().__init__(f"Edit {change.table_name} {change.axis_type}[{change.index}]")
         self.change = change
         self.apply_callback = apply_callback
         self.update_pending = update_pending_callback

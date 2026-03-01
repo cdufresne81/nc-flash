@@ -49,8 +49,8 @@ def extract_table_address(table_key: str) -> str:
     Returns:
         Raw table address (e.g., "0x1000")
     """
-    if '\0' in table_key:
-        return table_key.rsplit('\0', 1)[1]
+    if "\0" in table_key:
+        return table_key.rsplit("\0", 1)[1]
     return table_key
 
 
@@ -60,8 +60,8 @@ def extract_rom_path(table_key: str) -> Optional[str]:
     Returns:
         ROM path string, or None if key has no ROM prefix.
     """
-    if '\0' in table_key:
-        return table_key.rsplit('\0', 1)[0]
+    if "\0" in table_key:
+        return table_key.rsplit("\0", 1)[0]
     return None
 
 
@@ -299,7 +299,9 @@ class TableUndoManager:
         )
 
         stack = self.get_or_create_stack(table_key)
-        cmd = AxisEditCommand(change, self._apply_axis_change, self._update_pending_axis)
+        cmd = AxisEditCommand(
+            change, self._apply_axis_change, self._update_pending_axis
+        )
         stack.push(cmd)
 
         logger.debug(f"Recorded axis change: {table.name}[{axis_type}][{index}]")
@@ -324,7 +326,9 @@ class TableUndoManager:
             return
 
         if self._apply_axis_change is None:
-            logger.warning("No apply_axis callback set, cannot record axis bulk changes")
+            logger.warning(
+                "No apply_axis callback set, cannot record axis bulk changes"
+            )
             return
 
         table_key = make_table_key(rom_path, table.address)

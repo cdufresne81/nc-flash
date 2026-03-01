@@ -25,7 +25,7 @@ def sample_table():
         address="0x1000",
         type=TableType.TWO_D,
         elements=10,
-        scaling="TestScaling"
+        scaling="TestScaling",
     )
 
 
@@ -42,7 +42,7 @@ def test_pending_changes_tracking(tracker, sample_table):
         old_value=10.0,
         new_value=20.0,
         old_raw=100,
-        new_raw=200
+        new_raw=200,
     )
 
     # Should have pending changes
@@ -78,7 +78,7 @@ def test_pending_change_merge(tracker, sample_table):
         old_value=10.0,
         new_value=20.0,
         old_raw=100,
-        new_raw=200
+        new_raw=200,
     )
 
     # Second change to same cell
@@ -89,7 +89,7 @@ def test_pending_change_merge(tracker, sample_table):
         old_value=20.0,  # Current value (would be different)
         new_value=30.0,
         old_raw=200,
-        new_raw=300
+        new_raw=300,
     )
 
     # Should still be 1 pending change (merged)
@@ -113,7 +113,7 @@ def test_get_modified_table_addresses(tracker, sample_table):
         old_value=10.0,
         new_value=20.0,
         old_raw=100,
-        new_raw=200
+        new_raw=200,
     )
 
     addresses = tracker.get_modified_table_addresses()
@@ -130,7 +130,7 @@ def test_update_pending_from_undo(tracker, sample_table):
         old_value=10.0,
         new_value=20.0,
         old_raw=100,
-        new_raw=200
+        new_raw=200,
     )
 
     assert tracker.has_pending_changes()
@@ -145,7 +145,7 @@ def test_update_pending_from_undo(tracker, sample_table):
         old_value=10.0,  # When undoing, old_value is the original
         new_value=20.0,
         old_raw=100,
-        new_raw=200
+        new_raw=200,
     )
     tracker.update_pending_from_undo(change, is_undo=True)
 
@@ -167,7 +167,7 @@ def test_update_pending_from_redo(tracker, sample_table):
         old_value=10.0,
         new_value=20.0,
         old_raw=100,
-        new_raw=200
+        new_raw=200,
     )
     tracker.update_pending_from_undo(change, is_undo=False)
 
@@ -185,7 +185,7 @@ def test_clear_all(tracker, sample_table):
         old_value=10.0,
         new_value=20.0,
         old_raw=100,
-        new_raw=200
+        new_raw=200,
     )
 
     assert tracker.has_pending_changes()
@@ -211,7 +211,7 @@ def test_change_callbacks(tracker, sample_table):
         old_value=10.0,
         new_value=20.0,
         old_raw=100,
-        new_raw=200
+        new_raw=200,
     )
 
     assert callback_count[0] == 1
@@ -225,7 +225,7 @@ def test_change_callbacks(tracker, sample_table):
         old_value=30.0,
         new_value=40.0,
         old_raw=300,
-        new_raw=400
+        new_raw=400,
     )
 
     # Callback shouldn't be called after removal

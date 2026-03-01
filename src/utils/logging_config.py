@@ -11,17 +11,18 @@ from typing import Optional
 
 from .constants import LOG_FILE_MAX_BYTES, LOG_FILE_BACKUP_COUNT
 
-
 # Default log format
-DEFAULT_FORMAT = '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-DETAILED_FORMAT = '%(asctime)s - %(name)s - %(levelname)s - [%(filename)s:%(lineno)d] - %(message)s'
+DEFAULT_FORMAT = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+DETAILED_FORMAT = (
+    "%(asctime)s - %(name)s - %(levelname)s - [%(filename)s:%(lineno)d] - %(message)s"
+)
 
 
 def setup_logging(
     level: int = logging.INFO,
     log_file: Optional[str] = None,
     console: bool = True,
-    detailed: bool = False
+    detailed: bool = False,
 ) -> None:
     """
     Configure logging for the application
@@ -59,7 +60,7 @@ def setup_logging(
             log_file,
             maxBytes=LOG_FILE_MAX_BYTES,
             backupCount=LOG_FILE_BACKUP_COUNT,
-            encoding='utf-8'
+            encoding="utf-8",
         )
         file_handler.setLevel(level)
         file_handler.setFormatter(formatter)

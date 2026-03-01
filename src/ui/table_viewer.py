@@ -102,20 +102,32 @@ class TableViewer(QWidget):
     # Used to notify parent that data has changed and graph should refresh
     data_updated = Signal()
 
-    def __init__(self, rom_definition: RomDefinition = None, parent=None,
-                 modified_cells_dict: dict = None, original_values_dict: dict = None,
-                 diff_mode: bool = False, diff_base_data: dict = None):
+    def __init__(
+        self,
+        rom_definition: RomDefinition = None,
+        parent=None,
+        modified_cells_dict: dict = None,
+        original_values_dict: dict = None,
+        diff_mode: bool = False,
+        diff_base_data: dict = None,
+    ):
         super().__init__(parent)
         self.rom_definition = rom_definition
         self._editing_in_progress = False
         self._read_only = False
         # Use shared dict from main window (persists across window close/reopen)
         # If not provided, create local dict (for testing/standalone usage)
-        self._modified_cells = modified_cells_dict if modified_cells_dict is not None else {}
-        self._original_values = original_values_dict if original_values_dict is not None else {}
+        self._modified_cells = (
+            modified_cells_dict if modified_cells_dict is not None else {}
+        )
+        self._original_values = (
+            original_values_dict if original_values_dict is not None else {}
+        )
         # Diff mode for viewing historical changes
         self._diff_mode = diff_mode
-        self._diff_base_data = diff_base_data  # Data from previous version to compare against
+        self._diff_base_data = (
+            diff_base_data  # Data from previous version to compare against
+        )
         self._show_diff_highlights = True  # Toggle for diff highlighting
         self.init_ui()
 
@@ -144,23 +156,23 @@ class TableViewer(QWidget):
     @property
     def current_table(self):
         """Get current table from context"""
-        return self._ctx.current_table if hasattr(self, '_ctx') else None
+        return self._ctx.current_table if hasattr(self, "_ctx") else None
 
     @current_table.setter
     def current_table(self, value):
         """Set current table in context"""
-        if hasattr(self, '_ctx'):
+        if hasattr(self, "_ctx"):
             self._ctx.current_table = value
 
     @property
     def current_data(self):
         """Get current data from context"""
-        return self._ctx.current_data if hasattr(self, '_ctx') else None
+        return self._ctx.current_data if hasattr(self, "_ctx") else None
 
     @current_data.setter
     def current_data(self, value):
         """Set current data in context"""
-        if hasattr(self, '_ctx'):
+        if hasattr(self, "_ctx"):
             self._ctx.current_data = value
 
     def init_ui(self):
@@ -177,7 +189,9 @@ class TableViewer(QWidget):
         font.setBold(True)
         font.setPointSize(10)
         self.x_axis_label.setFont(font)
-        self.x_axis_label.setVisible(False)  # Hidden by default, shown only for 3D tables
+        self.x_axis_label.setVisible(
+            False
+        )  # Hidden by default, shown only for 3D tables
         main_layout.addWidget(self.x_axis_label)
 
         # Horizontal layout for Y-axis label and table
@@ -191,14 +205,20 @@ class TableViewer(QWidget):
         font.setBold(True)
         font.setPointSize(10)
         self.y_axis_label.setFont(font)
-        self.y_axis_label.setVisible(False)  # Hidden by default, shown only for 3D tables
+        self.y_axis_label.setVisible(
+            False
+        )  # Hidden by default, shown only for 3D tables
         table_layout.addWidget(self.y_axis_label)
 
         # Table widget for displaying data
         self.table_widget = QTableWidget()
         # Start with ResizeToContents, will be changed to uniform width after data load
-        self.table_widget.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeToContents)
-        self.table_widget.verticalHeader().setSectionResizeMode(QHeaderView.ResizeToContents)
+        self.table_widget.horizontalHeader().setSectionResizeMode(
+            QHeaderView.ResizeToContents
+        )
+        self.table_widget.verticalHeader().setSectionResizeMode(
+            QHeaderView.ResizeToContents
+        )
         self.table_widget.verticalHeader().setVisible(False)  # Hide row numbers
         self.table_widget.setShowGrid(True)
         self.table_widget.setGridStyle(Qt.SolidLine)
@@ -273,11 +293,15 @@ class TableViewer(QWidget):
         if not self._ctx.current_table or not self._ctx.current_data:
             return
 
-        values = self._ctx.current_data['values']
+        values = self._ctx.current_data["values"]
         old_value = float(values[0])
 
         if checked:
-            new_value = self._toggle_original_nonzero_value if self._toggle_original_nonzero_value != 0 else 1.0
+            new_value = (
+                self._toggle_original_nonzero_value
+                if self._toggle_original_nonzero_value != 0
+                else 1.0
+            )
         else:
             new_value = 0.0
 
@@ -291,7 +315,7 @@ class TableViewer(QWidget):
             return
 
         # Update internal data
-        self._ctx.current_data['values'][0] = new_value
+        self._ctx.current_data["values"][0] = new_value
 
         # Update the hidden table item for consistency
         self._editing_in_progress = True
@@ -307,12 +331,17 @@ class TableViewer(QWidget):
         # Emit change signal
         self.cell_changed.emit(
             self._ctx.current_table.address,
-            0, 0,
-            old_value, new_value,
-            old_raw, new_raw
+            0,
+            0,
+            old_value,
+            new_value,
+            old_raw,
+            new_raw,
         )
 
-        logger.debug(f"Toggle changed: {self._ctx.current_table.name} {old_value} -> {new_value}")
+        logger.debug(
+            f"Toggle changed: {self._ctx.current_table.name} {old_value} -> {new_value}"
+        )
 
     def _update_toggle_label(self, checked: bool):
         """Update the toggle status label text and color"""
@@ -398,7 +427,7 @@ class TableViewer(QWidget):
 
     def _apply_table_style(self):
         """Apply table styling - delegates to helper if available"""
-        if hasattr(self, '_display'):
+        if hasattr(self, "_display"):
             self._display.apply_table_style()
         else:
             self._apply_table_style_internal()
@@ -487,7 +516,9 @@ class TableViewer(QWidget):
                 ui_row, ui_col = self._data_to_ui_coords(data_row, data_col)
                 item = self.table_widget.item(ui_row, ui_col)
                 if item is not None:
-                    item.setToolTip(f"Previous: {self._display.format_value(base_value, value_fmt)}")
+                    item.setToolTip(
+                        f"Previous: {self._display.format_value(base_value, value_fmt)}"
+                    )
 
     def clear(self):
         """Clear the viewer"""
@@ -501,8 +532,9 @@ class TableViewer(QWidget):
         """Format a value using the given format spec with error handling."""
         return self._display.format_value(value, format_spec)
 
-    def _get_cell_color(self, value: float, values: np.ndarray,
-                        row: int, col: int) -> QColor:
+    def _get_cell_color(
+        self, value: float, values: np.ndarray, row: int, col: int
+    ) -> QColor:
         """Calculate cell background color based on gradient mode."""
         return self._display.get_cell_color(value, values, row, col)
 
@@ -523,14 +555,14 @@ class TableViewer(QWidget):
         """Update a cell's value programmatically (for undo/redo)"""
         self._edit.update_cell_value(data_row, data_col, new_value)
         # Skip per-cell signal during bulk operations (emitted once in end_bulk_update)
-        if not hasattr(self, '_bulk_update_state'):
+        if not hasattr(self, "_bulk_update_state"):
             self.data_updated.emit()
 
     def update_axis_cell_value(self, axis_type: str, data_idx: int, new_value: float):
         """Update an axis cell's value programmatically (for undo/redo)"""
         self._edit.update_axis_cell_value(axis_type, data_idx, new_value)
         # Skip per-cell signal during bulk operations (emitted once in end_bulk_update)
-        if not hasattr(self, '_bulk_update_state'):
+        if not hasattr(self, "_bulk_update_state"):
             self.data_updated.emit()
 
     def begin_bulk_update(self):
@@ -542,8 +574,8 @@ class TableViewer(QWidget):
         """
         # Save current state
         self._bulk_update_state = {
-            'updates_enabled': self.table_widget.updatesEnabled(),
-            'signals_blocked': self.table_widget.signalsBlocked(),
+            "updates_enabled": self.table_widget.updatesEnabled(),
+            "signals_blocked": self.table_widget.signalsBlocked(),
         }
 
         # Disable updates and signals to prevent per-cell repaints
@@ -564,12 +596,12 @@ class TableViewer(QWidget):
         self._display.end_bulk_update()
 
         # Restore table widget state
-        if hasattr(self, '_bulk_update_state'):
+        if hasattr(self, "_bulk_update_state"):
             self.table_widget.blockSignals(
-                self._bulk_update_state.get('signals_blocked', False)
+                self._bulk_update_state.get("signals_blocked", False)
             )
             self.table_widget.setUpdatesEnabled(
-                self._bulk_update_state.get('updates_enabled', True)
+                self._bulk_update_state.get("updates_enabled", True)
             )
             del self._bulk_update_state
         else:
@@ -678,7 +710,10 @@ class TableViewer(QWidget):
             # Axis cells: ('x_axis', index) or ('y_axis', index)
             axis_type, data_idx = data_indices
             axis_key = f"{self.current_table.address}:{axis_type}"
-            return axis_key in self._modified_cells and data_idx in self._modified_cells[axis_key]
+            return (
+                axis_key in self._modified_cells
+                and data_idx in self._modified_cells[axis_key]
+            )
 
         # Data cell: (data_row, data_col)
         data_row, data_col = data_indices
@@ -704,7 +739,9 @@ class TableViewer(QWidget):
 
         self._modified_cells[table_address].add((data_row, data_col))
 
-    def mark_axis_cell_modified(self, table_address: str, axis_type: str, data_idx: int):
+    def mark_axis_cell_modified(
+        self, table_address: str, axis_type: str, data_idx: int
+    ):
         """
         Mark an axis cell as modified
 
@@ -719,9 +756,16 @@ class TableViewer(QWidget):
 
         self._modified_cells[axis_key].add(data_idx)
 
-    def _on_cell_changed_track_modifications(self, table_address: str, data_row: int, data_col: int,
-                                             old_value: float, new_value: float,
-                                             old_raw: float, new_raw: float):
+    def _on_cell_changed_track_modifications(
+        self,
+        table_address: str,
+        data_row: int,
+        data_col: int,
+        old_value: float,
+        new_value: float,
+        old_raw: float,
+        new_raw: float,
+    ):
         """Track cell modifications from cell_changed signal"""
         self.mark_cell_modified(table_address, data_row, data_col)
 
@@ -737,9 +781,16 @@ class TableViewer(QWidget):
                 data_row, data_col = change[0], change[1]
                 self.mark_cell_modified(self.current_table.address, data_row, data_col)
 
-    def _on_axis_changed_track_modifications(self, table_address: str, axis_type: str, data_idx: int,
-                                             old_value: float, new_value: float,
-                                             old_raw: float, new_raw: float):
+    def _on_axis_changed_track_modifications(
+        self,
+        table_address: str,
+        axis_type: str,
+        data_idx: int,
+        old_value: float,
+        new_value: float,
+        old_raw: float,
+        new_raw: float,
+    ):
         """Track axis cell modifications from axis_changed signal"""
         self.mark_axis_cell_modified(table_address, axis_type, data_idx)
 
@@ -752,9 +803,13 @@ class TableViewer(QWidget):
             # Axis bulk changes: (axis_type, index, old_value, new_value, old_raw, new_raw)
             if len(change) >= 2:
                 axis_type, data_idx = change[0], change[1]
-                self.mark_axis_cell_modified(self.current_table.address, axis_type, data_idx)
+                self.mark_axis_cell_modified(
+                    self.current_table.address, axis_type, data_idx
+                )
 
-    def _check_and_remove_border_if_original(self, table_address: str, data_row: int, data_col: int, current_value: float):
+    def _check_and_remove_border_if_original(
+        self, table_address: str, data_row: int, data_col: int, current_value: float
+    ):
         """
         Sync border with original value: remove if matches, add if differs
 
@@ -796,7 +851,9 @@ class TableViewer(QWidget):
             if table_address in self._modified_cells:
                 self._modified_cells[table_address].discard((data_row, data_col))
 
-    def _check_and_remove_axis_border_if_original(self, table_address: str, axis_type: str, data_idx: int, current_value: float):
+    def _check_and_remove_axis_border_if_original(
+        self, table_address: str, axis_type: str, data_idx: int, current_value: float
+    ):
         """
         Sync axis border with original value: remove if matches, add if differs
 

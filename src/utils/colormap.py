@@ -51,7 +51,7 @@ class ColorMap:
 
         try:
             self.colors = []
-            with open(path, 'r') as f:
+            with open(path, "r") as f:
                 for line_num, line in enumerate(f, 1):
                     line = line.strip()
                     if not line:
@@ -65,7 +65,9 @@ class ColorMap:
                         self.colors.append((r, g, b))
 
             if len(self.colors) < 256:
-                logger.warning(f"Color map has only {len(self.colors)} entries, expected 256")
+                logger.warning(
+                    f"Color map has only {len(self.colors)} entries, expected 256"
+                )
                 # Pad with last color or use builtin
                 if self.colors:
                     last_color = self.colors[-1]
@@ -177,6 +179,7 @@ def get_colormap() -> ColorMap:
         # Lazy import: test suite patches src.utils.settings.get_settings;
         # a module-level import would capture the real function before patches apply.
         from .settings import get_settings
+
         settings = get_settings()
         colormap_path = settings.get_colormap_path()
         _current_colormap = ColorMap(colormap_path)

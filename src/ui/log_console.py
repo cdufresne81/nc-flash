@@ -10,7 +10,7 @@ from ..utils.constants import (
     LOG_CONSOLE_MAX_LINES,
     LOG_CONSOLE_CLEAR_BUTTON_WIDTH,
     LOG_CONSOLE_FONT_FAMILIES,
-    LOG_CONSOLE_FONT_SIZE
+    LOG_CONSOLE_FONT_SIZE,
 )
 from PySide6.QtWidgets import (
     QWidget,
@@ -18,7 +18,7 @@ from PySide6.QtWidgets import (
     QTextEdit,
     QLabel,
     QPushButton,
-    QHBoxLayout
+    QHBoxLayout,
 )
 from PySide6.QtGui import QTextCursor, QFont
 from PySide6.QtCore import Signal, QObject
@@ -26,6 +26,7 @@ from PySide6.QtCore import Signal, QObject
 
 class LogSignalEmitter(QObject):
     """Separate QObject to hold signals, avoiding MRO conflicts"""
+
     log_message = Signal(str, int)  # message, level
 
 
@@ -123,8 +124,9 @@ class LogConsole(QWidget):
 
         self.log_handler = QtLogHandler()
         self.log_handler.setFormatter(
-            logging.Formatter('%(asctime)s - %(levelname)s - %(message)s',
-                            datefmt='%H:%M:%S')
+            logging.Formatter(
+                "%(asctime)s - %(levelname)s - %(message)s", datefmt="%H:%M:%S"
+            )
         )
         self.log_handler.log_message.connect(self.append_log)
 
@@ -151,11 +153,11 @@ class LogConsole(QWidget):
 
         # Color coding based on log level
         colors = {
-            logging.DEBUG: "#808080",      # Gray
-            logging.INFO: "#4ec9b0",       # Cyan
-            logging.WARNING: "#dcdcaa",    # Yellow
-            logging.ERROR: "#f48771",      # Red
-            logging.CRITICAL: "#ff0000"    # Bright Red
+            logging.DEBUG: "#808080",  # Gray
+            logging.INFO: "#4ec9b0",  # Cyan
+            logging.WARNING: "#dcdcaa",  # Yellow
+            logging.ERROR: "#f48771",  # Red
+            logging.CRITICAL: "#ff0000",  # Bright Red
         }
 
         color = colors.get(level, "#d4d4d4")  # Default white

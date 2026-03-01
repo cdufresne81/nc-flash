@@ -32,7 +32,9 @@ def update_scaling(xml_path: Path, scaling_name: str, updates: dict) -> bool:
 
     try:
         # Parse XML preserving formatting
-        parser = etree.XMLParser(remove_blank_text=False, resolve_entities=False, no_network=True)
+        parser = etree.XMLParser(
+            remove_blank_text=False, resolve_entities=False, no_network=True
+        )
         tree = etree.parse(str(xml_path), parser)
         root = tree.getroot()
 
@@ -73,10 +75,7 @@ def update_scaling(xml_path: Path, scaling_name: str, updates: dict) -> bool:
 
         # Write back to file
         tree.write(
-            str(xml_path),
-            encoding='UTF-8',
-            xml_declaration=True,
-            standalone='yes'
+            str(xml_path), encoding="UTF-8", xml_declaration=True, standalone="yes"
         )
 
         logger.info(f"Updated scaling '{scaling_name}' in {xml_path}")

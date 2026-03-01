@@ -19,11 +19,11 @@ from .clipboard import TableClipboardHelper
 from .cell_delegate import ModifiedCellDelegate
 
 __all__ = [
-    'TableViewerContext',
-    'TableDisplayHelper',
-    'TableEditHelper',
-    'TableOperationsHelper',
-    'TableInterpolationHelper',
-    'TableClipboardHelper',
-    'ModifiedCellDelegate',
+    "TableViewerContext",
+    "TableDisplayHelper",
+    "TableEditHelper",
+    "TableOperationsHelper",
+    "TableInterpolationHelper",
+    "TableClipboardHelper",
+    "ModifiedCellDelegate",
 ]

@@ -28,11 +28,13 @@ class TestScalingConverterWithRealDefinitions:
             converter = ScalingConverter(scaling)
             # Should not raise on a simple value
             display = converter.to_display(100.0)
-            assert isinstance(display, (int, float)), \
-                f"Scaling '{scaling.name}' to_display returned {type(display)}"
+            assert isinstance(
+                display, (int, float)
+            ), f"Scaling '{scaling.name}' to_display returned {type(display)}"
             raw = converter.from_display(display)
-            assert isinstance(raw, (int, float)), \
-                f"Scaling '{scaling.name}' from_display returned {type(raw)}"
+            assert isinstance(
+                raw, (int, float)
+            ), f"Scaling '{scaling.name}' from_display returned {type(raw)}"
 
     def test_scaling_round_trip_sample(self, sample_xml_path):
         """Sample of scalings should round-trip: raw->display->raw"""
@@ -50,8 +52,9 @@ class TestScalingConverterWithRealDefinitions:
                     continue  # Skip divisions by zero in reverse
                 raw_back = converter.from_display(display)
                 # Allow some tolerance for integer storage types
-                assert abs(raw_back - test_raw) < 1.0, \
-                    f"Scaling '{name}': raw {test_raw} -> display {display} -> raw {raw_back}"
+                assert (
+                    abs(raw_back - test_raw) < 1.0
+                ), f"Scaling '{name}': raw {test_raw} -> display {display} -> raw {raw_back}"
                 tested += 1
             except (ZeroDivisionError, ScalingConversionError):
                 continue  # Some scalings have x in denominator
@@ -111,7 +114,9 @@ class TestClipboardTsvParsing:
 class TestAtomicFileWrites:
     """Test that file writes use atomic pattern (write-to-temp-then-replace)"""
 
-    def test_save_rom_creates_valid_file(self, sample_rom_path, sample_xml_path, tmp_path):
+    def test_save_rom_creates_valid_file(
+        self, sample_rom_path, sample_xml_path, tmp_path
+    ):
         """save_rom should produce a valid file with correct size"""
         definition = load_definition(str(sample_xml_path))
         reader = RomReader(str(sample_rom_path), definition)
@@ -122,7 +127,9 @@ class TestAtomicFileWrites:
         assert output.exists()
         assert output.stat().st_size == sample_rom_path.stat().st_size
 
-    def test_save_rom_no_temp_file_left(self, sample_rom_path, sample_xml_path, tmp_path):
+    def test_save_rom_no_temp_file_left(
+        self, sample_rom_path, sample_xml_path, tmp_path
+    ):
         """Successful save should not leave a .tmp file behind"""
         definition = load_definition(str(sample_xml_path))
         reader = RomReader(str(sample_rom_path), definition)
@@ -131,9 +138,13 @@ class TestAtomicFileWrites:
         reader.save_rom(str(output))
 
         tmp_file = tmp_path / "test_save.bin.tmp"
-        assert not tmp_file.exists(), "Temp file should be cleaned up after successful save"
+        assert (
+            not tmp_file.exists()
+        ), "Temp file should be cleaned up after successful save"
 
-    def test_save_rom_overwrites_existing(self, sample_rom_path, sample_xml_path, tmp_path):
+    def test_save_rom_overwrites_existing(
+        self, sample_rom_path, sample_xml_path, tmp_path
+    ):
         """save_rom should safely overwrite an existing file"""
         definition = load_definition(str(sample_xml_path))
         reader = RomReader(str(sample_rom_path), definition)
@@ -192,8 +203,8 @@ class TestTableDataShapes:
         for t in definition.tables:
             if t.type == TableType.ONE_D and not t.is_axis:
                 data = reader.read_table_data(t)
-                assert data['values'].ndim == 1, f"Table {t.name} should be 1D"
-                assert len(data['values']) == t.elements
+                assert data["values"].ndim == 1, f"Table {t.name} should be 1D"
+                assert len(data["values"]) == t.elements
                 return
 
         pytest.skip("No 1D tables found")
@@ -206,11 +217,11 @@ class TestTableDataShapes:
         for t in definition.tables:
             if t.type == TableType.THREE_D and not t.is_axis:
                 data = reader.read_table_data(t)
-                if 'x_axis' in data and 'y_axis' in data:
-                    assert data['values'].ndim == 2, f"Table {t.name} should be 2D"
-                    rows, cols = data['values'].shape
-                    assert rows == len(data['y_axis'])
-                    assert cols == len(data['x_axis'])
+                if "x_axis" in data and "y_axis" in data:
+                    assert data["values"].ndim == 2, f"Table {t.name} should be 2D"
+                    rows, cols = data["values"].shape
+                    assert rows == len(data["y_axis"])
+                    assert cols == len(data["x_axis"])
                     return
 
         pytest.skip("No 3D tables with axes found")
@@ -226,9 +237,10 @@ class TestTableDataShapes:
                 continue
             try:
                 data = reader.read_table_data(t)
-                values = data['values']
-                assert np.all(np.isfinite(values)), \
-                    f"Table {t.name} contains NaN or Inf values"
+                values = data["values"]
+                assert np.all(
+                    np.isfinite(values)
+                ), f"Table {t.name} contains NaN or Inf values"
                 tested += 1
             except Exception:
                 continue  # Skip tables with scaling issues

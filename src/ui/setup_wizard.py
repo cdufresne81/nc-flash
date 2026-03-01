@@ -14,7 +14,7 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QFileDialog,
     QDialogButtonBox,
-    QMessageBox
+    QMessageBox,
 )
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QFont
@@ -68,7 +68,9 @@ class SetupWizard(QDialog):
         path_layout.addWidget(path_label)
 
         self.definitions_path_edit = QLineEdit()
-        self.definitions_path_edit.setPlaceholderText("Path to ROM definition XML files...")
+        self.definitions_path_edit.setPlaceholderText(
+            "Path to ROM definition XML files..."
+        )
         path_layout.addWidget(self.definitions_path_edit)
 
         browse_button = QPushButton("Browse...")
@@ -110,7 +112,7 @@ class SetupWizard(QDialog):
             self,
             "Select Definitions Directory",
             current_path,
-            QFileDialog.ShowDirsOnly | QFileDialog.DontResolveSymlinks
+            QFileDialog.ShowDirsOnly | QFileDialog.DontResolveSymlinks,
         )
 
         if directory:
@@ -124,7 +126,7 @@ class SetupWizard(QDialog):
             QMessageBox.warning(
                 self,
                 "Path Required",
-                "Please select a definitions directory to continue."
+                "Please select a definitions directory to continue.",
             )
             return
 
@@ -135,7 +137,7 @@ class SetupWizard(QDialog):
                 self,
                 "Directory Not Found",
                 f"The specified directory does not exist:\n{definitions_dir}\n\n"
-                "Please select a valid directory."
+                "Please select a valid directory.",
             )
             return
 
@@ -144,7 +146,7 @@ class SetupWizard(QDialog):
                 self,
                 "Invalid Path",
                 f"The specified path is not a directory:\n{definitions_dir}\n\n"
-                "Please select a valid directory."
+                "Please select a valid directory.",
             )
             return
 
@@ -158,7 +160,7 @@ class SetupWizard(QDialog):
                 "ROM definition files should be XML files.\n\n"
                 "Do you want to use this directory anyway?",
                 QMessageBox.Yes | QMessageBox.No,
-                QMessageBox.No
+                QMessageBox.No,
             )
             if response == QMessageBox.No:
                 return
@@ -177,7 +179,7 @@ class SetupWizard(QDialog):
             "You need to configure the definitions directory to use NC ROM Editor.\n\n"
             "Are you sure you want to exit?",
             QMessageBox.Yes | QMessageBox.No,
-            QMessageBox.No
+            QMessageBox.No,
         )
 
         if response == QMessageBox.Yes:

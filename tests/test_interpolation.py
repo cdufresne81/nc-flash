@@ -52,9 +52,16 @@ class TestInterpolationWithScaling:
     def _make_converter(self, toexpr="x*0.01", frexpr="x/0.01"):
         """Helper to create a ScalingConverter with given expressions"""
         scaling = Scaling(
-            name="test", units="", toexpr=toexpr, frexpr=frexpr,
-            format="%.2f", min=0, max=500, inc=0.01,
-            storagetype="uint16", endian="big"
+            name="test",
+            units="",
+            toexpr=toexpr,
+            frexpr=frexpr,
+            format="%.2f",
+            min=0,
+            max=500,
+            inc=0.01,
+            storagetype="uint16",
+            endian="big",
         )
         return ScalingConverter(scaling)
 
@@ -68,7 +75,9 @@ class TestInterpolationWithScaling:
         # display = [10.0, 50.0]
 
         # Interpolate 3 intermediate values in display space
-        interpolated_display = np.linspace(display_endpoints[0], display_endpoints[1], 5)
+        interpolated_display = np.linspace(
+            display_endpoints[0], display_endpoints[1], 5
+        )
         # [10, 20, 30, 40, 50]
 
         # Convert back to raw
@@ -77,7 +86,9 @@ class TestInterpolationWithScaling:
 
         # Convert raw back to display to verify
         final_display = converter.to_display(interpolated_raw)
-        np.testing.assert_array_almost_equal(interpolated_display, final_display, decimal=5)
+        np.testing.assert_array_almost_equal(
+            interpolated_display, final_display, decimal=5
+        )
 
     def test_offset_scaling_interpolation(self):
         """Interpolation with offset scaling (e.g., temperature)"""
@@ -107,10 +118,10 @@ class TestInterpolationWithScaling:
         f00, f10, f01, f11 = corners_display
         tx, ty = 0.5, 0.5
         center_display = (
-            (1 - tx) * (1 - ty) * f00 +
-            tx * (1 - ty) * f10 +
-            (1 - tx) * ty * f01 +
-            tx * ty * f11
+            (1 - tx) * (1 - ty) * f00
+            + tx * (1 - ty) * f10
+            + (1 - tx) * ty * f01
+            + tx * ty * f11
         )
 
         # Round-trip
@@ -148,9 +159,16 @@ class TestScalingConverterEdgeCases:
     def test_identity_conversion(self):
         """Identity expression x should pass through unchanged"""
         scaling = Scaling(
-            name="identity", units="", toexpr="x", frexpr="x",
-            format="%.0f", min=0, max=255, inc=1,
-            storagetype="uint8", endian="big"
+            name="identity",
+            units="",
+            toexpr="x",
+            frexpr="x",
+            format="%.0f",
+            min=0,
+            max=255,
+            inc=1,
+            storagetype="uint8",
+            endian="big",
         )
         converter = ScalingConverter(scaling)
 
@@ -161,9 +179,16 @@ class TestScalingConverterEdgeCases:
     def test_large_array_conversion(self):
         """Conversion should handle arrays of typical ROM table size"""
         scaling = Scaling(
-            name="test", units="", toexpr="x*0.01", frexpr="x/0.01",
-            format="%.2f", min=0, max=500, inc=0.01,
-            storagetype="uint16", endian="big"
+            name="test",
+            units="",
+            toexpr="x*0.01",
+            frexpr="x/0.01",
+            format="%.2f",
+            min=0,
+            max=500,
+            inc=0.01,
+            storagetype="uint16",
+            endian="big",
         )
         converter = ScalingConverter(scaling)
 
@@ -177,9 +202,16 @@ class TestScalingConverterEdgeCases:
     def test_single_value_conversion(self):
         """Single scalar value (not array) should work"""
         scaling = Scaling(
-            name="test", units="V", toexpr="x*0.001", frexpr="x/0.001",
-            format="%.3f", min=0, max=5, inc=0.001,
-            storagetype="uint16", endian="big"
+            name="test",
+            units="V",
+            toexpr="x*0.001",
+            frexpr="x/0.001",
+            format="%.3f",
+            min=0,
+            max=5,
+            inc=0.001,
+            storagetype="uint16",
+            endian="big",
         )
         converter = ScalingConverter(scaling)
 

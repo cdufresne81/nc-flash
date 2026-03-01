@@ -22,7 +22,7 @@ from .exceptions import (
     RomReadError,
     RomWriteError,
     ScalingConversionError,
-    ScalingNotFoundError
+    ScalingNotFoundError,
 )
 
 logger = logging.getLogger(__name__)
@@ -37,7 +37,7 @@ def _convert_expr_to_python(expr: str) -> str:
     """
     # Replace ^ with ** for exponentiation
     # This handles patterns like x^2, x^3, (expr)^2, etc.
-    return re.sub(r'\^', '**', expr)
+    return re.sub(r"\^", "**", expr)
 
 
 def _is_safe_numpy_expr(expr: str) -> bool:
@@ -51,7 +51,7 @@ def _is_safe_numpy_expr(expr: str) -> bool:
     Returns True if the expression uses only safe AST nodes.
     """
     try:
-        tree = ast.parse(expr, mode='eval')
+        tree = ast.parse(expr, mode="eval")
     except SyntaxError:
         return False
 
@@ -60,12 +60,19 @@ def _is_safe_numpy_expr(expr: str) -> bool:
         ast.BinOp,
         ast.UnaryOp,
         # Binary operators
-        ast.Add, ast.Sub, ast.Mult, ast.Div,
-        ast.Pow, ast.FloorDiv, ast.Mod,
+        ast.Add,
+        ast.Sub,
+        ast.Mult,
+        ast.Div,
+        ast.Pow,
+        ast.FloorDiv,
+        ast.Mod,
         # Unary operators
-        ast.UAdd, ast.USub,
+        ast.UAdd,
+        ast.USub,
         # Literals and names
-        ast.Constant, ast.Name,
+        ast.Constant,
+        ast.Name,
         # Parenthesised sub-expressions (implicit in BinOp nesting)
     )
 
@@ -73,7 +80,7 @@ def _is_safe_numpy_expr(expr: str) -> bool:
         if not isinstance(node, _SAFE_NODES):
             return False
         # Only allow 'x' as a variable name
-        if isinstance(node, ast.Name) and node.id != 'x':
+        if isinstance(node, ast.Name) and node.id != "x":
             return False
 
     return True
@@ -96,7 +103,7 @@ def _compile_numpy_expr(expr: str):
         logger.debug(f"Expression not safe for numpy vectorization: {expr}")
         return None
     try:
-        return compile(expr, '<scaling>', 'eval')
+        return compile(expr, "<scaling>", "eval")
     except SyntaxError:
         logger.debug(f"Failed to compile expression for numpy: {expr}")
         return None
@@ -116,13 +123,23 @@ class ScalingConverter:
         """
         self.scaling = scaling
         # Pre-convert expressions to Python syntax
-        self._toexpr = _convert_expr_to_python(scaling.toexpr) if scaling.toexpr else scaling.toexpr
-        self._frexpr = _convert_expr_to_python(scaling.frexpr) if scaling.frexpr else scaling.frexpr
+        self._toexpr = (
+            _convert_expr_to_python(scaling.toexpr)
+            if scaling.toexpr
+            else scaling.toexpr
+        )
+        self._frexpr = (
+            _convert_expr_to_python(scaling.frexpr)
+            if scaling.frexpr
+            else scaling.frexpr
+        )
         # Pre-compile numpy-vectorizable code objects (None if not vectorizable)
         self._toexpr_compiled = _compile_numpy_expr(self._toexpr)
         self._frexpr_compiled = _compile_numpy_expr(self._frexpr)
 
-    def to_display(self, raw_value: Union[float, np.ndarray]) -> Union[float, np.ndarray]:
+    def to_display(
+        self, raw_value: Union[float, np.ndarray]
+    ) -> Union[float, np.ndarray]:
         """
         Convert raw binary value(s) to display value(s)
 
@@ -143,7 +160,9 @@ class ScalingConverter:
             self._toexpr, self._toexpr_compiled, raw_value, "to display"
         )
 
-    def from_display(self, display_value: Union[float, np.ndarray]) -> Union[float, np.ndarray]:
+    def from_display(
+        self, display_value: Union[float, np.ndarray]
+    ) -> Union[float, np.ndarray]:
         """
         Convert display value(s) back to raw binary value(s)
 
@@ -193,7 +212,9 @@ class ScalingConverter:
         if compiled_expr is not None:
             try:
                 # eval with x bound to the value/array; only numpy is in scope
-                result = eval(compiled_expr, {"__builtins__": {}}, {"x": value})  # noqa: S307
+                result = eval(
+                    compiled_expr, {"__builtins__": {}}, {"x": value}
+                )  # noqa: S307
                 # Ensure the result is a numpy array when the input was one
                 if isinstance(value, np.ndarray) and not isinstance(result, np.ndarray):
                     result = np.full_like(value, result, dtype=float)
@@ -209,11 +230,9 @@ class ScalingConverter:
         # --- Fallback: per-element simpleeval ---
         try:
             if isinstance(value, np.ndarray):
-                return np.array(
-                    [simple_eval(expr, names={'x': v}) for v in value]
-                )
+                return np.array([simple_eval(expr, names={"x": v}) for v in value])
             else:
-                return simple_eval(expr, names={'x': value})
+                return simple_eval(expr, names={"x": value})
         except Exception as e:
             logger.error(f"Error converting {direction} with expr '{expr}': {e}")
             raise ScalingConversionError(
@@ -257,7 +276,7 @@ class RomReader:
             RomReadError: If ROM file cannot be read
         """
         try:
-            with open(self.rom_path, 'rb') as f:
+            with open(self.rom_path, "rb") as f:
                 self.rom_data = bytearray(f.read())
             logger.info(f"Loaded {len(self.rom_data)} bytes from ROM file")
         except IOError as e:
@@ -276,8 +295,8 @@ class RomReader:
             expected_id = self.definition.romid.internalidstring
             id_length = len(expected_id)
 
-            raw_bytes = self.rom_data[address:address + id_length]
-            actual_id = raw_bytes.decode('ascii', errors='ignore')
+            raw_bytes = self.rom_data[address : address + id_length]
+            actual_id = raw_bytes.decode("ascii", errors="ignore")
             if len(actual_id) != len(raw_bytes):
                 logger.warning(
                     f"ROM ID at {hex(address)} contains non-ASCII bytes "
@@ -288,14 +307,18 @@ class RomReader:
             if match:
                 logger.info(f"ROM ID verified: {actual_id}")
             else:
-                logger.warning(f"ROM ID mismatch - Expected: {expected_id}, Found: {actual_id}")
+                logger.warning(
+                    f"ROM ID mismatch - Expected: {expected_id}, Found: {actual_id}"
+                )
 
             return match
         except Exception as e:
             logger.error(f"Error verifying ROM ID: {e}")
             return False
 
-    def _read_raw_values(self, address: int, count: int, scaling: Scaling) -> np.ndarray:
+    def _read_raw_values(
+        self, address: int, count: int, scaling: Scaling
+    ) -> np.ndarray:
         """
         Read raw binary values from ROM
 
@@ -329,12 +352,14 @@ class RomReader:
             )
 
         # Extract bytes
-        data_bytes = self.rom_data[address:address + total_bytes]
+        data_bytes = self.rom_data[address : address + total_bytes]
 
         # Determine struct format
-        endian_char = '>' if scaling.endian == 'big' else '<'
+        endian_char = ">" if scaling.endian == "big" else "<"
 
-        format_char = STORAGE_TYPE_FORMAT.get(scaling.storagetype.lower(), DEFAULT_FORMAT_CHAR)
+        format_char = STORAGE_TYPE_FORMAT.get(
+            scaling.storagetype.lower(), DEFAULT_FORMAT_CHAR
+        )
         format_string = f"{endian_char}{count}{format_char}"
 
         # Unpack binary data
@@ -369,16 +394,16 @@ class RomReader:
         # Get scaling for main table
         scaling = self.definition.get_scaling(table.scaling)
         if not scaling:
-            logger.error(f"Scaling '{table.scaling}' not found for table '{table.name}'")
+            logger.error(
+                f"Scaling '{table.scaling}' not found for table '{table.name}'"
+            )
             raise ScalingNotFoundError(
                 f"Scaling '{table.scaling}' not found for table '{table.name}'"
             )
 
         # Read main table values
         raw_values = self._read_raw_values(
-            address=table.address_int,
-            count=table.elements,
-            scaling=scaling
+            address=table.address_int, count=table.elements, scaling=scaling
         )
 
         # Convert to display values
@@ -386,8 +411,8 @@ class RomReader:
         display_values = converter.to_display(raw_values)
 
         result = {
-            'values': display_values,
-            'raw_values': raw_values,
+            "values": display_values,
+            "raw_values": raw_values,
         }
 
         # Read axes for 2D/3D tables
@@ -397,15 +422,17 @@ class RomReader:
             if y_axis:
                 y_scaling = self.definition.get_scaling(y_axis.scaling)
                 if not y_scaling:
-                    logger.warning(f"Scaling '{y_axis.scaling}' not found for Y axis of '{table.name}'")
+                    logger.warning(
+                        f"Scaling '{y_axis.scaling}' not found for Y axis of '{table.name}'"
+                    )
                 if y_scaling:
                     y_raw = self._read_raw_values(
                         address=y_axis.address_int,
                         count=y_axis.elements,
-                        scaling=y_scaling
+                        scaling=y_scaling,
                     )
                     y_converter = ScalingConverter(y_scaling)
-                    result['y_axis'] = y_converter.to_display(y_raw)
+                    result["y_axis"] = y_converter.to_display(y_raw)
 
         if table.type == TableType.THREE_D:
             # Read X axis (only for 3D)
@@ -413,28 +440,34 @@ class RomReader:
             if x_axis:
                 x_scaling = self.definition.get_scaling(x_axis.scaling)
                 if not x_scaling:
-                    logger.warning(f"Scaling '{x_axis.scaling}' not found for X axis of '{table.name}'")
+                    logger.warning(
+                        f"Scaling '{x_axis.scaling}' not found for X axis of '{table.name}'"
+                    )
                 if x_scaling:
                     x_raw = self._read_raw_values(
                         address=x_axis.address_int,
                         count=x_axis.elements,
-                        scaling=x_scaling
+                        scaling=x_scaling,
                     )
                     x_converter = ScalingConverter(x_scaling)
-                    result['x_axis'] = x_converter.to_display(x_raw)
+                    result["x_axis"] = x_converter.to_display(x_raw)
 
             # Reshape 3D table data into 2D grid
-            if 'x_axis' in result and 'y_axis' in result:
-                x_len = len(result['x_axis'])
-                y_len = len(result['y_axis'])
+            if "x_axis" in result and "y_axis" in result:
+                x_len = len(result["x_axis"])
+                y_len = len(result["y_axis"])
                 if len(display_values) == x_len * y_len:
                     # Reshape to (y_len, x_len) - rows are Y, columns are X
                     # Use 'F' (Fortran/column-major) order when swapxy is true
                     # because data is stored column-by-column in ROM
-                    order = 'F' if table.swapxy else 'C'
-                    result['values'] = display_values.reshape((y_len, x_len), order=order)
+                    order = "F" if table.swapxy else "C"
+                    result["values"] = display_values.reshape(
+                        (y_len, x_len), order=order
+                    )
 
-        logger.debug(f"Read table data: {table.name} ({table.address}) ({table.type.value})")
+        logger.debug(
+            f"Read table data: {table.name} ({table.address}) ({table.type.value})"
+        )
         return result
 
     def write_table_data(self, table: Table, values: np.ndarray) -> None:
@@ -453,7 +486,9 @@ class RomReader:
 
         scaling = self.definition.get_scaling(table.scaling)
         if not scaling:
-            logger.error(f"Scaling '{table.scaling}' not found for table '{table.name}'")
+            logger.error(
+                f"Scaling '{table.scaling}' not found for table '{table.name}'"
+            )
             raise ScalingNotFoundError(
                 f"Scaling '{table.scaling}' not found for table '{table.name}'"
             )
@@ -463,7 +498,7 @@ class RomReader:
 
         # Flatten if 2D array (must match reshape order used in read_table_data)
         if isinstance(values, np.ndarray) and values.ndim > 1:
-            order = 'F' if table.swapxy else 'C'
+            order = "F" if table.swapxy else "C"
             values = values.flatten(order=order)
 
         # Validate element count matches table definition
@@ -478,9 +513,11 @@ class RomReader:
         # Pack back to binary
         address = table.address_int
         bytes_per_elem = scaling.bytes_per_element
-        endian_char = '>' if scaling.endian == 'big' else '<'
+        endian_char = ">" if scaling.endian == "big" else "<"
 
-        format_char = STORAGE_TYPE_FORMAT.get(scaling.storagetype.lower(), DEFAULT_FORMAT_CHAR)
+        format_char = STORAGE_TYPE_FORMAT.get(
+            scaling.storagetype.lower(), DEFAULT_FORMAT_CHAR
+        )
         format_string = f"{endian_char}{len(raw_values)}{format_char}"
 
         try:
@@ -502,7 +539,7 @@ class RomReader:
                 )
 
             # Modify ROM data in memory (in-place)
-            self.rom_data[address:address + len(packed_data)] = packed_data
+            self.rom_data[address : address + len(packed_data)] = packed_data
             logger.info(f"Successfully wrote table data: {table.name}")
         except RomWriteError:
             # Re-raise our own exceptions
@@ -511,7 +548,9 @@ class RomReader:
             logger.error(f"Error writing table data for '{table.name}': {e}")
             raise RomWriteError(f"Failed to write table data: {e}")
 
-    def write_cell_value(self, table: Table, row: int, col: int, raw_value: float) -> None:
+    def write_cell_value(
+        self, table: Table, row: int, col: int, raw_value: float
+    ) -> None:
         """
         Write a single cell value to ROM (in memory)
 
@@ -552,14 +591,16 @@ class RomReader:
 
         bytes_per_elem = scaling.bytes_per_element
         address = table.address_int + (linear_index * bytes_per_elem)
-        endian_char = '>' if scaling.endian == 'big' else '<'
+        endian_char = ">" if scaling.endian == "big" else "<"
 
-        format_char = STORAGE_TYPE_FORMAT.get(scaling.storagetype.lower(), DEFAULT_FORMAT_CHAR)
+        format_char = STORAGE_TYPE_FORMAT.get(
+            scaling.storagetype.lower(), DEFAULT_FORMAT_CHAR
+        )
         format_string = f"{endian_char}{format_char}"
 
         try:
             # Convert to appropriate integer type if needed
-            if format_char in ('B', 'b', 'H', 'h', 'I', 'i'):
+            if format_char in ("B", "b", "H", "h", "I", "i"):
                 raw_value = int(round(raw_value))
 
             packed_data = struct.pack(format_string, raw_value)
@@ -571,7 +612,7 @@ class RomReader:
                 raise RomWriteError(f"Write exceeds ROM bounds at {hex(address)}")
 
             # Modify ROM data in memory (in-place)
-            self.rom_data[address:address + len(packed_data)] = packed_data
+            self.rom_data[address : address + len(packed_data)] = packed_data
             logger.debug(f"Wrote cell [{row},{col}] = {raw_value} at {hex(address)}")
 
         except RomWriteError:
@@ -580,7 +621,9 @@ class RomReader:
             logger.error(f"Error writing cell value: {e}")
             raise RomWriteError(f"Failed to write cell value: {e}")
 
-    def write_axis_value(self, table: Table, axis_type: str, index: int, raw_value: float) -> None:
+    def write_axis_value(
+        self, table: Table, axis_type: str, index: int, raw_value: float
+    ) -> None:
         """
         Write a single axis value to ROM (in memory)
 
@@ -595,9 +638,9 @@ class RomReader:
             RomWriteError: If writing fails
         """
         # Get the axis table
-        if axis_type == 'x_axis':
+        if axis_type == "x_axis":
             axis_table = table.x_axis
-        elif axis_type == 'y_axis':
+        elif axis_type == "y_axis":
             axis_table = table.y_axis
         else:
             raise RomWriteError(f"Invalid axis type: {axis_type}")
@@ -614,14 +657,16 @@ class RomReader:
         # Calculate the byte offset
         bytes_per_elem = scaling.bytes_per_element
         address = axis_table.address_int + (index * bytes_per_elem)
-        endian_char = '>' if scaling.endian == 'big' else '<'
+        endian_char = ">" if scaling.endian == "big" else "<"
 
-        format_char = STORAGE_TYPE_FORMAT.get(scaling.storagetype.lower(), DEFAULT_FORMAT_CHAR)
+        format_char = STORAGE_TYPE_FORMAT.get(
+            scaling.storagetype.lower(), DEFAULT_FORMAT_CHAR
+        )
         format_string = f"{endian_char}{format_char}"
 
         try:
             # Convert to appropriate integer type if needed
-            if format_char in ('B', 'b', 'H', 'h', 'I', 'i'):
+            if format_char in ("B", "b", "H", "h", "I", "i"):
                 raw_value = int(round(raw_value))
 
             packed_data = struct.pack(format_string, raw_value)
@@ -633,8 +678,10 @@ class RomReader:
                 raise RomWriteError(f"Write exceeds ROM bounds at {hex(address)}")
 
             # Modify ROM data in memory (in-place)
-            self.rom_data[address:address + len(packed_data)] = packed_data
-            logger.debug(f"Wrote axis [{axis_type}][{index}] = {raw_value} at {hex(address)}")
+            self.rom_data[address : address + len(packed_data)] = packed_data
+            logger.debug(
+                f"Wrote axis [{axis_type}][{index}] = {raw_value} at {hex(address)}"
+            )
 
         except RomWriteError:
             raise
@@ -658,14 +705,16 @@ class RomReader:
         logger.info(f"Saving ROM to {output_path}")
 
         # Atomic write: write to temp file, then replace original
-        tmp_path = str(output_path) + '.tmp'
+        tmp_path = str(output_path) + ".tmp"
         try:
-            with open(tmp_path, 'wb') as f:
+            with open(tmp_path, "wb") as f:
                 f.write(self.rom_data)
                 f.flush()
                 os.fsync(f.fileno())
             os.replace(tmp_path, str(output_path))
-            logger.info(f"Successfully saved {len(self.rom_data)} bytes to {output_path}")
+            logger.info(
+                f"Successfully saved {len(self.rom_data)} bytes to {output_path}"
+            )
         except Exception as e:
             # Clean up temp file on failure
             try:

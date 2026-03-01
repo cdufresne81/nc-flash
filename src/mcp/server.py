@@ -196,9 +196,7 @@ def _create_mcp(port: int = DEFAULT_SSE_PORT) -> FastMCP:
 
 
 def main():
-    parser = argparse.ArgumentParser(
-        description="NC ROM Editor MCP Server"
-    )
+    parser = argparse.ArgumentParser(description="NC ROM Editor MCP Server")
     parser.add_argument(
         "--definitions-dir",
         help="Path to ROM definitions directory (default: <app_root>/definitions)",
@@ -222,8 +220,10 @@ def main():
 
     server = _create_mcp(port=args.port)
 
-    logger.info(f"Starting NC ROM Editor MCP server ({args.transport} transport"
-                f"{f', port {args.port}' if args.transport == 'sse' else ''})")
+    logger.info(
+        f"Starting NC ROM Editor MCP server ({args.transport} transport"
+        f"{f', port {args.port}' if args.transport == 'sse' else ''})"
+    )
     server.run(transport=args.transport)
 
 

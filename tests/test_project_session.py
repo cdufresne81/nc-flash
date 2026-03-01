@@ -17,10 +17,10 @@ from src.core.project_manager import ProjectManager
 from src.ui.session_mixin import SessionMixin
 from src.ui.recent_files_mixin import RecentFilesMixin
 
-
 # ---------------------------------------------------------------------------
 # Helpers: lightweight host objects that satisfy mixin dependencies
 # ---------------------------------------------------------------------------
+
 
 def _make_document(rom_path, project_path=None, modified=False):
     """Create a mock RomDocument with the attributes mixins check."""
@@ -67,6 +67,7 @@ class _RecentHost(RecentFilesMixin):
 # _handle_close  (session save)
 # ===========================================================================
 
+
 class TestHandleClose:
     """Test _handle_close saves the correct session entries."""
 
@@ -80,9 +81,7 @@ class TestHandleClose:
 
         host._handle_close(event)
 
-        host.settings.set_session_files.assert_called_once_with(
-            [r"project:C:\proj"]
-        )
+        host.settings.set_session_files.assert_called_once_with([r"project:C:\proj"])
         event.accept.assert_called_once()
 
     def test_standalone_rom_saved_as_plain_path(self):
@@ -92,9 +91,7 @@ class TestHandleClose:
 
         host._handle_close(event)
 
-        host.settings.set_session_files.assert_called_once_with(
-            [r"C:\roms\stock.bin"]
-        )
+        host.settings.set_session_files.assert_called_once_with([r"C:\roms\stock.bin"])
 
     def test_mixed_tabs(self):
         proj = _make_document(
@@ -129,14 +126,13 @@ class TestHandleClose:
 
         host._handle_close(event)
 
-        host.settings.set_session_files.assert_called_once_with(
-            [r"C:\old\legacy.bin"]
-        )
+        host.settings.set_session_files.assert_called_once_with([r"C:\old\legacy.bin"])
 
 
 # ===========================================================================
 # _restore_session
 # ===========================================================================
+
 
 class TestRestoreSession:
     """Test _restore_session dispatches entries to the correct opener."""
@@ -214,11 +210,13 @@ class TestRestoreSession:
         standalone = rom_dir / "stock.bin"
         standalone.write_bytes(b"\x00" * 10)
 
-        host = _SessionHost(session_files=[
-            f"project:{proj_dir}",
-            str(standalone),
-            str(legacy_rom),
-        ])
+        host = _SessionHost(
+            session_files=[
+                f"project:{proj_dir}",
+                str(standalone),
+                str(legacy_rom),
+            ]
+        )
         host._restore_session()
 
         assert host.open_project_path.call_count == 2
@@ -236,10 +234,12 @@ class TestRestoreSession:
         proj_dir.mkdir()
         (proj_dir / "project.json").write_text("{}")
 
-        host = _SessionHost(session_files=[
-            f"project:{proj_dir}",
-            str(good_rom),
-        ])
+        host = _SessionHost(
+            session_files=[
+                f"project:{proj_dir}",
+                str(good_rom),
+            ]
+        )
         # First call raises, second should still proceed
         host.open_project_path.side_effect = [Exception("boom"), None]
 
@@ -252,12 +252,14 @@ class TestRestoreSession:
 # MainWindow.closeEvent  (MRO verification)
 # ===========================================================================
 
+
 class TestCloseEventMRO:
     """Verify MainWindow.closeEvent delegates to _handle_close, not QWidget's."""
 
     def test_close_event_defined_on_main_window(self):
         """closeEvent must be defined directly on MainWindow to override QWidget."""
         from main import MainWindow
+
         assert "closeEvent" in MainWindow.__dict__, (
             "MainWindow must define closeEvent directly — "
             "mixin methods are shadowed by QWidget's C++ slot"
@@ -266,17 +268,19 @@ class TestCloseEventMRO:
     def test_close_event_not_from_qwidget(self):
         """The first closeEvent in MRO should be MainWindow's, not QWidget's."""
         from main import MainWindow
+
         for cls in MainWindow.__mro__:
             if "closeEvent" in cls.__dict__:
-                assert cls.__name__ == "MainWindow", (
-                    f"closeEvent resolved to {cls.__name__}, expected MainWindow"
-                )
+                assert (
+                    cls.__name__ == "MainWindow"
+                ), f"closeEvent resolved to {cls.__name__}, expected MainWindow"
                 break
 
 
 # ===========================================================================
 # open_recent_file  (recent files dispatch)
 # ===========================================================================
+
 
 class TestOpenRecentFile:
     """Test open_recent_file dispatches project vs ROM entries."""
@@ -322,6 +326,7 @@ class TestOpenRecentFile:
 # ===========================================================================
 # is_project_folder detection
 # ===========================================================================
+
 
 class TestProjectFolderDetection:
     """Test ProjectManager.is_project_folder on various paths."""

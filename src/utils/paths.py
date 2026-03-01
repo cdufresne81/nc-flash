@@ -21,7 +21,7 @@ def get_app_root() -> Path:
     Returns:
         Path: Application root directory
     """
-    if getattr(sys, 'frozen', False):
+    if getattr(sys, "frozen", False):
         return Path(sys._MEIPASS)
     return Path(__file__).resolve().parent.parent.parent
 
