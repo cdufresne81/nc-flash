@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/NCRomEditor.png" alt="NC ROM Editor" width="128">
+  <img src="assets/NCRomEditor3D.png" alt="NC ROM Editor" width="128">
 </p>
 
 # NC ROM Editor
@@ -27,7 +27,7 @@ git clone https://github.com/cdufresne81/NCRomEditor.git
 cd NCRomEditor
 ```
 
-## Quick Start
+## Run from Source
 
 ### Windows
 Simply double-click `run.bat` or see [WINDOWS_SETUP.md](WINDOWS_SETUP.md) for details.
@@ -35,12 +35,12 @@ Simply double-click `run.bat` or see [WINDOWS_SETUP.md](WINDOWS_SETUP.md) for de
 ### Linux/macOS
 ```bash
 python3 -m venv venv
-source venv/bin/activate  # On Windows WSL: source venv/bin/activate
+source venv/bin/activate
 pip install -r requirements.txt
 python main.py
 ```
 
-### Test the Application
+### Verify Installation
 1. Run the application
 2. File → Open → Select `examples/lf9veb.bin`
 3. Browse tables in the left panel
