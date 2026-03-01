@@ -2,19 +2,27 @@
 
 All notable changes to NC ROM Editor are documented here.
 
-## [v1.4.0] - 2026-02-28
+## [v1.4.2] - 2026-03-01
 
 ### Added
-- **Linux build in release pipeline** — Release workflow now builds a `NCRomEditor-{version}-linux-x86_64.tar.gz` package alongside the Windows installer. Both artifacts are uploaded to GitHub Releases.
-- **Cross-platform PyInstaller spec** — `NCRomEditor.spec` now detects the OS and sets the icon accordingly (`.ico` on Windows, skipped on Linux).
+- **Linux build in release pipeline** — Release workflow now builds a `NCRomEditor-{version}-linux-x86_64.tar.gz` package alongside the Windows installer
+- **Cross-platform PyInstaller spec** — `NCRomEditor.spec` detects the OS and sets the icon accordingly (`.ico` on Windows, skipped on Linux)
 
 ### Changed
-- **CI matrix optimized** — Reduced from 9 jobs (3 OS x 3 Python) to 4 jobs (Ubuntu 3.10+3.12, Windows 3.12, macOS 3.12). macOS drops from ~60 to ~20 billed minutes per run.
-- **NumPy version relaxed** — Lower bound `numpy>=2.4.0` → `numpy>=2.2.0` so Python 3.10 and 3.11 can install dependencies.
+- **CI matrix optimized** — Reduced from 9 jobs (3 OS x 3 Python) to 4 jobs (Ubuntu 3.10+3.12, Windows 3.12, macOS 3.12). Cuts macOS billing from ~60 to ~20 minutes per run.
+- **NumPy version relaxed** — Lower bound `numpy>=2.4.0` → `numpy>=2.2.0` so Python 3.10 and 3.11 can install dependencies
 
 ### Fixed
-- **CI pipeline failures** — Fixed `black --check` failing on 63 unformatted files and `numpy>=2.4.0` blocking Python 3.10/3.11 installs.
-- **Test port conflict** — Command server tests now use a dedicated port (18766) to avoid conflicts with a running app instance.
+- **CI pipeline failures** — Fixed `black --check` failing on 63 unformatted files and `numpy>=2.4.0` blocking Python 3.10/3.11 installs
+- **Linux CI crashes** — Install `libegl1` and set `QT_QPA_PLATFORM=offscreen` for headless PySide6 on GitHub Actions runners
+- **Test port conflict** — Command server tests now use a dedicated port (18766) to avoid conflicts with a running app instance
+
+## [v1.4.1] - 2026-03-01
+
+### Fixed
+- **MCP connection dialog** — Shows STDIO config for Claude Desktop, fixed missing `os` import
+
+## [v1.4.0] - 2026-02-28
 
 ### Added
 - **MCP server for AI assistant access** — Model Context Protocol server (`python -m src.mcp.server`) exposes 9 tools for ROM inspection and editing. Supports STDIO and SSE transports. Works with Claude Code, Claude Desktop, ChatGPT, and Gemini. LRU-cached ROM loading (4 entries).
