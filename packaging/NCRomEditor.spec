@@ -2,7 +2,7 @@
 """
 PyInstaller spec file for NC ROM Editor.
 
-Build with:  pyinstaller NCRomEditor.spec
+Build with:  pyinstaller packaging/NCRomEditor.spec
 Output:      dist/NCRomEditor/NCRomEditor[.exe]
 """
 

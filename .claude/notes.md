@@ -1,12 +1,14 @@
 # Session Notes
 
 ## Next Tasks
-- Focus on the first value field of a table immediately after opening a table. 
-
+- Focus on the first value field of a table immediately after opening a table.
 - **Project/versioning system** - Full rewrite planned (current code excluded from audit)
-- **Cross-platform packaging (GitHub Actions CI)** - Triggers on tag/release only. Build with PyInstaller on Windows, macOS, Linux runners. Upload artifacts to GitHub Release.
-  - **Pre-requisite: Package manifest** — Define include/exclude lists for packaging. Exclude: `.claude/`, `.gitignore`, `docs/`, `tests/`, `tools/`, `Thinking-pad.md`, `*.bak`, `nul`, dev scripts (`run-dev.bat`), `htmlcov/`, `coverage.xml`, `.pytest_cache/`, `venv*/`. Include: `main.py`, `src/`, `definitions/`, `examples/`, `run.bat`, `requirements.txt`, `README.md`.
-  - **Pre-requisite: Local build validation** — Build installer locally on Windows first, test on a clean machine (no Python installed) to confirm it launches and opens a ROM before automating in CI.
+
+## Recent Completed Work (Mar 1, 2026) - README & Project Cleanup
+- **README Linux install docs** — Added Linux `.tar.gz` download/extract instructions alongside Windows in Installation section
+- **Project structure reorganization** — Moved build files (`build.bat`, `installer.iss`, `NCRomEditor.spec`, `requirements-build.txt`) to `packaging/` directory; moved `WINDOWS_SETUP.md` to `docs/`; updated all references in CI, build scripts, and README
+- **WINDOWS_SETUP.md cleanup** — Fixed hardcoded paths, removed WSL-specific dev notes
+- **Junk file cleanup** — Deleted `nul` (Windows artifact) and `testsguitemp_screenshot.txt`; added `nul` to `.gitignore`
 
 ## Recent Completed Work (Mar 1, 2026) - Linux Release Build
 - **Linux build in release pipeline** — Added `build-linux` job to `release.yml` (ubuntu-22.04, PyInstaller → tar.gz). Release job now collects artifacts from both Windows and Linux builds. Cross-platform `NCRomEditor.spec` (conditional icon). Tests use dedicated port 18766 to avoid conflicts with running app.
