@@ -12,8 +12,9 @@ Serialization Pattern:
 """
 
 from dataclasses import dataclass, field
+import os
 from pathlib import Path
-from typing import Optional, List, Dict, Any, Protocol, TypeVar, runtime_checkable
+from typing import Optional, List, Protocol, TypeVar, runtime_checkable
 from datetime import datetime
 import uuid
 
@@ -114,6 +115,7 @@ class Commit:
     changes: List[TableChanges]
     has_snapshot: bool = False
     snapshot_filename: Optional[str] = None  # Custom filename like v1_LF9VEB_stage1.bin
+    deleted: bool = False  # Soft-deleted version (moved to _trash/)
 
     @classmethod
     def create(
@@ -122,10 +124,15 @@ class Commit:
         changes: List[TableChanges],
         version: int = 0,
         parent_id: Optional[str] = None,
-        author: str = "User",
+        author: Optional[str] = None,
         snapshot_filename: Optional[str] = None,
     ) -> "Commit":
         """Factory method to create a new commit"""
+        if author is None:
+            try:
+                author = os.getlogin()
+            except OSError:
+                author = "User"
         return cls(
             id=uuid.uuid4().hex,
             version=version,
@@ -151,6 +158,7 @@ class Commit:
             "changes": [c.to_dict() for c in self.changes],
             "has_snapshot": self.has_snapshot,
             "snapshot_filename": self.snapshot_filename,
+            "deleted": self.deleted,
         }
 
     @classmethod
@@ -173,6 +181,7 @@ class Commit:
             changes=[TableChanges.from_dict(c) for c in data["changes"]],
             has_snapshot=data.get("has_snapshot", False),
             snapshot_filename=data.get("snapshot_filename"),  # Backward compatibility
+            deleted=data.get("deleted", False),  # Backward compatibility
         )
 
 
@@ -302,8 +311,6 @@ class Project:
     head_commit_id: Optional[str]
     project_path: str  # Path to project folder
     head_version: int = 0  # Current version number
-    last_suffix: str = ""  # Last user-entered suffix for filename suggestions
-    settings: Dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict:
         return {
@@ -316,8 +323,6 @@ class Project:
             "working_rom": self.working_rom,
             "head_commit_id": self.head_commit_id,
             "head_version": self.head_version,
-            "last_suffix": self.last_suffix,
-            "settings": self.settings,
         }
 
     @classmethod
@@ -333,8 +338,6 @@ class Project:
             head_commit_id=data.get("head_commit_id"),
             project_path=project_path,
             head_version=data.get("head_version", 0),  # Backward compatibility
-            last_suffix=data.get("last_suffix", ""),  # Backward compatibility
-            settings=data.get("settings", {}),
         )
 
     @property

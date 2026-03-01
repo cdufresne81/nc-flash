@@ -16,8 +16,12 @@ This is a mixin class — it has no __init__ and relies on MainWindow providing:
 - self.statusBar() method
 """
 
+import tempfile
+import os
 from pathlib import Path
 
+from PySide6.QtCore import Qt
+from PySide6.QtGui import QColor
 from PySide6.QtWidgets import QDialog, QMessageBox
 
 from src.utils.logging_config import get_logger
@@ -28,8 +32,8 @@ from src.core.project_manager import ProjectManager
 from src.ui.rom_document import RomDocument
 from src.ui.project_wizard import ProjectWizard
 from src.ui.commit_dialog import CommitDialog
+from src.ui.compare_window import CompareWindow
 from src.ui.history_viewer import HistoryViewer
-from src.ui.table_viewer_window import TableViewerWindow
 
 logger = get_logger(__name__)
 
@@ -177,37 +181,35 @@ class ProjectMixin:
         # Get version info for dialog
         next_version = self.project_manager.get_next_version()
         rom_id = self.project_manager.current_project.original_rom.rom_id
-        suggested_suffix = self.project_manager.current_project.last_suffix
 
         # Show commit dialog with version info
         dialog = CommitDialog(
             pending,
             next_version=next_version,
             rom_id=rom_id,
-            suggested_suffix=suggested_suffix,
             parent=self,
         )
         if dialog.exec() == QDialog.Accepted:
             try:
                 message = dialog.get_commit_message()
-                create_snapshot = dialog.get_create_snapshot()
-                snapshot_suffix = dialog.get_snapshot_suffix()
+                version_name = dialog.get_version_name()
 
                 # Save changes to working ROM file first
                 document = self.get_current_document()
                 if document:
                     document.rom_reader.save_rom()
 
-                # Create commit with version numbering
+                # Create commit with version numbering (always creates snapshot)
                 commit = self.project_manager.commit_changes(
                     message=message,
                     changes=pending,
-                    create_snapshot=create_snapshot,
-                    snapshot_suffix=snapshot_suffix,
+                    version_name=version_name,
                 )
 
-                # Clear pending changes
+                # Clear pending changes and modified flag
                 self.change_tracker.clear_pending_changes()
+                if document:
+                    document.set_modified(False)
 
                 # Update UI
                 self._update_project_ui()
@@ -235,34 +237,45 @@ class ProjectMixin:
             )
             return
 
-        dialog = HistoryViewer(self.project_manager, self)
-        dialog.view_table_diff.connect(self._on_view_table_diff)
-        dialog.exec()
+        self._history_dialog = HistoryViewer(self.project_manager, self)
+        self._history_dialog.view_table_diff.connect(self._on_view_table_diff)
+        self._history_dialog.revert_requested.connect(self._on_revert_version)
+        self._history_dialog.delete_requested.connect(self._on_delete_version)
+        self._history_dialog.exec()
+        self._history_dialog = None
 
     def _on_view_table_diff(self, table_name: str, commit):
         """
-        Open a table viewer showing changes from a specific commit
+        Open a read-only CompareWindow showing changes from a specific commit.
+
+        Uses the base version (commit.version - 1) vs the commit version,
+        displayed in the ROM comparison view with copy buttons disabled.
+        Only one compare window is open at a time — opening a new one closes the previous.
 
         Args:
-            table_name: Name of the table to view
+            table_name: Name of the table to view (used for context, all tables shown)
             commit: Commit object containing the changes
         """
         document = self.get_current_document()
         if not document:
             return
 
-        # Find the table definition
-        table = document.rom_definition.get_table_by_name(table_name)
-        if not table:
-            QMessageBox.warning(
-                self, "Table Not Found", f"Could not find table: {table_name}"
-            )
-            return
+        # Close any existing version compare window
+        dialog = getattr(self, "_history_dialog", None)
+        if dialog:
+            old_cmp = getattr(dialog, "_compare_window", None)
+            if old_cmp is not None:
+                try:
+                    old_cmp.close()
+                except RuntimeError:
+                    pass  # C++ object already deleted
+                dialog._compare_window = None
 
         try:
             # Load base version data (previous version)
             base_version = commit.version - 1 if commit.version > 0 else 0
             base_rom_data = self.project_manager.load_version_data(base_version)
+            commit_rom_data = self.project_manager.load_version_data(commit.version)
 
             if base_rom_data is None:
                 QMessageBox.warning(
@@ -272,38 +285,95 @@ class ProjectMixin:
                 )
                 return
 
-            # Create a temporary RomReader to read base version table data
-            import tempfile
-            import os
+            if commit_rom_data is None:
+                QMessageBox.warning(
+                    self,
+                    "Version Not Found",
+                    f"Could not load version {commit.version} data.",
+                )
+                return
 
-            # Write base ROM to temp file and read table data
-            with tempfile.NamedTemporaryFile(delete=False, suffix=".bin") as tmp:
-                tmp.write(base_rom_data)
-                tmp_path = tmp.name
+            # Write both versions to temp files for RomReader
+            base_tmp = tempfile.NamedTemporaryFile(
+                delete=False, suffix=".bin", prefix="base_"
+            )
+            base_tmp.write(base_rom_data)
+            base_tmp.close()
+
+            commit_tmp = tempfile.NamedTemporaryFile(
+                delete=False, suffix=".bin", prefix="commit_"
+            )
+            commit_tmp.write(commit_rom_data)
+            commit_tmp.close()
 
             try:
-                base_reader = RomReader(tmp_path, document.rom_definition)
-                base_data = base_reader.read_table_data(table)
-            finally:
-                os.unlink(tmp_path)
+                base_reader = RomReader(base_tmp.name, document.rom_definition)
+                commit_reader = RomReader(commit_tmp.name, document.rom_definition)
+            except Exception:
+                os.unlink(base_tmp.name)
+                os.unlink(commit_tmp.name)
+                raise
 
-            # Read current version table data
-            current_data = document.rom_reader.read_table_data(table)
+            # Build version labels
+            base_commit = self.project_manager.get_commit_by_version(base_version)
+            base_name = (
+                base_commit.snapshot_filename
+                if base_commit and base_commit.snapshot_filename
+                else f"v{base_version}"
+            )
+            commit_name = (
+                commit.snapshot_filename
+                if commit.snapshot_filename
+                else f"v{commit.version}"
+            )
 
-            # Open diff viewer
-            viewer_window = TableViewerWindow(
-                table,
-                current_data,
+            # Open read-only compare window, parented to the history dialog
+            # so it appears on top of the modal dialog
+            parent_widget = dialog if dialog else self
+            window = CompareWindow(
+                base_reader,
+                commit_reader,
                 document.rom_definition,
-                rom_path=document.rom_path,
-                parent=self,
-                diff_mode=True,
-                diff_base_data=base_data,
+                document.rom_definition,
+                QColor(100, 100, 100),
+                QColor(100, 100, 100),
+                base_name,
+                commit_name,
+                parent=parent_widget,
+                readonly=True,
             )
-            viewer_window.setWindowTitle(
-                f"{table_name} (v{base_version} -> v{commit.version})"
-            )
-            viewer_window.show()
+
+            if not window.has_diffs:
+                window.deleteLater()
+                QMessageBox.information(
+                    self,
+                    "No Differences",
+                    f"No table differences found between v{base_version} and v{commit.version}.",
+                )
+                os.unlink(base_tmp.name)
+                os.unlink(commit_tmp.name)
+                return
+
+            # Clean up temp files when the window closes
+            def _cleanup():
+                try:
+                    os.unlink(base_tmp.name)
+                except OSError:
+                    pass
+                try:
+                    os.unlink(commit_tmp.name)
+                except OSError:
+                    pass
+
+            window.destroyed.connect(_cleanup)
+
+            # Track single instance on the dialog
+            if dialog:
+                dialog._compare_window = window
+
+            window.show()
+            window.raise_()
+            window.activateWindow()
 
         except RomEditorError as e:
             logger.error(f"Failed to open diff view: {e}")
@@ -317,3 +387,80 @@ class ProjectMixin:
                 "Error",
                 f"Unexpected error opening diff view:\n{type(e).__name__}: {e}",
             )
+
+    def _on_revert_version(self, version: int):
+        """Confirm and revert working ROM to a previous version"""
+        commit = self.project_manager.get_commit_by_version(version)
+        if not commit:
+            return
+
+        snapshot_name = commit.snapshot_filename or f"v{version}"
+        reply = QMessageBox.question(
+            self,
+            "Revert to Version",
+            f"Revert working ROM to v{version} ({snapshot_name})?\n\n"
+            f"This will:\n"
+            f"- Overwrite the current working ROM\n"
+            f"- Move all newer versions to trash\n\n"
+            f"This cannot be easily undone.",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No,
+        )
+
+        if reply == QMessageBox.Yes:
+            try:
+                restored = self.project_manager.revert_to_version(version)
+
+                # Reload the ROM in the editor from the overwritten working file
+                document = self.get_current_document()
+                if document:
+                    document.rom_reader._load_rom()
+
+                # Clear pending changes (working ROM now matches the snapshot)
+                self.change_tracker.clear_pending_changes()
+                self._update_project_ui()
+
+                self.statusBar().showMessage(f"Reverted to {restored}")
+
+            except RomEditorError as e:
+                _handle_rom_operation_error(self, "revert version", e)
+            except Exception as e:
+                logger.exception(f"Unexpected error reverting: {type(e).__name__}: {e}")
+                QMessageBox.critical(
+                    self,
+                    "Error",
+                    f"Unexpected error reverting:\n{type(e).__name__}: {e}",
+                )
+
+    def _on_delete_version(self, version: int):
+        """Confirm and soft-delete a version"""
+        commit = self.project_manager.get_commit_by_version(version)
+        if not commit:
+            return
+
+        snapshot_name = commit.snapshot_filename or f"v{version}"
+        reply = QMessageBox.question(
+            self,
+            "Delete Version",
+            f"Delete v{version} ({snapshot_name})?\n\n"
+            f"The snapshot file will be moved to _trash/.",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No,
+        )
+
+        if reply == QMessageBox.Yes:
+            try:
+                self.project_manager.soft_delete_version(version)
+                self.statusBar().showMessage(f"Deleted v{version}")
+
+            except RomEditorError as e:
+                _handle_rom_operation_error(self, "delete version", e)
+            except Exception as e:
+                logger.exception(
+                    f"Unexpected error deleting version: {type(e).__name__}: {e}"
+                )
+                QMessageBox.critical(
+                    self,
+                    "Error",
+                    f"Unexpected error deleting version:\n{type(e).__name__}: {e}",
+                )

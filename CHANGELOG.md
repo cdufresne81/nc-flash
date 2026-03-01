@@ -2,6 +2,34 @@
 
 All notable changes to NC ROM Editor are documented here.
 
+## [Unreleased]
+
+### Added
+- **Tuning log** — Every commit auto-generates a `TUNING_LOG.md` entry with version name, description, table change summary with direction indicators, and a "Results" section to fill in after testing
+- **Revert to version** — Restore a previous ROM snapshot as the working file. Newer versions are soft-deleted. Available from the History viewer
+- **Soft delete versions** — Remove bad snapshots by moving them to `_trash/`. Deleted versions are hidden in history (toggleable with "Show deleted" checkbox)
+- **Version History toolbar button** — Clock icon in the toolbar, enabled when a project is open
+- **Read-only version comparison** — Double-click a table in History or click "Compare Versions..." to open a side-by-side comparison (reuses ROM Compare window with copy buttons hidden)
+- **Window geometry persistence** — History viewer and compare window remember their size, splitter position, and column widths across sessions
+- **37 new tests** for project management: tuning log generation, soft delete, revert, commit flow, backward compatibility
+
+### Changed
+- **Mandatory version names** — Every commit now requires a version name (e.g., "egr_delete") and always creates a named ROM snapshot. The snapshot checkbox and optional suffix have been replaced with a single required field
+- **Simplified working ROM naming** — Working file is now `{ROMID}.bin` instead of `v1_{ROMID}_working.bin`
+- **Projects always enabled** — Removed `--enable-projects` feature flag. Project menu items (New Project, Commit Changes, Commit History) are always visible
+- **Commit dialog redesigned** — Version name field (required, auto-sanitized), filename preview, optional description. Removed snapshot checkbox and QuickCommitDialog
+- **History viewer columns** — Replaced Version + Message columns with a single Snapshot column showing the filename
+- **Commit author defaults to system user** — Uses `os.getlogin()` instead of hardcoded "User"
+
+### Fixed
+- **Commit clears modified flag** — Committing no longer leaves the document marked as modified, preventing a spurious "unsaved changes" prompt on close
+- **Commit message line breaks** — Multi-line commit messages now render correctly in the history details panel
+
+### Removed
+- `--enable-projects` feature flag — projects are now a core feature
+- `last_suffix` and `settings` fields from Project model (dead code)
+- `QuickCommitDialog` class (unused)
+
 ## [v1.5.0] - 2026-03-01
 
 ### Added
@@ -11,7 +39,6 @@ All notable changes to NC ROM Editor are documented here.
 ### Changed
 - **"Definitions" renamed to "Metadata"** — All UI labels, settings keys, CLI flags, and log messages now use "metadata" instead of "definitions" to match RomDrop's naming convention. Settings key changed from `paths/definitions_directory` to `paths/metadata_directory`. MCP server flag changed from `--definitions-dir` to `--metadata-dir`
 - **Bundled XML files moved to examples/metadata/** — The `definitions/` directory has been restructured to `examples/metadata/` since it contains example/bundled data
-- **Projects UI hidden behind feature flag** — Projects directory setting and View menu are now only shown when `--enable-projects` is passed
 - **README updated for Linux** — Installation section now documents Linux `.tar.gz` download alongside Windows
 - **Project structure reorganized** — Moved build/packaging files (`build.bat`, `installer.iss`, `NCRomEditor.spec`, `requirements-build.txt`) into `packaging/` directory; moved `WINDOWS_SETUP.md` into `docs/`
 

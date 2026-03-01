@@ -34,12 +34,11 @@ class SettingsDialog(QDialog):
     # Signal emitted when settings are applied
     settings_changed = Signal()
 
-    def __init__(self, parent=None, projects_enabled=False):
+    def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Settings")
         self.setMinimumSize(600, 400)
         self.settings = get_settings()
-        self.projects_enabled = projects_enabled
         self.init_ui()
         self.load_settings()
 
@@ -78,23 +77,22 @@ class SettingsDialog(QDialog):
         paths_layout = QFormLayout()
         paths_group.setLayout(paths_layout)
 
-        # Projects directory setting (only when projects feature is enabled)
-        if self.projects_enabled:
-            projects_layout = QHBoxLayout()
-            self.projects_path_edit = QLineEdit()
-            self.projects_path_edit.setPlaceholderText("Path to store ROM projects")
-            projects_layout.addWidget(self.projects_path_edit)
+        # Projects directory setting
+        projects_layout = QHBoxLayout()
+        self.projects_path_edit = QLineEdit()
+        self.projects_path_edit.setPlaceholderText("Path to store ROM projects")
+        projects_layout.addWidget(self.projects_path_edit)
 
-            browse_projects_button = QPushButton("Browse...")
-            browse_projects_button.clicked.connect(self.browse_projects_directory)
-            projects_layout.addWidget(browse_projects_button)
+        browse_projects_button = QPushButton("Browse...")
+        browse_projects_button.clicked.connect(self.browse_projects_directory)
+        projects_layout.addWidget(browse_projects_button)
 
-            paths_layout.addRow("Projects Directory:", projects_layout)
+        paths_layout.addRow("Projects Directory:", projects_layout)
 
-            # Add help text for projects
-            projects_help = QLabel("Location where ROM tuning projects are stored")
-            projects_help.setStyleSheet("color: gray; font-size: 10px;")
-            paths_layout.addRow("", projects_help)
+        # Add help text for projects
+        projects_help = QLabel("Location where ROM tuning projects are stored")
+        projects_help.setStyleSheet("color: gray; font-size: 10px;")
+        paths_layout.addRow("", projects_help)
 
         # Metadata directory setting
         metadata_layout = QHBoxLayout()
@@ -277,10 +275,9 @@ class SettingsDialog(QDialog):
 
     def load_settings(self):
         """Load current settings into the UI"""
-        # Load projects directory (only when projects feature is enabled)
-        if self.projects_enabled:
-            projects_dir = self.settings.get_projects_directory()
-            self.projects_path_edit.setText(projects_dir)
+        # Load projects directory
+        projects_dir = self.settings.get_projects_directory()
+        self.projects_path_edit.setText(projects_dir)
 
         # Load metadata directory
         metadata_dir = self.settings.get_metadata_directory()
@@ -398,11 +395,10 @@ class SettingsDialog(QDialog):
 
     def apply_settings(self):
         """Apply settings without closing the dialog"""
-        # Save projects directory (only when projects feature is enabled)
-        if self.projects_enabled:
-            projects_dir = self.projects_path_edit.text().strip()
-            if projects_dir:
-                self.settings.set_projects_directory(projects_dir)
+        # Save projects directory
+        projects_dir = self.projects_path_edit.text().strip()
+        if projects_dir:
+            self.settings.set_projects_directory(projects_dir)
 
         # Save metadata directory
         metadata_dir = self.metadata_path_edit.text().strip()

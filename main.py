@@ -117,9 +117,6 @@ class MainWindow(QMainWindow, RecentFilesMixin, ProjectMixin, SessionMixin):
         # Structure: {rom_path: {table_name: {"values": np.array, "x_axis": np.array, "y_axis": np.array}}}
         self.original_table_values = {}
 
-        # Feature flags
-        self.projects_enabled = "--enable-projects" in sys.argv
-
         # Project management
         self.project_manager = ProjectManager()
         self.change_tracker = ChangeTracker()
@@ -319,10 +316,8 @@ class MainWindow(QMainWindow, RecentFilesMixin, ProjectMixin, SessionMixin):
         # File menu (Alt+F)
         self.file_menu = menubar.addMenu("&File")
 
-        # Project section (hidden unless --enable-projects)
-        if self.projects_enabled:
-            new_project_action = self.file_menu.addAction("New Project...")
-            new_project_action.triggered.connect(self.new_project)
+        new_project_action = self.file_menu.addAction("New Project...")
+        new_project_action.triggered.connect(self.new_project)
 
         open_action = self.file_menu.addAction("Open...")
         open_action.setShortcut("Ctrl+O")
@@ -337,11 +332,9 @@ class MainWindow(QMainWindow, RecentFilesMixin, ProjectMixin, SessionMixin):
 
         self.file_menu.addSeparator()
 
-        # Commit (for projects, hidden unless --enable-projects)
         self.commit_action = self.file_menu.addAction("Commit Changes...")
         self.commit_action.triggered.connect(self.commit_changes)
         self.commit_action.setEnabled(False)
-        self.commit_action.setVisible(self.projects_enabled)
 
         self.file_menu.addSeparator()
 
@@ -382,11 +375,10 @@ class MainWindow(QMainWindow, RecentFilesMixin, ProjectMixin, SessionMixin):
         settings_action = edit_menu.addAction("Settings...")
         settings_action.triggered.connect(self.show_settings)
 
-        # View menu (Alt+V) — only shown when projects are enabled
-        if self.projects_enabled:
-            view_menu = menubar.addMenu("&View")
-            history_action = view_menu.addAction("Commit History...")
-            history_action.triggered.connect(self.show_history)
+        # View menu (Alt+V)
+        view_menu = menubar.addMenu("&View")
+        history_action = view_menu.addAction("Commit History...")
+        history_action.triggered.connect(self.show_history)
 
         # Tools menu (Alt+T)
         tools_menu = menubar.addMenu("&Tools")
@@ -454,6 +446,12 @@ class MainWindow(QMainWindow, RecentFilesMixin, ProjectMixin, SessionMixin):
         act.setToolTip("Compare Open ROMs  (Ctrl+Shift+D)")
         act.triggered.connect(self._on_compare_roms)
         self._toolbar_compare = act
+
+        act = tb.addAction(self._make_icon("history"), "")
+        act.setToolTip("Version History")
+        act.triggered.connect(self.show_history)
+        act.setEnabled(False)
+        self._toolbar_history = act
 
         act = tb.addAction(self._make_icon("flash"), "")
         act.setToolTip("Flash ROM to ECU  (Ctrl+Shift+F)")
@@ -570,6 +568,25 @@ class MainWindow(QMainWindow, RecentFilesMixin, ProjectMixin, SessionMixin):
             p.drawPolygon(poly)
             # Center circle
             p.drawEllipse(QPointF(cx, cy), 2.5, 2.5)
+
+        elif name == "history":
+            # Git-log style: vertical line with commit nodes
+            from PySide6.QtCore import QPointF
+
+            # Vertical trunk line
+            p.setPen(QPen(c, 1.6, Qt.SolidLine, Qt.RoundCap))
+            p.drawLine(7, 2, 7, 18)
+            # Commit dots on the trunk
+            p.setBrush(c)
+            p.setPen(QPen(c, 1.2))
+            p.drawEllipse(QPointF(7, 5), 2.2, 2.2)
+            p.drawEllipse(QPointF(7, 10), 2.2, 2.2)
+            p.drawEllipse(QPointF(7, 15), 2.2, 2.2)
+            # Branch lines from dots to the right
+            p.setPen(QPen(c, 1.2, Qt.SolidLine, Qt.RoundCap))
+            p.drawLine(9, 5, 16, 5)
+            p.drawLine(9, 10, 14, 10)
+            p.drawLine(9, 15, 17, 15)
 
         elif name in ("mcp_on", "mcp_off"):
             # Broadcast / antenna icon — circle with signal waves
@@ -829,7 +846,7 @@ class MainWindow(QMainWindow, RecentFilesMixin, ProjectMixin, SessionMixin):
             return
 
         parent = Path(file_path).parent
-        if self.projects_enabled and ProjectManager.is_project_folder(str(parent)):
+        if ProjectManager.is_project_folder(str(parent)):
             self.open_project_path(str(parent))
         else:
             self._open_rom_file(file_path)
@@ -1521,8 +1538,7 @@ class MainWindow(QMainWindow, RecentFilesMixin, ProjectMixin, SessionMixin):
     def _save(self):
         """Unified save: commit if project is open with changes, otherwise save ROM."""
         if (
-            self.projects_enabled
-            and self.project_manager.is_project_open()
+            self.project_manager.is_project_open()
             and self.change_tracker.has_pending_changes()
         ):
             self.commit_changes()
@@ -2345,10 +2361,12 @@ class MainWindow(QMainWindow, RecentFilesMixin, ProjectMixin, SessionMixin):
         """Update UI elements based on project/change state"""
         # Note: undo/redo action enabled state is managed automatically by QUndoGroup
 
-        # Update commit action
+        # Update commit action and history button
         has_project = self.project_manager.is_project_open()
         has_changes = self.change_tracker.has_pending_changes()
         self.commit_action.setEnabled(has_project and has_changes)
+        if hasattr(self, "_toolbar_history"):
+            self._toolbar_history.setEnabled(has_project)
 
         # Update window title
         if has_project:

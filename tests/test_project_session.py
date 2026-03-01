@@ -35,8 +35,7 @@ def _make_document(rom_path, project_path=None, modified=False):
 class _SessionHost(SessionMixin):
     """Minimal host satisfying SessionMixin dependencies for unit tests."""
 
-    def __init__(self, documents=None, session_files=None, projects_enabled=True):
-        self.projects_enabled = projects_enabled
+    def __init__(self, documents=None, session_files=None):
         self.settings = MagicMock()
         self.settings.get_session_files.return_value = session_files or []
         self.tab_widget = MagicMock()
@@ -53,8 +52,7 @@ class _SessionHost(SessionMixin):
 class _RecentHost(RecentFilesMixin):
     """Minimal host satisfying RecentFilesMixin dependencies for unit tests."""
 
-    def __init__(self, projects_enabled=True):
-        self.projects_enabled = projects_enabled
+    def __init__(self):
         self.settings = MagicMock()
         self.file_menu = MagicMock()
         self.recent_files_actions = []

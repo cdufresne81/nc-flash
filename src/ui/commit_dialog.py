@@ -1,8 +1,11 @@
 """
 Commit Dialog
 
-Dialog for entering commit message when saving changes.
+Dialog for entering commit details when saving a version.
+Every commit creates a named ROM snapshot.
 """
+
+import re
 
 from PySide6.QtWidgets import (
     QDialog,
@@ -13,7 +16,6 @@ from PySide6.QtWidgets import (
     QDialogButtonBox,
     QListWidget,
     QGroupBox,
-    QCheckBox,
     QLineEdit,
 )
 from typing import List
@@ -22,27 +24,24 @@ from ..core.version_models import TableChanges
 
 
 class CommitDialog(QDialog):
-    """Dialog for committing changes with a message"""
+    """Dialog for committing changes with a mandatory version name"""
 
     def __init__(
         self,
         pending_changes: List[TableChanges],
         next_version: int = 1,
         rom_id: str = "",
-        suggested_suffix: str = "",
         parent=None,
     ):
         super().__init__(parent)
-        self.setWindowTitle("Save Changes")
+        self.setWindowTitle("Save Version")
         self.setMinimumSize(500, 450)
 
         self.pending_changes = pending_changes
         self.next_version = next_version
         self.rom_id = rom_id
-        self.suggested_suffix = suggested_suffix
-        self.commit_message = ""
-        self.create_snapshot = False
-        self.snapshot_suffix = ""
+        self._version_name = ""
+        self._commit_message = ""
 
         self._init_ui()
 
@@ -55,8 +54,25 @@ class CommitDialog(QDialog):
         version_label.setStyleSheet("font-size: 14px; padding: 5px;")
         layout.addWidget(version_label)
 
-        # Commit message (prominent, at top)
-        msg_group = QGroupBox("Commit Message (required)")
+        # Version name (required)
+        name_group = QGroupBox("Version Name (required)")
+        name_layout = QVBoxLayout()
+        name_group.setLayout(name_layout)
+
+        self.name_edit = QLineEdit()
+        self.name_edit.setPlaceholderText("e.g., egr_delete, stage1, fuel_wot_richen")
+        self.name_edit.textChanged.connect(self._update_filename_preview)
+        name_layout.addWidget(self.name_edit)
+
+        # Filename preview
+        self.filename_preview = QLabel()
+        self.filename_preview.setStyleSheet("color: gray; font-style: italic;")
+        name_layout.addWidget(self.filename_preview)
+
+        layout.addWidget(name_group)
+
+        # Commit message (optional)
+        msg_group = QGroupBox("Description (optional)")
         msg_layout = QVBoxLayout()
         msg_group.setLayout(msg_layout)
 
@@ -68,12 +84,12 @@ class CommitDialog(QDialog):
             "- Adjusted timing for 91 octane fuel\n"
             "- Disabled closed-loop fuel correction"
         )
-        self.message_edit.setMinimumHeight(100)
+        self.message_edit.setMinimumHeight(80)
         msg_layout.addWidget(self.message_edit)
 
         layout.addWidget(msg_group)
 
-        # Modified tables list (simple, no cell details)
+        # Modified tables list (read-only, informational)
         tables_group = QGroupBox(f"Modified Tables ({len(self.pending_changes)})")
         tables_layout = QVBoxLayout()
         tables_group.setLayout(tables_layout)
@@ -87,154 +103,58 @@ class CommitDialog(QDialog):
         tables_layout.addWidget(self.tables_list)
         layout.addWidget(tables_group)
 
-        # Snapshot section
-        snapshot_group = QGroupBox("ROM Snapshot")
-        snapshot_layout = QVBoxLayout()
-        snapshot_group.setLayout(snapshot_layout)
-
-        self.snapshot_checkbox = QCheckBox(
-            "Save ROM snapshot (recommended for major changes)"
-        )
-        self.snapshot_checkbox.setToolTip(
-            "Creates a full copy of the ROM at this version.\n"
-            "Allows you to revert to this exact state later."
-        )
-        self.snapshot_checkbox.toggled.connect(self._on_snapshot_toggled)
-        snapshot_layout.addWidget(self.snapshot_checkbox)
-
-        # Suffix input (only enabled when snapshot checked)
-        suffix_layout = QHBoxLayout()
-        suffix_label = QLabel("Filename suffix:")
-        suffix_layout.addWidget(suffix_label)
-
-        self.suffix_edit = QLineEdit()
-        self.suffix_edit.setPlaceholderText("e.g., timing_fix, stage1, fuel_tune")
-        self.suffix_edit.setText(self.suggested_suffix)
-        self.suffix_edit.setEnabled(False)
-        self.suffix_edit.textChanged.connect(self._update_filename_preview)
-        suffix_layout.addWidget(self.suffix_edit)
-
-        snapshot_layout.addLayout(suffix_layout)
-
-        # Filename preview
-        self.filename_preview = QLabel()
-        self.filename_preview.setStyleSheet("color: gray; font-style: italic;")
-        self._update_filename_preview()
-        snapshot_layout.addWidget(self.filename_preview)
-
-        layout.addWidget(snapshot_group)
-
         # Spacer
         layout.addStretch()
 
         # Buttons
         button_box = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
-        button_box.button(QDialogButtonBox.Ok).setText("Commit")
+        self.ok_button = button_box.button(QDialogButtonBox.Ok)
+        self.ok_button.setText("Commit")
+        self.ok_button.setEnabled(False)
         button_box.accepted.connect(self._on_accept)
         button_box.rejected.connect(self.reject)
         layout.addWidget(button_box)
 
-    def _on_snapshot_toggled(self, checked: bool):
-        """Handle snapshot checkbox toggle"""
-        self.suffix_edit.setEnabled(checked)
+        # Set initial preview text (must be after ok_button is created)
         self._update_filename_preview()
 
+    @staticmethod
+    def _sanitize_name(text: str) -> str:
+        """Sanitize version name: lowercase, spaces to underscores, strip special chars"""
+        text = text.strip().lower()
+        text = text.replace(" ", "_")
+        text = re.sub(r"[^a-z0-9_]", "", text)
+        return text
+
     def _update_filename_preview(self):
-        """Update the filename preview label"""
-        if self.snapshot_checkbox.isChecked():
-            suffix = self.suffix_edit.text().strip()
-            if suffix:
-                filename = f"v{self.next_version}_{self.rom_id}_{suffix}.bin"
-                self.filename_preview.setText(f"File: {filename}")
-            else:
-                self.filename_preview.setText("Enter a suffix for the filename")
+        """Update the filename preview label and OK button state"""
+        raw = self.name_edit.text()
+        sanitized = self._sanitize_name(raw)
+
+        if sanitized:
+            filename = f"v{self.next_version}_{self.rom_id}_{sanitized}.bin"
+            self.filename_preview.setText(f"File: {filename}")
+            self.ok_button.setEnabled(True)
         else:
-            self.filename_preview.setText("No snapshot will be created")
+            self.filename_preview.setText("Enter a version name")
+            self.ok_button.setEnabled(False)
 
     def _on_accept(self):
         """Validate and accept"""
-        # Validate message
-        message = self.message_edit.toPlainText().strip()
-        if not message:
-            self.message_edit.setFocus()
-            self.message_edit.setStyleSheet("border: 2px solid red;")
+        sanitized = self._sanitize_name(self.name_edit.text())
+        if not sanitized:
+            self.name_edit.setFocus()
+            self.name_edit.setStyleSheet("border: 2px solid red;")
             return
 
-        # Validate suffix if snapshot is checked
-        if self.snapshot_checkbox.isChecked():
-            suffix = self.suffix_edit.text().strip()
-            if not suffix:
-                self.suffix_edit.setFocus()
-                self.suffix_edit.setStyleSheet("border: 2px solid red;")
-                return
-            self.snapshot_suffix = suffix
-
-        self.commit_message = message
-        self.create_snapshot = self.snapshot_checkbox.isChecked()
+        self._version_name = sanitized
+        self._commit_message = self.message_edit.toPlainText().strip()
         self.accept()
+
+    def get_version_name(self) -> str:
+        """Get the sanitized version name"""
+        return self._version_name
 
     def get_commit_message(self) -> str:
         """Get the commit message"""
-        return self.commit_message
-
-    def get_create_snapshot(self) -> bool:
-        """Get whether to create a snapshot"""
-        return self.create_snapshot
-
-    def get_snapshot_suffix(self) -> str:
-        """Get the user-entered snapshot suffix"""
-        return self.snapshot_suffix
-
-
-class QuickCommitDialog(QDialog):
-    """Simplified commit dialog for quick saves"""
-
-    def __init__(self, tables_modified: List[str], parent=None):
-        super().__init__(parent)
-        self.setWindowTitle("Quick Commit")
-        self.setMinimumSize(400, 200)
-
-        self.tables_modified = tables_modified
-        self.commit_message = ""
-
-        self._init_ui()
-
-    def _init_ui(self):
-        layout = QVBoxLayout()
-        self.setLayout(layout)
-
-        # Tables summary
-        tables_str = ", ".join(self.tables_modified[:3])
-        if len(self.tables_modified) > 3:
-            tables_str += f" (+{len(self.tables_modified) - 3} more)"
-
-        summary = QLabel(f"Modified: <b>{tables_str}</b>")
-        summary.setWordWrap(True)
-        layout.addWidget(summary)
-
-        # Commit message
-        layout.addWidget(QLabel("Commit Message:"))
-        self.message_edit = QTextEdit()
-        self.message_edit.setPlaceholderText("What did you change?")
-        self.message_edit.setMaximumHeight(80)
-        layout.addWidget(self.message_edit)
-
-        # Buttons
-        button_box = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
-        button_box.button(QDialogButtonBox.Ok).setText("Commit")
-        button_box.accepted.connect(self._on_accept)
-        button_box.rejected.connect(self.reject)
-        layout.addWidget(button_box)
-
-    def _on_accept(self):
-        """Validate and accept"""
-        message = self.message_edit.toPlainText().strip()
-        if not message:
-            self.message_edit.setFocus()
-            return
-
-        self.commit_message = message
-        self.accept()
-
-    def get_commit_message(self) -> str:
-        return self.commit_message
+        return self._commit_message

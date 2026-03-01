@@ -74,8 +74,8 @@ class ProjectManager:
             v0_path = project_dir / v0_filename
             shutil.copy2(source_path, v0_path)
 
-            # v1 = working ROM (editable copy)
-            working_filename = f"v1_{rom_id}_working.bin"
+            # Working ROM (editable copy, simple name)
+            working_filename = f"{rom_id}.bin"
             working_path = project_dir / working_filename
             shutil.copy2(source_path, working_path)
 
@@ -107,8 +107,6 @@ class ProjectManager:
                 head_commit_id=None,
                 project_path=str(project_dir),
                 head_version=0,
-                last_suffix="original",
-                settings={"auto_snapshot_interval": 10},
             )
 
             # Save project file
@@ -129,6 +127,9 @@ class ProjectManager:
             project.head_commit_id = initial_commit.id
             project.head_version = 0
             self._save_project_file(project)
+
+            # Write initial TUNING_LOG.md
+            self._write_tuning_log_header(project, source_path.name, checksum)
 
             self.current_project = project
             logger.info(f"Created project: {project_name} at {project_path}")
@@ -202,17 +203,15 @@ class ProjectManager:
         self,
         message: str,
         changes: List[TableChanges],
-        create_snapshot: bool = False,
-        snapshot_suffix: str = "",
+        version_name: str,
     ) -> Commit:
         """
-        Create a new commit with pending changes
+        Create a new commit with pending changes. Always creates a ROM snapshot.
 
         Args:
             message: Commit message
             changes: List of table changes
-            create_snapshot: Whether to create a full ROM snapshot
-            snapshot_suffix: User-provided suffix for snapshot filename
+            version_name: Required name for the snapshot (e.g., "egr_delete")
 
         Returns:
             Created Commit object
@@ -228,10 +227,8 @@ class ProjectManager:
             next_version = self.get_next_version()
             rom_id = self.current_project.original_rom.rom_id
 
-            # Generate snapshot filename if creating snapshot
-            snapshot_filename = None
-            if create_snapshot and snapshot_suffix:
-                snapshot_filename = f"v{next_version}_{rom_id}_{snapshot_suffix}.bin"
+            # Always generate snapshot filename
+            snapshot_filename = f"v{next_version}_{rom_id}_{version_name}.bin"
 
             # Create commit with version
             commit = Commit.create(
@@ -242,13 +239,12 @@ class ProjectManager:
                 snapshot_filename=snapshot_filename,
             )
 
-            # Optionally create snapshot at project root
-            if create_snapshot and snapshot_filename:
-                project_dir = Path(self.current_project.project_path)
-                working_path = project_dir / self.current_project.working_rom
-                snapshot_path = project_dir / snapshot_filename
-                shutil.copy2(working_path, snapshot_path)
-                logger.debug(f"Created snapshot: {snapshot_filename}")
+            # Always create snapshot at project root
+            project_dir = Path(self.current_project.project_path)
+            working_path = project_dir / self.current_project.working_rom
+            snapshot_path = project_dir / snapshot_filename
+            shutil.copy2(working_path, snapshot_path)
+            logger.debug(f"Created snapshot: {snapshot_filename}")
 
             # Add to history
             self.commits.append(commit)
@@ -257,9 +253,10 @@ class ProjectManager:
             # Update project head and version
             self.current_project.head_commit_id = commit.id
             self.current_project.head_version = next_version
-            if snapshot_suffix:
-                self.current_project.last_suffix = snapshot_suffix
             self.save_project()
+
+            # Append to tuning log
+            self._append_tuning_log(commit)
 
             tables_str = ", ".join(commit.tables_modified[:3])
             if len(commit.tables_modified) > 3:
@@ -295,10 +292,10 @@ class ProjectManager:
         return [c for c in self.commits if table_name in c.tables_modified]
 
     def get_next_version(self) -> int:
-        """Get the next version number for a new commit"""
-        if not self.current_project:
-            return 0
-        return self.current_project.head_version + 1
+        """Get the next version number for a new commit (always monotonically increasing)"""
+        if not self.commits:
+            return 1
+        return max(c.version for c in self.commits) + 1
 
     def get_commit_by_version(self, version: int) -> Optional[Commit]:
         """Get a commit by its version number"""
@@ -368,6 +365,98 @@ class ProjectManager:
                 return f.read()
         return None
 
+    def soft_delete_version(self, version: int) -> bool:
+        """
+        Move snapshot to _trash/, mark commit as deleted.
+
+        Args:
+            version: Version number to soft-delete
+
+        Returns:
+            True if deleted successfully
+
+        Raises:
+            ProjectError: If version cannot be deleted
+        """
+        if not self.current_project:
+            raise ProjectError("No project is currently open")
+
+        if version == 0:
+            raise ProjectError("Cannot delete the original ROM (v0)")
+
+        commit = self.get_commit_by_version(version)
+        if not commit:
+            raise ProjectError(f"Version {version} not found")
+
+        if commit.deleted:
+            raise ProjectError(f"Version {version} is already deleted")
+
+        project_dir = Path(self.current_project.project_path)
+
+        # Move snapshot file to _trash/
+        if commit.snapshot_filename:
+            snapshot_path = project_dir / commit.snapshot_filename
+            if snapshot_path.exists():
+                trash_dir = project_dir / "_trash"
+                trash_dir.mkdir(exist_ok=True)
+                trash_path = trash_dir / commit.snapshot_filename
+                shutil.move(str(snapshot_path), str(trash_path))
+                logger.debug(f"Moved {commit.snapshot_filename} to _trash/")
+
+        # Mark as deleted
+        commit.deleted = True
+        self._save_commits(self.commits, self.current_project)
+
+        logger.info(f"Soft-deleted version {version}")
+        return True
+
+    def revert_to_version(self, version: int) -> str:
+        """
+        Load snapshot, overwrite working file, soft-delete newer versions.
+
+        Args:
+            version: Version number to revert to
+
+        Returns:
+            The snapshot filename that was restored
+
+        Raises:
+            ProjectError: If revert fails
+        """
+        if not self.current_project:
+            raise ProjectError("No project is currently open")
+
+        commit = self.get_commit_by_version(version)
+        if not commit:
+            raise ProjectError(f"Version {version} not found")
+
+        if commit.deleted:
+            raise ProjectError(f"Version {version} has been deleted")
+
+        # Load snapshot data
+        snapshot_data = self.load_version_data(version)
+        if snapshot_data is None:
+            raise ProjectError(f"Could not load snapshot for version {version}")
+
+        project_dir = Path(self.current_project.project_path)
+
+        # Overwrite working file
+        working_path = project_dir / self.current_project.working_rom
+        with open(working_path, "wb") as f:
+            f.write(snapshot_data)
+
+        # Soft-delete all versions newer than target
+        for c in self.commits:
+            if c.version > version and not c.deleted:
+                self.soft_delete_version(c.version)
+
+        # Append revert entry to tuning log
+        self._append_tuning_log_revert(version, commit)
+
+        snapshot_name = commit.snapshot_filename or f"v{version}"
+        logger.info(f"Reverted to version {version} ({snapshot_name})")
+        return snapshot_name
+
     def close_project(self):
         """Close the current project"""
         if self.current_project:
@@ -378,6 +467,147 @@ class ProjectManager:
     def is_project_open(self) -> bool:
         """Check if a project is currently open"""
         return self.current_project is not None
+
+    def _write_tuning_log_header(
+        self, project: Project, source_filename: str, checksum: str
+    ):
+        """Write initial TUNING_LOG.md header when creating a project"""
+        rom = project.original_rom
+        log_path = Path(project.project_path) / "TUNING_LOG.md"
+        date_str = project.created_at.strftime("%Y-%m-%d %H:%M")
+
+        header = (
+            f"# Tuning Log — {rom.rom_id}\n\n"
+            f"| | |\n"
+            f"|---|---|\n"
+            f"| **Vehicle** | {rom.make} {rom.model} |\n"
+            f"| **ECU** | {rom.rom_id} ({rom.definition_xmlid}) |\n"
+            f"| **Original ROM** | {source_filename} |\n"
+            f"| **Checksum** | {checksum[:16]}... |\n"
+            f"| **Created** | {date_str} |\n\n"
+            f"---\n"
+        )
+
+        with open(log_path, "w", encoding="utf-8") as f:
+            f.write(header)
+
+    def _append_tuning_log(self, commit: Commit):
+        """Append a version entry to TUNING_LOG.md"""
+        if not self.current_project:
+            return
+
+        log_path = Path(self.current_project.project_path) / "TUNING_LOG.md"
+
+        # Create the log file if it doesn't exist (backward compat for old projects)
+        if not log_path.exists():
+            rom = self.current_project.original_rom
+            checksum = rom.checksum_sha256
+            log_path.write_text(
+                f"# Tuning Log — {rom.rom_id}\n\n---\n",
+                encoding="utf-8",
+            )
+
+        # Find previous commit's snapshot filename
+        prev_commit = self.get_commit_by_version(commit.version - 1)
+        if prev_commit and prev_commit.snapshot_filename:
+            based_on = f"`{prev_commit.snapshot_filename}`"
+        elif commit.version == 1:
+            based_on = f"`{self.current_project.original_rom.filename}`"
+        else:
+            based_on = f"v{commit.version - 1}"
+
+        version_name = ""
+        if commit.snapshot_filename:
+            # Extract version_name from snapshot filename pattern: v{N}_{ROMID}_{name}.bin
+            parts = commit.snapshot_filename.rsplit(".bin", 1)[0]
+            rom_id = self.current_project.original_rom.rom_id
+            prefix = f"v{commit.version}_{rom_id}_"
+            if parts.startswith(prefix):
+                version_name = parts[len(prefix) :]
+
+        timestamp = commit.timestamp.strftime("%Y-%m-%d %H:%M")
+
+        # Build table summary
+        table_lines = []
+        for tc in commit.changes:
+            total = len(tc.cell_changes)
+            if total == 0:
+                continue
+
+            # Analyze direction
+            increases = sum(1 for c in tc.cell_changes if c.new_value > c.old_value)
+            decreases = sum(1 for c in tc.cell_changes if c.new_value < c.old_value)
+
+            if increases > 0 and decreases == 0:
+                # Calculate average % increase
+                pct_changes = [
+                    (c.new_value - c.old_value) / abs(c.old_value) * 100
+                    for c in tc.cell_changes
+                    if c.old_value != 0
+                ]
+                avg = sum(pct_changes) / len(pct_changes) if pct_changes else 0
+                direction = f"\u2191 avg +{avg:.1f}%"
+            elif decreases > 0 and increases == 0:
+                pct_changes = [
+                    (c.old_value - c.new_value) / abs(c.old_value) * 100
+                    for c in tc.cell_changes
+                    if c.old_value != 0
+                ]
+                avg = sum(pct_changes) / len(pct_changes) if pct_changes else 0
+                direction = f"\u2193 avg -{avg:.1f}%"
+            elif increases == 0 and decreases == 0:
+                # All set to same value
+                val = tc.cell_changes[0].new_value
+                direction = f"\u2192 set to {val}"
+            else:
+                direction = "\u223c mixed"
+
+            table_lines.append(f"| {tc.table_name} | {total} | {direction} |")
+
+        table_section = ""
+        if table_lines:
+            table_section = (
+                "\n| Table | Cells Changed | Direction |\n"
+                "|-------|--------------|----------|\n" + "\n".join(table_lines) + "\n"
+            )
+
+        entry = (
+            f"\n## v{commit.version} \u2014 {version_name} ({timestamp})\n\n"
+            f"Based on: {based_on}\n"
+        )
+
+        if commit.message:
+            entry += f"\n{commit.message}\n"
+
+        entry += table_section
+
+        if commit.snapshot_filename:
+            entry += f"\n**ROM file:** `{commit.snapshot_filename}`\n"
+
+        entry += "\n### Results\n<!-- Fill in after testing -->\n\n---\n"
+
+        with open(log_path, "a", encoding="utf-8") as f:
+            f.write(entry)
+
+    def _append_tuning_log_revert(self, version: int, commit: Commit):
+        """Append a revert entry to TUNING_LOG.md"""
+        if not self.current_project:
+            return
+
+        log_path = Path(self.current_project.project_path) / "TUNING_LOG.md"
+        if not log_path.exists():
+            return
+
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M")
+        snapshot_name = commit.snapshot_filename or f"v{version}"
+
+        entry = (
+            f"\n## Reverted to v{version} ({timestamp})\n\n"
+            f"Restored working ROM from `{snapshot_name}`\n\n---\n"
+        )
+
+        with open(log_path, "a", encoding="utf-8") as f:
+            f.write(entry)
 
     def _save_project_file(self, project: Project):
         """Save project.json (atomic write)"""

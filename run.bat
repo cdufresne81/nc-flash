@@ -52,7 +52,7 @@ if errorlevel 1 (
     echo.
 )
 
-REM Run the application (pass any command-line args through, e.g. --enable-projects)
+REM Run the application (pass any command-line args through)
 echo Starting NC ROM Editor...
 echo.
 python main.py %*

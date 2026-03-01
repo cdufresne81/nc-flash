@@ -41,7 +41,7 @@ class SessionMixin:
 
         for entry in session_files:
             try:
-                if self.projects_enabled and entry.startswith("project:"):
+                if entry.startswith("project:"):
                     # Explicit project tab
                     project_path = entry[len("project:") :]
                     if Path(project_path).exists():
@@ -50,11 +50,6 @@ class SessionMixin:
                         logger.warning(
                             f"Session project folder no longer exists: {project_path}"
                         )
-                elif entry.startswith("project:"):
-                    # Projects disabled — skip project entries
-                    logger.info(
-                        f"Skipping project session entry (projects disabled): {entry}"
-                    )
                 else:
                     path = Path(entry)
                     if not path.exists():
@@ -62,9 +57,7 @@ class SessionMixin:
                         continue
                     # Check if this ROM lives inside a project folder (legacy session data)
                     parent = path.parent
-                    if self.projects_enabled and ProjectManager.is_project_folder(
-                        str(parent)
-                    ):
+                    if ProjectManager.is_project_folder(str(parent)):
                         logger.info(
                             f"Session ROM is inside project folder, restoring as project: {parent}"
                         )
@@ -130,7 +123,7 @@ class SessionMixin:
 
     def show_settings(self):
         """Show settings dialog"""
-        dialog = SettingsDialog(self, projects_enabled=self.projects_enabled)
+        dialog = SettingsDialog(self)
         dialog.settings_changed.connect(self.on_settings_changed)
         dialog.exec()
 

@@ -27,7 +27,7 @@ from PySide6.QtWidgets import (
     QStyledItemDelegate,
     QMessageBox,
 )
-from PySide6.QtCore import Qt, QSize
+from PySide6.QtCore import Qt, QSettings, QSize
 from PySide6.QtGui import (
     QColor,
     QBrush,
@@ -140,6 +140,7 @@ class CompareWindow(QMainWindow):
         name_a: str,
         name_b: str,
         parent=None,
+        readonly: bool = False,
     ):
         super().__init__(parent)
         self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
@@ -152,6 +153,7 @@ class CompareWindow(QMainWindow):
         self._color_b = color_b
         self._name_a = name_a
         self._name_b = name_b
+        self._readonly = readonly
         self._cross_def = definition_a.romid.xmlid != definition_b.romid.xmlid
         self._changed_only = False
         self._syncing_scroll = False
@@ -694,7 +696,7 @@ class CompareWindow(QMainWindow):
         self._table_right.setItemDelegate(_CompareCellDelegate(self._table_right))
         right_layout.addWidget(self._table_right)
 
-        # Center column with copy buttons
+        # Center column with copy buttons (hidden in readonly mode)
         center_col = QWidget()
         center_layout = QVBoxLayout(center_col)
         center_layout.setContentsMargins(2, 0, 2, 0)
@@ -731,7 +733,12 @@ class CompareWindow(QMainWindow):
         center_layout.addWidget(self._copy_b_to_a_btn)
 
         center_layout.addStretch()
-        center_col.setFixedWidth(32)
+
+        if self._readonly:
+            center_col.setVisible(False)
+            center_col.setFixedWidth(0)
+        else:
+            center_col.setFixedWidth(32)
 
         self._table_splitter.addWidget(left_panel)
         self._table_splitter.addWidget(center_col)
@@ -904,7 +911,7 @@ class CompareWindow(QMainWindow):
 
     def _update_copy_buttons(self):
         """Enable/disable copy buttons based on current table entry."""
-        if self._current_index < 0:
+        if self._readonly or self._current_index < 0:
             self._copy_a_to_b_btn.setEnabled(False)
             self._copy_b_to_a_btn.setEnabled(False)
             return
@@ -1426,7 +1433,12 @@ class CompareWindow(QMainWindow):
     # ========== Window Sizing ==========
 
     def _auto_size(self):
-        """Size the window to fit the content, up to screen limits."""
+        """Size the window to fit the content, or restore saved geometry."""
+        settings = QSettings()
+        geometry = settings.value("ui/compare_window_geometry")
+        if geometry:
+            self.restoreGeometry(geometry)
+            return
         screen = QApplication.primaryScreen()
         if screen:
             avail = screen.availableGeometry()
@@ -1440,7 +1452,9 @@ class CompareWindow(QMainWindow):
         self.resize(min(1200, max_w), min(700, max_h))
 
     def closeEvent(self, event):
-        """Clean up on close."""
+        """Save geometry and clean up on close."""
+        settings = QSettings()
+        settings.setValue("ui/compare_window_geometry", self.saveGeometry())
         parent = self.parent()
         if parent and hasattr(parent, "compare_window"):
             parent.compare_window = None

@@ -2,7 +2,23 @@
 
 ## Next Tasks
 - Focus on the first value field of a table immediately after opening a table.
-- **Project/versioning system** - Full rewrite planned (current code excluded from audit)
+
+## Recent Completed Work (Mar 1, 2026) - Project Management Refactor: Tuning Log with Mandatory Snapshots
+- **Tuning log auto-generation** — Every commit appends a markdown section to `TUNING_LOG.md` with version name, description, table change summary (count + direction: ↑/↓/→/~ with avg %), based-on reference, ROM filename, and a "Results" placeholder. Header written on project creation with vehicle/ECU/checksum info.
+- **Mandatory version snapshots** — Removed optional snapshot checkbox from commit flow. Every commit always creates `v{N}_{ROMID}_{name}.bin`. Version name is required and auto-sanitized (lowercase, spaces→underscores, strip special chars).
+- **Soft delete versions** — `soft_delete_version()` moves snapshot to `_trash/`, marks `deleted=True` in commits.json. Cannot delete v0.
+- **Revert to version** — `revert_to_version()` loads snapshot bytes, overwrites working ROM, soft-deletes all newer versions. Appends revert entry to tuning log.
+- **Simplified working ROM naming** — Changed from `v1_{ROMID}_working.bin` to `{ROMID}.bin`. Old projects still work (backward compat via `project.json.working_rom` field).
+- **Removed `--enable-projects` feature flag** — Projects are now always enabled. Removed `projects_enabled` from main.py, session_mixin.py, recent_files_mixin.py, settings_dialog.py, run-dev.bat. All project menu items always visible.
+- **Commit dialog redesigned** — Single required version name field with auto-sanitization and real-time filename preview. Optional message field. Removed snapshot checkbox, suffix field, and `QuickCommitDialog`.
+- **History viewer enhancements** — Added "Revert to this version" and "Delete this version" buttons. Deleted commits hidden by default with "Show deleted" toggle. Deleted items shown with strikethrough + gray when toggled on.
+- **Version model cleanup** — Added `deleted: bool` to Commit dataclass. Removed `last_suffix` and `settings` from Project dataclass.
+- **37 new tests** — Full coverage for: create_project (working ROM naming, tuning log, v0), commit_changes (snapshot, tuning log, direction, sequential versions), soft_delete (trash, marks, persistence, guards), revert (overwrite, cascade delete, log, v0, monotonic), backward compat, commit dialog sanitization.
+- **History viewer polish** — Snapshot filename as primary column (removed Version+Message columns), "Show deleted" toggle, read-only CompareWindow for version diffs (single instance, parented to history dialog so it appears on top), git-log style toolbar icon for version history (enabled when project is open).
+- **Default author to system user** — `Commit.create()` uses `os.getlogin()` instead of hardcoded "User".
+- **Window geometry persistence** — History viewer and compare window save/restore size, splitter position, and column widths via QSettings. History viewer uses `done()` override (not `closeEvent`) since `accept()` doesn't trigger `closeEvent` on modal dialogs.
+- **Commit clears modified flag** — `document.set_modified(False)` called after successful commit so the close prompt doesn't ask about already-committed changes.
+- **Commit message preserves line breaks** — Newlines in commit messages rendered as `<br>` in the HTML details view.
 
 ## Recent Completed Work (Mar 1, 2026) - RomDrop Setup Wizard & Definitions → Metadata Rename
 - **RomDrop setup wizard** — Rewrote `setup_wizard.py` from single-page definitions directory picker to two-step QWizard: Step 1 selects RomDrop installation folder (validates romdrop.exe + metadata/ presence), Step 2 confirms derived paths with green/red status indicators and editable fields. Saves both `romdrop_executable_path` and `metadata_directory` on completion.

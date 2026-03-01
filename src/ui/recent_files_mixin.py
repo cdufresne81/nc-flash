@@ -41,17 +41,12 @@ class RecentFilesMixin:
             # Add each recent file
             for i, entry in enumerate(recent_files, 1):
                 # Detect project entries (project:<path>) vs standalone ROM paths
-                if self.projects_enabled and entry.startswith("project:"):
+                if entry.startswith("project:"):
                     project_path = entry[len("project:") :]
                     folder_name = Path(project_path).name
                     action_text = f"{i}. [P] {folder_name}"
                     status_text = project_path
-                elif entry.startswith("project:"):
-                    # Projects disabled — skip project entries in menu
-                    continue
-                elif self.projects_enabled and ProjectManager.is_project_folder(
-                    str(Path(entry).parent)
-                ):
+                elif ProjectManager.is_project_folder(str(Path(entry).parent)):
                     # Legacy entry: ROM file inside a project folder
                     folder_name = Path(entry).parent.name
                     action_text = f"{i}. [P] {folder_name}"
@@ -86,7 +81,7 @@ class RecentFilesMixin:
         Args:
             entry: Full path to ROM file, or "project:<path>" for projects
         """
-        if self.projects_enabled and entry.startswith("project:"):
+        if entry.startswith("project:"):
             project_path = entry[len("project:") :]
             if not Path(project_path).exists():
                 QMessageBox.warning(
@@ -110,9 +105,7 @@ class RecentFilesMixin:
                 self._remove_recent_entry(entry)
                 return
             # Check if ROM lives inside a project folder (legacy entry)
-            if self.projects_enabled and ProjectManager.is_project_folder(
-                str(path.parent)
-            ):
+            if ProjectManager.is_project_folder(str(path.parent)):
                 self.open_project_path(str(path.parent))
             else:
                 self._open_rom_file(entry)

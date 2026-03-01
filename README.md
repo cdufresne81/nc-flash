@@ -221,15 +221,16 @@ nc-rom-editor/
 6. **Save ROM:** File → Save ROM or Save ROM As...
 7. **Flash to ECU:** Tools → Flash ROM to ECU (or `Ctrl+Shift+F`) — launches RomDrop with your ROM file
 
-### Using Projects (Experimental)
+### Using Projects
 
-Projects provide version control for your tuning work. This feature is behind a feature flag — launch with `--enable-projects` to access it (or use `run-dev.bat`).
+Projects provide version control for your tuning work. Every commit creates a named, flashable ROM snapshot and an auto-generated tuning log.
 
 1. **Create Project:** File → New Project → Select a ROM file
-2. **Make Changes:** Edit tables as needed
-3. **Commit:** File → Commit Changes → Enter a description
-4. **View History:** View → History to see all commits
-5. **Compare Versions:** Click any commit to see what changed
+2. **Make Changes:** Edit tables, Ctrl+S saves to the working ROM
+3. **Commit:** File → Commit Changes → Name the version (e.g., "egr_delete") → a snapshot and log entry are created
+4. **View History:** View → Commit History to browse all versions
+5. **Revert:** Select a version in History → "Revert to this version" to restore it
+6. **Delete:** Remove bad versions — snapshots are moved to `_trash/`
 
 ## Development
 
