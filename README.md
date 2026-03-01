@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/NCRomEditor3D.png" alt="NC ROM Editor" max-width="40%">
+  <img src="assets/NCRomEditor3D.png" alt="NC ROM Editor" width="40%">
 </p>
 
 # NC ROM Editor
