@@ -86,9 +86,10 @@ class CommandServer:
 
     PORT = 8766
 
-    def __init__(self, callback: Callable[[dict], dict], parent: QObject):
+    def __init__(self, callback: Callable[[dict], dict], parent: QObject, port: int | None = None):
         self._callback = callback
         self._parent = parent
+        self._port = port or self.PORT
         self._server: HTTPServer | None = None
         self._thread: threading.Thread | None = None
         self._timer: QTimer | None = None
@@ -100,10 +101,10 @@ class CommandServer:
             return True
 
         try:
-            self._server = HTTPServer(("127.0.0.1", self.PORT), _RequestHandler)
+            self._server = HTTPServer(("127.0.0.1", self._port), _RequestHandler)
             self._server._request_queue = self._request_queue
         except OSError as e:
-            logger.error(f"CommandServer failed to bind port {self.PORT}: {e}")
+            logger.error(f"CommandServer failed to bind port {self._port}: {e}")
             self._server = None
             return False
 
@@ -116,7 +117,7 @@ class CommandServer:
         self._timer.timeout.connect(self._poll_queue)
         self._timer.start()
 
-        logger.info(f"CommandServer started on http://127.0.0.1:{self.PORT}")
+        logger.info(f"CommandServer started on http://127.0.0.1:{self._port}")
         return True
 
     def stop(self):
@@ -151,7 +152,7 @@ class CommandServer:
 
     @property
     def url(self) -> str:
-        return f"http://127.0.0.1:{self.PORT}"
+        return f"http://127.0.0.1:{self._port}"
 
     def _poll_queue(self):
         """Process pending requests on the Qt main thread."""

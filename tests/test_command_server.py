@@ -19,6 +19,8 @@ import pytest
 class TestCommandServer:
     """Tests for the HTTP server mechanics (start, stop, routing, errors)."""
 
+    TEST_PORT = 18766  # Different from default 8766 to avoid conflicts with running app
+
     @pytest.fixture(autouse=True)
     def _setup(self):
         """Import here so tests skip cleanly if PySide6 is not available."""
@@ -36,7 +38,7 @@ class TestCommandServer:
     def _make_server(self, callback=None):
         if callback is None:
             callback = lambda req: {"success": True, "echo": req}
-        server = self.CommandServer(callback, self.parent)
+        server = self.CommandServer(callback, self.parent, port=self.TEST_PORT)
         return server
 
     def _post(self, port, path, payload):
@@ -82,7 +84,7 @@ class TestCommandServer:
             def do_post():
                 try:
                     result_holder[0] = self._post(
-                        server.PORT, "/api/read-table",
+                        self.TEST_PORT, "/api/read-table",
                         {"table_name": "Fuel VE"}
                     )
                 except Exception as e:
@@ -105,7 +107,7 @@ class TestCommandServer:
         assert server.start()
         try:
             req = urllib.request.Request(
-                f"http://127.0.0.1:{server.PORT}/api/read-table",
+                f"http://127.0.0.1:{self.TEST_PORT}/api/read-table",
                 method="GET",
             )
             with pytest.raises(urllib.error.HTTPError) as exc_info:
@@ -125,7 +127,7 @@ class TestCommandServer:
                 try:
                     body = json.dumps({"foo": "bar"}).encode()
                     req = urllib.request.Request(
-                        f"http://127.0.0.1:{server.PORT}/api/nonexistent",
+                        f"http://127.0.0.1:{self.TEST_PORT}/api/nonexistent",
                         data=body,
                         headers={"Content-Type": "application/json"},
                         method="POST",
@@ -154,7 +156,7 @@ class TestCommandServer:
             def do_post():
                 try:
                     req = urllib.request.Request(
-                        f"http://127.0.0.1:{server.PORT}/api/read-table",
+                        f"http://127.0.0.1:{self.TEST_PORT}/api/read-table",
                         data=b"not json at all",
                         headers={"Content-Type": "application/json"},
                         method="POST",
@@ -186,7 +188,7 @@ class TestCommandServer:
             def do_post():
                 try:
                     result_holder[0] = self._post(
-                        server.PORT, "/api/modified",
+                        self.TEST_PORT, "/api/modified",
                         {"rom_path": "/some/path"}
                     )
                 except Exception as e:
