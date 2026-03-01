@@ -4,6 +4,10 @@
 - Focus on the first value field of a table immediately after opening a table.
 - **Project/versioning system** - Full rewrite planned (current code excluded from audit)
 
+## Recent Completed Work (Mar 1, 2026) - Table Browser & run.sh Fixes
+- **"Modified only" filter auto-expands categories** — Table browser now expands category folders when "Modified only" filter is active, matching search filter behavior
+- **run.sh CLI argument passthrough** — Added `"$@"` to `python3 main.py` call in `run.sh` to match `run.bat`'s `%*`
+
 ## Recent Completed Work (Mar 1, 2026) - README & Project Cleanup
 - **README Linux install docs** — Added Linux `.tar.gz` download/extract instructions alongside Windows in Installation section
 - **Project structure reorganization** — Moved build files (`build.bat`, `installer.iss`, `NCRomEditor.spec`, `requirements-build.txt`) to `packaging/` directory; moved `WINDOWS_SETUP.md` to `docs/`; updated all references in CI, build scripts, and README

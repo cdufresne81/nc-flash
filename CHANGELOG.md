@@ -8,6 +8,10 @@ All notable changes to NC ROM Editor are documented here.
 - **README updated for Linux** — Installation section now documents Linux `.tar.gz` download alongside Windows
 - **Project structure reorganized** — Moved build/packaging files (`build.bat`, `installer.iss`, `NCRomEditor.spec`, `requirements-build.txt`) into `packaging/` directory; moved `WINDOWS_SETUP.md` into `docs/`
 
+### Fixed
+- **"Modified only" filter now expands categories** — Toggling the "Modified only" checkbox in the table browser auto-expands categories with modified tables, matching search filter behavior
+- **run.sh argument passthrough** — Linux/macOS launcher now passes CLI arguments (`"$@"`) to `main.py`, matching `run.bat` parity
+
 ## [v1.4.2] - 2026-03-01
 
 ### Added
