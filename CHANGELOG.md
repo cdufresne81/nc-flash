@@ -2,6 +2,12 @@
 
 All notable changes to NC ROM Editor are documented here.
 
+## [Unreleased]
+
+### Changed
+- **README updated for Linux** — Installation section now documents Linux `.tar.gz` download alongside Windows
+- **Project structure reorganized** — Moved build/packaging files (`build.bat`, `installer.iss`, `NCRomEditor.spec`, `requirements-build.txt`) into `packaging/` directory; moved `WINDOWS_SETUP.md` into `docs/`
+
 ## [v1.4.2] - 2026-03-01
 
 ### Added

@@ -44,6 +44,7 @@ Output/
 .DS_Store
 Thumbs.db
 desktop.ini
+nul
 
 # ROM files (for testing, don't commit actual ROM files)
 *.bin
