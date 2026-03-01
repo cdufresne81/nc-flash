@@ -56,7 +56,11 @@ class _RequestHandler(BaseHTTPRequestHandler):
             self._send_json(504, {"success": False, "error": "Request timed out"})
             return
 
-        result = result_container[0] if result_container else {"success": False, "error": "No response"}
+        result = (
+            result_container[0]
+            if result_container
+            else {"success": False, "error": "No response"}
+        )
         self._send_json(200, result)
 
     def do_GET(self):
@@ -86,7 +90,12 @@ class CommandServer:
 
     PORT = 8766
 
-    def __init__(self, callback: Callable[[dict], dict], parent: QObject, port: int | None = None):
+    def __init__(
+        self,
+        callback: Callable[[dict], dict],
+        parent: QObject,
+        port: int | None = None,
+    ):
         self._callback = callback
         self._parent = parent
         self._port = port or self.PORT
@@ -139,7 +148,9 @@ class CommandServer:
         while not self._request_queue.empty():
             try:
                 payload, event, result_container = self._request_queue.get_nowait()
-                result_container.append({"success": False, "error": "Server shutting down"})
+                result_container.append(
+                    {"success": False, "error": "Server shutting down"}
+                )
                 event.set()
             except queue.Empty:
                 break
@@ -148,7 +159,11 @@ class CommandServer:
 
     @property
     def is_running(self) -> bool:
-        return self._server is not None and self._thread is not None and self._thread.is_alive()
+        return (
+            self._server is not None
+            and self._thread is not None
+            and self._thread.is_alive()
+        )
 
     @property
     def url(self) -> str:

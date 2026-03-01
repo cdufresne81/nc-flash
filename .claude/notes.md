@@ -8,6 +8,12 @@
   - **Pre-requisite: Package manifest** — Define include/exclude lists for packaging. Exclude: `.claude/`, `.gitignore`, `docs/`, `tests/`, `tools/`, `Thinking-pad.md`, `*.bak`, `nul`, dev scripts (`run-dev.bat`), `htmlcov/`, `coverage.xml`, `.pytest_cache/`, `venv*/`. Include: `main.py`, `src/`, `definitions/`, `examples/`, `run.bat`, `requirements.txt`, `README.md`.
   - **Pre-requisite: Local build validation** — Build installer locally on Windows first, test on a clean machine (no Python installed) to confirm it launches and opens a ROM before automating in CI.
 
+## Recent Completed Work (Mar 1, 2026) - Linux Release Build
+- **Linux build in release pipeline** — Added `build-linux` job to `release.yml` (ubuntu-22.04, PyInstaller → tar.gz). Release job now collects artifacts from both Windows and Linux builds. Cross-platform `NCRomEditor.spec` (conditional icon). Tests use dedicated port 18766 to avoid conflicts with running app.
+
+## Recent Completed Work (Mar 1, 2026) - CI Pipeline Fix
+- **Fixed CI pipeline** — Relaxed `numpy>=2.4.0` → `numpy>=2.2.0` (Python 3.10/3.11 support), ran `black` on 63 files, optimized CI matrix from 9→4 jobs (Ubuntu 3.10+3.12, Windows 3.12, macOS 3.12). Lint job updated to Python 3.12, codecov trigger updated to match.
+
 ## Recent Completed Work (Feb 28, 2026) - Live App Bridge & AI Write
 - **Command API server** — `src/api/command_server.py` runs an HTTP server on daemon thread (127.0.0.1:8766) that bridges MCP requests to Qt main thread via `queue.Queue` + `QTimer` (50ms poll). Handles POST to `/api/read-table`, `/api/modified`, `/api/edit-table`. Auto-starts/stops with MCP server. No new dependencies.
 - **AI write access to ROM tables** — `write_table` MCP tool sends cell edits through the full app pipeline: undo tracking (`table_undo_manager.record_bulk_cell_changes`), change tracking (`change_tracker.record_pending_bulk_changes`), ROM write (`rom_reader.write_cell_value`), modified flag, cell border highlighting, and table viewer refresh. Values are in display units; conversion to raw via `ScalingConverter.from_display()`.

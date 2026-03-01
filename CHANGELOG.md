@@ -5,6 +5,18 @@ All notable changes to NC ROM Editor are documented here.
 ## [v1.4.0] - 2026-02-28
 
 ### Added
+- **Linux build in release pipeline** — Release workflow now builds a `NCRomEditor-{version}-linux-x86_64.tar.gz` package alongside the Windows installer. Both artifacts are uploaded to GitHub Releases.
+- **Cross-platform PyInstaller spec** — `NCRomEditor.spec` now detects the OS and sets the icon accordingly (`.ico` on Windows, skipped on Linux).
+
+### Changed
+- **CI matrix optimized** — Reduced from 9 jobs (3 OS x 3 Python) to 4 jobs (Ubuntu 3.10+3.12, Windows 3.12, macOS 3.12). macOS drops from ~60 to ~20 billed minutes per run.
+- **NumPy version relaxed** — Lower bound `numpy>=2.4.0` → `numpy>=2.2.0` so Python 3.10 and 3.11 can install dependencies.
+
+### Fixed
+- **CI pipeline failures** — Fixed `black --check` failing on 63 unformatted files and `numpy>=2.4.0` blocking Python 3.10/3.11 installs.
+- **Test port conflict** — Command server tests now use a dedicated port (18766) to avoid conflicts with a running app instance.
+
+### Added
 - **MCP server for AI assistant access** — Model Context Protocol server (`python -m src.mcp.server`) exposes 9 tools for ROM inspection and editing. Supports STDIO and SSE transports. Works with Claude Code, Claude Desktop, ChatGPT, and Gemini. LRU-cached ROM loading (4 entries).
 - **AI write access to ROM tables** — New `write_table` MCP tool lets AI modify table values through the app's editing pipeline with full undo support. Changes appear in the app immediately and can be undone with Ctrl+Z.
 - **Live table reading for AI** — New `read_live_table` and `list_modified_tables` MCP tools read current in-memory values (including unsaved edits) from the running app, instead of stale on-disk data.

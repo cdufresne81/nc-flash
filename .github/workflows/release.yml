@@ -9,7 +9,7 @@ permissions:
   contents: write
 
 jobs:
-  build:
+  build-windows:
     name: Build Windows Installer
     runs-on: windows-latest
 
@@ -61,25 +61,103 @@ jobs:
         Write-Output "Installer built: $($installer.FullName) ($([math]::Round($installer.Length / 1MB, 1)) MB)"
       shell: pwsh
 
+    - name: Upload Windows artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: windows-installer
+        path: Output/*.exe
+
+  build-linux:
+    name: Build Linux Package
+    runs-on: ubuntu-22.04
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
+
+    - name: Install system dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y \
+          libgl1-mesa-dev \
+          libegl1 \
+          libxkbcommon0 \
+          libfontconfig1 \
+          libdbus-1-3 \
+          libxcb-xinerama0 \
+          libxcb-cursor0
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install -r requirements-build.txt
+
+    - name: Run tests
+      run: pytest
+
+    - name: Build with PyInstaller
+      run: pyinstaller NCRomEditor.spec --noconfirm
+
+    - name: Verify build output
+      run: |
+        if [ ! -f "dist/NCRomEditor/NCRomEditor" ]; then
+          echo "ERROR: NCRomEditor binary not found"
+          exit 1
+        fi
+        echo "Build verified: dist/NCRomEditor/NCRomEditor"
+
+    - name: Package as tar.gz
+      run: |
+        VERSION="${GITHUB_REF_NAME#v}"
+        cd dist
+        tar -czf "NCRomEditor-${VERSION}-linux-x86_64.tar.gz" NCRomEditor/
+        ls -lh "NCRomEditor-${VERSION}-linux-x86_64.tar.gz"
+
+    - name: Upload Linux artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: linux-package
+        path: dist/*.tar.gz
+
+  release:
+    name: Create GitHub Release
+    needs: [build-windows, build-linux]
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Download all artifacts
+      uses: actions/download-artifact@v4
+      with:
+        path: release-assets
+
+    - name: List release assets
+      run: find release-assets -type f
+
     - name: Extract changelog for this version
       id: changelog
       run: |
-        $tag = "${{ github.ref_name }}"
-        $version = $tag.TrimStart("v")
-        $content = Get-Content -Path CHANGELOG.md -Raw
+        TAG="${GITHUB_REF_NAME}"
+        VERSION="${TAG#v}"
+        CONTENT=$(cat CHANGELOG.md)
         # Extract section between this version header and the next
-        if ($content -match "(?s)## \[v$([regex]::Escape($version))\].*?\n(.*?)(?=\n## \[|$)") {
-          $notes = $Matches[1].Trim()
-        } else {
-          $notes = "Release $tag"
-        }
-        # Write to file for the release action
-        $notes | Out-File -FilePath release_notes.md -Encoding utf8
-        Write-Output "Release notes extracted for $tag"
-      shell: pwsh
+        NOTES=$(echo "$CONTENT" | sed -n "/^## \[v${VERSION}\]/,/^## \[/{/^## \[v${VERSION}\]/d;/^## \[/d;p;}" | sed '/^$/N;/^\n$/d')
+        if [ -z "$NOTES" ]; then
+          NOTES="Release $TAG"
+        fi
+        echo "$NOTES" > release_notes.md
+        echo "Release notes extracted for $TAG"
 
     - name: Create GitHub Release
       uses: softprops/action-gh-release@v2
       with:
-        files: Output/*.exe
+        files: |
+          release-assets/windows-installer/*.exe
+          release-assets/linux-package/*.tar.gz
         body_path: release_notes.md

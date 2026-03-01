@@ -3,12 +3,16 @@
 PyInstaller spec file for NC ROM Editor.
 
 Build with:  pyinstaller NCRomEditor.spec
-Output:      dist/NCRomEditor/NCRomEditor.exe
+Output:      dist/NCRomEditor/NCRomEditor[.exe]
 """
 
 import os
+import sys
 
 block_cipher = None
+
+# Icon: .ico on Windows, skip on Linux (desktop icons use .desktop files)
+icon_file = 'assets/NCRomEditor.ico' if sys.platform == 'win32' else None
 
 a = Analysis(
     ['main.py'],
@@ -43,7 +47,7 @@ exe = EXE(
     strip=False,
     upx=True,
     console=False,
-    icon='assets/NCRomEditor.ico',
+    icon=icon_file,
     disable_windowed_traceback=False,
 )
 
