@@ -2,7 +2,7 @@
 
 All notable changes to NC ROM Editor are documented here.
 
-## [Unreleased]
+## [v1.6.0] - 2026-03-01
 
 ### Added
 - **Tuning log** — Every commit auto-generates a `TUNING_LOG.md` entry with version name, description, table change summary with direction indicators, and a "Results" section to fill in after testing
