@@ -104,9 +104,7 @@ class RomDropFolderPage(QWizardPage):
         layout.addLayout(path_layout)
 
         # Help text
-        help_label = QLabel(
-            "Example: C:/Projets/MiataNC/romdrop_rev_21053000"
-        )
+        help_label = QLabel("Example: C:/Projets/MiataNC/romdrop_rev_21053000")
         help_label.setStyleSheet("color: gray; font-size: 10px; font-style: italic;")
         help_label.setAlignment(Qt.AlignCenter)
         layout.addWidget(help_label)

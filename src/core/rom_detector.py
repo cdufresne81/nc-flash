@@ -67,9 +67,7 @@ class RomDetector:
         if not self.definitions_dir.is_dir():
             raise MetadataDirectoryError(f"Path is not a directory: {metadata_dir}")
 
-        logger.info(
-            f"Initializing ROM detector with metadata dir: {metadata_dir}"
-        )
+        logger.info(f"Initializing ROM detector with metadata dir: {metadata_dir}")
         self.rom_definitions: List[RomIdInfo] = []
         self._scan_definitions()
         logger.info(f"Found {len(self.rom_definitions)} ROM definition(s)")

@@ -260,9 +260,7 @@ class MainWindow(QMainWindow, RecentFilesMixin, ProjectMixin, SessionMixin):
         # Check if directory contains at least one XML file
         xml_files = list(metadata_path.glob("*.xml"))
         if not xml_files:
-            logger.warning(
-                f"No XML files found in metadata directory: {metadata_dir}"
-            )
+            logger.warning(f"No XML files found in metadata directory: {metadata_dir}")
             return False
 
         return True

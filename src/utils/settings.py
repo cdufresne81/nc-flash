@@ -28,7 +28,9 @@ class AppSettings:
         """
         # Default to 'examples/metadata' directory in the application root
         default_path = str(get_app_root() / "examples" / "metadata")
-        return os.path.normpath(self.settings.value("paths/metadata_directory", default_path))
+        return os.path.normpath(
+            self.settings.value("paths/metadata_directory", default_path)
+        )
 
     def set_metadata_directory(self, path: str):
         """
@@ -170,7 +172,9 @@ class AppSettings:
         """
         # Default to the built-in default.map in the colormaps directory
         default_path = str(get_app_root() / "colormaps" / "default.map")
-        return os.path.normpath(self.settings.value("display/colormap_path", default_path))
+        return os.path.normpath(
+            self.settings.value("display/colormap_path", default_path)
+        )
 
     def set_colormap_path(self, path: str):
         """
@@ -189,7 +193,9 @@ class AppSettings:
             str: Path to directory containing .map files
         """
         default_path = str(get_app_root() / "colormaps")
-        return os.path.normpath(self.settings.value("paths/colormap_directory", default_path))
+        return os.path.normpath(
+            self.settings.value("paths/colormap_directory", default_path)
+        )
 
     def set_colormap_directory(self, path: str):
         """
@@ -208,7 +214,9 @@ class AppSettings:
             str: Path to export directory
         """
         default_path = str(get_user_data_dir() / "exports")
-        return os.path.normpath(self.settings.value("paths/export_directory", default_path))
+        return os.path.normpath(
+            self.settings.value("paths/export_directory", default_path)
+        )
 
     def set_export_directory(self, path: str):
         """
@@ -227,7 +235,9 @@ class AppSettings:
             str: Path to directory where projects are stored
         """
         default_path = str(get_user_data_dir() / "projects")
-        return os.path.normpath(self.settings.value("paths/projects_directory", default_path))
+        return os.path.normpath(
+            self.settings.value("paths/projects_directory", default_path)
+        )
 
     def set_projects_directory(self, path: str):
         """
