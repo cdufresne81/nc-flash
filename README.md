@@ -267,9 +267,9 @@ Tests run automatically on GitHub Actions for:
 
 ## Development Status
 
-**Current Version:** v1.3.0
+**Current Version:** v1.4.0
 
-This version includes full table editing, project management with version history, interactive graph visualization, ROM comparison tool, and a polished toolbar-driven UI.
+This version includes full table editing, project management with version history, interactive graph visualization, ROM comparison tool, a polished toolbar-driven UI, and AI assistant integration via MCP server.
 
 **Next Priorities:**
 - Project management

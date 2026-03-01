@@ -2,7 +2,7 @@
 
 All notable changes to NC ROM Editor are documented here.
 
-## [Unreleased]
+## [v1.4.0] - 2026-02-28
 
 ### Added
 - **MCP server for AI assistant access** — Model Context Protocol server (`python -m src.mcp.server`) exposes 9 tools for ROM inspection and editing. Supports STDIO and SSE transports. Works with Claude Code, Claude Desktop, ChatGPT, and Gemini. LRU-cached ROM loading (4 entries).
