@@ -99,6 +99,8 @@ jobs:
 
     - name: Run tests
       run: pytest
+      env:
+        QT_QPA_PLATFORM: offscreen
 
     - name: Build with PyInstaller
       run: pyinstaller NCRomEditor.spec --noconfirm

@@ -44,6 +44,8 @@ jobs:
     - name: Run tests with pytest
       run: |
         pytest
+      env:
+        QT_QPA_PLATFORM: ${{ runner.os == 'Linux' && 'offscreen' || '' }}
 
     - name: Upload coverage reports to Codecov
       if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.12'
