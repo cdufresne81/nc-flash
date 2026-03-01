@@ -6,6 +6,7 @@ An open-source ROM editor for NC Miata ECUs
 """
 
 import json
+import os
 import sys
 import subprocess
 import logging
