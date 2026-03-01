@@ -263,9 +263,9 @@ class TestInitialization:
     """Tests for TestRunner initialization"""
 
     def test_default_definitions_dir(self):
-        """Default definitions directory should be project's definitions/"""
+        """Default metadata directory should be project's examples/metadata/"""
         runner = TestRunner(quiet=True)
-        assert runner.definitions_dir.name == "definitions"
+        assert runner.definitions_dir.name == "metadata"
 
     def test_custom_definitions_dir(self):
         """Custom definitions directory should be used"""

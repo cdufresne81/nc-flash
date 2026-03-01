@@ -142,8 +142,8 @@ class RomSelectionPage(QWizardPage):
 
         try:
             # Try to detect ROM
-            definitions_dir = get_settings().get_definitions_directory()
-            detector = RomDetector(definitions_dir)
+            metadata_dir = get_settings().get_metadata_directory()
+            detector = RomDetector(metadata_dir)
             rom_id, xml_path = detector.detect_rom_id(path)
 
             if rom_id and xml_path:

@@ -47,28 +47,28 @@ class RomDetector:
     Detects ROM ID from binary files and matches to XML definitions
     """
 
-    def __init__(self, definitions_dir: str = "definitions"):
+    def __init__(self, metadata_dir: str = "examples/metadata"):
         """
         Initialize ROM detector
 
         Args:
-            definitions_dir: Directory containing XML definition files
+            metadata_dir: Directory containing XML definition files
 
         Raises:
-            MetadataDirectoryError: If definitions directory doesn't exist or is invalid
+            MetadataDirectoryError: If metadata directory doesn't exist or is invalid
         """
-        self.definitions_dir = Path(definitions_dir)
+        self.definitions_dir = Path(metadata_dir)
 
         if not self.definitions_dir.exists():
             raise MetadataDirectoryError(
-                f"Definitions directory not found: {definitions_dir}"
+                f"Metadata directory not found: {metadata_dir}"
             )
 
         if not self.definitions_dir.is_dir():
-            raise MetadataDirectoryError(f"Path is not a directory: {definitions_dir}")
+            raise MetadataDirectoryError(f"Path is not a directory: {metadata_dir}")
 
         logger.info(
-            f"Initializing ROM detector with definitions dir: {definitions_dir}"
+            f"Initializing ROM detector with metadata dir: {metadata_dir}"
         )
         self.rom_definitions: List[RomIdInfo] = []
         self._scan_definitions()

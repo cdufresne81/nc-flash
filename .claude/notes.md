@@ -4,6 +4,11 @@
 - Focus on the first value field of a table immediately after opening a table.
 - **Project/versioning system** - Full rewrite planned (current code excluded from audit)
 
+## Recent Completed Work (Mar 1, 2026) - RomDrop Setup Wizard & Definitions → Metadata Rename
+- **RomDrop setup wizard** — Rewrote `setup_wizard.py` from single-page definitions directory picker to two-step QWizard: Step 1 selects RomDrop installation folder (validates romdrop.exe + metadata/ presence), Step 2 confirms derived paths with green/red status indicators and editable fields. Saves both `romdrop_executable_path` and `metadata_directory` on completion.
+- **Renamed "definitions" → "metadata" across codebase** — Renamed `get_definitions_directory()`/`set_definitions_directory()` → `get_metadata_directory()`/`set_metadata_directory()` in settings.py. Updated QSettings key from `paths/definitions_directory` to `paths/metadata_directory`. Default path changed from `definitions/` to `examples/metadata/`. Updated all callers: main.py, session_mixin.py, settings_dialog.py, project_wizard.py, rom_detector.py, rom_context.py, server.py. MCP CLI flag renamed `--definitions-dir` → `--metadata-dir`.
+- **Restructured project directories** — Moved `definitions/lf9veb.xml` to `examples/metadata/lf9veb.xml`. Deleted `definitions/` directory. Updated packaging spec, test fixtures, README project tree.
+
 ## Recent Completed Work (Mar 1, 2026) - Configurable CSV Export Directory
 - **Configurable export directory** — Added "Export Directory" setting (Settings > General) with browse button. CSV exports (Ctrl+E) default to `%APPDATA%/NCRomEditor/exports` (or platform equivalent). Configurable to any folder.
 - **Projects UI hidden behind feature flag** — Projects directory setting in Settings > General and the View menu (which only contained "Commit History") are now hidden unless `--enable-projects` is passed

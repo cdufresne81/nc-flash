@@ -4,6 +4,7 @@ Tests for Application Settings
 Tests settings loading, saving, and default values.
 """
 
+import os
 import pytest
 from unittest.mock import patch, MagicMock
 from pathlib import Path
@@ -55,27 +56,25 @@ def app_settings(mock_qsettings):
     return AppSettings()
 
 
-class TestDefinitionsDirectory:
-    """Tests for definitions directory settings"""
+class TestMetadataDirectory:
+    """Tests for metadata directory settings"""
 
-    def test_get_definitions_directory_default(self, app_settings):
-        """Test getting default definitions directory"""
-        result = app_settings.get_definitions_directory()
-        assert "definitions" in result
-        assert Path(result).name == "definitions"
+    def test_get_metadata_directory_default(self, app_settings):
+        """Test getting default metadata directory"""
+        result = app_settings.get_metadata_directory()
+        assert "metadata" in result
+        assert Path(result).name == "metadata"
 
-    def test_set_and_get_definitions_directory(self, mock_qsettings):
-        """Test setting and getting definitions directory"""
+    def test_set_and_get_metadata_directory(self, mock_qsettings):
+        """Test setting and getting metadata directory"""
         mock_instance, settings_store = mock_qsettings
         app_settings = AppSettings()
 
-        app_settings.set_definitions_directory("/custom/path/definitions")
+        test_path = "/custom/path/metadata"
+        app_settings.set_metadata_directory(test_path)
 
-        assert (
-            settings_store.get("paths/definitions_directory")
-            == "/custom/path/definitions"
-        )
-        assert app_settings.get_definitions_directory() == "/custom/path/definitions"
+        assert settings_store.get("paths/metadata_directory") == test_path
+        assert app_settings.get_metadata_directory() == os.path.normpath(test_path)
 
 
 class TestRecentFiles:
@@ -249,10 +248,11 @@ class TestColormapSettings:
         mock_instance, settings_store = mock_qsettings
         app_settings = AppSettings()
 
-        app_settings.set_colormap_path("/custom/colormap/custom.map")
+        test_path = "/custom/colormap/custom.map"
+        app_settings.set_colormap_path(test_path)
 
         result = app_settings.get_colormap_path()
-        assert result == "/custom/colormap/custom.map"
+        assert result == os.path.normpath(test_path)
 
     def test_get_colormap_directory_default(self, app_settings):
         """Test default colormap directory"""
@@ -264,10 +264,11 @@ class TestColormapSettings:
         mock_instance, settings_store = mock_qsettings
         app_settings = AppSettings()
 
-        app_settings.set_colormap_directory("/custom/colormap")
+        test_path = "/custom/colormap"
+        app_settings.set_colormap_directory(test_path)
 
         result = app_settings.get_colormap_directory()
-        assert result == "/custom/colormap"
+        assert result == os.path.normpath(test_path)
 
 
 class TestProjectsDirectory:
@@ -283,10 +284,11 @@ class TestProjectsDirectory:
         mock_instance, settings_store = mock_qsettings
         app_settings = AppSettings()
 
-        app_settings.set_projects_directory("/custom/projects")
+        test_path = "/custom/projects"
+        app_settings.set_projects_directory(test_path)
 
         result = app_settings.get_projects_directory()
-        assert result == "/custom/projects"
+        assert result == os.path.normpath(test_path)
 
 
 class TestWindowSettings:

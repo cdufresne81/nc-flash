@@ -5,9 +5,12 @@ All notable changes to NC ROM Editor are documented here.
 ## [Unreleased]
 
 ### Added
+- **RomDrop setup wizard** — First-run wizard now asks for the RomDrop installation folder (not just a definitions directory). Step 1 selects the folder, Step 2 confirms derived paths for `romdrop.exe` and `metadata/` with green/red validation indicators. Both paths are editable for non-standard layouts
 - **Configurable CSV export directory** — New "Export Directory" setting in Settings > General lets you choose a default folder for CSV exports (Ctrl+E). Leave empty to keep the default behavior (exports next to the ROM file)
 
 ### Changed
+- **"Definitions" renamed to "Metadata"** — All UI labels, settings keys, CLI flags, and log messages now use "metadata" instead of "definitions" to match RomDrop's naming convention. Settings key changed from `paths/definitions_directory` to `paths/metadata_directory`. MCP server flag changed from `--definitions-dir` to `--metadata-dir`
+- **Bundled XML files moved to examples/metadata/** — The `definitions/` directory has been restructured to `examples/metadata/` since it contains example/bundled data
 - **Projects UI hidden behind feature flag** — Projects directory setting and View menu are now only shown when `--enable-projects` is passed
 - **README updated for Linux** — Installation section now documents Linux `.tar.gz` download alongside Windows
 - **Project structure reorganized** — Moved build/packaging files (`build.bat`, `installer.iss`, `NCRomEditor.spec`, `requirements-build.txt`) into `packaging/` directory; moved `WINDOWS_SETUP.md` into `docs/`

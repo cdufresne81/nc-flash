@@ -194,10 +194,10 @@ nc-rom-editor/
 │   └── utils/                         # Helper functions
 │       ├── settings.py                # Settings manager
 │       └── colormap.py                # Color scheme utilities
-├── definitions/                       # ROM definition XML files
-│   └── lf9veb.xml                     # NC Miata ROM definition (511 tables)
-├── examples/                          # Example ROM binary files
-│   └── lf9veb.bin                     # Stock NC Miata ROM
+├── examples/                          # Example ROM files
+│   ├── metadata/                      # ROM metadata XML files
+│   │   └── lf9veb.xml                 # NC Miata ROM definition (511 tables)
+│   └── lf9veb.bin                     # Stock NC Miata ROM binary
 ├── packaging/                         # Build & installer scripts
 │   ├── build.bat                      # Windows build script
 │   ├── installer.iss                  # Inno Setup installer script

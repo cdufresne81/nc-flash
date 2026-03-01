@@ -19,7 +19,7 @@ a = Analysis(
     pathex=[],
     binaries=[],
     datas=[
-        ('definitions', 'definitions'),
+        ('examples/metadata', 'examples/metadata'),
         ('colormaps', 'colormaps'),
         ('examples', 'examples'),
     ],

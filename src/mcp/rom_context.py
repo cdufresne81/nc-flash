@@ -82,12 +82,12 @@ class RomContext:
 
     MAX_CACHE_SIZE = 4
 
-    def __init__(self, definitions_dir: Optional[str] = None):
-        if definitions_dir:
-            self._definitions_dir = str(Path(definitions_dir).resolve())
+    def __init__(self, metadata_dir: Optional[str] = None):
+        if metadata_dir:
+            self._metadata_dir = str(Path(metadata_dir).resolve())
         else:
-            self._definitions_dir = str(get_app_root() / "definitions")
-        self._detector = RomDetector(self._definitions_dir)
+            self._metadata_dir = str(get_app_root() / "examples" / "metadata")
+        self._detector = RomDetector(self._metadata_dir)
         self._cache: OrderedDict[str, _CacheEntry] = OrderedDict()
 
     def _get_entry(self, rom_path: str) -> _CacheEntry:
