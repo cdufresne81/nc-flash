@@ -1,0 +1,25 @@
+load_rom examples/lf9veb.bin
+
+# 3D table - the one that was clipped
+open_table "APP to TP Desired - 3rd Gear"
+wait 300
+screenshot autosize_3d table
+close_table
+
+# 2D table
+open_table "Knock Listen - Min Load"
+wait 300
+screenshot autosize_2d table
+close_table
+
+# 1D table
+open_table "Knock Listen - Min RPM"
+wait 300
+screenshot autosize_1d table
+close_table
+
+# Large 3D table
+open_table "Speed Density - Volumetric Efficiency"
+wait 300
+screenshot autosize_large_3d table
+close_table
