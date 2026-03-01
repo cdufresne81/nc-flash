@@ -4,7 +4,11 @@ All notable changes to NC ROM Editor are documented here.
 
 ## [Unreleased]
 
+### Added
+- **Configurable CSV export directory** — New "Export Directory" setting in Settings > General lets you choose a default folder for CSV exports (Ctrl+E). Leave empty to keep the default behavior (exports next to the ROM file)
+
 ### Changed
+- **Projects UI hidden behind feature flag** — Projects directory setting and View menu are now only shown when `--enable-projects` is passed
 - **README updated for Linux** — Installation section now documents Linux `.tar.gz` download alongside Windows
 - **Project structure reorganized** — Moved build/packaging files (`build.bat`, `installer.iss`, `NCRomEditor.spec`, `requirements-build.txt`) into `packaging/` directory; moved `WINDOWS_SETUP.md` into `docs/`
 

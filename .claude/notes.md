@@ -4,6 +4,10 @@
 - Focus on the first value field of a table immediately after opening a table.
 - **Project/versioning system** - Full rewrite planned (current code excluded from audit)
 
+## Recent Completed Work (Mar 1, 2026) - Configurable CSV Export Directory
+- **Configurable export directory** — Added "Export Directory" setting (Settings > General) with browse button. CSV exports (Ctrl+E) default to `%APPDATA%/NCRomEditor/exports` (or platform equivalent). Configurable to any folder.
+- **Projects UI hidden behind feature flag** — Projects directory setting in Settings > General and the View menu (which only contained "Commit History") are now hidden unless `--enable-projects` is passed
+
 ## Recent Completed Work (Mar 1, 2026) - Table Browser & run.sh Fixes
 - **"Modified only" filter auto-expands categories** — Table browser now expands category folders when "Modified only" filter is active, matching search filter behavior
 - **run.sh CLI argument passthrough** — Added `"$@"` to `python3 main.py` call in `run.sh` to match `run.bat`'s `%*`
