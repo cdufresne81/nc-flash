@@ -1,8 +1,12 @@
 @echo off
 REM Build NC ROM Editor as a standalone Windows executable
+REM Run from the project root: packaging\build.bat
 REM Output: dist\NCRomEditor\NCRomEditor.exe
 
 echo === NC ROM Editor Build ===
+
+REM Change to project root (parent of packaging/)
+cd /d "%~dp0\.."
 
 REM Activate virtual environment
 if exist venv-windows\Scripts\activate.bat (
@@ -17,7 +21,7 @@ if exist venv-windows\Scripts\activate.bat (
 
 REM Install build dependencies
 echo Installing build dependencies...
-pip install -r requirements-build.txt
+pip install -r packaging\requirements-build.txt
 if errorlevel 1 (
     echo ERROR: Failed to install build dependencies
     exit /b 1
@@ -25,7 +29,7 @@ if errorlevel 1 (
 
 REM Run PyInstaller
 echo Building executable...
-pyinstaller NCRomEditor.spec --noconfirm
+pyinstaller packaging\NCRomEditor.spec --noconfirm
 if errorlevel 1 (
     echo ERROR: PyInstaller build failed
     exit /b 1
@@ -43,14 +47,14 @@ if exist "%ProgramFiles%\Inno Setup 6\ISCC.exe" set "ISCC=%ProgramFiles%\Inno Se
 
 if defined ISCC (
     echo Building installer...
-    "%ISCC%" installer.iss
+    "%ISCC%" packaging\installer.iss
     if errorlevel 1 (
         echo ERROR: Inno Setup build failed
         exit /b 1
     )
     echo.
     echo === Installer Build Complete ===
-    echo Installer: Output\NCRomEditor-1.3.0-Setup.exe
+    dir /b Output\*.exe
 ) else (
     echo Skipping installer: Inno Setup 6 not found.
     echo Install from https://jrsoftware.org/isinfo.php to build the installer.

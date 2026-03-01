@@ -25,13 +25,13 @@ jobs:
       run: |
         python -m pip install --upgrade pip
         pip install -r requirements.txt
-        pip install -r requirements-build.txt
+        pip install -r packaging/requirements-build.txt
 
     - name: Run tests
       run: pytest
 
     - name: Build with PyInstaller
-      run: pyinstaller NCRomEditor.spec --noconfirm
+      run: pyinstaller packaging/NCRomEditor.spec --noconfirm
 
     - name: Verify build output
       run: |
@@ -48,7 +48,7 @@ jobs:
 
     - name: Build installer
       run: |
-        & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" installer.iss
+        & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" packaging/installer.iss
       shell: pwsh
 
     - name: Verify installer output
@@ -95,7 +95,7 @@ jobs:
       run: |
         python -m pip install --upgrade pip
         pip install -r requirements.txt
-        pip install -r requirements-build.txt
+        pip install -r packaging/requirements-build.txt
 
     - name: Run tests
       run: pytest
@@ -103,7 +103,7 @@ jobs:
         QT_QPA_PLATFORM: offscreen
 
     - name: Build with PyInstaller
-      run: pyinstaller NCRomEditor.spec --noconfirm
+      run: pyinstaller packaging/NCRomEditor.spec --noconfirm
 
     - name: Verify build output
       run: |

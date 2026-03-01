@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/NCRomEditor3D.png" alt="NC ROM Editor">
+  <img src="assets/NCRomEditor3D.png" alt="NC ROM Editor" max-width="40%">
 </p>
 
 # NC ROM Editor
@@ -16,10 +16,20 @@ NC ROM Editor is a desktop application that allows you to read, edit, and save E
 
 ## Installation
 
-### Windows Installer
-Download the latest installer from [GitHub Releases](https://github.com/cdufresne81/NCRomEditor/releases).
+Download the latest release for your platform from [GitHub Releases](https://github.com/cdufresne81/NCRomEditor/releases).
+
+### Windows
+Download the `.exe` installer and run it.
 
 > **Note:** The installer is not code-signed, so Windows SmartScreen may show an "Unknown publisher" warning. Click **"More info"** then **"Run anyway"** to proceed. This is normal for open-source software without a paid signing certificate.
+
+### Linux
+Download the `.tar.gz` archive, extract it, and run the `NCRomEditor` binary:
+```bash
+tar -xzf NCRomEditor-*-linux-x86_64.tar.gz
+cd NCRomEditor
+./NCRomEditor
+```
 
 ### Clone the Repository
 ```bash
@@ -30,7 +40,7 @@ cd NCRomEditor
 ## Run from Source
 
 ### Windows
-Simply double-click `run.bat` or see [WINDOWS_SETUP.md](WINDOWS_SETUP.md) for details.
+Simply double-click `run.bat` or see [Windows Setup Guide](docs/WINDOWS_SETUP.md) for details.
 
 ### Linux/macOS
 ```bash
@@ -188,11 +198,17 @@ nc-rom-editor/
 │   └── lf9veb.xml                     # NC Miata ROM definition (511 tables)
 ├── examples/                          # Example ROM binary files
 │   └── lf9veb.bin                     # Stock NC Miata ROM
+├── packaging/                         # Build & installer scripts
+│   ├── build.bat                      # Windows build script
+│   ├── installer.iss                  # Inno Setup installer script
+│   ├── NCRomEditor.spec              # PyInstaller spec
+│   └── requirements-build.txt        # Build-only dependencies
 ├── docs/                              # Documentation
-│   └── ROM_DEFINITION_FORMAT.md
+│   ├── ROM_DEFINITION_FORMAT.md
+│   └── WINDOWS_SETUP.md              # Windows setup guide
 ├── main.py                            # Application entry point
 ├── run.bat                            # Windows launcher
-└── WINDOWS_SETUP.md                   # Windows setup guide
+└── run.sh                             # Linux launcher
 ```
 
 ## Usage

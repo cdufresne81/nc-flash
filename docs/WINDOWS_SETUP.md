@@ -11,7 +11,7 @@
 Simply double-click `run.bat` in the project folder or run from Command Prompt:
 
 ```cmd
-cd C:\Projets\AI\nc-rom-editor
+cd NCRomEditor
 run.bat
 ```
 
@@ -30,7 +30,7 @@ If you prefer manual control:
 
 ### 1. Create Virtual Environment
 ```cmd
-cd C:\Projets\AI\nc-rom-editor
+cd NCRomEditor
 python -m venv venv-windows
 ```
 
@@ -81,13 +81,4 @@ python main.py
 For development work:
 1. Open project in your IDE (VS Code, PyCharm, etc.)
 2. Set Python interpreter to `venv-windows\Scripts\python.exe`
-3. Edit code in WSL or Windows (files are shared)
-4. Run/debug from Windows for GUI testing
-
-## Notes
-
-- The WSL `venv/` and Windows `venv-windows/` are separate
-- Both are excluded from git (`.gitignore`)
-- Use WSL for command-line development
-- Use Windows for GUI testing
-- Files in `C:\Projets\AI\nc-rom-editor` are accessible from both
+3. Run/debug from Windows for GUI testing

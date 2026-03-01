@@ -1,6 +1,6 @@
 ; Inno Setup Script for NC ROM Editor
 ; Requires: Inno Setup 6 (https://jrsoftware.org/isinfo.php)
-; Build:    iscc installer.iss
+; Build:    iscc packaging\installer.iss
 
 #define MyAppName "NC ROM Editor"
 #define MyAppVersion "1.3.0"
@@ -18,9 +18,9 @@ AppSupportURL={#MyAppURL}/issues
 DefaultDirName={autopf}\NCRomEditor
 DefaultGroupName={#MyAppName}
 AllowNoIcons=yes
-OutputDir=Output
+OutputDir=..\Output
 OutputBaseFilename=NCRomEditor-{#MyAppVersion}-Setup
-SetupIconFile=assets\NCRomEditor.ico
+SetupIconFile=..\assets\NCRomEditor.ico
 UninstallDisplayIcon={app}\{#MyAppExeName}
 Compression=lzma2
 SolidCompression=yes
@@ -36,8 +36,8 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
 
 [Files]
-Source: "dist\NCRomEditor\{#MyAppExeName}"; DestDir: "{app}"; Flags: ignoreversion
-Source: "dist\NCRomEditor\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "..\dist\NCRomEditor\{#MyAppExeName}"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\dist\NCRomEditor\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
 Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; IconFilename: "{app}\{#MyAppExeName}"
