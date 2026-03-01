@@ -225,7 +225,7 @@ class TestRomContextLiveBridge:
     def ctx(self, definitions_dir):
         from src.mcp.rom_context import RomContext
 
-        return RomContext(definitions_dir=str(definitions_dir))
+        return RomContext(metadata_dir=str(definitions_dir))
 
     def test_post_to_app_no_workspace(self, ctx, tmp_path, monkeypatch):
         """When workspace.json has no command_api_url, returns error."""

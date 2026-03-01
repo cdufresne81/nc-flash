@@ -10,7 +10,7 @@ Live tools (read_live_table, write_table, list_modified_tables) communicate
 with the running app via its command API HTTP bridge.
 
 Usage:
-    python -m src.mcp.server [--definitions-dir PATH] [--transport stdio|sse] [--port PORT]
+    python -m src.mcp.server [--metadata-dir PATH] [--transport stdio|sse] [--port PORT]
 """
 
 import argparse
@@ -198,8 +198,8 @@ def _create_mcp(port: int = DEFAULT_SSE_PORT) -> FastMCP:
 def main():
     parser = argparse.ArgumentParser(description="NC ROM Editor MCP Server")
     parser.add_argument(
-        "--definitions-dir",
-        help="Path to ROM definitions directory (default: <app_root>/definitions)",
+        "--metadata-dir",
+        help="Path to ROM metadata directory (default: <app_root>/examples/metadata)",
     )
     parser.add_argument(
         "--transport",
@@ -216,7 +216,7 @@ def main():
     args = parser.parse_args()
 
     global _ctx
-    _ctx = RomContext(definitions_dir=args.definitions_dir)
+    _ctx = RomContext(metadata_dir=args.metadata_dir)
 
     server = _create_mcp(port=args.port)
 

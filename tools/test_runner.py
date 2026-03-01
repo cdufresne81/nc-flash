@@ -54,9 +54,9 @@ class TestRunner:
         self.rom_reader = None
         self.rom_definition = None
 
-        # Default definitions directory
+        # Default metadata directory
         if definitions_dir is None:
-            self.definitions_dir = project_root / "definitions"
+            self.definitions_dir = project_root / "examples" / "metadata"
         else:
             self.definitions_dir = Path(definitions_dir)
 
@@ -65,7 +65,7 @@ class TestRunner:
         self.screenshots_dir.mkdir(parents=True, exist_ok=True)
 
         self._log(f"Test Runner initialized")
-        self._log(f"  Definitions: {self.definitions_dir}")
+        self._log(f"  Metadata: {self.definitions_dir}")
         self._log(f"  Screenshots: {self.screenshots_dir}")
 
     def _log(self, message: str):
@@ -96,9 +96,9 @@ class TestRunner:
             from main import MainWindow
             from src.utils.settings import get_settings
 
-            # Configure settings to use our definitions directory
+            # Configure settings to use our metadata directory
             settings = get_settings()
-            settings.settings.setValue("definitions_directory", str(self.definitions_dir))
+            settings.set_metadata_directory(str(self.definitions_dir))
             settings.settings.sync()
 
             # Create main window

@@ -54,7 +54,7 @@ fi
 # Run the application
 echo "Starting NC ROM Editor..."
 echo ""
-python3 main.py
+python3 main.py "$@"
 
 # Capture exit code
 EXIT_CODE=$?

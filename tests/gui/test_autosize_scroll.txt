@@ -1,0 +1,10 @@
+load_rom examples/lf9veb.bin
+open_table "APP to TP Desired - 3rd Gear"
+wait 300
+screenshot autosize_scroll_top table
+
+# Select the very last data cell to force scroll to bottom
+select 19 5
+wait 300
+screenshot autosize_scroll_bottom table
+close_table

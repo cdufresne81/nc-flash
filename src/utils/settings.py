@@ -4,6 +4,8 @@ Application Settings Management
 Handles loading, saving, and accessing application settings using QSettings.
 """
 
+import os
+
 from PySide6.QtCore import QByteArray, QSettings
 
 from .constants import MAX_RECENT_FILES
@@ -17,25 +19,25 @@ class AppSettings:
         """Initialize settings manager"""
         self.settings = QSettings("NCRomEditor", "NCRomEditor")
 
-    def get_definitions_directory(self) -> str:
+    def get_metadata_directory(self) -> str:
         """
-        Get the configured ROM definitions directory path
+        Get the configured ROM metadata directory path
 
         Returns:
-            str: Path to definitions directory (defaults to ./definitions relative to app)
+            str: Path to metadata directory (defaults to ./examples/metadata relative to app)
         """
-        # Default to 'definitions' directory in the application root
-        default_path = str(get_app_root() / "definitions")
-        return self.settings.value("paths/definitions_directory", default_path)
+        # Default to 'examples/metadata' directory in the application root
+        default_path = str(get_app_root() / "examples" / "metadata")
+        return os.path.normpath(self.settings.value("paths/metadata_directory", default_path))
 
-    def set_definitions_directory(self, path: str):
+    def set_metadata_directory(self, path: str):
         """
-        Set the ROM definitions directory path
+        Set the ROM metadata directory path
 
         Args:
-            path: Path to definitions directory
+            path: Path to metadata directory
         """
-        self.settings.setValue("paths/definitions_directory", path)
+        self.settings.setValue("paths/metadata_directory", path)
 
     def get_window_geometry(self):
         """Get saved window geometry"""
@@ -168,7 +170,7 @@ class AppSettings:
         """
         # Default to the built-in default.map in the colormaps directory
         default_path = str(get_app_root() / "colormaps" / "default.map")
-        return self.settings.value("display/colormap_path", default_path)
+        return os.path.normpath(self.settings.value("display/colormap_path", default_path))
 
     def set_colormap_path(self, path: str):
         """
@@ -187,7 +189,7 @@ class AppSettings:
             str: Path to directory containing .map files
         """
         default_path = str(get_app_root() / "colormaps")
-        return self.settings.value("paths/colormap_directory", default_path)
+        return os.path.normpath(self.settings.value("paths/colormap_directory", default_path))
 
     def set_colormap_directory(self, path: str):
         """
@@ -198,6 +200,25 @@ class AppSettings:
         """
         self.settings.setValue("paths/colormap_directory", path)
 
+    def get_export_directory(self) -> str:
+        """
+        Get the configured CSV export directory path
+
+        Returns:
+            str: Path to export directory
+        """
+        default_path = str(get_user_data_dir() / "exports")
+        return os.path.normpath(self.settings.value("paths/export_directory", default_path))
+
+    def set_export_directory(self, path: str):
+        """
+        Set the CSV export directory path
+
+        Args:
+            path: Path to export directory, or empty string for default
+        """
+        self.settings.setValue("paths/export_directory", path)
+
     def get_projects_directory(self) -> str:
         """
         Get the configured projects directory path
@@ -206,7 +227,7 @@ class AppSettings:
             str: Path to directory where projects are stored
         """
         default_path = str(get_user_data_dir() / "projects")
-        return self.settings.value("paths/projects_directory", default_path)
+        return os.path.normpath(self.settings.value("paths/projects_directory", default_path))
 
     def set_projects_directory(self, path: str):
         """
@@ -251,7 +272,8 @@ class AppSettings:
         Returns:
             str: Path to romdrop.exe, or empty string if not configured
         """
-        return self.settings.value("tools/romdrop_executable_path", "")
+        path = self.settings.value("tools/romdrop_executable_path", "")
+        return os.path.normpath(path) if path else ""
 
     def set_romdrop_executable_path(self, path: str):
         """

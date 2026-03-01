@@ -194,10 +194,10 @@ nc-rom-editor/
 │   └── utils/                         # Helper functions
 │       ├── settings.py                # Settings manager
 │       └── colormap.py                # Color scheme utilities
-├── definitions/                       # ROM definition XML files
-│   └── lf9veb.xml                     # NC Miata ROM definition (511 tables)
-├── examples/                          # Example ROM binary files
-│   └── lf9veb.bin                     # Stock NC Miata ROM
+├── examples/                          # Example ROM files
+│   ├── metadata/                      # ROM metadata XML files
+│   │   └── lf9veb.xml                 # NC Miata ROM definition (511 tables)
+│   └── lf9veb.bin                     # Stock NC Miata ROM binary
 ├── packaging/                         # Build & installer scripts
 │   ├── build.bat                      # Windows build script
 │   ├── installer.iss                  # Inno Setup installer script
@@ -283,7 +283,7 @@ Tests run automatically on GitHub Actions for:
 
 ## Development Status
 
-**Current Version:** v1.4.0
+**Current Version:** v1.5.0
 
 This version includes full table editing, project management with version history, interactive graph visualization, ROM comparison tool, a polished toolbar-driven UI, and AI assistant integration via MCP server.
 

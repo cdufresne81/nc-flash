@@ -13,8 +13,8 @@ from src.mcp.rom_context import RomContext, _printf_to_python_format
 
 @pytest.fixture
 def ctx(definitions_dir):
-    """Create a RomContext with the project's definitions directory."""
-    return RomContext(definitions_dir=str(definitions_dir))
+    """Create a RomContext with the project's metadata directory."""
+    return RomContext(metadata_dir=str(definitions_dir))
 
 
 @pytest.fixture

@@ -130,29 +130,29 @@ class SessionMixin:
 
     def show_settings(self):
         """Show settings dialog"""
-        dialog = SettingsDialog(self)
+        dialog = SettingsDialog(self, projects_enabled=self.projects_enabled)
         dialog.settings_changed.connect(self.on_settings_changed)
         dialog.exec()
 
     def on_settings_changed(self):
         """Handle settings changes"""
-        # Reinitialize ROM detector with new definitions path
+        # Reinitialize ROM detector with new metadata path
         try:
-            definitions_dir = self.settings.get_definitions_directory()
-            self.rom_detector = RomDetector(definitions_dir)
+            metadata_dir = self.settings.get_metadata_directory()
+            self.rom_detector = RomDetector(metadata_dir)
             logger.info(
-                f"ROM detector reinitialized with definitions directory: {definitions_dir}"
+                f"ROM detector reinitialized with metadata directory: {metadata_dir}"
             )
             self.statusBar().showMessage(
-                f"Settings updated. Definitions directory: {definitions_dir}"
+                f"Settings updated. Metadata directory: {metadata_dir}"
             )
         except DetectionError as e:
             logger.error(f"Failed to reinitialize ROM detector: {e}")
             QMessageBox.warning(
                 self,
                 "Settings Error",
-                f"Failed to load definitions from new directory:\n{str(e)}\n\n"
-                "Please check the definitions directory path in settings.",
+                f"Failed to load metadata from new directory:\n{str(e)}\n\n"
+                "Please check the metadata directory path in settings.",
             )
 
     def show_about(self):

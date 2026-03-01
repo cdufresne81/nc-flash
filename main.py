@@ -169,7 +169,7 @@ class MainWindow(QMainWindow, RecentFilesMixin, ProjectMixin, SessionMixin):
         self._create_toolbar()
 
         # Defer heavy work to after the window is shown:
-        # - definitions directory check + setup wizard (modal dialog)
+        # - metadata directory check + setup wizard (modal dialog)
         # - ROM detector initialization (XML parsing)
         # - startup log message (depends on rom_detector)
         # - session restore (file I/O)
@@ -190,16 +190,16 @@ class MainWindow(QMainWindow, RecentFilesMixin, ProjectMixin, SessionMixin):
         This includes file I/O, modal dialogs, XML parsing, and session restore
         that would otherwise block the constructor and delay window display.
         """
-        # Check if definitions directory is configured and valid
-        if not self.check_definitions_directory():
-            # Show setup wizard on first run or if definitions directory is invalid
+        # Check if metadata directory is configured and valid
+        if not self.check_metadata_directory():
+            # Show setup wizard on first run or if metadata directory is invalid
             if not self.show_setup_wizard():
                 # User cancelled setup, exit application
                 logger.warning("Setup cancelled by user, exiting application")
                 QMessageBox.critical(
                     self,
                     "Setup Required",
-                    f"{APP_NAME} requires a definitions directory to function.\n"
+                    f"{APP_NAME} requires a metadata directory to function.\n"
                     "Application will now exit.",
                 )
                 # Defer exit to the event loop so Qt can clean up properly
@@ -208,10 +208,10 @@ class MainWindow(QMainWindow, RecentFilesMixin, ProjectMixin, SessionMixin):
 
         # ROM detector for automatic XML matching
         try:
-            definitions_dir = self.settings.get_definitions_directory()
-            self.rom_detector = RomDetector(definitions_dir)
+            metadata_dir = self.settings.get_metadata_directory()
+            self.rom_detector = RomDetector(metadata_dir)
             logger.info(
-                f"ROM detector initialized successfully (definitions: {definitions_dir})"
+                f"ROM detector initialized successfully (metadata: {metadata_dir})"
             )
         except DetectionError as e:
             logger.error(f"Failed to initialize ROM detector: {e}")
@@ -242,26 +242,26 @@ class MainWindow(QMainWindow, RecentFilesMixin, ProjectMixin, SessionMixin):
         if self.settings.get_mcp_auto_start():
             self._start_mcp_server()
 
-    def check_definitions_directory(self) -> bool:
+    def check_metadata_directory(self) -> bool:
         """
-        Check if definitions directory is configured and valid
+        Check if metadata directory is configured and valid
 
         Returns:
             bool: True if valid, False if needs configuration
         """
-        definitions_dir = self.settings.get_definitions_directory()
+        metadata_dir = self.settings.get_metadata_directory()
 
         # Check if path exists
-        definitions_path = Path(definitions_dir)
-        if not definitions_path.exists() or not definitions_path.is_dir():
-            logger.warning(f"Definitions directory does not exist: {definitions_dir}")
+        metadata_path = Path(metadata_dir)
+        if not metadata_path.exists() or not metadata_path.is_dir():
+            logger.warning(f"Metadata directory does not exist: {metadata_dir}")
             return False
 
         # Check if directory contains at least one XML file
-        xml_files = list(definitions_path.glob("*.xml"))
+        xml_files = list(metadata_path.glob("*.xml"))
         if not xml_files:
             logger.warning(
-                f"No XML files found in definitions directory: {definitions_dir}"
+                f"No XML files found in metadata directory: {metadata_dir}"
             )
             return False
 
@@ -384,10 +384,9 @@ class MainWindow(QMainWindow, RecentFilesMixin, ProjectMixin, SessionMixin):
         settings_action = edit_menu.addAction("Settings...")
         settings_action.triggered.connect(self.show_settings)
 
-        # View menu (Alt+V)
-        view_menu = menubar.addMenu("&View")
-
+        # View menu (Alt+V) — only shown when projects are enabled
         if self.projects_enabled:
+            view_menu = menubar.addMenu("&View")
             history_action = view_menu.addAction("Commit History...")
             history_action.triggered.connect(self.show_history)
 

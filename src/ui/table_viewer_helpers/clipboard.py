@@ -224,8 +224,13 @@ class TableClipboardHelper:
         if not self.ctx.table_widget or not self.ctx.current_table:
             return
 
-        # Determine export directory (next to ROM file, or current directory)
-        if rom_path:
+        # Determine export directory
+        from ...utils.settings import get_settings
+
+        configured_dir = get_settings().get_export_directory()
+        if configured_dir:
+            export_dir = Path(configured_dir)
+        elif rom_path:
             export_dir = Path(rom_path).parent / "export"
         else:
             export_dir = Path.cwd() / "export"
