@@ -587,7 +587,7 @@ reportlab>=4.0.0    # PDF generation
    - Create snapshots periodically
 
 **Recommended Answers:**
-1. User's Documents/NC ROM Editor/Projects/ (configurable)
+1. User's Documents/NC Flash/Projects/ (configurable)
 2. Individual cells (better for detailed tracking)
 3. Auto-save with confirmation dialog (best of both)
 4. Baseline never changes, use snapshots instead

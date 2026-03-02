@@ -12,7 +12,7 @@ class TestGetUserDataDir:
 
     def test_ends_with_app_name(self):
         result = get_user_data_dir()
-        assert result.name == "NCRomEditor"
+        assert result.name == "NCFlash"
 
     def test_not_inside_app_root(self):
         user_dir = get_user_data_dir()

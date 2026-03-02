@@ -1,4 +1,4 @@
-# Full Code Audit Report: NC ROM Editor
+# Full Code Audit Report: NC Flash
 
 **Date:** February 7, 2026
 **Last updated:** February 8, 2026 (all findings resolved)

@@ -1,5 +1,5 @@
 """
-Logging configuration for NC ROM Editor
+Logging configuration for NC Flash
 
 Provides centralized logging setup with file and console handlers.
 """

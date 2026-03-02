@@ -1,9 +1,9 @@
 # -*- mode: python ; coding: utf-8 -*-
 """
-PyInstaller spec file for NC ROM Editor.
+PyInstaller spec file for NCFlash.
 
-Build with:  pyinstaller packaging/NCRomEditor.spec
-Output:      dist/NCRomEditor/NCRomEditor[.exe]
+Build with:  pyinstaller packaging/NCFlash.spec
+Output:      dist/NCFlash/NCFlash[.exe]
 """
 
 import os
@@ -15,7 +15,7 @@ block_cipher = None
 repo_root = os.path.abspath(os.path.join(SPECPATH, '..'))
 
 # Icon: .ico on Windows, skip on Linux (desktop icons use .desktop files)
-icon_file = os.path.join(repo_root, 'assets', 'NCRomEditor.ico') if sys.platform == 'win32' else None
+icon_file = os.path.join(repo_root, 'assets', 'NCFlash.ico') if sys.platform == 'win32' else None
 
 a = Analysis(
     [os.path.join(repo_root, 'main.py')],
@@ -43,7 +43,7 @@ exe = EXE(
     a.scripts,
     [],
     exclude_binaries=True,
-    name='NCRomEditor',
+    name='NCFlash',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
@@ -61,5 +61,5 @@ coll = COLLECT(
     strip=False,
     upx=True,
     upx_exclude=[],
-    name='NCRomEditor',
+    name='NCFlash',
 )

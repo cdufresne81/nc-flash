@@ -31,9 +31,9 @@ def get_user_data_dir() -> Path:
     Get the user data directory for persistent, writable storage.
 
     Returns a platform-appropriate location:
-    - Windows: %APPDATA%/NCRomEditor
-    - Linux:   ~/.local/share/NCRomEditor
-    - macOS:   ~/Library/Application Support/NCRomEditor
+    - Windows: %APPDATA%/NCFlash
+    - Linux:   ~/.local/share/NCFlash
+    - macOS:   ~/Library/Application Support/NCFlash
 
     Used for user-created content (projects) that must survive
     app updates and uninstalls. Does NOT create the directory.
@@ -44,4 +44,4 @@ def get_user_data_dir() -> Path:
         base = Path.home() / "Library" / "Application Support"
     else:
         base = Path(os.environ.get("XDG_DATA_HOME", Path.home() / ".local" / "share"))
-    return base / "NCRomEditor"
+    return base / "NCFlash"

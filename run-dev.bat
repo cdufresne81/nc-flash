@@ -1,3 +1,3 @@
 @echo off
-REM NC ROM Editor - Dev Launcher
+REM NC Flash - Dev Launcher
 call run.bat %*

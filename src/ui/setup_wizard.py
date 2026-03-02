@@ -29,7 +29,7 @@ class SetupWizard(QWizard):
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setWindowTitle("NC ROM Editor - First Run Setup")
+        self.setWindowTitle("NC Flash - First Run Setup")
         self.setMinimumSize(600, 400)
         self.setModal(True)
         self.setWizardStyle(QWizard.ModernStyle)

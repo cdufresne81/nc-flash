@@ -2,6 +2,10 @@
 
 ## Next Tasks
 - Focus on the first value field of a table immediately after opening a table.
+- GitHub repo rename: user must go to https://github.com/cdufresne81/NCRomEditor/settings and change repo name to "nc-flash"
+
+## Recent Completed Work (Mar 2, 2026) - Rebrand: NC ROM Editor → NC Flash
+- **Full project rename** — Renamed all references from "NC ROM Editor" / "NCRomEditor" to "NC Flash" across the entire codebase. Display name is "NC Flash", exe/filenames use "NCFlash" (no space), GitHub repo is `cdufresne81/nc-flash`. Updated: app name, exe name, asset files, installer, build scripts, CI workflow, MCP server, QSettings keys, user data directory, launcher scripts, setup wizard, documentation, tests, and CHANGELOG.
 
 ## Recent Completed Work (Mar 1, 2026) - Project Management Refactor: Tuning Log with Mandatory Snapshots
 - **Tuning log auto-generation** — Every commit appends a markdown section to `TUNING_LOG.md` with version name, description, table change summary (count + direction: ↑/↓/→/~ with avg %), based-on reference, ROM filename, and a "Results" placeholder. Header written on project creation with vehicle/ECU/checksum info.
@@ -26,7 +30,7 @@
 - **Restructured project directories** — Moved `definitions/lf9veb.xml` to `examples/metadata/lf9veb.xml`. Deleted `definitions/` directory. Updated packaging spec, test fixtures, README project tree.
 
 ## Recent Completed Work (Mar 1, 2026) - Configurable CSV Export Directory
-- **Configurable export directory** — Added "Export Directory" setting (Settings > General) with browse button. CSV exports (Ctrl+E) default to `%APPDATA%/NCRomEditor/exports` (or platform equivalent). Configurable to any folder.
+- **Configurable export directory** — Added "Export Directory" setting (Settings > General) with browse button. CSV exports (Ctrl+E) default to `%APPDATA%/NCFlash/exports` (or platform equivalent). Configurable to any folder.
 - **Projects UI hidden behind feature flag** — Projects directory setting in Settings > General and the View menu (which only contained "Commit History") are now hidden unless `--enable-projects` is passed
 
 ## Recent Completed Work (Mar 1, 2026) - Table Browser & run.sh Fixes
@@ -35,12 +39,12 @@
 
 ## Recent Completed Work (Mar 1, 2026) - README & Project Cleanup
 - **README Linux install docs** — Added Linux `.tar.gz` download/extract instructions alongside Windows in Installation section
-- **Project structure reorganization** — Moved build files (`build.bat`, `installer.iss`, `NCRomEditor.spec`, `requirements-build.txt`) to `packaging/` directory; moved `WINDOWS_SETUP.md` to `docs/`; updated all references in CI, build scripts, and README
+- **Project structure reorganization** — Moved build files (`build.bat`, `installer.iss`, `NCFlash.spec`, `requirements-build.txt`) to `packaging/` directory; moved `WINDOWS_SETUP.md` to `docs/`; updated all references in CI, build scripts, and README
 - **WINDOWS_SETUP.md cleanup** — Fixed hardcoded paths, removed WSL-specific dev notes
 - **Junk file cleanup** — Deleted `nul` (Windows artifact) and `testsguitemp_screenshot.txt`; added `nul` to `.gitignore`
 
 ## Recent Completed Work (Mar 1, 2026) - Linux Release Build
-- **Linux build in release pipeline** — Added `build-linux` job to `release.yml` (ubuntu-22.04, PyInstaller → tar.gz). Release job now collects artifacts from both Windows and Linux builds. Cross-platform `NCRomEditor.spec` (conditional icon). Tests use dedicated port 18766 to avoid conflicts with running app.
+- **Linux build in release pipeline** — Added `build-linux` job to `release.yml` (ubuntu-22.04, PyInstaller → tar.gz). Release job now collects artifacts from both Windows and Linux builds. Cross-platform `NCFlash.spec` (conditional icon). Tests use dedicated port 18766 to avoid conflicts with running app.
 
 ## Recent Completed Work (Mar 1, 2026) - CI Pipeline Fix
 - **Fixed CI pipeline** — Relaxed `numpy>=2.4.0` → `numpy>=2.2.0` (Python 3.10/3.11 support), ran `black` on 63 files, optimized CI matrix from 9→4 jobs (Ubuntu 3.10+3.12, Windows 3.12, macOS 3.12). Lint job updated to Python 3.12, codecov trigger updated to match.
@@ -66,7 +70,7 @@
 - **README disclaimer** — Added prominent vibe-coded / use-at-your-own-risk notice at the top of README.md.
 
 ## Recent Completed Work (Feb 28, 2026) - Windows Packaging
-- **PyInstaller packaging support** — Added `src/utils/paths.py` with `get_app_root()` that resolves `sys._MEIPASS` when frozen or `Path(__file__)` tree when running from source. Replaced all 4 `Path(__file__).parent.parent.parent` references in `settings.py` with `get_app_root()`. Created `NCRomEditor.spec` (one-dir, windowed, bundles definitions/colormaps/examples, excludes tkinter/test/unittest), `build.bat` (activates venv, installs pyinstaller, runs build), and `requirements-build.txt` (pyinstaller>=6.0,<7.0).
+- **PyInstaller packaging support** — Added `src/utils/paths.py` with `get_app_root()` that resolves `sys._MEIPASS` when frozen or `Path(__file__)` tree when running from source. Replaced all 4 `Path(__file__).parent.parent.parent` references in `settings.py` with `get_app_root()`. Created `NCFlash.spec` (one-dir, windowed, bundles definitions/colormaps/examples, excludes tkinter/test/unittest), `build.bat` (activates venv, installs pyinstaller, runs build), and `requirements-build.txt` (pyinstaller>=6.0,<7.0).
 
 ## Recent Completed Work (Feb 28, 2026) - Unified Open Action
 - **Unified "Open" action** — Replaced separate "Open Project..." (folder picker) and "Open ROM..." (file picker) menu items with a single "Open..." (Ctrl+O) that shows a file picker. If the selected ROM's parent directory is a project folder (`project.json` present), opens as project via `open_project_path()`; otherwise opens as standalone ROM. Toolbar button updated to match. Removed `open_project()` from `ProjectMixin`.

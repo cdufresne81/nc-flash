@@ -1,10 +1,10 @@
 <p align="center">
-  <img src="assets/NCRomEditor3D.png" alt="NC ROM Editor" width="40%">
+  <img src="assets/NCFlash3D.png" alt="NC Flash" width="40%">
 </p>
 
-# NC ROM Editor
+# NC Flash
 
-[![GitHub](https://img.shields.io/badge/GitHub-NCRomEditor-blue?logo=github)](https://github.com/cdufresne81/NCRomEditor)
+[![GitHub](https://img.shields.io/badge/GitHub-NC_Flash-blue?logo=github)](https://github.com/cdufresne81/nc-flash)
 
 > **Notice:** This project was built with AI assistance (vibe coded). Modifying and flashing ECU software carries real risk — incorrect tunes can damage your engine, ECU, or other vehicle components. The author assumes no responsibility for any damage to your vehicle, hardware, or any other consequence arising from the use of this software. **Use entirely at your own risk.** Always keep backups of your stock ROM and understand what you are changing before flashing.
 
@@ -12,11 +12,11 @@ An open-source ROM editor for NC Miata (MX-5) ECUs, designed to replace the disc
 
 ## Overview
 
-NC ROM Editor is a desktop application that allows you to read, edit, and save ECU ROM files for NC generation Mazda MX-5 Miata vehicles. This tool focuses solely on ROM file manipulation and works in conjunction with RomDrop for actual ECU flashing.
+NC Flash is a desktop application that allows you to read, edit, and save ECU ROM files for NC generation Mazda MX-5 Miata vehicles. This tool focuses solely on ROM file manipulation and works in conjunction with RomDrop for actual ECU flashing.
 
 ## Installation
 
-Download the latest release for your platform from [GitHub Releases](https://github.com/cdufresne81/NCRomEditor/releases).
+Download the latest release for your platform from [GitHub Releases](https://github.com/cdufresne81/nc-flash/releases).
 
 ### Windows
 Download the `.exe` installer and run it.
@@ -24,17 +24,17 @@ Download the `.exe` installer and run it.
 > **Note:** The installer is not code-signed, so Windows SmartScreen may show an "Unknown publisher" warning. Click **"More info"** then **"Run anyway"** to proceed. This is normal for open-source software without a paid signing certificate.
 
 ### Linux
-Download the `.tar.gz` archive, extract it, and run the `NCRomEditor` binary:
+Download the `.tar.gz` archive, extract it, and run the `NCFlash` binary:
 ```bash
-tar -xzf NCRomEditor-*-linux-x86_64.tar.gz
-cd NCRomEditor
-./NCRomEditor
+tar -xzf NCFlash-*-linux-x86_64.tar.gz
+cd NCFlash
+./NCFlash
 ```
 
 ### Clone the Repository
 ```bash
-git clone https://github.com/cdufresne81/NCRomEditor.git
-cd NCRomEditor
+git clone https://github.com/cdufresne81/nc-flash.git
+cd nc-flash
 ```
 
 ## Run from Source
@@ -161,7 +161,7 @@ python main.py
 ## Project Structure
 
 ```
-nc-rom-editor/
+nc-flash/
 ├── src/
 │   ├── core/                          # ROM parsing & binary reading
 │   │   ├── rom_definition.py          # Data structures for tables
@@ -201,7 +201,7 @@ nc-rom-editor/
 ├── packaging/                         # Build & installer scripts
 │   ├── build.bat                      # Windows build script
 │   ├── installer.iss                  # Inno Setup installer script
-│   ├── NCRomEditor.spec              # PyInstaller spec
+│   ├── NCFlash.spec                  # PyInstaller spec
 │   └── requirements-build.txt        # Build-only dependencies
 ├── docs/                              # Documentation
 │   ├── ROM_DEFINITION_FORMAT.md
@@ -284,7 +284,7 @@ Tests run automatically on GitHub Actions for:
 
 ## Development Status
 
-**Current Version:** v1.5.0
+**Current Version:** v2.0.0
 
 This version includes full table editing, project management with version history, interactive graph visualization, ROM comparison tool, a polished toolbar-driven UI, and AI assistant integration via MCP server.
 

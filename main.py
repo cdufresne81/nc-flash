@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-NC ROM Editor - Main Application Entry Point
+NC Flash - Main Application Entry Point
 
 An open-source ROM editor for NC Miata ECUs
 """
@@ -101,7 +101,7 @@ class MainWindow(QMainWindow, RecentFilesMixin, ProjectMixin, SessionMixin):
             MAIN_WINDOW_X, MAIN_WINDOW_Y, MAIN_WINDOW_WIDTH, MAIN_WINDOW_HEIGHT
         )
 
-        logger.info("Initializing NC ROM Editor")
+        logger.info("Initializing NC Flash")
 
         # Track open table viewer windows
         self.open_table_windows = []
@@ -1000,7 +1000,7 @@ class MainWindow(QMainWindow, RecentFilesMixin, ProjectMixin, SessionMixin):
         app_dir = os.path.dirname(os.path.abspath(__file__))
         bat_path = os.path.join(app_dir, "run-mcp.bat")
         config_snippet = json.dumps(
-            {"mcpServers": {"nc-rom-editor": {"command": bat_path, "args": []}}},
+            {"mcpServers": {"nc-flash": {"command": bat_path, "args": []}}},
             indent=2,
         )
 
@@ -1048,7 +1048,7 @@ class MainWindow(QMainWindow, RecentFilesMixin, ProjectMixin, SessionMixin):
 
         note = QLabel(
             "If your config file already has a <code>mcpServers</code> section, "
-            "just add the <code>nc-rom-editor</code> entry inside it."
+            "just add the <code>nc-flash</code> entry inside it."
         )
         note.setWordWrap(True)
         note.setStyleSheet("color: gray; font-size: 11px;")
@@ -2580,7 +2580,7 @@ def main():
     """Application entry point"""
     # Initialize logging before anything else
     # Default: INFO level to console, optionally to file
-    log_file = Path.home() / ".nc-rom-editor" / "nc-rom-editor.log"
+    log_file = Path.home() / ".nc-flash" / "nc-flash.log"
     setup_logging(
         level=logging.INFO, log_file=str(log_file), console=True, detailed=False
     )

@@ -1,6 +1,6 @@
 # Logging and Error Handling
 
-NC ROM Editor uses Python's built-in `logging` module for comprehensive logging and custom exception classes for better error handling and debugging.
+NC Flash uses Python's built-in `logging` module for comprehensive logging and custom exception classes for better error handling and debugging.
 
 ## Logging Configuration
 
@@ -11,7 +11,7 @@ Logging is initialized automatically when the application starts (in `main.py:ma
 - **Log Level**: `INFO` by default
 - **Console Logging**: Enabled (prints to terminal/console)
 - **File Logging**: Enabled by default
-- **Log File Location**: `~/.nc-rom-editor/nc-rom-editor.log`
+- **Log File Location**: `~/.nc-flash/nc-flash.log`
 - **Log Format**: `%(asctime)s - %(name)s - %(levelname)s - %(message)s`
 - **File Rotation**: Automatic, 10MB per file, keeps 5 backups
 
@@ -288,7 +288,7 @@ def load_definition(self, definition_path):
 
 ## Log File Location
 
-- **Linux/macOS**: `~/.nc-rom-editor/nc-rom-editor.log`
-- **Windows**: `C:\Users\<username>\.nc-rom-editor\nc-rom-editor.log`
+- **Linux/macOS**: `~/.nc-flash/nc-flash.log`
+- **Windows**: `C:\Users\<username>\.nc-flash\nc-flash.log`
 
 The log directory is created automatically if it doesn't exist.

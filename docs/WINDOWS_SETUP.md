@@ -11,7 +11,7 @@
 Simply double-click `run.bat` in the project folder or run from Command Prompt:
 
 ```cmd
-cd NCRomEditor
+cd nc-flash
 run.bat
 ```
 
@@ -30,7 +30,7 @@ If you prefer manual control:
 
 ### 1. Create Virtual Environment
 ```cmd
-cd NCRomEditor
+cd nc-flash
 python -m venv venv-windows
 ```
 

@@ -1,6 +1,6 @@
 # UI Testing & Screenshots
 
-GUI testing framework for NC ROM Editor using `tools/test_runner.py`.
+GUI testing framework for NC Flash using `tools/test_runner.py`.
 
 ## Quick Start
 

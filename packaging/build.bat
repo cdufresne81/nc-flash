@@ -1,9 +1,9 @@
 @echo off
-REM Build NC ROM Editor as a standalone Windows executable
+REM Build NCFlash as a standalone Windows executable
 REM Run from the project root: packaging\build.bat
-REM Output: dist\NCRomEditor\NCRomEditor.exe
+REM Output: dist\NCFlash\NCFlash.exe
 
-echo === NC ROM Editor Build ===
+echo === NCFlash Build ===
 
 REM Change to project root (parent of packaging/)
 cd /d "%~dp0\.."
@@ -29,7 +29,7 @@ if errorlevel 1 (
 
 REM Run PyInstaller
 echo Building executable...
-pyinstaller packaging\NCRomEditor.spec --noconfirm
+pyinstaller packaging\NCFlash.spec --noconfirm
 if errorlevel 1 (
     echo ERROR: PyInstaller build failed
     exit /b 1
@@ -37,7 +37,7 @@ if errorlevel 1 (
 
 echo.
 echo === PyInstaller Build Complete ===
-echo Output: dist\NCRomEditor\NCRomEditor.exe
+echo Output: dist\NCFlash\NCFlash.exe
 echo.
 
 REM Build installer with Inno Setup (optional)

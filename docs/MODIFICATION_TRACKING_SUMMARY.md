@@ -163,7 +163,7 @@ pip install reportlab>=4.0.0  # For PDF export
 
 ## Benefits Over Excel
 
-| Excel Spreadsheet | NC ROM Editor |
+| Excel Spreadsheet | NC Flash |
 |-------------------|---------------|
 | ❌ Manual entry | ✅ Automatic tracking |
 | ❌ Prone to errors | ✅ Always accurate |
@@ -265,7 +265,7 @@ Project: "Turbo Install"
 ## Questions & Decisions
 
 ### Q: Where are projects stored?
-**A:** User's Documents/NC ROM Editor/Projects/ (configurable)
+**A:** User's Documents/NC Flash/Projects/ (configurable)
 
 ### Q: How granular is change tracking?
 **A:** Individual cell changes (not whole table saves)
