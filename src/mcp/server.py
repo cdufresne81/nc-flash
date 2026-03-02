@@ -1,5 +1,5 @@
 """
-MCP Server for NC Miata ECU ROM access.
+NC Flash MCP Server for NC Miata ECU ROM access.
 
 Exposes ROM inspection and editing tools via the Model Context Protocol.
 Supports STDIO transport (default, for CLI clients like Claude Code)
@@ -40,8 +40,8 @@ _ctx: Optional[RomContext] = None
 def _create_mcp(port: int = DEFAULT_SSE_PORT) -> FastMCP:
     """Create and configure the FastMCP server instance with all tools."""
     server = FastMCP(
-        "nc-rom-editor",
-        instructions="Access NC Miata ECU ROM files — inspect tables, values, compare ROMs, and edit live table values through the app",
+        "ncflash",
+        instructions="Access NC Miata ECU ROM files — inspect tables, values, compare ROMs, and edit live table values through NC Flash",
         host="127.0.0.1",
         port=port,
     )
@@ -54,7 +54,7 @@ def _create_mcp(port: int = DEFAULT_SSE_PORT) -> FastMCP:
 
     @server.tool()
     def get_workspace() -> dict:
-        """Get the list of ROMs currently open in NC ROM Editor.
+        """Get the list of ROMs currently open in NC Flash.
 
         Returns ROM paths, identification, and which ROM is active.
         Use this first to discover open ROMs instead of asking for paths.
@@ -196,7 +196,7 @@ def _create_mcp(port: int = DEFAULT_SSE_PORT) -> FastMCP:
 
 
 def main():
-    parser = argparse.ArgumentParser(description="NC ROM Editor MCP Server")
+    parser = argparse.ArgumentParser(description="NC Flash MCP Server")
     parser.add_argument(
         "--metadata-dir",
         help="Path to ROM metadata directory (default: <app_root>/examples/metadata)",
@@ -221,7 +221,7 @@ def main():
     server = _create_mcp(port=args.port)
 
     logger.info(
-        f"Starting NC ROM Editor MCP server ({args.transport} transport"
+        f"Starting NC Flash MCP server ({args.transport} transport"
         f"{f', port {args.port}' if args.transport == 'sse' else ''})"
     )
     server.run(transport=args.transport)

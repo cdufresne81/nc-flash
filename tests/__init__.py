@@ -1,3 +1,3 @@
 """
-Test suite for NC ROM Editor
+Test suite for NC Flash
 """

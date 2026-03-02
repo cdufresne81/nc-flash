@@ -1,6 +1,12 @@
 # Changelog
 
-All notable changes to NC ROM Editor are documented here.
+All notable changes to NC Flash are documented here.
+
+## [v2.0.0] - 2026-03-02
+
+### Changed
+- **Rebranded from "NC ROM Editor" to "NC Flash"** — App name, exe name, installer, asset filenames, QSettings keys, user data directory, MCP server name, all documentation, and GitHub URLs updated. Exe is now `NCFlash.exe`, installer outputs `NCFlash-{version}-Setup.exe`, user data moves to `%APPDATA%/NCFlash`. GitHub repo is now `cdufresne81/nc-flash`
+- **Settings reorganization** — Moved Metadata Directory setting from General > Paths to Tools > RomDrop group, alongside the RomDrop executable path
 
 ## [v1.6.0] - 2026-03-01
 
@@ -40,7 +46,7 @@ All notable changes to NC ROM Editor are documented here.
 - **"Definitions" renamed to "Metadata"** — All UI labels, settings keys, CLI flags, and log messages now use "metadata" instead of "definitions" to match RomDrop's naming convention. Settings key changed from `paths/definitions_directory` to `paths/metadata_directory`. MCP server flag changed from `--definitions-dir` to `--metadata-dir`
 - **Bundled XML files moved to examples/metadata/** — The `definitions/` directory has been restructured to `examples/metadata/` since it contains example/bundled data
 - **README updated for Linux** — Installation section now documents Linux `.tar.gz` download alongside Windows
-- **Project structure reorganized** — Moved build/packaging files (`build.bat`, `installer.iss`, `NCRomEditor.spec`, `requirements-build.txt`) into `packaging/` directory; moved `WINDOWS_SETUP.md` into `docs/`
+- **Project structure reorganized** — Moved build/packaging files (`build.bat`, `installer.iss`, `NCFlash.spec`, `requirements-build.txt`) into `packaging/` directory; moved `WINDOWS_SETUP.md` into `docs/`
 
 ### Fixed
 - **"Modified only" filter now expands categories** — Toggling the "Modified only" checkbox in the table browser auto-expands categories with modified tables, matching search filter behavior
@@ -49,8 +55,8 @@ All notable changes to NC ROM Editor are documented here.
 ## [v1.4.2] - 2026-03-01
 
 ### Added
-- **Linux build in release pipeline** — Release workflow now builds a `NCRomEditor-{version}-linux-x86_64.tar.gz` package alongside the Windows installer
-- **Cross-platform PyInstaller spec** — `NCRomEditor.spec` detects the OS and sets the icon accordingly (`.ico` on Windows, skipped on Linux)
+- **Linux build in release pipeline** — Release workflow now builds a `NCFlash-{version}-linux-x86_64.tar.gz` package alongside the Windows installer
+- **Cross-platform PyInstaller spec** — `NCFlash.spec` detects the OS and sets the icon accordingly (`.ico` on Windows, skipped on Linux)
 
 ### Changed
 - **CI matrix optimized** — Reduced from 9 jobs (3 OS x 3 Python) to 4 jobs (Ubuntu 3.10+3.12, Windows 3.12, macOS 3.12). Cuts macOS billing from ~60 to ~20 minutes per run.

@@ -17,7 +17,7 @@ class AppSettings:
 
     def __init__(self):
         """Initialize settings manager"""
-        self.settings = QSettings("NCRomEditor", "NCRomEditor")
+        self.settings = QSettings("NCFlash", "NCFlash")
 
     def get_metadata_directory(self) -> str:
         """

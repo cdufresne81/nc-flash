@@ -1,9 +1,9 @@
 #!/bin/bash
-# NC ROM Editor - Linux Launcher
+# NC Flash - Linux Launcher
 # This script sets up and runs the ROM editor on Linux
 
 echo "========================================"
-echo "NC ROM Editor - Linux Launcher"
+echo "NC Flash - Linux Launcher"
 echo "========================================"
 echo ""
 
@@ -52,7 +52,7 @@ if [ $? -ne 0 ]; then
 fi
 
 # Run the application
-echo "Starting NC ROM Editor..."
+echo "Starting NC Flash..."
 echo ""
 python3 main.py "$@"
 

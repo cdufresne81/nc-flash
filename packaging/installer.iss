@@ -1,15 +1,15 @@
-; Inno Setup Script for NC ROM Editor
+; Inno Setup Script for NCFlash
 ; Requires: Inno Setup 6 (https://jrsoftware.org/isinfo.php)
 ; Build:    iscc packaging\installer.iss
 
-#define MyAppName "NC ROM Editor"
+#define MyAppName "NC Flash"
 #define MyAppVersion GetEnv("APP_VERSION")
 #if MyAppVersion == ""
   #define MyAppVersion "0.0.0-dev"
 #endif
 #define MyAppPublisher "cdufresne81"
-#define MyAppURL "https://github.com/cdufresne81/NCRomEditor"
-#define MyAppExeName "NCRomEditor.exe"
+#define MyAppURL "https://github.com/cdufresne81/nc-flash"
+#define MyAppExeName "NCFlash.exe"
 
 [Setup]
 AppId={{E8F3A2B1-7C4D-4E5F-9A6B-1D2E3F4A5B6C}
@@ -18,12 +18,12 @@ AppVersion={#MyAppVersion}
 AppPublisher={#MyAppPublisher}
 AppPublisherURL={#MyAppURL}
 AppSupportURL={#MyAppURL}/issues
-DefaultDirName={autopf}\NCRomEditor
+DefaultDirName={autopf}\NCFlash
 DefaultGroupName={#MyAppName}
 AllowNoIcons=yes
 OutputDir=..\Output
-OutputBaseFilename=NCRomEditor-{#MyAppVersion}-Setup
-SetupIconFile=..\assets\NCRomEditor.ico
+OutputBaseFilename=NCFlash-{#MyAppVersion}-Setup
+SetupIconFile=..\assets\NCFlash.ico
 UninstallDisplayIcon={app}\{#MyAppExeName}
 Compression=lzma2
 SolidCompression=yes
@@ -39,8 +39,8 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
 
 [Files]
-Source: "..\dist\NCRomEditor\{#MyAppExeName}"; DestDir: "{app}"; Flags: ignoreversion
-Source: "..\dist\NCRomEditor\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "..\dist\NCFlash\{#MyAppExeName}"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\dist\NCFlash\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
 Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; IconFilename: "{app}\{#MyAppExeName}"

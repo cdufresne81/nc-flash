@@ -94,23 +94,6 @@ class SettingsDialog(QDialog):
         projects_help.setStyleSheet("color: gray; font-size: 10px;")
         paths_layout.addRow("", projects_help)
 
-        # Metadata directory setting
-        metadata_layout = QHBoxLayout()
-        self.metadata_path_edit = QLineEdit()
-        self.metadata_path_edit.setPlaceholderText("Path to ROM metadata XML files")
-        metadata_layout.addWidget(self.metadata_path_edit)
-
-        browse_button = QPushButton("Browse...")
-        browse_button.clicked.connect(self.browse_metadata_directory)
-        metadata_layout.addWidget(browse_button)
-
-        paths_layout.addRow("Metadata Directory:", metadata_layout)
-
-        # Add help text
-        help_label = QLabel("Location of ROM metadata XML files (e.g., lf9veb.xml)")
-        help_label.setStyleSheet("color: gray; font-size: 10px;")
-        paths_layout.addRow("", help_label)
-
         # Export directory setting
         export_layout = QHBoxLayout()
         self.export_path_edit = QLineEdit()
@@ -248,6 +231,22 @@ class SettingsDialog(QDialog):
         romdrop_help = QLabel("Path to romdrop.exe for one-click ECU flashing")
         romdrop_help.setStyleSheet("color: gray; font-size: 10px;")
         romdrop_layout.addRow("", romdrop_help)
+
+        # Metadata directory setting
+        metadata_layout = QHBoxLayout()
+        self.metadata_path_edit = QLineEdit()
+        self.metadata_path_edit.setPlaceholderText("Path to ROM metadata XML files")
+        metadata_layout.addWidget(self.metadata_path_edit)
+
+        browse_metadata_button = QPushButton("Browse...")
+        browse_metadata_button.clicked.connect(self.browse_metadata_directory)
+        metadata_layout.addWidget(browse_metadata_button)
+
+        romdrop_layout.addRow("Metadata Directory:", metadata_layout)
+
+        metadata_help = QLabel("Location of ROM metadata XML files (e.g., lf9veb.xml)")
+        metadata_help.setStyleSheet("color: gray; font-size: 10px;")
+        romdrop_layout.addRow("", metadata_help)
 
         layout.addWidget(romdrop_group)
 

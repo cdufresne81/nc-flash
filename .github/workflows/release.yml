@@ -31,15 +31,15 @@ jobs:
       run: pytest
 
     - name: Build with PyInstaller
-      run: pyinstaller packaging/NCRomEditor.spec --noconfirm
+      run: pyinstaller packaging/NCFlash.spec --noconfirm
 
     - name: Verify build output
       run: |
-        if (!(Test-Path "dist\NCRomEditor\NCRomEditor.exe")) {
-          Write-Error "NCRomEditor.exe not found"
+        if (!(Test-Path "dist\NCFlash\NCFlash.exe")) {
+          Write-Error "NCFlash.exe not found"
           exit 1
         }
-        Write-Output "Build verified: dist\NCRomEditor\NCRomEditor.exe"
+        Write-Output "Build verified: dist\NCFlash\NCFlash.exe"
       shell: pwsh
 
     - name: Install Inno Setup
@@ -104,22 +104,22 @@ jobs:
         QT_QPA_PLATFORM: offscreen
 
     - name: Build with PyInstaller
-      run: pyinstaller packaging/NCRomEditor.spec --noconfirm
+      run: pyinstaller packaging/NCFlash.spec --noconfirm
 
     - name: Verify build output
       run: |
-        if [ ! -f "dist/NCRomEditor/NCRomEditor" ]; then
-          echo "ERROR: NCRomEditor binary not found"
+        if [ ! -f "dist/NCFlash/NCFlash" ]; then
+          echo "ERROR: NCFlash binary not found"
           exit 1
         fi
-        echo "Build verified: dist/NCRomEditor/NCRomEditor"
+        echo "Build verified: dist/NCFlash/NCFlash"
 
     - name: Package as tar.gz
       run: |
         VERSION="${GITHUB_REF_NAME#v}"
         cd dist
-        tar -czf "NCRomEditor-${VERSION}-linux-x86_64.tar.gz" NCRomEditor/
-        ls -lh "NCRomEditor-${VERSION}-linux-x86_64.tar.gz"
+        tar -czf "NCFlash-${VERSION}-linux-x86_64.tar.gz" NCFlash/
+        ls -lh "NCFlash-${VERSION}-linux-x86_64.tar.gz"
 
     - name: Upload Linux artifact
       uses: actions/upload-artifact@v4

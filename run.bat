@@ -1,9 +1,9 @@
 @echo off
-REM NC ROM Editor - Windows Launcher
+REM NC Flash - Windows Launcher
 REM This script sets up and runs the ROM editor on Windows
 
 echo ========================================
-echo NC ROM Editor - Windows Launcher
+echo NC Flash - Windows Launcher
 echo ========================================
 echo.
 
@@ -53,7 +53,7 @@ if errorlevel 1 (
 )
 
 REM Run the application (pass any command-line args through)
-echo Starting NC ROM Editor...
+echo Starting NC Flash...
 echo.
 python main.py %*
 

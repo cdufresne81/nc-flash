@@ -2,7 +2,7 @@
 """
 Test Script Runner for Automated GUI Testing
 
-A CLI tool that enables automated testing of the NC ROM Editor GUI.
+A CLI tool that enables automated testing of the NC Flash GUI.
 Supports loading ROMs, opening tables, performing operations, and taking screenshots.
 
 Usage:
@@ -34,7 +34,7 @@ from PySide6.QtTest import QTest
 
 class TestRunner:
     """
-    Automated test runner for NC ROM Editor GUI
+    Automated test runner for NC Flash GUI
 
     Provides programmatic control over the application for testing purposes.
     """
@@ -80,7 +80,7 @@ class TestRunner:
             self.app = QApplication.instance()
             if self.app is None:
                 self.app = QApplication([])
-                self.app.setApplicationName("NC ROM Editor Test Runner")
+                self.app.setApplicationName("NC Flash Test Runner")
 
     def start_app(self) -> bool:
         """
@@ -194,8 +194,11 @@ class TestRunner:
         if table is None:
             self._log(f"ERROR: Table not found: {table_name}")
             # Show similar tables
-            similar = [t.name for t in self.rom_definition.tables
-                      if table_name.lower() in t.name.lower()]
+            similar = [
+                t.name
+                for t in self.rom_definition.tables
+                if table_name.lower() in t.name.lower()
+            ]
             if similar:
                 self._log(f"  Similar tables: {similar[:5]}")
             return False
@@ -249,14 +252,19 @@ class TestRunner:
         if table is None:
             self._log(f"ERROR: Table not found: {table_name} in category {category}")
             # Show tables with same name
-            same_name = [(t.name, t.category) for t in self.rom_definition.tables
-                        if t.name == table_name]
+            same_name = [
+                (t.name, t.category)
+                for t in self.rom_definition.tables
+                if t.name == table_name
+            ]
             if same_name:
                 self._log(f"  Tables with same name: {same_name}")
             return False
 
         try:
-            self._log(f"Opening table: {table_name} (category: {category}, address: {table.address})")
+            self._log(
+                f"Opening table: {table_name} (category: {category}, address: {table.address})"
+            )
 
             # Trigger table selection
             self.main_window.on_table_selected(table, self.rom_reader)
@@ -296,7 +304,7 @@ class TestRunner:
         try:
             # Get current document's table browser
             document = self.main_window.get_current_document()
-            if not document or not hasattr(document, 'table_browser'):
+            if not document or not hasattr(document, "table_browser"):
                 self._log("ERROR: No document with table browser")
                 return False
 
@@ -319,8 +327,9 @@ class TestRunner:
             self._log(f"ERROR: {e}")
             return False
 
-    def select_cells(self, start_row: int, start_col: int,
-                     end_row: int = None, end_col: int = None) -> bool:
+    def select_cells(
+        self, start_row: int, start_col: int, end_row: int = None, end_col: int = None
+    ) -> bool:
         """
         Select cells in the current table
 
@@ -348,6 +357,7 @@ class TestRunner:
 
             # Calculate actual widget row/col (accounting for axis rows)
             from src.core.rom_definition import TableType
+
             table = self.current_table_window.table
 
             # Determine row offset based on table type
@@ -370,14 +380,16 @@ class TestRunner:
             # Clear current selection and select new range
             table_widget.clearSelection()
             from PySide6.QtWidgets import QTableWidgetSelectionRange
+
             selection_range = QTableWidgetSelectionRange(
-                widget_start_row, widget_start_col,
-                widget_end_row, widget_end_col
+                widget_start_row, widget_start_col, widget_end_row, widget_end_col
             )
             table_widget.setRangeSelected(selection_range, True)
             self._process_events()
 
-            self._log(f"Selected cells: ({start_row},{start_col}) to ({end_row},{end_col})")
+            self._log(
+                f"Selected cells: ({start_row},{start_col}) to ({end_row},{end_col})"
+            )
             return True
 
         except Exception as e:
@@ -405,6 +417,7 @@ class TestRunner:
 
             # Calculate actual widget row/col (accounting for axis rows)
             from src.core.rom_definition import TableType
+
             table = self.current_table_window.table
 
             # Determine row offset based on table type
@@ -435,7 +448,9 @@ class TestRunner:
             QTest.mouseClick(viewport, Qt.LeftButton, Qt.NoModifier, center)
             self._process_events()
 
-            self._log(f"Clicked cell: ({row},{col}) at position ({center.x()},{center.y()})")
+            self._log(
+                f"Clicked cell: ({row},{col}) at position ({center.x()},{center.y()})"
+            )
             return True
 
         except Exception as e:
@@ -579,7 +594,9 @@ class TestRunner:
         try:
             viewer = self.current_table_window.viewer
             operation_fn = lambda v: value
-            data_changes, axis_changes = viewer._apply_bulk_operation(operation_fn, f"Set to {value}")
+            data_changes, axis_changes = viewer._apply_bulk_operation(
+                operation_fn, f"Set to {value}"
+            )
             if data_changes:
                 viewer.bulk_changes.emit(data_changes)
             if axis_changes:
@@ -608,7 +625,9 @@ class TestRunner:
         try:
             viewer = self.current_table_window.viewer
             operation_fn = lambda v: v * factor
-            data_changes, axis_changes = viewer._apply_bulk_operation(operation_fn, f"Multiply by {factor}")
+            data_changes, axis_changes = viewer._apply_bulk_operation(
+                operation_fn, f"Multiply by {factor}"
+            )
             if data_changes:
                 viewer.bulk_changes.emit(data_changes)
             if axis_changes:
@@ -637,7 +656,9 @@ class TestRunner:
         try:
             viewer = self.current_table_window.viewer
             operation_fn = lambda v: v + value
-            data_changes, axis_changes = viewer._apply_bulk_operation(operation_fn, f"Add {value}")
+            data_changes, axis_changes = viewer._apply_bulk_operation(
+                operation_fn, f"Add {value}"
+            )
             if data_changes:
                 viewer.bulk_changes.emit(data_changes)
             if axis_changes:
@@ -781,7 +802,9 @@ class TestRunner:
                     self._process_events()
 
                     # Also explicitly activate the undo stack
-                    self.main_window.table_undo_manager.set_active_stack(window.table.address)
+                    self.main_window.table_undo_manager.set_active_stack(
+                        window.table.address
+                    )
 
                     self._log(f"Focused table: {table_name}")
                     return True
@@ -821,10 +844,14 @@ class TestRunner:
 
         actual = self.current_table_window.width()
         if abs(actual - expected) <= tolerance:
-            self._log(f"ASSERT PASSED: Window width {actual} == {expected} (tolerance {tolerance})")
+            self._log(
+                f"ASSERT PASSED: Window width {actual} == {expected} (tolerance {tolerance})"
+            )
             return True
         else:
-            self._log(f"ASSERT FAILED: Window width {actual} != {expected} (tolerance {tolerance})")
+            self._log(
+                f"ASSERT FAILED: Window width {actual} != {expected} (tolerance {tolerance})"
+            )
             return False
 
     def set_level_filter(self, level: int) -> bool:
@@ -882,7 +909,11 @@ class TestRunner:
 
             if target == "table" and self.current_table_window:
                 widget = self.current_table_window
-            elif target == "graph" and self.current_table_window and self.current_table_window._graph_visible:
+            elif (
+                target == "graph"
+                and self.current_table_window
+                and self.current_table_window._graph_visible
+            ):
                 widget = self.current_table_window.graph_widget
             elif target == "main" and self.main_window:
                 widget = self.main_window
@@ -962,7 +993,9 @@ class TestRunner:
             self._process_events()
             time.sleep(0.01)
 
-    def cleanup_screenshots(self, pattern: str = None, max_age_hours: float = None) -> int:
+    def cleanup_screenshots(
+        self, pattern: str = None, max_age_hours: float = None
+    ) -> int:
         """
         Clean up screenshots from the screenshots directory
 
@@ -981,7 +1014,7 @@ class TestRunner:
         if pattern is None:
             patterns = ["demo_*.png", "dm_*.png", "test_*.png", "screenshot_*.png"]
         else:
-            patterns = [pattern if pattern.endswith('.png') else f"{pattern}.png"]
+            patterns = [pattern if pattern.endswith(".png") else f"{pattern}.png"]
 
         now = datetime.now()
 
@@ -989,7 +1022,9 @@ class TestRunner:
             for filepath in self.screenshots_dir.glob(pat):
                 # Check age if specified
                 if max_age_hours is not None:
-                    file_age_hours = (now - datetime.fromtimestamp(filepath.stat().st_mtime)).total_seconds() / 3600
+                    file_age_hours = (
+                        now - datetime.fromtimestamp(filepath.stat().st_mtime)
+                    ).total_seconds() / 3600
                     if file_age_hours < max_age_hours:
                         continue
 
@@ -1016,7 +1051,11 @@ class TestRunner:
             stat = s.stat()
             size_kb = stat.st_size / 1024
             age = datetime.now() - datetime.fromtimestamp(stat.st_mtime)
-            age_str = f"{age.total_seconds() / 3600:.1f}h" if age.total_seconds() > 3600 else f"{age.total_seconds() / 60:.0f}m"
+            age_str = (
+                f"{age.total_seconds() / 3600:.1f}h"
+                if age.total_seconds() > 3600
+                else f"{age.total_seconds() / 60:.0f}m"
+            )
             print(f"  {s.name} ({size_kb:.1f}KB, {age_str} ago)")
 
         self._log(f"Total: {len(screenshots)} screenshot(s)")
@@ -1052,7 +1091,7 @@ class TestRunner:
 
         self._log(f"Running script: {script_path}")
 
-        with open(script_path, 'r') as f:
+        with open(script_path, "r") as f:
             lines = f.readlines()
 
         success = True
@@ -1060,7 +1099,7 @@ class TestRunner:
             line = line.strip()
 
             # Skip empty lines and comments
-            if not line or line.startswith('#'):
+            if not line or line.startswith("#"):
                 continue
 
             self._log(f"[{line_num}] {line}")
@@ -1170,7 +1209,7 @@ class TestRunner:
                 if not args:
                     self._log("ERROR: focus_table requires table name")
                     return False
-                table_name = " ".join(args).strip('"\'')
+                table_name = " ".join(args).strip("\"'")
                 return self.focus_table(table_name)
 
             elif cmd == "screenshot":
@@ -1221,7 +1260,7 @@ class TestRunner:
             elif cmd == "assert_width_restored":
                 # Assert window width matches previously stored width
                 tolerance = int(args[0]) if args else 5
-                if not hasattr(self, '_stored_width'):
+                if not hasattr(self, "_stored_width"):
                     self._log("ASSERT FAILED: No stored width (call store_width first)")
                     return False
                 return self.assert_window_width(self._stored_width, tolerance)
@@ -1250,7 +1289,7 @@ class TestRunner:
         quote_char = None
 
         for char in command:
-            if char in '"\'':
+            if char in "\"'":
                 if not in_quotes:
                     in_quotes = True
                     quote_char = char
@@ -1276,7 +1315,7 @@ class TestRunner:
         Start interactive mode with a REPL
         """
         print("\n" + "=" * 60)
-        print("NC ROM Editor Test Runner - Interactive Mode")
+        print("NC Flash Test Runner - Interactive Mode")
         print("=" * 60)
         print("\nCommands:")
         print("  start                    - Start the application")
@@ -1300,7 +1339,7 @@ class TestRunner:
         print("  undo / redo              - Undo/redo last change")
         print("  wait <ms>                - Wait milliseconds")
         print("  close_table              - Close current table")
-        print("  focus_table \"<name>\"     - Switch focus to open table")
+        print('  focus_table "<name>"     - Switch focus to open table')
         print("  quit / exit              - Exit interactive mode")
         print("\n")
 
@@ -1311,11 +1350,11 @@ class TestRunner:
                 if not command:
                     continue
 
-                if command.lower() in ('quit', 'exit', 'q'):
+                if command.lower() in ("quit", "exit", "q"):
                     print("Exiting...")
                     break
 
-                if command.lower() == 'help':
+                if command.lower() == "help":
                     print("See command list above")
                     continue
 
@@ -1333,7 +1372,7 @@ class TestRunner:
 def main():
     """Main entry point"""
     parser = argparse.ArgumentParser(
-        description="NC ROM Editor Test Runner - Automated GUI Testing Tool",
+        description="NC Flash Test Runner - Automated GUI Testing Tool",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
@@ -1354,31 +1393,32 @@ Examples:
 
   # Clean up screenshots matching pattern, older than 24 hours
   python tools/test_runner.py --cleanup --cleanup-pattern "demo_*" --cleanup-age 24
-"""
+""",
     )
 
-    parser.add_argument('--rom', '-r',
-                        help='Path to ROM file to load')
-    parser.add_argument('--table', '-t',
-                        help='Name of table to open')
-    parser.add_argument('--script', '-s',
-                        help='Path to test script file')
-    parser.add_argument('--interactive', '-i', action='store_true',
-                        help='Start in interactive mode')
-    parser.add_argument('--definitions', '-d',
-                        help='Path to definitions directory')
-    parser.add_argument('--quiet', '-q', action='store_true',
-                        help='Suppress non-essential output')
-    parser.add_argument('--screenshot',
-                        help='Take screenshot and save with this name')
-    parser.add_argument('--cleanup', action='store_true',
-                        help='Clean up auto-generated screenshots')
-    parser.add_argument('--cleanup-pattern',
-                        help='Pattern for cleanup (e.g., "demo_*")')
-    parser.add_argument('--cleanup-age', type=float,
-                        help='Only delete screenshots older than N hours')
-    parser.add_argument('--list-screenshots', action='store_true',
-                        help='List all screenshots')
+    parser.add_argument("--rom", "-r", help="Path to ROM file to load")
+    parser.add_argument("--table", "-t", help="Name of table to open")
+    parser.add_argument("--script", "-s", help="Path to test script file")
+    parser.add_argument(
+        "--interactive", "-i", action="store_true", help="Start in interactive mode"
+    )
+    parser.add_argument("--definitions", "-d", help="Path to definitions directory")
+    parser.add_argument(
+        "--quiet", "-q", action="store_true", help="Suppress non-essential output"
+    )
+    parser.add_argument("--screenshot", help="Take screenshot and save with this name")
+    parser.add_argument(
+        "--cleanup", action="store_true", help="Clean up auto-generated screenshots"
+    )
+    parser.add_argument(
+        "--cleanup-pattern", help='Pattern for cleanup (e.g., "demo_*")'
+    )
+    parser.add_argument(
+        "--cleanup-age", type=float, help="Only delete screenshots older than N hours"
+    )
+    parser.add_argument(
+        "--list-screenshots", action="store_true", help="List all screenshots"
+    )
 
     args = parser.parse_args()
 

@@ -1,5 +1,5 @@
 """
-Custom exceptions for NC ROM Editor
+Custom exceptions for NC Flash
 
 Provides specific exception types for better error handling and debugging.
 """
