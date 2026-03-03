@@ -11,6 +11,9 @@
 - **Interpolation dedup** — Unified near-identical `interpolate_vertical`/`interpolate_horizontal` (~250 lines each) into shared `_interpolate_1d(direction)` + extracted `_apply_axis_interpolation` and `_apply_data_interpolation` helpers. Fixed bug where horizontal emit was per-range instead of once-after-all-ranges.
 - **Error handling fixes** — 3 silent `except: pass` in `main.py` now log with `logger.debug`; exception chain added in `project_manager.py`.
 - **Test fix** — Fixed pre-existing `test_get_table_font_size_default` (expected 9 but default was changed to 11).
+- **Test runner dispatch refactor** — Replaced 159-line if/elif chain in `_execute_command` with dispatch table + small handler methods.
+- **Dependency split** — `requirements.txt` now runtime-only; dev tools in `requirements-dev.txt`. CI updated to use `requirements-dev.txt`.
+- **Doc cleanup** — Archived abandoned `MODIFICATION_TRACKING_PLAN/SUMMARY.md` to `docs/archive/`. Updated ROM comparison spec to reflect implemented features.
 
 ## Recent Completed Work (Mar 2, 2026) - Rebrand: NC ROM Editor → NC Flash
 - **Full project rename** — Renamed all references from "NC ROM Editor" / "NCRomEditor" to "NC Flash" across the entire codebase. Display name is "NC Flash", exe/filenames use "NCFlash" (no space), GitHub repo is `cdufresne81/nc-flash`. Updated: app name, exe name, asset files, installer, build scripts, CI workflow, MCP server, QSettings keys, user data directory, launcher scripts, setup wizard, documentation, tests, and CHANGELOG.

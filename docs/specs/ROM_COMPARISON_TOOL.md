@@ -47,12 +47,12 @@ A read-only, side-by-side ROM comparison tool that lets users visually diff two 
 - Read-only — no editing allowed
 - Keyboard shortcuts: Up/Down (navigate tables), T (toggle changed only)
 
-### Out of Scope
-- Editing values
+### Out of Scope (original spec — some items since implemented)
+- ~~Editing values~~ — **Implemented:** Copy table from one ROM to another via compare window
 - Graph/3D surface view
 - Undo/redo
 - More than 2 ROMs
-- Comparing ROMs with different definitions
+- ~~Comparing ROMs with different definitions~~ — **Implemented:** Cross-definition comparison supported
 - Exporting comparison results
 
 ## Architecture
@@ -61,8 +61,7 @@ A read-only, side-by-side ROM comparison tool that lets users visually diff two 
 
 | File | Purpose |
 |------|---------|
-| `src/ui/compare_window.py` | `CompareWindow(QMainWindow)` — main comparison window |
-| `src/ui/compare_table_panel.py` | `CompareTablePanel(QWidget)` — single read-only table display (reuses display logic from `TableDisplayHelper`) |
+| `src/ui/compare_window.py` | `CompareWindow(QMainWindow)` — main comparison window (includes inline table panel rendering) |
 
 ### Integration Points
 

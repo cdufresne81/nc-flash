@@ -1113,6 +1113,104 @@ class TestRunner:
 
         return success
 
+    # Command dispatch table: maps command name to (handler, min_args)
+    # Handler receives (self, args) and returns bool
+    _COMMANDS = None  # Initialized lazily to avoid forward references
+
+    @classmethod
+    def _get_commands(cls):
+        """Lazy-init command dispatch table."""
+        if cls._COMMANDS is not None:
+            return cls._COMMANDS
+        cls._COMMANDS = {
+            "start":          (lambda s, a: s.start_app(), 0),
+            "load_rom":       (lambda s, a: s.load_rom(a[0]), 1),
+            "list_tables":    (lambda s, a: s._cmd_list_tables(), 0),
+            "open_table":     (lambda s, a: s.open_table(a[0]), 1),
+            "open_table_by_category": (lambda s, a: s.open_table_by_category(a[0], a[1]), 2),
+            "expand_category": (lambda s, a: s.expand_category(a[0]), 1),
+            "select":         (lambda s, a: s.select_cells(
+                                  int(a[0]), int(a[1]),
+                                  int(a[2]) if len(a) > 2 else None,
+                                  int(a[3]) if len(a) > 3 else None), 2),
+            "click":          (lambda s, a: s.click_cell(int(a[0]), int(a[1])), 2),
+            "select_all":     (lambda s, a: s.select_all_data(), 0),
+            "interpolate_v":  (lambda s, a: s.interpolate_vertical(), 0),
+            "interpolate_h":  (lambda s, a: s.interpolate_horizontal(), 0),
+            "interpolate_2d": (lambda s, a: s.interpolate_2d(), 0),
+            "increment":      (lambda s, a: s.increment_selection(), 0),
+            "decrement":      (lambda s, a: s.decrement_selection(), 0),
+            "set":            (lambda s, a: s.set_value(float(a[0])), 1),
+            "multiply":       (lambda s, a: s.multiply_selection(float(a[0])), 1),
+            "add":            (lambda s, a: s.add_to_selection(float(a[0])), 1),
+            "open_graph":     (lambda s, a: s.open_graph(), 0),
+            "close_graph":    (lambda s, a: s.close_graph(), 0),
+            "rotate_graph":   (lambda s, a: s.rotate_graph(
+                                  float(a[0]) if len(a) > 0 else None,
+                                  float(a[1]) if len(a) > 1 else None), 0),
+            "close_table":    (lambda s, a: s.close_table(), 0),
+            "focus_table":    (lambda s, a: s._cmd_focus_table(a), 0),
+            "screenshot":     (lambda s, a: bool(s.screenshot(
+                                  a[0] if a else None,
+                                  a[1] if len(a) > 1 else "table")), 0),
+            "undo":           (lambda s, a: s.undo(), 0),
+            "redo":           (lambda s, a: s.redo(), 0),
+            "wait":           (lambda s, a: s._cmd_wait(a), 1),
+            "cleanup":        (lambda s, a: s._cmd_cleanup(a), 0),
+            "list_screenshots": (lambda s, a: s._cmd_list_screenshots(), 0),
+            "set_level":      (lambda s, a: s.set_level_filter(int(a[0])), 1),
+            "store_width":    (lambda s, a: s._cmd_store_width(), 0),
+            "assert_width":   (lambda s, a: s._cmd_assert_width(a), 1),
+            "assert_width_restored": (lambda s, a: s._cmd_assert_width_restored(a), 0),
+        }
+        return cls._COMMANDS
+
+    # Small command helpers for logic that doesn't map to a single method call
+    def _cmd_list_tables(self):
+        tables = self.list_tables()
+        for t in tables:
+            print(f"  {t}")
+        return True
+
+    def _cmd_focus_table(self, args):
+        if not args:
+            self._log("ERROR: focus_table requires table name")
+            return False
+        table_name = " ".join(args).strip("\"'")
+        return self.focus_table(table_name)
+
+    def _cmd_wait(self, args):
+        self.wait(int(args[0]))
+        return True
+
+    def _cmd_cleanup(self, args):
+        pattern = args[0] if args else None
+        max_age = float(args[1]) if len(args) > 1 else None
+        self.cleanup_screenshots(pattern, max_age)
+        return True
+
+    def _cmd_list_screenshots(self):
+        self.list_screenshots()
+        return True
+
+    def _cmd_store_width(self):
+        width, _ = self.get_window_size()
+        self._stored_width = width
+        self._log(f"Stored window width: {width}")
+        return True
+
+    def _cmd_assert_width(self, args):
+        expected = int(args[0])
+        tolerance = int(args[1]) if len(args) > 1 else 5
+        return self.assert_window_width(expected, tolerance)
+
+    def _cmd_assert_width_restored(self, args):
+        tolerance = int(args[0]) if args else 5
+        if not hasattr(self, "_stored_width"):
+            self._log("ASSERT FAILED: No stored width (call store_width first)")
+            return False
+        return self.assert_window_width(self._stored_width, tolerance)
+
     def _execute_command(self, command: str) -> bool:
         """
         Execute a single command
@@ -1130,145 +1228,20 @@ class TestRunner:
         cmd = parts[0].lower()
         args = parts[1:]
 
+        commands = self._get_commands()
+        entry = commands.get(cmd)
+
+        if entry is None:
+            self._log(f"Unknown command: {cmd}")
+            return False
+
+        handler, min_args = entry
+        if len(args) < min_args:
+            self._log(f"ERROR: '{cmd}' requires at least {min_args} argument(s)")
+            return False
+
         try:
-            if cmd == "start":
-                return self.start_app()
-
-            elif cmd == "load_rom" and len(args) >= 1:
-                return self.load_rom(args[0])
-
-            elif cmd == "list_tables":
-                tables = self.list_tables()
-                for t in tables:
-                    print(f"  {t}")
-                return True
-
-            elif cmd == "open_table" and len(args) >= 1:
-                return self.open_table(args[0])
-
-            elif cmd == "open_table_by_category" and len(args) >= 2:
-                return self.open_table_by_category(args[0], args[1])
-
-            elif cmd == "expand_category" and len(args) >= 1:
-                return self.expand_category(args[0])
-
-            elif cmd == "select" and len(args) >= 2:
-                start_row = int(args[0])
-                start_col = int(args[1])
-                end_row = int(args[2]) if len(args) > 2 else None
-                end_col = int(args[3]) if len(args) > 3 else None
-                return self.select_cells(start_row, start_col, end_row, end_col)
-
-            elif cmd == "click" and len(args) >= 2:
-                row = int(args[0])
-                col = int(args[1])
-                return self.click_cell(row, col)
-
-            elif cmd == "select_all":
-                return self.select_all_data()
-
-            elif cmd == "interpolate_v":
-                return self.interpolate_vertical()
-
-            elif cmd == "interpolate_h":
-                return self.interpolate_horizontal()
-
-            elif cmd == "interpolate_2d":
-                return self.interpolate_2d()
-
-            elif cmd == "increment":
-                return self.increment_selection()
-
-            elif cmd == "decrement":
-                return self.decrement_selection()
-
-            elif cmd == "set" and len(args) >= 1:
-                return self.set_value(float(args[0]))
-
-            elif cmd == "multiply" and len(args) >= 1:
-                return self.multiply_selection(float(args[0]))
-
-            elif cmd == "add" and len(args) >= 1:
-                return self.add_to_selection(float(args[0]))
-
-            elif cmd == "open_graph":
-                return self.open_graph()
-
-            elif cmd == "close_graph":
-                return self.close_graph()
-
-            elif cmd == "rotate_graph":
-                elev = float(args[0]) if len(args) > 0 else None
-                azim = float(args[1]) if len(args) > 1 else None
-                return self.rotate_graph(elev, azim)
-
-            elif cmd == "close_table":
-                return self.close_table()
-
-            elif cmd == "focus_table":
-                if not args:
-                    self._log("ERROR: focus_table requires table name")
-                    return False
-                table_name = " ".join(args).strip("\"'")
-                return self.focus_table(table_name)
-
-            elif cmd == "screenshot":
-                name = args[0] if args else None
-                target = args[1] if len(args) > 1 else "table"
-                return bool(self.screenshot(name, target))
-
-            elif cmd == "undo":
-                return self.undo()
-
-            elif cmd == "redo":
-                return self.redo()
-
-            elif cmd == "wait" and len(args) >= 1:
-                self.wait(int(args[0]))
-                return True
-
-            elif cmd == "cleanup":
-                pattern = args[0] if args else None
-                max_age = float(args[1]) if len(args) > 1 else None
-                self.cleanup_screenshots(pattern, max_age)
-                return True
-
-            elif cmd == "list_screenshots":
-                self.list_screenshots()
-                return True
-
-            elif cmd == "set_level" and len(args) >= 1:
-                return self.set_level_filter(int(args[0]))
-
-            elif cmd == "store_width":
-                # Store current window width for later comparison
-                width, _ = self.get_window_size()
-                self._stored_width = width
-                self._log(f"Stored window width: {width}")
-                return True
-
-            elif cmd == "assert_width":
-                # Assert window width equals specific value
-                if len(args) >= 1:
-                    expected = int(args[0])
-                    tolerance = int(args[1]) if len(args) > 1 else 5
-                    return self.assert_window_width(expected, tolerance)
-                else:
-                    self._log("ERROR: assert_width requires expected value")
-                    return False
-
-            elif cmd == "assert_width_restored":
-                # Assert window width matches previously stored width
-                tolerance = int(args[0]) if args else 5
-                if not hasattr(self, "_stored_width"):
-                    self._log("ASSERT FAILED: No stored width (call store_width first)")
-                    return False
-                return self.assert_window_width(self._stored_width, tolerance)
-
-            else:
-                self._log(f"Unknown command: {cmd}")
-                return False
-
+            return handler(self, args)
         except Exception as e:
             self._log(f"ERROR executing '{cmd}': {e}")
             return False
