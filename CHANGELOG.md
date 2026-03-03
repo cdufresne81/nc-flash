@@ -2,6 +2,23 @@
 
 All notable changes to NC Flash are documented here.
 
+## [Unreleased]
+
+### Changed
+- **Extracted shared icon factory** — Moved QPainter toolbar icons from `main.py` (143 lines) and `table_viewer_window.py` (102 lines) into `src/ui/icons.py` with dispatch table
+- **Consolidated duplicated format utilities** — Created `src/utils/formatting.py` with shared `printf_to_python_format`, `format_value`, `get_scaling_range`, `get_scaling_format` (was duplicated 3-4x across modules)
+- **Unified interpolation functions** — Merged near-identical `interpolate_vertical`/`interpolate_horizontal` (~250 lines each) into shared `_interpolate_1d(direction)` with extracted helpers
+- **Updated README** — Fixed Python version (3.10+ not 3.12+), removed stale "In Development" / "Next Priorities" sections, updated project structure tree to reflect all current files
+
+### Fixed
+- **Horizontal interpolation emit timing** — Was emitting changes per selection range instead of once after all ranges (matching vertical behavior)
+- **Silent exception swallows** — Three `except: pass` blocks in `main.py` now log with `logger.debug`
+- **Exception chaining** — `project_manager.create_project` now chains exceptions with `from e`
+- **Test fix** — `test_get_table_font_size_default` updated to match actual default (11, not 9)
+
+### Removed
+- Dead code cleanup: 4 unused dataclasses from `version_models.py`, legacy `ScalingEditDialog`, unused `HistoryPanel`, 4 deprecated methods across `table_viewer.py`, `change_tracker.py`, `table_browser.py`
+
 ## [v2.0.0] - 2026-03-02
 
 ### Changed

@@ -127,9 +127,6 @@ python main.py
 - Works with Claude Code (`.mcp.json`) and Claude Desktop (`claude_desktop_config.json`)
 - Optional auto-start on app launch (Settings > Tools)
 
-### In Development
-- Projects management
-
 ## Keyboard Shortcuts
 
 | Shortcut | Action |
@@ -153,7 +150,7 @@ python main.py
 
 ## Tech Stack
 
-- **Python 3.12+**
+- **Python 3.10+**
 - **PySide6** - Qt6 bindings for Python (GUI framework)
 - **NumPy** - Numerical operations on table data
 - **Matplotlib** - 3D/2D visualization of maps
@@ -168,32 +165,58 @@ nc-flash/
 │   │   ├── definition_parser.py       # XML parser for ROM definitions
 │   │   ├── rom_reader.py              # Binary ROM reader/writer
 │   │   ├── rom_detector.py            # Automatic ROM ID detection
-│   │   ├── change_tracker.py          # Undo/redo system
-│   │   ├── project_manager.py         # Project creation/loading
-│   │   └── version_models.py          # Commit and version data structures
+│   │   ├── exceptions.py              # Custom exception hierarchy
+│   │   ├── storage_types.py           # Storage type constants
+│   │   ├── change_tracker.py          # Change tracking for commits
+│   │   ├── table_undo_manager.py      # Per-table undo/redo stacks
+│   │   ├── undo_commands.py           # QUndoCommand subclasses
+│   │   ├── project_manager.py         # Project CRUD, commits, snapshots
+│   │   ├── version_models.py          # Commit and version data structures
+│   │   └── metadata_writer.py         # XML scaling attribute editor
 │   ├── ui/                            # Qt GUI widgets
-│   │   ├── table_viewer_window.py     # Main table viewer window
+│   │   ├── icons.py                   # Shared QPainter toolbar icons
+│   │   ├── table_viewer_window.py     # Standalone table viewer window
 │   │   ├── table_viewer.py            # Table grid widget
 │   │   ├── table_viewer_helpers/      # Modular helper classes
 │   │   │   ├── display.py             # Rendering and formatting
 │   │   │   ├── editing.py             # Cell editing logic
 │   │   │   ├── operations.py          # Bulk operations
 │   │   │   ├── interpolation.py       # Interpolation algorithms
-│   │   │   └── clipboard.py           # Copy/paste and export
-│   │   ├── compare_window.py          # ROM comparison window
+│   │   │   ├── clipboard.py           # Copy/paste and export
+│   │   │   ├── cell_delegate.py       # Custom cell painting
+│   │   │   └── context.py             # Shared state container
+│   │   ├── compare_window.py          # Side-by-side ROM comparison
 │   │   ├── graph_viewer.py            # 3D/2D graph visualization
 │   │   ├── table_browser.py           # Category tree browser
-│   │   ├── history_viewer.py          # Version history viewer
-│   │   ├── project_wizard.py          # Project creation dialog
-│   │   └── settings_dialog.py         # Settings/preferences
+│   │   ├── rom_document.py            # Single ROM tab widget
+│   │   ├── history_viewer.py          # Version history dialog
+│   │   ├── commit_dialog.py           # Commit creation dialog
+│   │   ├── project_wizard.py          # New project wizard
+│   │   ├── setup_wizard.py            # First-run RomDrop setup
+│   │   ├── settings_dialog.py         # Settings/preferences
+│   │   ├── scaling_edit_dialog.py     # Scaling property editor
+│   │   ├── data_operation_dialogs.py  # Add/Multiply/Set dialogs
+│   │   ├── log_console.py             # Application log viewer
+│   │   ├── session_mixin.py           # Session restore/save
+│   │   ├── recent_files_mixin.py      # Recent files menu
+│   │   ├── project_mixin.py           # Project operations
+│   │   └── widgets/                   # Reusable widgets
+│   │       └── toggle_switch.py       # Animated toggle switch
 │   ├── api/                           # Command API (HTTP bridge for MCP)
 │   │   └── command_server.py          # HTTP server bridging to Qt thread
 │   ├── mcp/                           # MCP server for AI assistants
 │   │   ├── server.py                  # FastMCP server (STDIO + SSE)
-│   │   └── rom_context.py            # ROM loading, caching, tool logic
-│   └── utils/                         # Helper functions
-│       ├── settings.py                # Settings manager
-│       └── colormap.py                # Color scheme utilities
+│   │   └── rom_context.py             # ROM loading, caching, tool logic
+│   └── utils/                         # Shared utilities
+│       ├── settings.py                # QSettings-based persistence
+│       ├── colormap.py                # Color map loading
+│       ├── formatting.py              # Value formatting utilities
+│       ├── constants.py               # App name, version, defaults
+│       ├── logging_config.py          # Logging setup
+│       └── paths.py                   # Path resolution
+├── tools/
+│   └── test_runner.py                 # GUI test automation
+├── tests/                             # Unit and integration tests
 ├── examples/                          # Example ROM files
 │   ├── metadata/                      # ROM metadata XML files
 │   │   └── lf9veb.xml                 # NC Miata ROM definition (511 tables)
@@ -201,10 +224,11 @@ nc-flash/
 ├── packaging/                         # Build & installer scripts
 │   ├── build.bat                      # Windows build script
 │   ├── installer.iss                  # Inno Setup installer script
-│   ├── NCFlash.spec                  # PyInstaller spec
-│   └── requirements-build.txt        # Build-only dependencies
+│   └── requirements-build.txt         # Build-only dependencies
 ├── docs/                              # Documentation
-│   ├── ROM_DEFINITION_FORMAT.md
+│   ├── ROM_DEFINITION_FORMAT.md       # XML definition format
+│   ├── LOGGING.md                     # Logging and exception hierarchy
+│   ├── UI_TESTING.md                  # GUI test runner guide
 │   └── WINDOWS_SETUP.md              # Windows setup guide
 ├── main.py                            # Application entry point
 ├── run.bat                            # Windows launcher
@@ -287,9 +311,6 @@ Tests run automatically on GitHub Actions for:
 **Current Version:** v2.0.0
 
 This version includes full table editing, project management with version history, interactive graph visualization, ROM comparison tool, a polished toolbar-driven UI, and AI assistant integration via MCP server.
-
-**Next Priorities:**
-- Project management
 
 ## Contributing
 

@@ -227,39 +227,6 @@ class AxisChange:
         )
 
 
-@dataclass
-class UndoableChange:
-    """Wrapper for changes in undo/redo stack"""
-
-    cell_change: CellChange
-    timestamp: datetime = field(default_factory=datetime.now)
-
-
-@dataclass
-class UndoableAxisChange:
-    """Wrapper for axis changes in undo/redo stack"""
-
-    axis_change: AxisChange
-    timestamp: datetime = field(default_factory=datetime.now)
-
-
-@dataclass
-class BulkChange:
-    """Multiple cell changes grouped as one undo operation"""
-
-    changes: List[CellChange]
-    description: str  # e.g., "Multiply by 1.1", "Interpolate Vertically"
-    timestamp: datetime = field(default_factory=datetime.now)
-
-
-@dataclass
-class AxisBulkChange:
-    """Multiple axis changes grouped as one undo operation"""
-
-    changes: List[AxisChange]
-    description: str  # e.g., "Interpolate Y-Axis"
-    timestamp: datetime = field(default_factory=datetime.now)
-
 
 @dataclass
 class OriginalRomInfo:

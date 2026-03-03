@@ -16,7 +16,7 @@ Stock ROM binary file for LF9VEB ECU.
 
 Load the ROM in the application:
 1. Run `python main.py`
-2. File → Open ROM → Select `examples/lf9veb.bin`
+2. File → Open → Select `examples/lf9veb.bin`
 3. Browse tables in the left panel
 4. Click a table to view its data
 

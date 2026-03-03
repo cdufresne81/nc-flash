@@ -138,7 +138,7 @@ class ProjectManager:
 
         except Exception as e:
             logger.error(f"Failed to create project: {e}")
-            raise ProjectError(f"Failed to create project: {e}")
+            raise ProjectError(f"Failed to create project: {e}") from e
 
     def open_project(self, project_path: str) -> Project:
         """
@@ -671,7 +671,7 @@ class ProjectManager:
 
             return commits
         except Exception as e:
-            logger.warning(f"Failed to load commits: {e}")
+            logger.warning(f"Failed to load commits: {e}", exc_info=True)
             return []
 
     @staticmethod
