@@ -25,7 +25,6 @@ from PySide6.QtGui import (
     QIcon,
     QKeySequence,
     QPainter,
-    QPainterPath,
     QPen,
     QPixmap,
     QShortcut,
@@ -438,108 +437,10 @@ class TableViewerWindow(QMainWindow):
             self._tb_graph_action = None
 
     def _make_toolbar_icon(self, name: str):
-        """Create a crisp toolbar icon by name using QPainter"""
-        s = 20
-        dpr = self.devicePixelRatioF()
-        pm = QPixmap(int(s * dpr), int(s * dpr))
-        pm.setDevicePixelRatio(dpr)
-        pm.fill(Qt.transparent)
+        """Create a crisp toolbar icon by name using QPainter."""
+        from .icons import make_icon
 
-        p = QPainter(pm)
-        p.setRenderHint(QPainter.Antialiasing)
-        c = self.palette().windowText().color()
-        pen = QPen(c, 1.6, Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin)
-        p.setPen(pen)
-
-        if name == "copy":
-            # Clipboard with text lines
-            p.drawRect(3, 4, 14, 14)
-            p.drawRect(7, 1, 6, 5)
-            p.drawLine(6, 9, 14, 9)
-            p.drawLine(6, 12, 14, 12)
-            p.drawLine(6, 15, 11, 15)
-
-        elif name == "export":
-            # Down arrow into tray
-            p.drawLine(10, 2, 10, 11)
-            p.drawLine(7, 8, 10, 11)
-            p.drawLine(13, 8, 10, 11)
-            p.drawLine(3, 13, 3, 18)
-            p.drawLine(3, 18, 17, 18)
-            p.drawLine(17, 18, 17, 13)
-
-        elif name == "increment":
-            # Bold plus
-            p.setPen(QPen(c, 2.0, Qt.SolidLine, Qt.RoundCap))
-            p.drawLine(10, 4, 10, 16)
-            p.drawLine(4, 10, 16, 10)
-
-        elif name == "decrement":
-            # Bold minus
-            p.setPen(QPen(c, 2.0, Qt.SolidLine, Qt.RoundCap))
-            p.drawLine(4, 10, 16, 10)
-
-        elif name == "add":
-            # Circled plus
-            p.drawEllipse(2, 2, 16, 16)
-            p.drawLine(10, 6, 10, 14)
-            p.drawLine(6, 10, 14, 10)
-
-        elif name == "multiply":
-            # Asterisk (three lines through center)
-            p.setPen(QPen(c, 1.8, Qt.SolidLine, Qt.RoundCap))
-            p.drawLine(10, 4, 10, 16)
-            p.drawLine(5, 7, 15, 13)
-            p.drawLine(15, 7, 5, 13)
-
-        elif name == "set_value":
-            # Equals sign
-            p.setPen(QPen(c, 2.0, Qt.SolidLine, Qt.RoundCap))
-            p.drawLine(4, 8, 16, 8)
-            p.drawLine(4, 12, 16, 12)
-
-        elif name == "interp_v":
-            # Vertical double-headed arrow
-            p.drawLine(10, 3, 10, 17)
-            p.drawLine(7, 6, 10, 3)
-            p.drawLine(13, 6, 10, 3)
-            p.drawLine(7, 14, 10, 17)
-            p.drawLine(13, 14, 10, 17)
-
-        elif name == "interp_h":
-            # Horizontal double-headed arrow
-            p.drawLine(3, 10, 17, 10)
-            p.drawLine(6, 7, 3, 10)
-            p.drawLine(6, 13, 3, 10)
-            p.drawLine(14, 7, 17, 10)
-            p.drawLine(14, 13, 17, 10)
-
-        elif name == "interp_2d":
-            # 2x2 grid
-            p.drawRect(3, 3, 14, 14)
-            p.drawLine(10, 3, 10, 17)
-            p.drawLine(3, 10, 17, 10)
-
-        elif name == "smooth":
-            # S-curve
-            path = QPainterPath()
-            path.moveTo(3, 14)
-            path.cubicTo(7, 2, 13, 18, 17, 6)
-            p.setBrush(Qt.NoBrush)
-            p.drawPath(path)
-
-        elif name == "graph":
-            # Bar chart
-            p.setPen(QPen(c, 3.0, Qt.SolidLine, Qt.FlatCap))
-            p.drawLine(4, 17, 4, 12)
-            p.drawLine(8, 17, 8, 7)
-            p.drawLine(12, 17, 12, 10)
-            p.drawLine(16, 17, 16, 4)
-            p.setPen(QPen(c, 1.4, Qt.SolidLine, Qt.RoundCap))
-            p.drawLine(2, 18, 18, 18)
-
-        p.end()
-        return QIcon(pm)
+        return make_icon(self, name)
 
     def _on_toggle_diff_highlights(self):
         """Toggle diff highlighting visibility"""

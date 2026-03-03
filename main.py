@@ -29,6 +29,7 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtCore import Qt, QTimer, QSize
 from PySide6.QtGui import QColor, QIcon, QPainter, QPen, QPixmap
+from src.ui.icons import make_icon
 
 from src.utils.logging_config import setup_logging, get_logger
 from src.utils.paths import get_app_root
@@ -470,147 +471,7 @@ class MainWindow(QMainWindow, RecentFilesMixin, ProjectMixin, SessionMixin):
 
     def _make_icon(self, name: str) -> QIcon:
         """Create a crisp toolbar icon by name using QPainter."""
-        s = 20
-        dpr = self.devicePixelRatioF()
-        pm = QPixmap(int(s * dpr), int(s * dpr))
-        pm.setDevicePixelRatio(dpr)
-        pm.fill(Qt.transparent)
-
-        p = QPainter(pm)
-        p.setRenderHint(QPainter.Antialiasing)
-        c = self.palette().windowText().color()
-        pen = QPen(c, 1.6, Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin)
-        p.setPen(pen)
-
-        if name == "open":
-            # Folder
-            p.drawLine(2, 7, 2, 17)
-            p.drawLine(2, 17, 17, 17)
-            p.drawLine(17, 17, 17, 7)
-            p.drawLine(17, 7, 10, 7)
-            p.drawLine(10, 7, 8, 4)
-            p.drawLine(8, 4, 2, 4)
-            p.drawLine(2, 4, 2, 7)
-
-        elif name == "save":
-            # Floppy disk
-            p.drawRect(3, 2, 14, 16)
-            p.drawRect(6, 2, 8, 6)
-            p.drawRect(6, 11, 8, 5)
-
-        elif name == "compare":
-            # Two overlapping rectangles with arrows
-            p.drawRect(2, 4, 7, 12)
-            p.drawRect(11, 4, 7, 12)
-            # Left-right arrows between them
-            p.setPen(QPen(c, 1.4, Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin))
-            p.drawLine(9, 8, 11, 8)
-            p.drawLine(11, 12, 9, 12)
-
-        elif name == "flash":
-            # Lightning bolt
-            from PySide6.QtCore import QPointF
-            from PySide6.QtGui import QPolygonF
-
-            bolt = QPolygonF(
-                [
-                    QPointF(11, 2),
-                    QPointF(6, 10),
-                    QPointF(10, 10),
-                    QPointF(9, 18),
-                    QPointF(14, 9),
-                    QPointF(10, 9),
-                ]
-            )
-            p.setBrush(c)
-            p.drawPolygon(bolt)
-
-        elif name == "settings":
-            # Gear with flat-topped teeth
-            from math import cos, sin, pi
-            from PySide6.QtCore import QPointF
-            from PySide6.QtGui import QPolygonF
-
-            cx, cy, r_out, r_in = 10, 10, 8.5, 5.5
-            teeth = 6
-            tooth_half = 0.28  # half-width of tooth in radians fraction
-            pts = []
-            for i in range(teeth):
-                a = 2 * pi * i / teeth - pi / 2
-                # Outer edge of tooth (two corners)
-                pts.append(
-                    QPointF(
-                        cx + r_out * cos(a - tooth_half),
-                        cy + r_out * sin(a - tooth_half),
-                    )
-                )
-                pts.append(
-                    QPointF(
-                        cx + r_out * cos(a + tooth_half),
-                        cy + r_out * sin(a + tooth_half),
-                    )
-                )
-                # Inner edge (valley between teeth)
-                a_next = 2 * pi * (i + 0.5) / teeth - pi / 2
-                pts.append(
-                    QPointF(
-                        cx + r_in * cos(a + tooth_half), cy + r_in * sin(a + tooth_half)
-                    )
-                )
-                pts.append(
-                    QPointF(
-                        cx + r_in * cos(a_next + tooth_half),
-                        cy + r_in * sin(a_next + tooth_half),
-                    )
-                )
-            poly = QPolygonF(pts)
-            p.setBrush(Qt.NoBrush)
-            p.drawPolygon(poly)
-            # Center circle
-            p.drawEllipse(QPointF(cx, cy), 2.5, 2.5)
-
-        elif name == "history":
-            # Git-log style: vertical line with commit nodes
-            from PySide6.QtCore import QPointF
-
-            # Vertical trunk line
-            p.setPen(QPen(c, 1.6, Qt.SolidLine, Qt.RoundCap))
-            p.drawLine(7, 2, 7, 18)
-            # Commit dots on the trunk
-            p.setBrush(c)
-            p.setPen(QPen(c, 1.2))
-            p.drawEllipse(QPointF(7, 5), 2.2, 2.2)
-            p.drawEllipse(QPointF(7, 10), 2.2, 2.2)
-            p.drawEllipse(QPointF(7, 15), 2.2, 2.2)
-            # Branch lines from dots to the right
-            p.setPen(QPen(c, 1.2, Qt.SolidLine, Qt.RoundCap))
-            p.drawLine(9, 5, 16, 5)
-            p.drawLine(9, 10, 14, 10)
-            p.drawLine(9, 15, 17, 15)
-
-        elif name in ("mcp_on", "mcp_off"):
-            # Broadcast / antenna icon — circle with signal waves
-            from PySide6.QtCore import QPointF, QRectF
-
-            cx, cy = 10, 14
-            # Antenna base dot
-            if name == "mcp_on":
-                p.setBrush(QColor(76, 175, 80))  # green fill when on
-                p.setPen(QPen(QColor(76, 175, 80), 1.6, Qt.SolidLine, Qt.RoundCap))
-            else:
-                p.setBrush(c)
-            p.drawEllipse(QPointF(cx, cy), 2, 2)
-            # Signal arcs
-            p.setBrush(Qt.NoBrush)
-            if name == "mcp_on":
-                p.setPen(QPen(QColor(76, 175, 80), 1.4, Qt.SolidLine, Qt.RoundCap))
-            else:
-                p.setPen(QPen(c, 1.4, Qt.SolidLine, Qt.RoundCap))
-            p.drawArc(QRectF(3, 7, 14, 14), 45 * 16, 90 * 16)
-            p.drawArc(QRectF(0, 4, 20, 20), 45 * 16, 90 * 16)
-
-        p.end()
-        return QIcon(pm)
+        return make_icon(self, name)
 
     # ========== Tab and Document Management ==========
 
@@ -906,7 +767,7 @@ class MainWindow(QMainWindow, RecentFilesMixin, ProjectMixin, SessionMixin):
         try:
             (get_app_root() / "workspace.json").unlink(missing_ok=True)
         except Exception:
-            pass
+            logger.debug("Failed to delete workspace.json", exc_info=True)
 
     # ========== MCP Server Management ==========
 
@@ -960,7 +821,7 @@ class MainWindow(QMainWindow, RecentFilesMixin, ProjectMixin, SessionMixin):
         except subprocess.TimeoutExpired:
             self._mcp_process.kill()
         except Exception:
-            pass
+            logger.debug("Error terminating MCP process", exc_info=True)
         pid = self._mcp_process.pid if self._mcp_process else "?"
         self._mcp_process = None
         logger.info(f"MCP server stopped (PID {pid})")
@@ -2341,8 +2202,7 @@ class MainWindow(QMainWindow, RecentFilesMixin, ProjectMixin, SessionMixin):
             try:
                 window.viewer.end_bulk_update()
             except RuntimeError:
-                # Window might have been deleted
-                pass
+                logger.debug("Window deleted during bulk update end", exc_info=True)
         self._bulk_update_windows = []
         self._in_bulk_undo = False
         del self._bulk_window_cache  # Clear window cache

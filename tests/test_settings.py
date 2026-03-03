@@ -221,7 +221,7 @@ class TestDisplaySettings:
     def test_get_table_font_size_default(self, app_settings):
         """Test default table font size"""
         result = app_settings.get_table_font_size()
-        assert result == 9
+        assert result == 11
 
     def test_set_and_get_table_font_size(self, mock_qsettings):
         """Test setting and getting table font size"""

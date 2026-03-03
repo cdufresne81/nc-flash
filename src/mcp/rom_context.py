@@ -6,7 +6,6 @@ and implements the core logic for all MCP tools.
 """
 
 import json
-import re
 import urllib.request
 import urllib.error
 from collections import OrderedDict
@@ -26,39 +25,8 @@ from ..core.rom_definition import (
 )
 from ..core.rom_detector import RomDetector
 from ..core.rom_reader import RomReader
+from ..utils.formatting import printf_to_python_format, format_value as _format_value
 from ..utils.paths import get_app_root
-
-_PRINTF_PATTERN = re.compile(r"%[-+0 #]*(\d*)\.?(\d*)([diouxXeEfFgGaAcspn%])")
-
-
-def _printf_to_python_format(printf_format: str) -> str:
-    """Convert printf-style format to Python format spec.
-
-    Duplicated from compare_window.py to avoid Qt import dependency.
-    """
-    if not printf_format:
-        return ".2f"
-    match = _PRINTF_PATTERN.match(printf_format)
-    if not match:
-        return ".2f"
-    width = match.group(1)
-    precision = match.group(2)
-    specifier = match.group(3)
-    result = ""
-    if width:
-        result += width
-    if precision:
-        result += f".{precision}"
-    result += specifier
-    return result
-
-
-def _format_value(value: float, fmt_spec: str) -> str:
-    """Format a single value using a Python format spec."""
-    try:
-        return f"{value:{fmt_spec}}"
-    except (ValueError, TypeError):
-        return str(value)
 
 
 class _CacheEntry:
@@ -277,7 +245,7 @@ class RomContext:
             raise RomEditorError(f"Failed to read table data: {table_name}")
 
         scaling = defn.get_scaling(table.scaling)
-        fmt_spec = _printf_to_python_format(scaling.format) if scaling else ".2f"
+        fmt_spec = printf_to_python_format(scaling.format) if scaling else ".2f"
 
         result: Dict[str, Any] = {
             "metadata": {
@@ -336,7 +304,7 @@ class RomContext:
         """Format an axis with name, units, and formatted values."""
         axis_scaling = defn.get_scaling(axis_table.scaling)
         axis_fmt = (
-            _printf_to_python_format(axis_scaling.format) if axis_scaling else ".2f"
+            printf_to_python_format(axis_scaling.format) if axis_scaling else ".2f"
         )
         return {
             "name": axis_table.name,
@@ -473,9 +441,9 @@ class RomContext:
             raise RomEditorError(f"Failed to read table data: {table_name}")
 
         scaling_a = defn_a.get_scaling(table_a.scaling)
-        fmt_a = _printf_to_python_format(scaling_a.format) if scaling_a else ".2f"
+        fmt_a = printf_to_python_format(scaling_a.format) if scaling_a else ".2f"
         scaling_b = defn_b.get_scaling(table_b.scaling)
-        fmt_b = _printf_to_python_format(scaling_b.format) if scaling_b else ".2f"
+        fmt_b = printf_to_python_format(scaling_b.format) if scaling_b else ".2f"
 
         vals_a = data_a["values"].flatten()
         vals_b = data_b["values"].flatten()
