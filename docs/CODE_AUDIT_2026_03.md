@@ -22,6 +22,7 @@
 - **DOC4** — Archived `MODIFICATION_TRACKING_PLAN.md` and `SUMMARY.md` to `docs/archive/`
 - **DOC5** — Updated ROM comparison spec: marked implemented "Out of Scope" items, fixed architecture table
 - **S1 (MCP + API)** — Extracted 13 methods (~500 lines) from `main.py` into `src/ui/mcp_mixin.py`: MCP server lifecycle (6), command API bridge (3), API handlers (4). `main.py` now 1,970 lines (was 2,606). Also fixed latent bug: API handlers imported renamed `_printf_to_python_format` from `rom_context.py` — now imports from `src.utils.formatting`.
+- **S2** — `compare_window.py` cleanup: consolidated 3 color helpers (`_get_cell_color`, `_axis_gradient_color`, inline 3D ratio code) into shared `_gradient_color`; moved `_all_nan` and `_get_axis_format` to `formatting.py`; removed redundant `_get_axis_format` method. Down from 1,413 to 1,379 lines.
 - **E2** — `_load_commits` warning now includes `exc_info=True` for stack trace
 - **Bonus** — Fixed pre-existing test failure: `test_get_table_font_size_default` expected 9 but default was changed to 11
 

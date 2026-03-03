@@ -2,10 +2,13 @@
 Shared formatting utilities for ROM table values.
 
 Consolidates printf-to-Python format conversion, value formatting,
-and scaling range lookup used across UI, MCP, and comparison modules.
+scaling range lookup, and color helpers used across UI, MCP, and
+comparison modules.
 """
 
 import re
+
+import numpy as np
 
 _PRINTF_PATTERN = re.compile(r"%[-+0 #]*(\d*)\.?(\d*)([diouxXeEfFgGaAcspn%])")
 
@@ -75,3 +78,28 @@ def get_scaling_format(rom_definition, scaling_name: str) -> str:
     if not scaling or not scaling.format:
         return ".2f"
     return printf_to_python_format(scaling.format)
+
+
+def all_nan(arr) -> bool:
+    """Check if a numpy array is entirely NaN (float arrays only)."""
+    try:
+        return bool(np.all(np.isnan(arr)))
+    except (TypeError, ValueError):
+        return False
+
+
+def get_axis_format(rom_definition, table, axis_type) -> str:
+    """Get Python format spec for a table's axis.
+
+    Args:
+        rom_definition: RomDefinition instance
+        table: Table with axis definitions
+        axis_type: AxisType enum value
+
+    Returns:
+        Python format spec string (defaults to '.2f').
+    """
+    axis_table = table.get_axis(axis_type)
+    if axis_table and axis_table.scaling:
+        return get_scaling_format(rom_definition, axis_table.scaling)
+    return ".2f"

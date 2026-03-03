@@ -11,6 +11,7 @@ All notable changes to NC Flash are documented here.
 - **Extracted MCP mixin** — Moved MCP server management (6 methods), command API bridge (3 methods), and API handlers (4 methods) from `main.py` into `src/ui/mcp_mixin.py`. `main.py` reduced from 2,606 to 1,970 lines
 - **Refactored test_runner command dispatch** — Replaced 159-line if/elif chain with dispatch table + small handler methods
 - **Separated dev dependencies** — Split `requirements.txt` into runtime-only + `requirements-dev.txt` for pytest/black/flake8
+- **Cleaned up compare_window.py** — Consolidated 3 color helpers into shared `_gradient_color`, moved `_all_nan` and `_get_axis_format` to `formatting.py`, eliminated inline ratio computation in 3D populate
 - **Updated README** — Fixed Python version (3.10+ not 3.12+), removed stale "In Development" / "Next Priorities" sections, updated project structure tree to reflect all current files
 - **Archived abandoned design docs** — Moved `MODIFICATION_TRACKING_PLAN.md` and `SUMMARY.md` to `docs/archive/` (described never-built SQLite design)
 - **Updated ROM comparison spec** — Marked implemented "Out of Scope" items (cross-definition compare, copy-table editing)
