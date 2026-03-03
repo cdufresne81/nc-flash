@@ -17,6 +17,11 @@
 - **DOC2** — README Python version corrected from 3.12+ to 3.10+
 - **DOC3** — Removed stale "In Development: Projects management" and "Next Priorities" sections
 - **DOC6** — Fixed `examples/README.md` `File > Open ROM >` → `File > Open >`
+- **S3** — Test runner `_execute_command` refactored from 159-line if/elif to dispatch table + handler methods
+- **M4** — Split `requirements.txt` into runtime-only + `requirements-dev.txt`; CI updated
+- **DOC4** — Archived `MODIFICATION_TRACKING_PLAN.md` and `SUMMARY.md` to `docs/archive/`
+- **DOC5** — Updated ROM comparison spec: marked implemented "Out of Scope" items, fixed architecture table
+- **E2** — `_load_commits` warning now includes `exc_info=True` for stack trace
 - **Bonus** — Fixed pre-existing test failure: `test_get_table_font_size_default` expected 9 but default was changed to 11
 
 ---
