@@ -4,12 +4,17 @@
 - Focus on the first value field of a table immediately after opening a table.
 - GitHub repo rename: user must go to https://github.com/cdufresne81/NCRomEditor/settings and change repo name to "nc-flash"
 
-## Recent Completed Work (Mar 5, 2026) - Private Secure Module Repo + CI + ECU Tests
-- **Private repo `cdufresne81/nc-flash-secure`** — Created private GitHub repo with 3 files from `src/ecu/_secure/` (`__init__.py`, `_security.py`, `_sbl.py`). `_sbl.py` uses local `SBL_SIZE` constant instead of relative import.
-- **CI workflow updated** — Added secure module checkout step (actions/checkout@v4) after main checkout in both test and lint jobs, with `continue-on-error: true` for stub mode.
-- **Release workflow updated** — Added secure module checkout step to both `build-windows` and `build-linux` jobs, without `continue-on-error` (releases must have secure module).
-- **81 new ECU tests** across 6 files: checksum (12), rom_utils (17), dtc (9), security (7), sbl (9), flash_manager (27). Security/SBL tests skip when `_secure` unavailable.
-- **Manual step needed**: User must create a GitHub PAT with `repo` scope and add it as `SECURE_MODULE_PAT` secret in the `nc-flash` repo settings.
+## Pending — ECU Module (on funny-dhawan branch, NOT on master)
+- Private repo `cdufresne81/nc-flash-secure` created (seed-to-key + SBL data)
+- `src/ecu/` module + `src/ui/flash_mixin.py` + 81 tests — ready for testing
+- CI/release secure module checkout steps — needs `SECURE_MODULE_PAT` secret
+- Will merge to master after user testing
+
+## Recent Completed Work (Mar 5, 2026) - Pipeline Fixes
+- **Black formatting** — Ran black on 21 unformatted files (was failing CI lint)
+- **Release pytest fix** — Changed `requirements.txt` to `requirements-dev.txt` in release.yml (pytest was missing)
+- **workflow_dispatch** — Added manual trigger to both CI and release workflows
+- **CLAUDE.md** — Added `black` to quality gates checklist
 
 ## Recent Completed Work (Mar 3, 2026) - Code Audit & Cleanup
 - **Full codebase audit** — Read all 47 source files (16,453 lines), all 19 test files (243 tests), all docs/configs. Wrote detailed audit to `docs/CODE_AUDIT_2026_03.md`.

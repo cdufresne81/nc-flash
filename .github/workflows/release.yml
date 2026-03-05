@@ -17,13 +17,6 @@ jobs:
     steps:
     - uses: actions/checkout@v4
 
-    - name: Checkout secure module
-      uses: actions/checkout@v4
-      with:
-        repository: cdufresne81/nc-flash-secure
-        token: ${{ secrets.SECURE_MODULE_PAT }}
-        path: src/ecu/_secure
-
     - name: Set up Python
       uses: actions/setup-python@v5
       with:
@@ -82,13 +75,6 @@ jobs:
 
     steps:
     - uses: actions/checkout@v4
-
-    - name: Checkout secure module
-      uses: actions/checkout@v4
-      with:
-        repository: cdufresne81/nc-flash-secure
-        token: ${{ secrets.SECURE_MODULE_PAT }}
-        path: src/ecu/_secure
 
     - name: Set up Python
       uses: actions/setup-python@v5

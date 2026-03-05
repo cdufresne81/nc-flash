@@ -4,12 +4,6 @@ All notable changes to NC Flash are documented here.
 
 ## [Unreleased]
 
-### Added
-- **Private secure module repo** — Created `cdufresne81/nc-flash-secure` (private) to store seed-to-key algorithm and SBL binary data, keeping sensitive code out of the public repo
-- **CI secure module checkout** — CI workflow clones private `nc-flash-secure` into `src/ecu/_secure/` with `continue-on-error: true` for stub-mode compatibility on forks/PRs without PAT access
-- **Release secure module checkout** — Release workflow (both Windows and Linux builds) clones private secure module; release builds require the module (no continue-on-error)
-- **ECU module test suite** — 81 new tests across 6 files: `test_ecu_checksum.py` (12), `test_ecu_rom_utils.py` (17), `test_ecu_dtc.py` (9), `test_ecu_security.py` (7), `test_ecu_sbl.py` (9), `test_ecu_flash_manager.py` (27). Security/SBL tests auto-skip when private module unavailable
-
 ### Changed
 - **Extracted shared icon factory** — Moved QPainter toolbar icons from `main.py` (143 lines) and `table_viewer_window.py` (102 lines) into `src/ui/icons.py` with dispatch table
 - **Consolidated duplicated format utilities** — Created `src/utils/formatting.py` with shared `printf_to_python_format`, `format_value`, `get_scaling_range`, `get_scaling_format` (was duplicated 3-4x across modules)
