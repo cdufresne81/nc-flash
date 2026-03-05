@@ -18,6 +18,7 @@ from matplotlib.figure import Figure
 from ..core.rom_definition import Table, TableType, RomDefinition, AxisType
 from ..utils.constants import APP_NAME
 from ..utils.colormap import get_colormap
+from ..utils.formatting import get_scaling_range
 
 logger = logging.getLogger(__name__)
 
@@ -34,16 +35,8 @@ class _GraphPlotMixin:
 
     def _get_scaling_range(self):
         """Get min/max from the table's scaling definition, or None."""
-        if not self.rom_definition or not self.table or not self.table.scaling:
-            return None
-        scaling = self.rom_definition.get_scaling(self.table.scaling)
-        if not scaling:
-            return None
-        if scaling.min == 0 and scaling.max == 0:
-            return None
-        if scaling.min == scaling.max:
-            return None
-        return (scaling.min, scaling.max)
+        scaling_name = self.table.scaling if self.table else None
+        return get_scaling_range(self.rom_definition, scaling_name)
 
     def _do_plot(self):
         """Core plot logic: save angles, clear, plot by type, restore angles.

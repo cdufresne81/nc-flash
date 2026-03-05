@@ -8,7 +8,8 @@ import json
 import pytest
 from pathlib import Path
 
-from src.mcp.rom_context import RomContext, _printf_to_python_format
+from src.mcp.rom_context import RomContext
+from src.utils.formatting import printf_to_python_format
 
 
 @pytest.fixture
@@ -24,28 +25,28 @@ def rom_path(sample_rom_path):
 
 
 # ------------------------------------------------------------------
-# _printf_to_python_format
+# printf_to_python_format (shared utility)
 # ------------------------------------------------------------------
 
 
 class TestPrintfConversion:
     def test_float_format(self):
-        assert _printf_to_python_format("%0.2f") == ".2f"
+        assert printf_to_python_format("%0.2f") == ".2f"
 
     def test_integer_format(self):
-        assert _printf_to_python_format("%d") == "d"
+        assert printf_to_python_format("%d") == "d"
 
     def test_width_and_precision(self):
-        assert _printf_to_python_format("%8.3f") == "8.3f"
+        assert printf_to_python_format("%8.3f") == "8.3f"
 
     def test_empty_returns_default(self):
-        assert _printf_to_python_format("") == ".2f"
+        assert printf_to_python_format("") == ".2f"
 
     def test_none_returns_default(self):
-        assert _printf_to_python_format(None) == ".2f"
+        assert printf_to_python_format(None) == ".2f"
 
     def test_unrecognized_returns_default(self):
-        assert _printf_to_python_format("not-a-format") == ".2f"
+        assert printf_to_python_format("not-a-format") == ".2f"
 
 
 # ------------------------------------------------------------------

@@ -524,25 +524,6 @@ class TableViewer(QWidget):
         """Clear the viewer"""
         self._display.clear()
 
-    def _get_value_format(self) -> str:
-        """Get the Python format spec for the current table's values."""
-        return self._display.get_value_format()
-
-    def _format_value(self, value: float, format_spec: str) -> str:
-        """Format a value using the given format spec with error handling."""
-        return self._display.format_value(value, format_spec)
-
-    def _get_cell_color(
-        self, value: float, values: np.ndarray, row: int, col: int
-    ) -> QColor:
-        """Calculate cell background color based on gradient mode."""
-        return self._display.get_cell_color(value, values, row, col)
-
-    # Legacy method kept for backwards compatibility
-    def _ratio_to_color(self, ratio: float) -> QColor:
-        """Convert 0-1 ratio to thermal/rainbow gradient."""
-        return self._display.ratio_to_color(ratio)
-
     def _on_cell_changed(self, row: int, col: int):
         """Handle cell value change from user edit"""
         self._edit.on_cell_changed(row, col)

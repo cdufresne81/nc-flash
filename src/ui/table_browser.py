@@ -380,24 +380,6 @@ class TableBrowser(QWidget):
         self.modified_tables.clear()
         self._update_table_colors()
 
-    def update_modified_tables(self, modified_table_names: list):
-        """
-        Update the list of modified tables (deprecated - use update_modified_tables_by_address)
-
-        Args:
-            modified_table_names: List of table names that have been modified
-        """
-        # Clear and rebuild the set using table addresses
-        self.modified_tables.clear()
-
-        if self.definition:
-            for table_name in modified_table_names:
-                table = self.definition.get_table_by_name(table_name)
-                if table:
-                    self.modified_tables.add(table.address)
-
-        self._update_table_colors()
-
     def update_modified_tables_by_address(self, modified_addresses: list):
         """
         Update the list of modified tables by address

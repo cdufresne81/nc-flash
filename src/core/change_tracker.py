@@ -367,10 +367,6 @@ class ChangeTracker:
         """Get all pending changes grouped by table"""
         return [p.to_table_changes() for p in self._pending.values() if p.has_changes()]
 
-    def get_modified_tables(self) -> List[str]:
-        """Get list of table names with pending changes (deprecated - use get_modified_addresses_for_rom)"""
-        return [p.table_name for p in self._pending.values() if p.has_changes()]
-
     def get_modified_table_addresses(self) -> List[str]:
         """Get list of raw table addresses with pending changes (all ROMs combined)."""
         return [p.table_address for p in self._pending.values() if p.has_changes()]

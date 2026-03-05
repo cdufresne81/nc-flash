@@ -4,7 +4,6 @@ Table Display Helper
 Handles rendering, formatting, and coloring for TableViewer.
 """
 
-import re
 import numpy as np
 import logging
 
@@ -15,6 +14,7 @@ from PySide6.QtGui import QColor, QBrush
 from ...core.rom_definition import Table, TableType, AxisType
 from ...utils.settings import get_settings
 from ...utils.colormap import get_colormap
+from ...utils.formatting import printf_to_python_format, format_value, get_scaling_range
 from .context import (
     TableViewerContext,
     save_header_resize_modes,
@@ -23,8 +23,6 @@ from .context import (
 )
 
 logger = logging.getLogger(__name__)
-
-_PRINTF_PATTERN = re.compile(r"%[-+0 #]*(\d*)\.?(\d*)([diouxXeEfFgGaAcspn%])")
 
 
 class TableDisplayHelper:
@@ -527,25 +525,7 @@ class TableDisplayHelper:
 
     def _printf_to_python_format(self, printf_format: str) -> str:
         """Convert printf-style format to Python format spec."""
-        if not printf_format:
-            return ".2f"
-
-        match = _PRINTF_PATTERN.match(printf_format)
-        if not match:
-            return ".2f"
-
-        width = match.group(1)
-        precision = match.group(2)
-        specifier = match.group(3)
-
-        result = ""
-        if width:
-            result += width
-        if precision:
-            result += f".{precision}"
-        result += specifier
-
-        return result
+        return printf_to_python_format(printf_format)
 
     def get_value_format(self) -> str:
         """Get the Python format spec for the current table's values."""
@@ -579,10 +559,7 @@ class TableDisplayHelper:
 
     def format_value(self, value: float, format_spec: str) -> str:
         """Format a value using the given format spec with error handling."""
-        try:
-            return f"{value:{format_spec}}"
-        except (ValueError, TypeError):
-            return f"{value:.2f}"
+        return format_value(value, format_spec)
 
     def ratio_to_color(self, ratio: float) -> QColor:
         """
@@ -596,22 +573,10 @@ class TableDisplayHelper:
 
         Returns (min, max) tuple, or None if scaling has no valid range defined.
         """
-        if not self.ctx.rom_definition:
-            return None
         name = scaling_name or (
             self.ctx.current_table.scaling if self.ctx.current_table else None
         )
-        if not name:
-            return None
-        scaling = self.ctx.rom_definition.get_scaling(name)
-        if not scaling:
-            return None
-        # min=0 and max=0 means no range defined
-        if scaling.min == 0 and scaling.max == 0:
-            return None
-        if scaling.min == scaling.max:
-            return None
-        return (scaling.min, scaling.max)
+        return get_scaling_range(self.ctx.rom_definition, name)
 
     def get_cell_color(
         self, value: float, values: np.ndarray, row: int, col: int

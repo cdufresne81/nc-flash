@@ -6,7 +6,6 @@ Read-only view with synchronized scrolling and keyboard navigation.
 """
 
 import logging
-import re
 
 import numpy as np
 from PySide6.QtWidgets import (
@@ -42,70 +41,16 @@ from PySide6.QtGui import (
 from ..core.rom_definition import Table, TableType, AxisType, RomDefinition
 from ..core.rom_reader import RomReader
 from ..utils.colormap import get_colormap
+from ..utils.formatting import (
+    all_nan as _all_nan,
+    format_value as _format_value,
+    get_axis_format as _get_axis_format,
+    get_scaling_format as _get_scaling_format,
+    get_scaling_range as _get_scaling_range,
+)
 from ..utils.settings import get_settings
 
 logger = logging.getLogger(__name__)
-
-_PRINTF_PATTERN = re.compile(r"%[-+0 #]*(\d*)\.?(\d*)([diouxXeEfFgGaAcspn%])")
-
-
-def _printf_to_python_format(printf_format: str) -> str:
-    """Convert printf-style format to Python format spec."""
-    if not printf_format:
-        return ".2f"
-    match = _PRINTF_PATTERN.match(printf_format)
-    if not match:
-        return ".2f"
-    width = match.group(1)
-    precision = match.group(2)
-    specifier = match.group(3)
-    result = ""
-    if width:
-        result += width
-    if precision:
-        result += f".{precision}"
-    result += specifier
-    return result
-
-
-def _format_value(value: float, format_spec: str) -> str:
-    """Format a value using the given format spec with error handling."""
-    try:
-        return f"{value:{format_spec}}"
-    except (ValueError, TypeError):
-        return f"{value:.2f}"
-
-
-def _all_nan(arr) -> bool:
-    """Check if a numpy array is entirely NaN (float arrays only)."""
-    try:
-        return np.all(np.isnan(arr))
-    except (TypeError, ValueError):
-        return False
-
-
-def _get_scaling_format(rom_definition: RomDefinition, scaling_name: str) -> str:
-    """Get Python format spec for a scaling name."""
-    if not rom_definition or not scaling_name:
-        return ".2f"
-    scaling = rom_definition.get_scaling(scaling_name)
-    if not scaling or not scaling.format:
-        return ".2f"
-    return _printf_to_python_format(scaling.format)
-
-
-def _get_scaling_range(rom_definition: RomDefinition, scaling_name: str):
-    """Get (min, max) from scaling, or None if not defined."""
-    if not rom_definition or not scaling_name:
-        return None
-    scaling = rom_definition.get_scaling(scaling_name)
-    if not scaling:
-        return None
-    if scaling.min == 0 and scaling.max == 0:
-        return None
-    if scaling.min == scaling.max:
-        return None
-    return (scaling.min, scaling.max)
 
 
 class _CompareCellDelegate(QStyledItemDelegate):
@@ -1133,7 +1078,7 @@ class CompareWindow(QMainWindow):
         widget.setColumnCount(2)
 
         value_fmt = _get_scaling_format(rom_definition, table.scaling)
-        y_fmt = self._get_axis_format(table, AxisType.Y_AXIS, rom_definition)
+        y_fmt = _get_axis_format(rom_definition, table, AxisType.Y_AXIS)
 
         # Flip
         flipy = table.flipy
@@ -1152,7 +1097,7 @@ class CompareWindow(QMainWindow):
             # Y-axis cell
             if display_y is not None and i < len(display_y):
                 y_item = QTableWidgetItem(_format_value(display_y[i], y_fmt))
-                y_color = self._axis_gradient_color(display_y[i], y_min, y_max)
+                y_color = self._gradient_color(display_y[i], y_min, y_max)
                 is_y_changed = data_idx in y_changed
                 if self._changed_only and not is_y_changed:
                     y_item.setBackground(QBrush(self._dim_color(y_color)))
@@ -1210,8 +1155,8 @@ class CompareWindow(QMainWindow):
         widget.setColumnCount(cols + 1)
 
         value_fmt = _get_scaling_format(rom_definition, table.scaling)
-        x_fmt = self._get_axis_format(table, AxisType.X_AXIS, rom_definition)
-        y_fmt = self._get_axis_format(table, AxisType.Y_AXIS, rom_definition)
+        x_fmt = _get_axis_format(rom_definition, table, AxisType.X_AXIS)
+        y_fmt = _get_axis_format(rom_definition, table, AxisType.Y_AXIS)
 
         # Flips
         flipx = table.flipx
@@ -1244,7 +1189,7 @@ class CompareWindow(QMainWindow):
             for col in range(cols):
                 data_idx = (cols - 1 - col) if flipx else col
                 x_item = QTableWidgetItem(_format_value(display_x[col], x_fmt))
-                x_color = self._axis_gradient_color(display_x[col], x_min, x_max)
+                x_color = self._gradient_color(display_x[col], x_min, x_max)
                 is_x_changed = data_idx in x_changed
 
                 if self._changed_only and not is_x_changed:
@@ -1273,7 +1218,7 @@ class CompareWindow(QMainWindow):
             for row in range(rows):
                 data_idx = (rows - 1 - row) if flipy else row
                 y_item = QTableWidgetItem(_format_value(display_y[row], y_fmt))
-                y_color = self._axis_gradient_color(display_y[row], y_min, y_max)
+                y_color = self._gradient_color(display_y[row], y_min, y_max)
                 is_y_changed = data_idx in y_changed
 
                 if self._changed_only and not is_y_changed:
@@ -1293,13 +1238,6 @@ class CompareWindow(QMainWindow):
                 widget.setItem(row + 1, 0, y_item)
 
         # Data cells (rows 1+, cols 1+)
-        # Cache value range for color calculation
-        scaling_range = _get_scaling_range(rom_definition, table.scaling)
-        if scaling_range:
-            v_min, v_max = scaling_range
-        else:
-            v_min, v_max = float(np.min(values)), float(np.max(values))
-
         for row in range(rows):
             for col in range(cols):
                 data_row = (rows - 1 - row) if flipy else row
@@ -1309,13 +1247,9 @@ class CompareWindow(QMainWindow):
                     _format_value(display_values[row, col], value_fmt)
                 )
 
-                # Color
-                if v_max == v_min:
-                    ratio = 0.5
-                else:
-                    ratio = (display_values[row, col] - v_min) / (v_max - v_min)
-                    ratio = max(0.0, min(1.0, ratio))
-                color = get_colormap().ratio_to_color(ratio)
+                color = self._get_cell_color(
+                    display_values[row, col], values, table, rom_definition
+                )
 
                 is_changed = (data_row, data_col) in changed_cells
 
@@ -1360,6 +1294,15 @@ class CompareWindow(QMainWindow):
 
     # ========== Color Helpers ==========
 
+    def _gradient_color(self, value: float, min_val: float, max_val: float) -> QColor:
+        """Get thermal gradient color for a value within a range."""
+        if max_val == min_val:
+            ratio = 0.5
+        else:
+            ratio = (value - min_val) / (max_val - min_val)
+            ratio = max(0.0, min(1.0, ratio))
+        return get_colormap().ratio_to_color(ratio)
+
     def _get_cell_color(
         self,
         value: float,
@@ -1374,24 +1317,7 @@ class CompareWindow(QMainWindow):
         else:
             min_val = float(np.min(values))
             max_val = float(np.max(values))
-
-        if max_val == min_val:
-            ratio = 0.5
-        else:
-            ratio = (value - min_val) / (max_val - min_val)
-            ratio = max(0.0, min(1.0, ratio))
-        return get_colormap().ratio_to_color(ratio)
-
-    def _axis_gradient_color(
-        self, value: float, min_val: float, max_val: float
-    ) -> QColor:
-        """Get gradient color for an axis value."""
-        if max_val == min_val:
-            ratio = 0.5
-        else:
-            ratio = (value - min_val) / (max_val - min_val)
-            ratio = max(0.0, min(1.0, ratio))
-        return get_colormap().ratio_to_color(ratio)
+        return self._gradient_color(value, min_val, max_val)
 
     def _get_axis_range(
         self,
@@ -1409,15 +1335,6 @@ class CompareWindow(QMainWindow):
         if display_axis is not None and len(display_axis) > 0:
             return float(np.min(display_axis)), float(np.max(display_axis))
         return 0.0, 1.0
-
-    def _get_axis_format(
-        self, table: Table, axis_type: AxisType, rom_definition: RomDefinition
-    ) -> str:
-        """Get format spec for axis values."""
-        axis_table = table.get_axis(axis_type)
-        if axis_table and axis_table.scaling:
-            return _get_scaling_format(rom_definition, axis_table.scaling)
-        return ".2f"
 
     def _dim_color(self, color: QColor) -> QColor:
         """Return a dimmed version of a color for unchanged cells."""
