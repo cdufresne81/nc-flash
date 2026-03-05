@@ -150,9 +150,9 @@ class AppSettings:
         Get font size for table cells
 
         Returns:
-            int: Font size in pixels (default 9 for compact display)
+            int: Font size in pixels (default 11)
         """
-        return int(self.settings.value("display/table_font_size", 9))
+        return int(self.settings.value("display/table_font_size", 11))
 
     def set_table_font_size(self, size: int):
         """

@@ -4,6 +4,18 @@
 - Focus on the first value field of a table immediately after opening a table.
 - GitHub repo rename: user must go to https://github.com/cdufresne81/NCRomEditor/settings and change repo name to "nc-flash"
 
+## Recent Completed Work (Mar 3, 2026) - Code Audit & Cleanup
+- **Full codebase audit** — Read all 47 source files (16,453 lines), all 19 test files (243 tests), all docs/configs. Wrote detailed audit to `docs/CODE_AUDIT_2026_03.md`.
+- **Dead code removal** — Removed 7 items: 4 unused dataclasses from `version_models.py`, 4 legacy methods from `table_viewer.py`, deprecated `get_modified_tables()` from `change_tracker.py`, legacy `ScalingEditDialog` from `scaling_edit_dialog.py`, unused `HistoryPanel` from `history_viewer.py`, deprecated `update_modified_tables()` from `table_browser.py`.
+- **Duplication consolidation** — Created `src/utils/formatting.py` with shared `printf_to_python_format`, `format_value`, `get_scaling_range`, `get_scaling_format`. Eliminated triple-duplication across `display.py`, `compare_window.py`, `rom_context.py`.
+- **Interpolation dedup** — Unified near-identical `interpolate_vertical`/`interpolate_horizontal` (~250 lines each) into shared `_interpolate_1d(direction)` + extracted `_apply_axis_interpolation` and `_apply_data_interpolation` helpers. Fixed bug where horizontal emit was per-range instead of once-after-all-ranges.
+- **Error handling fixes** — 3 silent `except: pass` in `main.py` now log with `logger.debug`; exception chain added in `project_manager.py`.
+- **Test fix** — Fixed pre-existing `test_get_table_font_size_default` (expected 9 but default was changed to 11).
+- **Test runner dispatch refactor** — Replaced 159-line if/elif chain in `_execute_command` with dispatch table + small handler methods.
+- **Dependency split** — `requirements.txt` now runtime-only; dev tools in `requirements-dev.txt`. CI updated to use `requirements-dev.txt`.
+- **Doc cleanup** — Archived abandoned `MODIFICATION_TRACKING_PLAN/SUMMARY.md` to `docs/archive/`. Updated ROM comparison spec to reflect implemented features.
+- **MCP mixin extraction** — Moved 13 MCP/API methods (~500 lines) from `main.py` into `src/ui/mcp_mixin.py`. `main.py` is now 1,970 lines (was 2,606). Also fixed latent import bug where API handlers referenced renamed `_printf_to_python_format`.
+
 ## Recent Completed Work (Mar 2, 2026) - Rebrand: NC ROM Editor → NC Flash
 - **Full project rename** — Renamed all references from "NC ROM Editor" / "NCRomEditor" to "NC Flash" across the entire codebase. Display name is "NC Flash", exe/filenames use "NCFlash" (no space), GitHub repo is `cdufresne81/nc-flash`. Updated: app name, exe name, asset files, installer, build scripts, CI workflow, MCP server, QSettings keys, user data directory, launcher scripts, setup wizard, documentation, tests, and CHANGELOG.
 
