@@ -68,6 +68,7 @@ When ending a work session, complete ALL steps below. Work is NOT complete until
 
 1. **Run quality gates** (if code changed):
    ```bash
+   black src/ tests/ main.py
    pytest
    ```
 

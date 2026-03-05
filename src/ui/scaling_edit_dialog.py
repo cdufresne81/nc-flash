@@ -288,4 +288,3 @@ class TableScalingDialog(QDialog):
         for tab_name, (tab, scaling_name, scaling) in self.tabs.items():
             result[scaling_name] = (tab.get_values(), scaling)
         return result
-

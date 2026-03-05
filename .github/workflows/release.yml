@@ -16,6 +16,13 @@ jobs:
     steps:
     - uses: actions/checkout@v4
 
+    - name: Checkout secure module
+      uses: actions/checkout@v4
+      with:
+        repository: cdufresne81/nc-flash-secure
+        token: ${{ secrets.SECURE_MODULE_PAT }}
+        path: src/ecu/_secure
+
     - name: Set up Python
       uses: actions/setup-python@v5
       with:
@@ -24,7 +31,7 @@ jobs:
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
-        pip install -r requirements.txt
+        pip install -r requirements-dev.txt
         pip install -r packaging/requirements-build.txt
 
     - name: Run tests
@@ -75,6 +82,13 @@ jobs:
     steps:
     - uses: actions/checkout@v4
 
+    - name: Checkout secure module
+      uses: actions/checkout@v4
+      with:
+        repository: cdufresne81/nc-flash-secure
+        token: ${{ secrets.SECURE_MODULE_PAT }}
+        path: src/ecu/_secure
+
     - name: Set up Python
       uses: actions/setup-python@v5
       with:
@@ -95,7 +109,7 @@ jobs:
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
-        pip install -r requirements.txt
+        pip install -r requirements-dev.txt
         pip install -r packaging/requirements-build.txt
 
     - name: Run tests

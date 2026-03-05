@@ -294,6 +294,25 @@ class AppSettings:
         """
         self.settings.setValue("tools/romdrop_executable_path", path)
 
+    def get_j2534_dll_path(self) -> str:
+        """
+        Get the configured J2534 DLL path for ECU communication.
+
+        Returns:
+            str: Path to J2534 DLL, or empty string if not configured
+        """
+        path = self.settings.value("ecu/j2534_dll_path", "")
+        return os.path.normpath(path) if path else ""
+
+    def set_j2534_dll_path(self, path: str):
+        """
+        Set the J2534 DLL path for ECU communication.
+
+        Args:
+            path: Path to J2534 DLL (e.g., op20pt32.dll)
+        """
+        self.settings.setValue("ecu/j2534_dll_path", path)
+
     def get_mcp_auto_start(self) -> bool:
         """Get whether the MCP server should start automatically on app launch."""
         return self.settings.value("tools/mcp_auto_start", False, type=bool)

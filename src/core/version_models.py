@@ -227,7 +227,6 @@ class AxisChange:
         )
 
 
-
 @dataclass
 class OriginalRomInfo:
     """Metadata about the original ROM file"""
