@@ -372,4 +372,3 @@ class CommitDetailsWidget(QWidget):
         self.view_diff_btn.setEnabled(False)
         self.revert_btn.setEnabled(False)
         self.delete_btn.setEnabled(False)
-

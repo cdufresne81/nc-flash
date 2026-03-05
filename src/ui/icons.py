@@ -51,6 +51,7 @@ def make_icon(widget, name: str) -> QIcon:
 
 # -- Main window icons --
 
+
 def _draw_open(p, c):
     p.drawLine(2, 7, 2, 17)
     p.drawLine(2, 17, 17, 17)
@@ -76,10 +77,16 @@ def _draw_compare(p, c):
 
 
 def _draw_flash(p, c):
-    bolt = QPolygonF([
-        QPointF(11, 2), QPointF(6, 10), QPointF(10, 10),
-        QPointF(9, 18), QPointF(14, 9), QPointF(10, 9),
-    ])
+    bolt = QPolygonF(
+        [
+            QPointF(11, 2),
+            QPointF(6, 10),
+            QPointF(10, 10),
+            QPointF(9, 18),
+            QPointF(14, 9),
+            QPointF(10, 9),
+        ]
+    )
     p.setBrush(c)
     p.drawPolygon(bolt)
 
@@ -91,11 +98,22 @@ def _draw_settings(p, c):
     pts = []
     for i in range(teeth):
         a = 2 * pi * i / teeth - pi / 2
-        pts.append(QPointF(cx + r_out * cos(a - tooth_half), cy + r_out * sin(a - tooth_half)))
-        pts.append(QPointF(cx + r_out * cos(a + tooth_half), cy + r_out * sin(a + tooth_half)))
+        pts.append(
+            QPointF(cx + r_out * cos(a - tooth_half), cy + r_out * sin(a - tooth_half))
+        )
+        pts.append(
+            QPointF(cx + r_out * cos(a + tooth_half), cy + r_out * sin(a + tooth_half))
+        )
         a_next = 2 * pi * (i + 0.5) / teeth - pi / 2
-        pts.append(QPointF(cx + r_in * cos(a + tooth_half), cy + r_in * sin(a + tooth_half)))
-        pts.append(QPointF(cx + r_in * cos(a_next + tooth_half), cy + r_in * sin(a_next + tooth_half)))
+        pts.append(
+            QPointF(cx + r_in * cos(a + tooth_half), cy + r_in * sin(a + tooth_half))
+        )
+        pts.append(
+            QPointF(
+                cx + r_in * cos(a_next + tooth_half),
+                cy + r_in * sin(a_next + tooth_half),
+            )
+        )
     p.setBrush(Qt.NoBrush)
     p.drawPolygon(QPolygonF(pts))
     p.drawEllipse(QPointF(cx, cy), 2.5, 2.5)
@@ -138,6 +156,7 @@ def _draw_mcp_off(p, c):
 
 
 # -- Table viewer window icons --
+
 
 def _draw_copy(p, c):
     p.drawRect(3, 4, 14, 14)

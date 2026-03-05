@@ -56,6 +56,7 @@ class SettingsDialog(QDialog):
         self.create_appearance_tab()
         self.create_editor_tab()
         self.create_tools_tab()
+        self.create_ecu_tab()
 
         # Dialog buttons (OK, Cancel, Apply)
         button_box = QDialogButtonBox(
@@ -272,6 +273,105 @@ class SettingsDialog(QDialog):
 
         self.tabs.addTab(tab, "Tools")
 
+    def create_ecu_tab(self):
+        """Create the ECU settings tab"""
+        tab = QWidget()
+        layout = QVBoxLayout()
+        tab.setLayout(layout)
+
+        # J2534 group
+        j2534_group = QGroupBox("J2534 PassThru Interface")
+        j2534_layout = QFormLayout()
+        j2534_group.setLayout(j2534_layout)
+
+        # J2534 DLL path
+        dll_path_layout = QHBoxLayout()
+        self.j2534_dll_edit = QLineEdit()
+        self.j2534_dll_edit.setPlaceholderText("op20pt32.dll (auto-detected)")
+        dll_path_layout.addWidget(self.j2534_dll_edit)
+
+        browse_dll_button = QPushButton("Browse...")
+        browse_dll_button.clicked.connect(self.browse_j2534_dll)
+        dll_path_layout.addWidget(browse_dll_button)
+
+        j2534_layout.addRow("J2534 DLL override:", dll_path_layout)
+
+        dll_help = QLabel(
+            "Leave empty for Tactrix OpenPort 2.0 (op20pt32.dll is found automatically). "
+            "Only set this if you use a different J2534 adapter."
+        )
+        dll_help.setStyleSheet("color: gray; font-size: 10px;")
+        dll_help.setWordWrap(True)
+        j2534_layout.addRow("", dll_help)
+
+        # Test connection button
+        self.test_j2534_button = QPushButton("Test Connection")
+        self.test_j2534_button.clicked.connect(self._test_j2534_connection)
+        j2534_layout.addRow("", self.test_j2534_button)
+
+        layout.addWidget(j2534_group)
+
+        # Security module status
+        status_group = QGroupBox("Flash Security Module")
+        status_layout = QVBoxLayout()
+        status_group.setLayout(status_layout)
+
+        from src.ecu.flash_manager import SECURE_MODULE_AVAILABLE
+
+        if SECURE_MODULE_AVAILABLE:
+            status_label = QLabel("Installed — flash operations are available")
+            status_label.setStyleSheet("color: green; font-weight: bold;")
+        else:
+            status_label = QLabel(
+                "Not installed — flash operations are disabled.\n"
+                "Contact the project maintainer for access to the security module."
+            )
+            status_label.setStyleSheet("color: red;")
+            status_label.setWordWrap(True)
+
+        status_layout.addWidget(status_label)
+        layout.addWidget(status_group)
+
+        layout.addStretch()
+        self.tabs.addTab(tab, "ECU")
+
+    def browse_j2534_dll(self):
+        """Open file browser for J2534 DLL"""
+        current_path = self.j2534_dll_edit.text()
+        if not current_path:
+            current_path = str(Path.cwd())
+
+        file_path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Select J2534 DLL",
+            current_path,
+            "DLL Files (*.dll);;All Files (*)",
+        )
+
+        if file_path:
+            self.j2534_dll_edit.setText(file_path)
+
+    def _test_j2534_connection(self):
+        """Test J2534 device connection"""
+        from PySide6.QtWidgets import QMessageBox
+        from src.ecu.constants import DEFAULT_J2534_DLL
+
+        dll_path = self.j2534_dll_edit.text().strip() or DEFAULT_J2534_DLL
+
+        try:
+            from src.ecu.j2534 import J2534Device
+
+            device = J2534Device(dll_path)
+            device.open()
+            device.close()
+            QMessageBox.information(
+                self, "Connection OK", "J2534 device connected successfully!"
+            )
+        except Exception as e:
+            QMessageBox.warning(
+                self, "Connection Failed", f"Could not connect to J2534 device:\n{e}"
+            )
+
     def load_settings(self):
         """Load current settings into the UI"""
         # Load projects directory
@@ -310,6 +410,10 @@ class SettingsDialog(QDialog):
 
         # Load MCP auto-start setting
         self.mcp_auto_start_checkbox.setChecked(self.settings.get_mcp_auto_start())
+
+        # Load J2534 DLL path
+        j2534_path = self.settings.get_j2534_dll_path()
+        self.j2534_dll_edit.setText(j2534_path)
 
     def browse_projects_directory(self):
         """Open directory browser for projects directory"""
@@ -433,6 +537,10 @@ class SettingsDialog(QDialog):
 
         # Save MCP auto-start setting
         self.settings.set_mcp_auto_start(self.mcp_auto_start_checkbox.isChecked())
+
+        # Save J2534 DLL path
+        j2534_path = self.j2534_dll_edit.text().strip()
+        self.settings.set_j2534_dll_path(j2534_path)
 
         # Emit signal that settings changed
         self.settings_changed.emit()

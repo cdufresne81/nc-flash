@@ -81,3 +81,6 @@ projects/*
 
 # Workspace state file (written by app, read by MCP server)
 workspace.json
+
+# Private security module (not for public distribution)
+src/ecu/_secure/

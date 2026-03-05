@@ -111,13 +111,9 @@ class TableInterpolationHelper:
                     outer_range = range(
                         sel_range.leftColumn(), sel_range.rightColumn() + 1
                     )
-                    inner_range = range(
-                        sel_range.topRow(), sel_range.bottomRow() + 1
-                    )
+                    inner_range = range(sel_range.topRow(), sel_range.bottomRow() + 1)
                 else:
-                    outer_range = range(
-                        sel_range.topRow(), sel_range.bottomRow() + 1
-                    )
+                    outer_range = range(sel_range.topRow(), sel_range.bottomRow() + 1)
                     inner_range = range(
                         sel_range.leftColumn(), sel_range.rightColumn() + 1
                     )
@@ -216,13 +212,22 @@ class TableInterpolationHelper:
                         if abs(new_val - old_val) > 1e-9:
                             if is_axis_line == axis_key:
                                 self._apply_axis_interpolation(
-                                    item, coords, axis_type, axis_key,
-                                    old_val, new_val, axis_changes,
+                                    item,
+                                    coords,
+                                    axis_type,
+                                    axis_key,
+                                    old_val,
+                                    new_val,
+                                    axis_changes,
                                 )
                                 cells_interpolated += 1
                             else:
                                 self._apply_data_interpolation(
-                                    item, coords, old_val, new_val, all_changes,
+                                    item,
+                                    coords,
+                                    old_val,
+                                    new_val,
+                                    all_changes,
                                 )
                                 cells_interpolated += 1
 
@@ -270,21 +275,26 @@ class TableInterpolationHelper:
             item.setText(self.display.format_value(new_val, axis_fmt))
             self.ctx.current_data[axis_key][data_idx] = new_val
             color = self.display.get_axis_color(
-                new_val, self.ctx.current_data[axis_key], axis_type,
+                new_val,
+                self.ctx.current_data[axis_key],
+                axis_type,
             )
             item.setBackground(QBrush(color))
         finally:
             self.ctx.editing_in_progress = False
 
-        axis_changes.append((
-            axis_key, data_idx,
-            float(old_val), float(new_val),
-            float(old_raw), float(new_raw),
-        ))
+        axis_changes.append(
+            (
+                axis_key,
+                data_idx,
+                float(old_val),
+                float(new_val),
+                float(old_raw),
+                float(new_raw),
+            )
+        )
 
-    def _apply_data_interpolation(
-        self, item, coords, old_val, new_val, all_changes
-    ):
+    def _apply_data_interpolation(self, item, coords, old_val, new_val, all_changes):
         """Apply an interpolated value to a data cell and record the change."""
         values = self.ctx.current_data["values"]
         if values.ndim == 2:
@@ -309,19 +319,25 @@ class TableInterpolationHelper:
             else:
                 values[coords[0]] = new_val
             color = self.display.get_cell_color(
-                new_val, values,
-                coords[0], coords[1] if values.ndim == 2 else 0,
+                new_val,
+                values,
+                coords[0],
+                coords[1] if values.ndim == 2 else 0,
             )
             item.setBackground(QBrush(color))
         finally:
             self.ctx.editing_in_progress = False
 
-        all_changes.append((
-            coords[0],
-            coords[1] if len(coords) > 1 else 0,
-            float(old_val), float(new_val),
-            float(old_raw), float(new_raw),
-        ))
+        all_changes.append(
+            (
+                coords[0],
+                coords[1] if len(coords) > 1 else 0,
+                float(old_val),
+                float(new_val),
+                float(old_raw),
+                float(new_raw),
+            )
+        )
 
     def interpolate_2d(self):
         """2D bilinear interpolation for 3D tables (B key)"""
@@ -428,7 +444,11 @@ class TableInterpolationHelper:
 
                         if abs(new_val - old_val) > 1e-9:
                             self._apply_data_interpolation(
-                                item, coords, old_val, new_val, all_changes,
+                                item,
+                                coords,
+                                old_val,
+                                new_val,
+                                all_changes,
                             )
 
                 if all_changes:
