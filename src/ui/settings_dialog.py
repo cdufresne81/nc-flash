@@ -56,7 +56,10 @@ class SettingsDialog(QDialog):
         self.create_appearance_tab()
         self.create_editor_tab()
         self.create_tools_tab()
-        self.create_ecu_tab()
+        try:
+            self.create_ecu_tab()
+        except ImportError:
+            pass
 
         # Dialog buttons (OK, Cancel, Apply)
         button_box = QDialogButtonBox(
@@ -275,6 +278,9 @@ class SettingsDialog(QDialog):
 
     def create_ecu_tab(self):
         """Create the ECU settings tab"""
+        # Import early so the tab is skipped entirely if the module is missing
+        from src.ecu.flash_manager import SECURE_MODULE_AVAILABLE
+
         tab = QWidget()
         layout = QVBoxLayout()
         tab.setLayout(layout)
@@ -315,8 +321,6 @@ class SettingsDialog(QDialog):
         status_group = QGroupBox("Flash Security Module")
         status_layout = QVBoxLayout()
         status_group.setLayout(status_layout)
-
-        from src.ecu.flash_manager import SECURE_MODULE_AVAILABLE
 
         if SECURE_MODULE_AVAILABLE:
             status_label = QLabel("Installed — flash operations are available")
@@ -411,9 +415,10 @@ class SettingsDialog(QDialog):
         # Load MCP auto-start setting
         self.mcp_auto_start_checkbox.setChecked(self.settings.get_mcp_auto_start())
 
-        # Load J2534 DLL path
-        j2534_path = self.settings.get_j2534_dll_path()
-        self.j2534_dll_edit.setText(j2534_path)
+        # Load J2534 DLL path (only if ECU tab was created)
+        if hasattr(self, "j2534_dll_edit"):
+            j2534_path = self.settings.get_j2534_dll_path()
+            self.j2534_dll_edit.setText(j2534_path)
 
     def browse_projects_directory(self):
         """Open directory browser for projects directory"""
@@ -538,9 +543,10 @@ class SettingsDialog(QDialog):
         # Save MCP auto-start setting
         self.settings.set_mcp_auto_start(self.mcp_auto_start_checkbox.isChecked())
 
-        # Save J2534 DLL path
-        j2534_path = self.j2534_dll_edit.text().strip()
-        self.settings.set_j2534_dll_path(j2534_path)
+        # Save J2534 DLL path (only if ECU tab was created)
+        if hasattr(self, "j2534_dll_edit"):
+            j2534_path = self.j2534_dll_edit.text().strip()
+            self.settings.set_j2534_dll_path(j2534_path)
 
         # Emit signal that settings changed
         self.settings_changed.emit()
