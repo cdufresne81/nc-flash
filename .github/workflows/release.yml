@@ -28,6 +28,12 @@ jobs:
         pip install -r requirements-dev.txt
         pip install -r packaging/requirements-build.txt
 
+    - name: Stamp version from tag
+      run: |
+        $version = "${{ github.ref_name }}".TrimStart("v")
+        (Get-Content src/utils/constants.py) -replace 'APP_VERSION = ".*"', "APP_VERSION = `"$version`"" | Set-Content src/utils/constants.py
+      shell: pwsh
+
     - name: Run tests
       run: pytest
 
@@ -98,6 +104,11 @@ jobs:
         python -m pip install --upgrade pip
         pip install -r requirements-dev.txt
         pip install -r packaging/requirements-build.txt
+
+    - name: Stamp version from tag
+      run: |
+        VERSION="${GITHUB_REF_NAME#v}"
+        sed -i "s/APP_VERSION = \".*\"/APP_VERSION = \"$VERSION\"/" src/utils/constants.py
 
     - name: Run tests
       run: pytest
