@@ -114,15 +114,25 @@ def calculate_flash_start_index(diff_offset: int) -> int:
     return max(aligned, ROM_FLASH_START_MIN)
 
 
-def get_calibration_crc(rom_data: bytes) -> int:
+_FLASH_COUNTER_OFFSET = 0xFFB00
+
+
+def get_calibration_crc(rom_data: bytes, clear_flash_counter: bool = False) -> int:
     """
     Calculate CRC-32 over the calibration region (0x2000 to end).
 
-    This matches romdrop's validate_factory_calibration / validate_patched_calibration
-    which compute crc32(rom[0x2000], 0xFE000).
+    When clear_flash_counter=True, clears 0xFFB00-0xFFB08 to 0xFF before
+    computing, matching romdrop's behavior for ROM validation. This ensures
+    the CRC is consistent regardless of how many times the ECU has been
+    flashed. Patch files should use clear_flash_counter=False (default).
     """
     from .checksum import crc32
 
+    if clear_flash_counter:
+        buf = bytearray(rom_data[_CAL_CRC_OFFSET : _CAL_CRC_OFFSET + _CAL_CRC_SIZE])
+        counter_rel = _FLASH_COUNTER_OFFSET - _CAL_CRC_OFFSET
+        buf[counter_rel : counter_rel + 8] = b"\xff" * 8
+        return crc32(bytes(buf))
     return crc32(rom_data[_CAL_CRC_OFFSET : _CAL_CRC_OFFSET + _CAL_CRC_SIZE])
 
 
@@ -219,8 +229,8 @@ def patch_rom(stock_rom: bytes, patch_data: bytes) -> PatchResult:
             "Invalid patch file: first byte is not 'L' — cannot locate cal-id"
         )
 
-    # Compute CRCs
-    stock_crc = get_calibration_crc(stock_rom)
+    # Compute CRCs (clear flash counter for ROM, not for patch file)
+    stock_crc = get_calibration_crc(stock_rom, clear_flash_counter=True)
     patch_crc = get_calibration_crc(patch_data)
 
     # Clear the factory checksum area (romdrop sets rom[0xFFB00:0xFFB08] = 0xFFFFFFFF)
