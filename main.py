@@ -811,17 +811,13 @@ class MainWindow(QMainWindow, RecentFilesMixin, ProjectMixin, SessionMixin, McpM
 
             if not rom_id or not xml_path:
                 logger.warning(f"No matching ROM definition found for {file_path}")
+                defs = self.rom_detector.get_definitions_summary()
                 QMessageBox.critical(
                     self,
                     "Unknown ROM",
                     "Could not identify ROM type. No matching definition found.\n\n"
-                    "Supported ROM IDs:\n"
-                    + "\n".join(
-                        [
-                            f"  - {info['xmlid']} ({info['make']} {info['model']})"
-                            for info in self.rom_detector.get_definitions_summary()
-                        ]
-                    ),
+                    f"{len(defs)} ROM definitions are available. "
+                    "Check that the file is a supported ROM image.",
                 )
                 return
 
