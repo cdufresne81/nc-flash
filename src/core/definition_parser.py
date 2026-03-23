@@ -9,7 +9,7 @@ from typing import Optional
 from pathlib import Path
 import logging
 
-from .rom_definition import RomDefinition, RomID, Scaling, Table, TableType, AxisType
+from .rom_definition import RomDefinition, RomID, Scaling, Table, TableType, AxisType, TableLayout
 from .exceptions import (
     DefinitionNotFoundError,
     DefinitionParseError,
@@ -223,6 +223,13 @@ class DefinitionParser:
                 logger.debug(f"Skipping table with unknown type: {type_str}")
                 return None  # Unknown type
 
+        # Parse layout attribute
+        layout_str = table_elem.get("layout", "contiguous")
+        try:
+            layout = TableLayout(layout_str)
+        except ValueError:
+            layout = TableLayout.CONTIGUOUS
+
         # Parse basic attributes
         table = Table(
             name=table_elem.get("name", "Unnamed"),
@@ -235,6 +242,7 @@ class DefinitionParser:
             swapxy=table_elem.get("swapxy", "false").lower() == "true",
             flipx=table_elem.get("flipx", "false").lower() == "true",
             flipy=table_elem.get("flipy", "false").lower() == "true",
+            layout=layout,
             axis_type=axis_type,
         )
 

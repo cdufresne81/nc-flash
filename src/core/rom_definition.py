@@ -27,6 +27,13 @@ class AxisType(Enum):
     Y_AXIS = "Y Axis"
 
 
+class TableLayout(Enum):
+    """Memory layout for table data"""
+
+    CONTIGUOUS = "contiguous"      # Standard: axes and data at separate contiguous addresses
+    INTERLEAVED = "interleaved"    # TCM-style: [M][N][X_axis][Y0 D0..DM][Y1 D1..DM]...
+
+
 @dataclass
 class RomID:
     """ROM identification metadata"""
@@ -106,6 +113,7 @@ class Table:
     swapxy: bool = False
     flipx: bool = False  # Reverse X axis order
     flipy: bool = False  # Reverse Y axis order
+    layout: TableLayout = TableLayout.CONTIGUOUS  # Memory layout
 
     # Child tables (axes for 2D/3D tables)
     children: List["Table"] = field(default_factory=list)

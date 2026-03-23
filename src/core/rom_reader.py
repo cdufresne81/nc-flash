@@ -15,7 +15,7 @@ from typing import Optional, Union
 import logging
 from simpleeval import simple_eval
 
-from .rom_definition import RomDefinition, Table, Scaling, TableType
+from .rom_definition import RomDefinition, Table, Scaling, TableType, TableLayout, AxisType
 from .storage_types import STORAGE_TYPE_FORMAT, DEFAULT_FORMAT_CHAR
 from .exceptions import (
     RomFileNotFoundError,
@@ -401,7 +401,11 @@ class RomReader:
                 f"Scaling '{table.scaling}' not found for table '{table.name}'"
             )
 
-        # Read main table values
+        # Handle interleaved 3D layout separately
+        if table.layout == TableLayout.INTERLEAVED and table.type == TableType.THREE_D:
+            return self._read_interleaved_3d(table, scaling)
+
+        # Read main table values (contiguous layout)
         raw_values = self._read_raw_values(
             address=table.address_int, count=table.elements, scaling=scaling
         )
@@ -470,6 +474,73 @@ class RomReader:
         )
         return result
 
+    def _read_interleaved_3d(self, table: Table, scaling: Scaling) -> dict:
+        """
+        Read a 3D table with interleaved Y-axis + data layout.
+
+        Format: [M][N][X_axis: M bytes][Row0: Y0 D0..DM-1][Row1: Y1 D0..DM-1]...
+        Each row is (M+1) bytes: 1 Y-axis byte followed by M data bytes.
+        """
+        base = table.address_int
+        m = self.rom_data[base]       # X axis count
+        n = self.rom_data[base + 1]   # Y axis count (row count)
+        x_start = base + 2
+        row_start = x_start + m
+        stride = m + 1
+
+        # Read X axis (contiguous)
+        x_axis = table.x_axis
+        x_raw = np.array([self.rom_data[x_start + i] for i in range(m)], dtype=np.float64)
+        if x_axis:
+            x_scaling = self.definition.get_scaling(x_axis.scaling)
+            if x_scaling:
+                x_raw = np.array(
+                    [self.rom_data[x_start + i] for i in range(m)], dtype=np.float64
+                )
+                x_converter = ScalingConverter(x_scaling)
+                x_display = x_converter.to_display(x_raw)
+            else:
+                x_display = x_raw
+        else:
+            x_display = x_raw
+
+        # Extract Y axis (interleaved: first byte of each row)
+        y_raw_list = [self.rom_data[row_start + r * stride] for r in range(n)]
+        y_raw = np.array(y_raw_list, dtype=np.float64)
+        y_axis = table.y_axis
+        if y_axis:
+            y_scaling = self.definition.get_scaling(y_axis.scaling)
+            if y_scaling:
+                y_converter = ScalingConverter(y_scaling)
+                y_display = y_converter.to_display(y_raw)
+            else:
+                y_display = y_raw
+        else:
+            y_display = y_raw
+
+        # Extract data (M bytes per row, skipping Y byte)
+        data_list = []
+        for r in range(n):
+            row_base = row_start + r * stride + 1  # +1 to skip Y byte
+            for c in range(m):
+                data_list.append(self.rom_data[row_base + c])
+
+        raw_values = np.array(data_list, dtype=np.float64)
+        converter = ScalingConverter(scaling)
+        display_values = converter.to_display(raw_values)
+
+        result = {
+            "values": display_values.reshape(n, m),
+            "raw_values": raw_values,
+            "x_axis": x_display,
+            "y_axis": y_display,
+        }
+
+        logger.debug(
+            f"Read interleaved 3D table: {table.name} ({m}x{n}) at {table.address}"
+        )
+        return result
+
     def write_table_data(self, table: Table, values: np.ndarray) -> None:
         """
         Write modified table data back to ROM (in memory, not to file yet)
@@ -510,7 +581,37 @@ class RomReader:
 
         raw_values = converter.from_display(values)
 
-        # Pack back to binary
+        # Handle interleaved write (scatter data back into interleaved rows)
+        if table.layout == TableLayout.INTERLEAVED and table.type == TableType.THREE_D:
+            base = table.address_int
+            m = self.rom_data[base]
+            n = self.rom_data[base + 1]
+            row_start = base + 2 + m
+            stride = m + 1
+            bytes_per_elem = scaling.bytes_per_element
+            endian_char = ">" if scaling.endian == "big" else "<"
+            format_char = STORAGE_TYPE_FORMAT.get(
+                scaling.storagetype.lower(), DEFAULT_FORMAT_CHAR
+            )
+            format_string = f"{endian_char}{format_char}"
+
+            try:
+                for r in range(n):
+                    for c in range(m):
+                        idx = r * m + c
+                        addr = row_start + r * stride + 1 + c * bytes_per_elem
+                        val = raw_values[idx]
+                        if format_char in ("B", "b", "H", "h", "I", "i"):
+                            val = int(round(val))
+                        packed = struct.pack(format_string, val)
+                        self.rom_data[addr : addr + len(packed)] = packed
+                logger.info(f"Successfully wrote interleaved table data: {table.name}")
+            except Exception as e:
+                logger.error(f"Error writing interleaved table data: {e}")
+                raise RomWriteError(f"Failed to write interleaved table data: {e}")
+            return
+
+        # Pack back to binary (contiguous layout)
         address = table.address_int
         bytes_per_elem = scaling.bytes_per_element
         endian_char = ">" if scaling.endian == "big" else "<"
@@ -570,9 +671,18 @@ class RomReader:
                 f"Scaling '{table.scaling}' not found for table '{table.name}'"
             )
 
-        # Calculate the linear index and byte offset
-        if table.type.value == "3D":
-            # For 3D tables, calculate linear index from row, col
+        # Calculate the byte address for this cell
+        bytes_per_elem = scaling.bytes_per_element
+
+        if table.layout == TableLayout.INTERLEAVED and table.type.value == "3D":
+            # Interleaved: [M][N][X_axis][Y0 D0..DM-1][Y1 D0..DM-1]...
+            base = table.address_int
+            m = self.rom_data[base]
+            row_start = base + 2 + m
+            stride = m + 1
+            address = row_start + row * stride + 1 + col * bytes_per_elem
+        elif table.type.value == "3D":
+            # Contiguous 3D: calculate linear index from row, col
             x_axis = table.x_axis
             y_axis = table.y_axis
             cols = x_axis.elements if x_axis else 1
@@ -580,17 +690,14 @@ class RomReader:
 
             # Must match the reshape order used in read_table_data
             if table.swapxy:
-                # Column-major (Fortran order): data stored column-by-column
                 linear_index = col * rows + row
             else:
-                # Row-major (C order): data stored row-by-row
                 linear_index = row * cols + col
+            address = table.address_int + (linear_index * bytes_per_elem)
         else:
             # For 1D/2D tables, just use row
             linear_index = row
-
-        bytes_per_elem = scaling.bytes_per_element
-        address = table.address_int + (linear_index * bytes_per_elem)
+            address = table.address_int + (linear_index * bytes_per_elem)
         endian_char = ">" if scaling.endian == "big" else "<"
 
         format_char = STORAGE_TYPE_FORMAT.get(
@@ -656,7 +763,16 @@ class RomReader:
 
         # Calculate the byte offset
         bytes_per_elem = scaling.bytes_per_element
-        address = axis_table.address_int + (index * bytes_per_elem)
+        if (table.layout == TableLayout.INTERLEAVED
+                and axis_type == "y_axis"):
+            # Y axis values are interleaved: first byte of each row
+            base = table.address_int
+            m = self.rom_data[base]
+            row_start = base + 2 + m
+            stride = m + 1
+            address = row_start + index * stride
+        else:
+            address = axis_table.address_int + (index * bytes_per_elem)
         endian_char = ">" if scaling.endian == "big" else "<"
 
         format_char = STORAGE_TYPE_FORMAT.get(
