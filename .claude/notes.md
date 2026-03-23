@@ -10,6 +10,9 @@
 - CI/release secure module checkout steps — needs `SECURE_MODULE_PAT` secret
 - Will merge to master after user testing
 
+## Recent Completed Work (Mar 23, 2026) - Interleaved 3D Tables
+- **Interleaved 3D table support** — Added `TableLayout` enum (`CONTIGUOUS`/`INTERLEAVED`), `layout` attribute parsing in definition parser, and interleaved read/write/cell-edit/axis-edit in `RomReader`. 256 lines of tests in `test_interleaved_tables.py`. Enables TCM ROM support where Y-axis values are interleaved with data rows.
+
 ## Recent Completed Work (Mar 5, 2026) - Pipeline Fixes
 - **Black formatting** — Ran black on 21 unformatted files (was failing CI lint)
 - **Release pytest fix** — Changed `requirements.txt` to `requirements-dev.txt` in release.yml (pytest was missing)

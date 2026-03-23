@@ -9,7 +9,15 @@ from typing import Optional
 from pathlib import Path
 import logging
 
-from .rom_definition import RomDefinition, RomID, Scaling, Table, TableType, AxisType, TableLayout
+from .rom_definition import (
+    RomDefinition,
+    RomID,
+    Scaling,
+    Table,
+    TableType,
+    AxisType,
+    TableLayout,
+)
 from .exceptions import (
     DefinitionNotFoundError,
     DefinitionParseError,

@@ -10,23 +10,43 @@ import pytest
 import struct
 
 from src.core.rom_definition import (
-    RomDefinition, RomID, Scaling, Table, TableType, AxisType, TableLayout,
+    RomDefinition,
+    RomID,
+    Scaling,
+    Table,
+    TableType,
+    AxisType,
+    TableLayout,
 )
 from src.core.rom_reader import RomReader, ScalingConverter
 
 
 def make_romid():
     return RomID(
-        xmlid="TEST", internalidaddress="0", internalidstring="TEST",
-        ecuid="TEST", make="Test", model="Test", flashmethod="",
-        memmodel="SH7055", checksummodule="",
+        xmlid="TEST",
+        internalidaddress="0",
+        internalidstring="TEST",
+        ecuid="TEST",
+        make="Test",
+        model="Test",
+        flashmethod="",
+        memmodel="SH7055",
+        checksummodule="",
     )
 
 
 def make_scaling(name="u8", storagetype="uint8"):
     return Scaling(
-        name=name, units="", toexpr="x", frexpr="x", format="%d",
-        min=0, max=255, inc=1, storagetype=storagetype, endian="big",
+        name=name,
+        units="",
+        toexpr="x",
+        frexpr="x",
+        format="%d",
+        min=0,
+        max=255,
+        inc=1,
+        storagetype=storagetype,
+        endian="big",
     )
 
 
@@ -50,17 +70,29 @@ def make_interleaved_table(name, base_hex, m, n, scaling_name="u8"):
     """Create a Table definition for an interleaved 3D table."""
     base = int(base_hex, 16)
     x_axis_child = Table(
-        name="X Axis", address=hex(base + 2)[2:], elements=m,
-        scaling=scaling_name, type=TableType.ONE_D, axis_type=AxisType.X_AXIS,
+        name="X Axis",
+        address=hex(base + 2)[2:],
+        elements=m,
+        scaling=scaling_name,
+        type=TableType.ONE_D,
+        axis_type=AxisType.X_AXIS,
     )
     y_axis_child = Table(
-        name="Y Axis", address=hex(base + 2 + m)[2:], elements=n,
-        scaling=scaling_name, type=TableType.ONE_D, axis_type=AxisType.Y_AXIS,
+        name="Y Axis",
+        address=hex(base + 2 + m)[2:],
+        elements=n,
+        scaling=scaling_name,
+        type=TableType.ONE_D,
+        axis_type=AxisType.Y_AXIS,
     )
     table = Table(
-        name=name, address=base_hex, elements=m * n,
-        scaling=scaling_name, type=TableType.THREE_D,
-        layout=TableLayout.INTERLEAVED, children=[x_axis_child, y_axis_child],
+        name=name,
+        address=base_hex,
+        elements=m * n,
+        scaling=scaling_name,
+        type=TableType.THREE_D,
+        layout=TableLayout.INTERLEAVED,
+        children=[x_axis_child, y_axis_child],
     )
     return table
 
@@ -134,8 +166,8 @@ class TestInterleavedRead:
         np.testing.assert_array_equal(result["y_axis"], y_vals)
         assert result["values"].shape == (8, 8)
         # Check specific cells
-        assert result["values"][0, 0] == 0   # row 0, col 0
-        assert result["values"][0, 7] == 7   # row 0, col 7
+        assert result["values"][0, 0] == 0  # row 0, col 0
+        assert result["values"][0, 7] == 7  # row 0, col 7
         assert result["values"][7, 0] == 70  # row 7, col 0
         assert result["values"][7, 7] == 77  # row 7, col 7
 
@@ -245,8 +277,11 @@ class TestContiguousUnchanged:
     def test_contiguous_table_has_default_layout(self):
         """Tables without layout attribute should default to contiguous."""
         table = Table(
-            name="test", address="1000", elements=10,
-            scaling="u8", type=TableType.TWO_D,
+            name="test",
+            address="1000",
+            elements=10,
+            scaling="u8",
+            type=TableType.TWO_D,
         )
         assert table.layout == TableLayout.CONTIGUOUS
 

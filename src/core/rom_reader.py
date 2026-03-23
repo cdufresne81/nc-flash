@@ -15,7 +15,14 @@ from typing import Optional, Union
 import logging
 from simpleeval import simple_eval
 
-from .rom_definition import RomDefinition, Table, Scaling, TableType, TableLayout, AxisType
+from .rom_definition import (
+    RomDefinition,
+    Table,
+    Scaling,
+    TableType,
+    TableLayout,
+    AxisType,
+)
 from .storage_types import STORAGE_TYPE_FORMAT, DEFAULT_FORMAT_CHAR
 from .exceptions import (
     RomFileNotFoundError,
@@ -482,15 +489,17 @@ class RomReader:
         Each row is (M+1) bytes: 1 Y-axis byte followed by M data bytes.
         """
         base = table.address_int
-        m = self.rom_data[base]       # X axis count
-        n = self.rom_data[base + 1]   # Y axis count (row count)
+        m = self.rom_data[base]  # X axis count
+        n = self.rom_data[base + 1]  # Y axis count (row count)
         x_start = base + 2
         row_start = x_start + m
         stride = m + 1
 
         # Read X axis (contiguous)
         x_axis = table.x_axis
-        x_raw = np.array([self.rom_data[x_start + i] for i in range(m)], dtype=np.float64)
+        x_raw = np.array(
+            [self.rom_data[x_start + i] for i in range(m)], dtype=np.float64
+        )
         if x_axis:
             x_scaling = self.definition.get_scaling(x_axis.scaling)
             if x_scaling:
@@ -763,8 +772,7 @@ class RomReader:
 
         # Calculate the byte offset
         bytes_per_elem = scaling.bytes_per_element
-        if (table.layout == TableLayout.INTERLEAVED
-                and axis_type == "y_axis"):
+        if table.layout == TableLayout.INTERLEAVED and axis_type == "y_axis":
             # Y axis values are interleaved: first byte of each row
             base = table.address_int
             m = self.rom_data[base]

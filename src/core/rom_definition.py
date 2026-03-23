@@ -30,8 +30,10 @@ class AxisType(Enum):
 class TableLayout(Enum):
     """Memory layout for table data"""
 
-    CONTIGUOUS = "contiguous"      # Standard: axes and data at separate contiguous addresses
-    INTERLEAVED = "interleaved"    # TCM-style: [M][N][X_axis][Y0 D0..DM][Y1 D1..DM]...
+    CONTIGUOUS = (
+        "contiguous"  # Standard: axes and data at separate contiguous addresses
+    )
+    INTERLEAVED = "interleaved"  # TCM-style: [M][N][X_axis][Y0 D0..DM][Y1 D1..DM]...
 
 
 @dataclass
