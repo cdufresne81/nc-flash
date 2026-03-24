@@ -194,7 +194,7 @@ class UDSConnection:
     def tester_present(self) -> None:
         """Send Tester Present to keep the session alive."""
         self.send_request(SID_TESTER_PRESENT, bytes([TESTER_PRESENT_SUB]))
-        logger.info("Tester Present acknowledged")
+        logger.info("ECU >> Tester Present acknowledged")
 
     def diagnostic_session(self, sub_function: int = DIAG_SESSION_PROGRAMMING) -> None:
         """
@@ -204,7 +204,7 @@ class UDSConnection:
             sub_function: Session type (default: 0x85 programming session)
         """
         self.send_request(SID_DIAGNOSTIC_SESSION, bytes([sub_function]))
-        logger.info(f"Diagnostic session 0x{sub_function:02X} active")
+        logger.info(f"ECU >> Diagnostic session 0x{sub_function:02X} active")
 
     def ecu_reset(self, reset_type: int = RESET_HARD) -> None:
         """
@@ -217,9 +217,9 @@ class UDSConnection:
             self.send_request(SID_ECU_RESET, bytes([reset_type]), timeout=TIMEOUT_RESET)
         except UDSTimeoutError:
             # ECU may reset before sending response - this is expected
-            logger.info("ECU reset requested (no response - ECU likely resetting)")
+            logger.info("Tool >> ECU reset requested (no response - ECU likely resetting)")
             return
-        logger.info(f"ECU reset type 0x{reset_type:02X} acknowledged")
+        logger.info(f"ECU >> Reset type 0x{reset_type:02X} acknowledged")
 
     def security_access_request_seed(self) -> bytes:
         """
@@ -239,11 +239,9 @@ class UDSConnection:
         # Response: sub_function(1) + seed(N)
         seed = response[1:]
         logger.info(
-            "Security seed: %d bytes [%s] (full response: %d bytes [%s])",
+            "ECU >> Security seed: %d bytes [%s]",
             len(seed),
             seed.hex(),
-            len(response),
-            response.hex(),
         )
         return seed
 
@@ -269,7 +267,7 @@ class UDSConnection:
                     f"Security key rejected: {e.description}"
                 ) from e
             raise
-        logger.info("Security access granted")
+        logger.info("ECU >> Security access granted")
 
     def check_flash_counter(self) -> bytes:
         """
@@ -279,7 +277,7 @@ class UDSConnection:
             Raw response data from the routine
         """
         response = self.send_request(SID_ROUTINE_CONTROL, FLASH_COUNTER_CMD[1:])
-        logger.info(f"Flash counter response: {response.hex()}")
+        logger.info(f"ECU >> Flash counter: {response.hex()}")
         return response
 
     def request_download(
@@ -299,7 +297,7 @@ class UDSConnection:
         data = address.to_bytes(4, "big") + size.to_bytes(4, "big")
         self.send_request(SID_REQUEST_DOWNLOAD, data, timeout=TIMEOUT_TRANSFER)
         logger.info(
-            f"Download request accepted: addr=0x{address:08X} size=0x{size:06X}"
+            f"ECU >> Download request accepted: addr=0x{address:08X} size=0x{size:06X}"
         )
 
     def transfer_data(
@@ -329,7 +327,7 @@ class UDSConnection:
         block_num = 0
 
         logger.info(
-            f"Starting data transfer: {total} bytes in {block_size}-byte blocks"
+            f"Tool >> Starting data transfer: {total} bytes in {block_size}-byte blocks"
         )
 
         while sent < total:
@@ -358,12 +356,12 @@ class UDSConnection:
             if progress_callback:
                 progress_callback(sent, total)
 
-        logger.info(f"Transfer complete: {sent} bytes in {block_num} blocks")
+        logger.info(f"Tool >> Transfer complete: {sent} bytes in {block_num} blocks")
 
     def request_transfer_exit(self) -> None:
         """Signal end of data transfer to ECU."""
         self.send_request(SID_TRANSFER_EXIT, timeout=TIMEOUT_TRANSFER)
-        logger.info("Transfer exit acknowledged")
+        logger.info("ECU >> Transfer exit acknowledged")
 
     # --- Memory Read ---
 
@@ -445,13 +443,14 @@ class UDSConnection:
                 dtcs.append(DTC(code, status))
             offset += 3
 
-        logger.info(f"Read {len(dtcs)} DTCs")
+        unique_count = len({d.code for d in dtcs})
+        logger.info(f"ECU >> Read {len(dtcs)} DTCs ({unique_count} unique)")
         return dtcs
 
     def clear_dtc(self) -> None:
         """Clear all stored DTCs."""
         self.send_request(SID_CLEAR_DTC, bytes([0xFF, 0x00]))
-        logger.info("DTCs cleared")
+        logger.info("ECU >> DTCs cleared")
 
     def read_vin_block(self) -> bytes:
         """

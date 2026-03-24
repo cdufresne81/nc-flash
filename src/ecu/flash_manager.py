@@ -682,8 +682,14 @@ class FlashManager:
                 uds.tester_present()
                 dtcs = uds.read_dtc_status()
 
-            logger.info("Read %d DTCs", len(dtcs))
-            for dtc in dtcs:
+            seen = set()
+            unique_dtcs = []
+            for d in dtcs:
+                if d.code not in seen:
+                    seen.add(d.code)
+                    unique_dtcs.append(d)
+            logger.info("Read %d DTCs (%d unique)", len(dtcs), len(unique_dtcs))
+            for dtc in unique_dtcs:
                 logger.info("  %s: %s", dtc.formatted, dtc.description)
             return dtcs
         except ECUError:
