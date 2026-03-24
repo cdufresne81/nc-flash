@@ -273,7 +273,6 @@ class FlashManager:
     def _authenticate(
         self,
         callback: Optional[ProgressCallback] = None,
-        check_flash_counter: bool = True,
     ) -> None:
         """Perform UDS session setup and security access."""
         self._set_state(FlashState.AUTHENTICATING)
@@ -296,11 +295,6 @@ class FlashManager:
 
         self._notify(callback, "Sending security key...", percent=16.0)
         self._uds.security_access_send_key(key)
-
-        # Step 4: Check Flash Counter (flash only, not needed for read)
-        if check_flash_counter:
-            self._notify(callback, "Checking flash counter...", percent=18.0)
-            self._uds.check_flash_counter()
 
         self._notify(callback, "Authentication complete", percent=20.0)
         logger.info("ECU authentication complete")
@@ -493,6 +487,10 @@ class FlashManager:
         # --- Phase 3: Authenticate ---
         self._authenticate(callback)
 
+        # Flash-only: romdrop's Read ROM (0x0040530D) skips this step
+        self._notify(callback, "Checking flash counter...", percent=21.0)
+        self._uds.check_flash_counter()
+
         # --- Phase 4: Prepare and transfer SBL ---
         self._set_state(FlashState.PREPARING_SBL)
         self._notify(callback, "Preparing SBL...", percent=22.0)
@@ -612,7 +610,7 @@ class FlashManager:
 
         try:
             self._connect(progress_cb)
-            self._authenticate(progress_cb, check_flash_counter=False)
+            self._authenticate(progress_cb)
 
             # Read ROM in blocks (no SBL needed for read — only for flash)
             self._set_state(FlashState.READING)
