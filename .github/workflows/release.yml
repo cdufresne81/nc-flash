@@ -17,16 +17,38 @@ jobs:
     steps:
     - uses: actions/checkout@v4
 
-    - name: Set up Python
+    - name: Set up Python (64-bit)
       uses: actions/setup-python@v5
       with:
         python-version: '3.12'
+        architecture: 'x64'
 
-    - name: Install dependencies
+    - name: Set up Python (32-bit, for J2534 bridge)
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
+        architecture: 'x86'
+
+    - name: Install dependencies (64-bit)
       run: |
         python -m pip install --upgrade pip
         pip install -r requirements-dev.txt
         pip install -r packaging/requirements-build.txt
+
+    - name: Build 32-bit J2534 bridge
+      run: |
+        py -3.12-32 -m pip install pyinstaller
+        py -3.12-32 -m PyInstaller packaging/j2534_bridge_32.spec --noconfirm
+      shell: cmd
+
+    - name: Verify bridge build
+      run: |
+        if (!(Test-Path "dist\j2534_bridge_32\j2534_bridge_32.exe")) {
+          Write-Error "j2534_bridge_32.exe not found"
+          exit 1
+        }
+        Write-Output "Bridge verified: dist\j2534_bridge_32\j2534_bridge_32.exe"
+      shell: pwsh
 
     - name: Stamp version from tag
       run: |

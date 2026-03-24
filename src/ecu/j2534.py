@@ -120,6 +120,37 @@ def find_j2534_dll(dll_name: str = DEFAULT_J2534_DLL) -> str:
     return dll_name
 
 
+def _find_bridge_exe() -> Optional[str]:
+    """
+    Find the bundled 32-bit bridge executable.
+
+    Searches in order:
+    1. Next to the running executable (PyInstaller bundle)
+    2. In dist/j2534_bridge_32/ (development build)
+
+    Returns:
+        Path to the bridge executable if found, None otherwise.
+    """
+    candidates = []
+
+    # PyInstaller bundle: exe sits next to the main app
+    if getattr(sys, "frozen", False):
+        app_dir = Path(sys.executable).parent
+        candidates.append(app_dir / "j2534_bridge_32" / "j2534_bridge_32.exe")
+        candidates.append(app_dir / "j2534_bridge_32.exe")
+
+    # Development: check dist/ relative to repo root
+    repo_root = Path(__file__).resolve().parent.parent.parent
+    candidates.append(repo_root / "dist" / "j2534_bridge_32" / "j2534_bridge_32.exe")
+
+    for candidate in candidates:
+        if candidate.is_file():
+            logger.info("Found bridge executable: %s", candidate)
+            return str(candidate)
+
+    return None
+
+
 def _find_matching_python() -> Optional[list[str]]:
     """
     Find a Python executable whose bitness is opposite to the current process.
@@ -337,25 +368,37 @@ class J2534Device:
 
     def _start_bridge(self, dll_path: str) -> None:
         """
-        Spawn a matching-bitness Python subprocess to load the J2534 DLL.
+        Spawn a 32-bit subprocess to load the J2534 DLL.
+
+        Resolution order:
+        1. Bundled bridge executable (j2534_bridge_32.exe) — works in
+           PyInstaller builds and dev when the exe has been pre-built.
+        2. 32-bit Python via 'py -3-32' launcher — dev fallback.
 
         Safety: The bridge is health-checked before returning. If it fails
         to start, an exception is raised immediately.
         """
-        python_cmd = _find_matching_python()
-        if python_cmd is None:
-            current_bits = _struct.calcsize("P") * 8
-            other_bits = 32 if current_bits == 64 else 64
-            raise J2534DLLNotFound(
-                f"J2534 DLL requires {other_bits}-bit Python but only "
-                f"{current_bits}-bit is running. Install {other_bits}-bit Python "
-                f"and ensure the 'py' launcher (PEP 397) is on PATH, "
-                f"or run the app with {other_bits}-bit Python."
-            )
+        bridge_exe = _find_bridge_exe()
+        if bridge_exe:
+            cmd = [bridge_exe, dll_path]
+            logger.info("Starting bridge via bundled exe: %s", bridge_exe)
+        else:
+            python_cmd = _find_matching_python()
+            if python_cmd is None:
+                current_bits = _struct.calcsize("P") * 8
+                other_bits = 32 if current_bits == 64 else 64
+                raise J2534DLLNotFound(
+                    f"J2534 DLL requires {other_bits}-bit Python but only "
+                    f"{current_bits}-bit is running. Install {other_bits}-bit "
+                    f"Python and ensure the 'py' launcher (PEP 397) is on "
+                    f"PATH, or run the app with {other_bits}-bit Python."
+                )
+            bridge_script = str(Path(__file__).parent / "j2534_bridge.py")
+            cmd = [*python_cmd, bridge_script, dll_path]
+            logger.info("Starting bridge via py launcher: %s", " ".join(cmd))
 
-        bridge_script = str(Path(__file__).parent / "j2534_bridge.py")
         self._bridge = subprocess.Popen(
-            [*python_cmd, bridge_script, dll_path],
+            cmd,
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
@@ -482,7 +525,7 @@ class J2534Device:
     def _kill_bridge(self) -> None:
         """Forcibly terminate the bridge subprocess."""
         if self._bridge is not None:
-            logger.warning("Killing J2534 bridge (PID=%d)", self._bridge.pid)
+            logger.debug("Cleaning up J2534 bridge (PID=%d)", self._bridge.pid)
             try:
                 self._bridge.kill()
                 self._bridge.wait(timeout=5)

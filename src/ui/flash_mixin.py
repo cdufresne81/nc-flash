@@ -314,15 +314,23 @@ class FlashMixin:
             QMessageBox.critical(self, "Error", f"Failed to read DTCs:\n{e}")
             return
 
-        if not dtcs:
+        # Deduplicate DTCs, preserving order
+        seen = set()
+        unique_dtcs = []
+        for d in dtcs:
+            if d.code not in seen:
+                seen.add(d.code)
+                unique_dtcs.append(d)
+
+        if not unique_dtcs:
             QMessageBox.information(self, "DTCs", "No diagnostic trouble codes stored.")
             return
 
-        dtc_text = "\n".join(f"  {d.formatted}: {d.description}" for d in dtcs)
+        dtc_text = "\n".join(f"  {d.formatted}: {d.description}" for d in unique_dtcs)
         reply = QMessageBox.question(
             self,
             "Clear DTCs?",
-            f"Found {len(dtcs)} DTC(s):\n\n{dtc_text}\n\nClear all DTCs?",
+            f"Found {len(unique_dtcs)} DTC(s):\n\n{dtc_text}\n\nClear all DTCs?",
             QMessageBox.Yes | QMessageBox.No,
             QMessageBox.No,
         )
@@ -465,15 +473,29 @@ class FlashMixin:
                 dtcs = uds.read_dtc_status()
                 dtc_count = len(dtcs)
 
-            vin_str = (
-                vin_data.decode("ascii", errors="replace").rstrip("\x00")
-                if vin_data
-                else "N/A"
-            )
+            # VIN is exactly 17 printable ASCII characters
+            if vin_data:
+                raw = vin_data[:17] if len(vin_data) >= 17 else vin_data
+                vin_str = (
+                    "".join(chr(b) if 0x20 <= b <= 0x7E else "" for b in raw) or "N/A"
+                )
+            else:
+                vin_str = "N/A"
+
+            # Deduplicate DTCs, preserving order
+            seen = set()
+            unique_dtcs = []
+            for d in dtcs:
+                if d.code not in seen:
+                    seen.add(d.code)
+                    unique_dtcs.append(d)
+            dtc_count = len(unique_dtcs)
 
             dtc_lines = ""
             if dtc_count > 0:
-                dtc_lines = "\n".join(f"  {d.formatted}: {d.description}" for d in dtcs)
+                dtc_lines = "\n".join(
+                    f"  {d.formatted}: {d.description}" for d in unique_dtcs
+                )
                 dtc_lines = f"\n\n{dtc_lines}"
 
             QMessageBox.information(

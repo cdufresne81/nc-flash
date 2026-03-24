@@ -27,7 +27,16 @@ if errorlevel 1 (
     exit /b 1
 )
 
-REM Run PyInstaller
+REM Build 32-bit J2534 bridge (requires 32-bit Python via py launcher)
+echo Building 32-bit J2534 bridge...
+py -3-32 -m PyInstaller packaging\j2534_bridge_32.spec --noconfirm
+if errorlevel 1 (
+    echo ERROR: 32-bit bridge build failed. Ensure 32-bit Python is installed:
+    echo   winget install Python.Python.3.12 --architecture x86
+    exit /b 1
+)
+
+REM Run PyInstaller for main app
 echo Building executable...
 pyinstaller packaging\NCFlash.spec --noconfirm
 if errorlevel 1 (

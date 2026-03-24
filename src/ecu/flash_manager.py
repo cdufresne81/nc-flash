@@ -91,6 +91,7 @@ _TRANSITIONS = {
     FlashState.PREPARING_SBL: {FlashState.TRANSFERRING_SBL, FlashState.ERROR},
     FlashState.TRANSFERRING_SBL: {
         FlashState.TRANSFERRING_PROGRAM,
+        FlashState.READING,
         FlashState.ERROR,
         FlashState.ABORTED,
     },
@@ -269,7 +270,11 @@ class FlashManager:
         self._notify(callback, "Connected to ECU", percent=5.0)
         logger.info("J2534 connection established")
 
-    def _authenticate(self, callback: Optional[ProgressCallback] = None) -> None:
+    def _authenticate(
+        self,
+        callback: Optional[ProgressCallback] = None,
+        check_flash_counter: bool = True,
+    ) -> None:
         """Perform UDS session setup and security access."""
         self._set_state(FlashState.AUTHENTICATING)
 
@@ -287,13 +292,15 @@ class FlashManager:
 
         self._notify(callback, "Computing security key...", percent=14.0)
         key = compute_security_key(seed)
+        logger.info("Security key computed: [%s] from seed [%s]", key.hex(), seed.hex())
 
         self._notify(callback, "Sending security key...", percent=16.0)
         self._uds.security_access_send_key(key)
 
-        # Step 4: Check Flash Counter
-        self._notify(callback, "Checking flash counter...", percent=18.0)
-        self._uds.check_flash_counter()
+        # Step 4: Check Flash Counter (flash only, not needed for read)
+        if check_flash_counter:
+            self._notify(callback, "Checking flash counter...", percent=18.0)
+            self._uds.check_flash_counter()
 
         self._notify(callback, "Authentication complete", percent=20.0)
         logger.info("ECU authentication complete")
@@ -605,9 +612,9 @@ class FlashManager:
 
         try:
             self._connect(progress_cb)
-            self._authenticate(progress_cb)
+            self._authenticate(progress_cb, check_flash_counter=False)
 
-            # Read ROM in blocks
+            # Read ROM in blocks (no SBL needed for read — only for flash)
             self._set_state(FlashState.READING)
             self._notify(progress_cb, "Reading ROM...", percent=20.0)
 
@@ -674,7 +681,12 @@ class FlashManager:
 
                 uds = UDSConnection(device, channel_id)
                 uds.tester_present()
-                return uds.read_dtc_status()
+                dtcs = uds.read_dtc_status()
+
+            logger.info("Read %d DTCs", len(dtcs))
+            for dtc in dtcs:
+                logger.info("  %s: %s", dtc.formatted, dtc.description)
+            return dtcs
         except ECUError:
             raise
         except Exception as e:

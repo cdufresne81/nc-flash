@@ -213,7 +213,9 @@ _skip_no_9veb = pytest.mark.skipif(
 )
 
 _has_5aeg_files = (
-    STOCK_ROM_5AEG.exists() and PATCH_FILE_5AEG.exists() and ROMDROP_OUTPUT_5AEG.exists()
+    STOCK_ROM_5AEG.exists()
+    and PATCH_FILE_5AEG.exists()
+    and ROMDROP_OUTPUT_5AEG.exists()
 )
 _skip_no_5aeg = pytest.mark.skipif(
     not _has_5aeg_files, reason="Requires lf5aeg.bin, lf5aeg.patch, and RomDrop output"

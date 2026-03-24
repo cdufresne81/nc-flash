@@ -201,6 +201,15 @@ DTC_TABLE: dict[int, str] = {
     0x4101: "C0101 - CAN communication - signal from brake module lost",
     0x4121: "C0121 - CAN communication - signal from ABS module lost",
     0x4155: "C0155 - CAN communication - signal from stability control module lost",
+    # --- Powertrain codes (P0Fxx range) ---
+    0x0F01: "P0F01 - Battery/charging system performance",
+    # --- Network codes (U-codes, category bits 0b11 = 0xC000) ---
+    0xFF01: "U3F01 - CAN communication - no signal from ECM/PCM",
+    0xFF02: "U3F02 - CAN communication - no signal from TCM",
+    0xFF03: "U3F03 - CAN communication - no signal from ABS/DSC module",
+    0xFF04: "U3F04 - CAN communication - no signal from instrument cluster",
+    0xFF21: "U3F21 - CAN communication - invalid data from ECM/PCM",
+    0xFFC1: "U3FC1 - CAN communication - bus off",
 }
 
 

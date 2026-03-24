@@ -235,7 +235,13 @@ class UDSConnection:
 
         # Response: sub_function(1) + seed(N)
         seed = response[1:]
-        logger.debug(f"Security seed received: {seed.hex()}")
+        logger.info(
+            "Security seed: %d bytes [%s] (full response: %d bytes [%s])",
+            len(seed),
+            seed.hex(),
+            len(response),
+            response.hex(),
+        )
         return seed
 
     def security_access_send_key(self, key: bytes) -> None:
@@ -390,9 +396,9 @@ class UDSConnection:
             SID_READ_DTC_COUNT,  # 0x22 is overloaded - used for ReadDataByIdentifier
             bytes([0xE6, 0x11]),
         )
-        # Response contains the ROM ID string
-        if response:
-            return response.rstrip(b"\x00").decode("ascii", errors="replace")
+        # Response starts with echo of sub/record (0xE6, 0x11), then ROM ID
+        if response and len(response) > 2:
+            return response[2:].rstrip(b"\x00").decode("ascii", errors="replace")
         return ""
 
     # --- DTC Operations ---

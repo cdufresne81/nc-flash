@@ -424,9 +424,6 @@ class MainWindow(
         self.ecu_read_dtcs_action = ecu_menu.addAction("Read &DTCs...")
         self.ecu_read_dtcs_action.triggered.connect(self._on_clear_dtcs)
 
-        self.ecu_clear_dtcs_action = ecu_menu.addAction("&Clear DTCs")
-        self.ecu_clear_dtcs_action.triggered.connect(self._on_clear_dtcs)
-
         ecu_menu.addSeparator()
 
         self.ecu_info_action = ecu_menu.addAction("ECU &Info...")
