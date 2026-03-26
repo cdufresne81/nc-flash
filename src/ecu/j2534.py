@@ -445,11 +445,16 @@ class J2534Device:
             cmd = [*python_cmd, bridge_script, dll_path]
             logger.debug("Starting bridge via py launcher: %s", " ".join(cmd))
 
+        # Hide console window on Windows
+        creationflags = (
+            subprocess.CREATE_NO_WINDOW if hasattr(subprocess, "CREATE_NO_WINDOW") else 0
+        )
         self._bridge = subprocess.Popen(
             cmd,
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
+            creationflags=creationflags,
         )
 
         # Wait for "ready" signal from bridge
