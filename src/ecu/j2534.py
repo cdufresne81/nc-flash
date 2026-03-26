@@ -133,8 +133,13 @@ def _find_bridge_exe() -> Optional[str]:
     """
     candidates = []
 
-    # PyInstaller bundle: exe sits next to the main app
+    # PyInstaller bundle: data files live in _internal/ (sys._MEIPASS)
     if getattr(sys, "frozen", False):
+        meipass = Path(getattr(sys, "_MEIPASS", ""))
+        if meipass.is_dir():
+            candidates.append(meipass / "j2534_bridge_32" / "j2534_bridge_32.exe")
+            candidates.append(meipass / "j2534_bridge_32.exe")
+        # Also check next to the exe (flat layout or older PyInstaller)
         app_dir = Path(sys.executable).parent
         candidates.append(app_dir / "j2534_bridge_32" / "j2534_bridge_32.exe")
         candidates.append(app_dir / "j2534_bridge_32.exe")
