@@ -65,12 +65,18 @@ jobs:
 
     - name: Stamp version from tag
       run: |
-        $version = "${{ github.ref_name }}".TrimStart("v")
+        $ref = "${{ github.ref_name }}"
+        if ($ref -match '^v') {
+          $version = $ref.TrimStart("v")
+        } else {
+          $version = "0.0.0-dev"
+        }
         (Get-Content src/utils/constants.py) -replace 'APP_VERSION = ".*"', "APP_VERSION = `"$version`"" | Set-Content src/utils/constants.py
+        Write-Output "Stamped version: $version"
       shell: pwsh
 
     - name: Run tests
-      run: pytest
+      run: python -m pytest
 
     - name: Build with PyInstaller
       run: pyinstaller packaging/NCFlash.spec --noconfirm
@@ -154,8 +160,14 @@ jobs:
 
     - name: Stamp version from tag
       run: |
-        VERSION="${GITHUB_REF_NAME#v}"
-        sed -i "s/APP_VERSION = \".*\"/APP_VERSION = \"$VERSION\"/" src/utils/constants.py
+        REF="${GITHUB_REF_NAME}"
+        if [[ "$REF" == v* ]]; then
+          VERSION="${REF#v}"
+        else
+          VERSION="0.0.0-dev"
+        fi
+        sed -i "s|APP_VERSION = \".*\"|APP_VERSION = \"$VERSION\"|" src/utils/constants.py
+        echo "Stamped version: $VERSION"
 
     - name: Run tests
       run: pytest
@@ -175,7 +187,12 @@ jobs:
 
     - name: Package as tar.gz
       run: |
-        VERSION="${GITHUB_REF_NAME#v}"
+        REF="${GITHUB_REF_NAME}"
+        if [[ "$REF" == v* ]]; then
+          VERSION="${REF#v}"
+        else
+          VERSION="0.0.0-dev"
+        fi
         cd dist
         tar -czf "NCFlash-${VERSION}-linux-x86_64.tar.gz" NCFlash/
         ls -lh "NCFlash-${VERSION}-linux-x86_64.tar.gz"
