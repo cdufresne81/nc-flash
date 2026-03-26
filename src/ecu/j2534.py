@@ -184,6 +184,36 @@ def _find_matching_python() -> Optional[list[str]]:
     return None
 
 
+def _auto_build_bridge() -> Optional[str]:
+    """Auto-build the 32-bit bridge exe in development mode.
+
+    Returns the exe path on success, None on failure (silent — caller
+    falls through to the next resolution step).
+    """
+    repo_root = Path(__file__).resolve().parent.parent.parent
+    spec_file = repo_root / "packaging" / "j2534_bridge_32.spec"
+    if not spec_file.is_file():
+        return None
+
+    try:
+        # Import the build helper (lives in packaging/)
+        sys.path.insert(0, str(repo_root / "packaging"))
+        try:
+            from build_bridge import build_bridge
+        finally:
+            sys.path.pop(0)
+
+        logger.info("Bridge exe not found — auto-building (first time only)...")
+        result = build_bridge()
+        if result and result.is_file():
+            logger.info("Bridge auto-built: %s", result)
+            return str(result)
+    except Exception:
+        logger.debug("Auto-build failed", exc_info=True)
+
+    return None
+
+
 def _msg_to_dict(msg: PassThruMsg) -> dict:
     """Serialize a PassThruMsg to a JSON-safe dict."""
     return {
@@ -322,6 +352,10 @@ class J2534Device:
         self._device_id: Optional[int] = None
         self._bridge: Optional[subprocess.Popen] = None  # 32/64-bit bridge
 
+        # Dev only: pre-build the 32-bit bridge exe if missing
+        if not getattr(sys, "frozen", False) and _find_bridge_exe() is None:
+            _auto_build_bridge()
+
     def __enter__(self) -> J2534Device:
         self.open()
         return self
@@ -372,7 +406,8 @@ class J2534Device:
 
         Resolution order:
         1. Bundled bridge executable (j2534_bridge_32.exe) — works in
-           PyInstaller builds and dev when the exe has been pre-built.
+           PyInstaller builds and dev when the exe has been pre-built
+           (auto-built in __init__ if missing).
         2. 32-bit Python via 'py -3-32' launcher — dev fallback.
 
         Safety: The bridge is health-checked before returning. If it fails
@@ -381,7 +416,7 @@ class J2534Device:
         bridge_exe = _find_bridge_exe()
         if bridge_exe:
             cmd = [bridge_exe, dll_path]
-            logger.debug("Starting bridge via bundled exe: %s", bridge_exe)
+            logger.debug("Starting bridge via exe: %s", bridge_exe)
         else:
             python_cmd = _find_matching_python()
             if python_cmd is None:
@@ -389,9 +424,10 @@ class J2534Device:
                 other_bits = 32 if current_bits == 64 else 64
                 raise J2534DLLNotFound(
                     f"J2534 DLL requires {other_bits}-bit Python but only "
-                    f"{current_bits}-bit is running. Install {other_bits}-bit "
-                    f"Python and ensure the 'py' launcher (PEP 397) is on "
-                    f"PATH, or run the app with {other_bits}-bit Python."
+                    f"{current_bits}-bit is running. Install it with:\n"
+                    f"  winget install Python.Python.3.12 --architecture x86\n"
+                    f"Then restart the app — the bridge will be built "
+                    f"automatically."
                 )
             bridge_script = str(Path(__file__).parent / "j2534_bridge.py")
             cmd = [*python_cmd, bridge_script, dll_path]
