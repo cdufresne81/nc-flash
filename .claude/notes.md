@@ -3,6 +3,17 @@
 ## Next Tasks
 - CI secret `SECURE_REPO_PAT` is configured and matches workflows. No graceful fallback if missing (CI hard-fails), but this is acceptable.
 - `examples/metadata/LFDJEA.xml` is untracked — may need committing
+- **Review romdrop.crc fallback** — `src/ecu/rom_utils.py:169` silently skips CRC verification if `romdrop.crc` is missing. Patching still proceeds without validation. Need to decide: should patching be blocked without the CRC database, or is a warning sufficient?
+
+## Recent Completed Work (Mar 27, 2026) - House Cleaning
+- **CHANGELOG restructured** — Unreleased section was a mess (contained v2.1.0 through v2.3.0 items). Split into proper `[v2.3.0]`, `[v2.2.0]`, `[v2.1.1]`, `[v2.1.0]` sections with correct dates. Unreleased now only has current house-cleaning work
+- **GitHub v2.3.0 release notes updated** — Were using stale Unreleased dump; now match the proper v2.3.0 changelog section
+- **README overhaul** — Version v2.0.0 → v2.3.0, rewrote ECU Flashing for native J2534 (removed RomDrop references), added missing feature sections (Project Management, cross-definition compare, toolbars, setup wizard), corrected test coverage and CI versions
+- **Docs reorganized** — Moved internal docs to `docs/internal/`, removed 19 obsolete files (~6 MB): code audits, mockups, error screenshots, EcuFlash examples, archived design docs. Updated CLAUDE.md and README paths
+- **Deleted `run-dev.bat`** — Vestigial, identical to `run.bat` since `--enable-projects` removed
+- **Removed `examples/LF5AEG*`** — 3 tracked ROM/patch files removed from git
+- **Removed `Thinking-pad.md` from git** — Added to `.gitignore`, kept local file
+- **Branch `fix/house-cleaning`** created from `origin/master` with all changes staged
 
 ## Recent Completed Work (Mar 26, 2026) - Build Fix
 - **J2534 bridge frozen-app fix** — PyInstaller builds failed to load 32-bit DLL because frozen ctypes raises a different OSError than native bitness mismatch. Bridge fallback now detects both.
@@ -39,6 +50,12 @@
 
 ## Recent Completed Work (Mar 23, 2026) - Interleaved 3D Tables
 - **Interleaved 3D table support** — Added `TableLayout` enum (`CONTIGUOUS`/`INTERLEAVED`), `layout` attribute parsing in definition parser, and interleaved read/write/cell-edit/axis-edit in `RomReader`. 256 lines of tests in `test_interleaved_tables.py`. Enables TCM ROM support where Y-axis values are interleaved with data rows.
+
+## Recent Completed Work (Mar 26, 2026) - README Audit & Cleanup
+- **Rebased feature/ecu-flash-module onto master** — Picked up v2.1.0 changelog and merge commit
+- **README audit and update** — Fixed version (v2.0.0 → v2.3.0), corrected test coverage stats, fixed CI Python versions (3.10/3.12), added `mcp_mixin.py` to project structure tree
+- **Deleted `run-dev.bat`** — Vestigial launcher identical to `run.bat` since `--enable-projects` flag was removed
+- **CHANGELOG updated** — Added README changes and run-dev.bat removal to Unreleased section
 
 ## Recent Completed Work (Mar 5, 2026) - Pipeline Fixes
 - **Black formatting** — Ran black on 21 unformatted files (was failing CI lint)

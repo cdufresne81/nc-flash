@@ -5,12 +5,29 @@ All notable changes to NC Flash are documented here.
 ## [Unreleased]
 
 ### Added
-- **Interleaved 3D table support** — TCM-style ROMs that store Y-axis values interleaved with data rows (`[M][N][X_axis][Y0 D0..DM-1][Y1 D1..DM-1]...`) are now fully supported. Read, bulk write, single-cell edit, and Y-axis edit all handle the interleaved layout. Enabled via `layout="interleaved"` attribute in XML definitions
+- **Pre-commit validation** — PreToolUse hook blocks `git commit` if CHANGELOG.md is not staged. New `/precommit` skill runs quality gates (black, flake8, pytest) and validates changelog structure, content relevance, and formatting before committing
+
+### Changed
+- **README overhaul** — Updated version to v2.3.0, rewrote ECU Flashing section for native J2534 (was RomDrop), added missing features (Project Management, cross-definition compare, copy table, toolbars, setup wizard, scaling editor), corrected test coverage stats, fixed CI Python versions
+- **CHANGELOG restructured** — Split stale Unreleased into proper v2.3.0, v2.2.0, v2.1.1, v2.1.0 sections with correct dates
+- **Docs reorganized** — Moved internal docs to `docs/internal/`, removed obsolete files (code audits, mockups, error screenshots, EcuFlash examples, archived design docs)
+- **Gitignore updated** — Added personal notes files
+
+### Removed
+- **`run-dev.bat`** — Vestigial launcher from when projects were behind a feature flag; was identical to `run.bat` after the flag was removed
+- **`examples/LF5AEG*`** — Removed LF5AEG ROM and patch files from tracking
+- **Obsolete docs** — `CODE_AUDIT_REPORT.md`, `CODE_AUDIT_2026_03.md`, `docs/archive/`, `docs/ecuflash_examples/`, `docs/errors/`, `docs/mockups/`
+
+## [v2.3.0] - 2026-03-26
+
+### Added
+- **Native ECU flashing** — Full J2534/UDS flash module replacing RomDrop integration. Read and write ECU ROMs directly via Tactrix OpenPort 2.0
 - **ECU Programming window** — Dedicated window (Tools > ECU Programming) replacing scattered ECU menu items. Auto-connects, shows battery voltage/engine RPM/ECU info in status cards, one-click flash with dynamic/full auto-detection, inline progress, auto-save ROM reads
-- **ECU Connect/Disconnect** — New menu actions in ECU menu to establish and hold a persistent J2534 connection. Operations reuse the open device instead of reconnecting each time. Status bar shows real connection state.
+- **ECU Connect/Disconnect** — New menu actions in ECU menu to establish and hold a persistent J2534 connection. Operations reuse the open device instead of reconnecting each time. Status bar shows real connection state
 - **OBD-II PID reading** — Battery voltage (PID 0x42) and engine RPM (PID 0x0C) via standard OBD-II Service 0x01
+- **J2534 32-bit bridge** — Subprocess bridge for 64-bit Python to talk to 32-bit J2534 DLLs, with auto-build in dev mode
 - **Per-session log files** — Each app launch saves a complete log to `./logs/` directory
-- **UDS log direction prefixes** — Protocol log messages now show `ECU >>` or `Tool >>` to indicate who is speaking (e.g., `ECU >> Security access granted`)
+- **UDS log direction prefixes** — Protocol log messages now show `ECU >>` or `Tool >>` to indicate who is speaking
 - **Window geometry persistence** — Main window remembers its position and size between sessions
 - **CI: private _secure module** — CI and release workflows now pull the private `nc-flash-secure` repo so security tests run and release builds include the secure module
 
@@ -20,16 +37,25 @@ All notable changes to NC Flash are documented here.
 - **"ROMs are identical" is no longer an error** — Dynamic flash with no differences shows "Nothing to flash" in grey instead of a red error with traceback
 
 ### Fixed
-- **J2534 bridge not loading in built exe** — PyInstaller frozen builds threw a different OSError than expected, bypassing the 32-bit bridge fallback. The DLL loader now detects both native bitness mismatch and PyInstaller's frozen-app errors
+- **J2534 bridge not loading in built exe** — PyInstaller frozen builds threw a different OSError than expected, bypassing the 32-bit bridge fallback
 - **J2534 bridge exe not found in built app** — PyInstaller puts data files in `_internal/` (sys._MEIPASS) but bridge lookup only searched next to the exe
 - **J2534 bridge console window visible** — The 32-bit bridge subprocess no longer opens a visible cmd window on Windows
-- **DTC count discrepancy** — Activity log showed raw DTC count (with duplicates) while UI showed deduplicated count. Log now shows both (e.g., "Read 15 DTCs (7 unique)") and individual DTC lines are deduplicated
+- **DTC count discrepancy** — Activity log showed raw DTC count (with duplicates) while UI showed deduplicated count. Log now shows both (e.g., "Read 15 DTCs (7 unique)")
 - **Tester Present log spam** — Keepalive messages demoted from INFO to DEBUG level
 - **Checksum bounds checking** — Invalid checksum table entries (out-of-bounds addresses) no longer crash the flash process
+
+## [v2.2.0] - 2026-03-23
+
+### Added
+- **Interleaved 3D table support** — TCM-style ROMs that store Y-axis values interleaved with data rows are now fully supported. Read, bulk write, single-cell edit, and Y-axis edit all handle the interleaved layout. Enabled via `layout="interleaved"` attribute in XML definitions
+
+## [v2.1.1] - 2026-03-16
+
+### Fixed
 - **Settings dialog crash on fresh install** — Clicking Settings did nothing on release builds because the ECU tab imported `src.ecu.flash_manager` which doesn't exist without the ECU module. The import now fails early and the ECU tab is gracefully skipped (#16)
 - **Version mismatch in About dialog** — Release builds showed `v2.0.0` regardless of the git tag. The release pipeline now stamps `APP_VERSION` from the tag before building (#16)
 
-## [v2.1.1] - 2026-03-16
+## [v2.1.0] - 2026-03-05
 
 ### Changed
 - **Extracted shared icon factory** — Moved QPainter toolbar icons from `main.py` (143 lines) and `table_viewer_window.py` (102 lines) into `src/ui/icons.py` with dispatch table

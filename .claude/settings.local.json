@@ -9,7 +9,8 @@
       "Grep",
       "WebFetch",
       "WebSearch",
-      "Skill(eyesight)"
+      "Skill(eyesight)",
+      "Skill(precommit)"
     ],
     "ask": [
       "Bash(rm -rf*)",

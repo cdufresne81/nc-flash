@@ -1,4 +1,24 @@
 # Thinking pad - **DO NOT TAKE ACTION UNLESS I ASK YOU TOO**
+# XML Metadata generation.
+
+
+# NC Flash
+- Offer the option to clear DTCs after reading them.
+- Should we consider including ROMs and patch in NC Flash ?
+- OBD2 Polling ? 
+- Live logging ?
+
+Big ones
+- Create XML.
+- Create patch.
+
+# Reverse engineer TCM.
+- Download the TCM ROM with the SBL.
+- Import previous analysis over it.
+- ReAnalyze the ROM with Claude.
+- Confirm Speeps statement.
+
+
 
 - Can we reduce the white border around the graph a little ?
 - When comparing to ROM from the same project we should skip most of the lenghty validations.

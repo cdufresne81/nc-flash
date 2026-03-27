@@ -8,7 +8,7 @@ We work for an hospital and our work is critical, failure to succeed will result
 - **"Question:" prefix** - If a prompt starts with "Question:", answer only. Take no actions (no file edits, no commands).
 - **No auto-commit** - NEVER run `git commit` or `git push` unless the user explicitly asks OR requests to "land the plane" (session completion).
 - **Incremental notes** - After completing code changes that add, update, or delete functionality, immediately update the "Recent Completed Work" section in `.claude/notes.md`. Only note meaningful changes (new features, behavior changes, significant fixes). Skip trivial changes (typos, formatting, minor refactors). Always check existing entries to avoid duplicates.
-- **Changelog** - When adding features, fixing bugs, or making notable changes, update `CHANGELOG.md` under an `## [Unreleased]` section at the top. When a version is tagged, the unreleased section becomes the release notes on GitHub. Follow the existing format (Added/Changed/Fixed subsections).
+- **Changelog** - `CHANGELOG.md` MUST be updated before every commit. Add entries to the `## [Unreleased]` section using Added/Changed/Fixed/Removed subsections. When a version is tagged, the unreleased section becomes the GitHub release notes. Ensure version sections match actual git tags — never leave released work under Unreleased.
 - **NEVER commit or push** - Unless the user ask to land the plane or explicitely ask for it.
 - **Test coverage** - New features or changes to existing features must be tested. Create tests if none exist AND the behavior is logical and important to verify. Do not write tests for trivial or cosmetic changes.
 
@@ -23,9 +23,9 @@ Update this file when ending a session with any important notes for next time.
 ## Key Documentation
 
 Reference these before modifying related functionality:
-- `docs/LOGGING.md` - Logging configuration and exception hierarchy
-- `docs/ROM_DEFINITION_FORMAT.md` - XML format for ROM definitions
-- `docs/UI_TESTING.md` - GUI test runner, screenshots, and test scripts
+- `docs/internal/LOGGING.md` - Logging configuration and exception hierarchy
+- `docs/internal/ROM_DEFINITION_FORMAT.md` - XML format for ROM definitions
+- `docs/internal/UI_TESTING.md` - GUI test runner, screenshots, and test scripts
 
 **Rule:** When creating new documentation in `docs/`, add it to this list with a brief description of when to reference it.
 
@@ -57,7 +57,7 @@ python tools/test_runner.py --interactive
 1. When asked to test or screenshot the UI, use `test_runner.py` - do NOT manually automate Qt
 2. For visual bug investigation, take screenshots to capture the problematic state
 3. Test scripts live in `tests/gui/*.txt` - create new ones for reproducible test cases
-4. See `docs/UI_TESTING.md` for full command reference
+4. See `docs/internal/UI_TESTING.md` for full command reference
 5. **Always screenshot the full window** (use `table` target, not `graph`) to capture full context — graph-only screenshots miss layout/sizing issues
 
 ## Landing the Plane (Session Completion)
@@ -72,7 +72,10 @@ When ending a work session, complete ALL steps below. Work is NOT complete until
    pytest
    ```
 
-2. **Commit and push**:
+2. **Validate changelog** (if code changed):
+   Run `/precommit` to validate CHANGELOG.md is updated and staged, and run quality gates (black, flake8, pytest). A PreToolUse hook will also block `git commit` if CHANGELOG.md is not staged.
+
+3. **Commit and push**:
    ```bash
    git add -A
    git commit -m "Description of changes"
@@ -81,16 +84,15 @@ When ending a work session, complete ALL steps below. Work is NOT complete until
    git status  # MUST show "up to date with origin"
    ```
 
-3. **Verify** - All changes committed AND pushed
+4. **Verify** - All changes committed AND pushed
 
-4. **Update notes** in `.claude/notes.md`:
+5. **Update notes** in `.claude/notes.md`:
    - Add any pending tasks or context
    - Apply **Incremental notes** rule for any missed completed work
    - Verify "Recent Completed Work" is complete (incremental notes should have captured most changes - only add missing items, no duplicates)
    - Sanity check `README.md` against recent work - add new features, remove references to deleted functionality
-   - Update `CHANGELOG.md` — add new features/fixes/changes to the `[Unreleased]` section (create it if missing)
 
-5. **Hand off** - Provide context summary for next session
+6. **Hand off** - Provide context summary for next session
 
 **Rules:**
 - Work is NOT complete until `git push` succeeds

@@ -8,11 +8,11 @@
 
 > **Notice:** This project was built with AI assistance (vibe coded). Modifying and flashing ECU software carries real risk — incorrect tunes can damage your engine, ECU, or other vehicle components. The author assumes no responsibility for any damage to your vehicle, hardware, or any other consequence arising from the use of this software. **Use entirely at your own risk.** Always keep backups of your stock ROM and understand what you are changing before flashing.
 
-An open-source ROM editor for NC Miata (MX-5) ECUs, designed to replace the discontinued EcuFlash for ROM editing tasks.
+An open-source ROM editor and flash tool for NC Miata (MX-5) ECUs, designed to replace the discontinued EcuFlash.
 
 ## Overview
 
-NC Flash is a desktop application that allows you to read, edit, and save ECU ROM files for NC generation Mazda MX-5 Miata vehicles. This tool focuses solely on ROM file manipulation and works in conjunction with RomDrop for actual ECU flashing.
+NC Flash is a desktop application that allows you to read, edit, flash, and save ECU ROM files for NC generation Mazda MX-5 Miata vehicles. It includes native J2534/UDS ECU flashing via Tactrix OpenPort 2.0 — no external tools required.
 
 ## Installation
 
@@ -40,7 +40,7 @@ cd nc-flash
 ## Run from Source
 
 ### Windows
-Simply double-click `run.bat` or see [Windows Setup Guide](docs/WINDOWS_SETUP.md) for details.
+Simply double-click `run.bat` or see [Windows Setup Guide](docs/internal/WINDOWS_SETUP.md) for details.
 
 ### Linux/macOS
 ```bash
@@ -86,6 +86,7 @@ python main.py
 - Copy/paste cells (`Ctrl+C`/`Ctrl+V`)
 - Copy entire table to clipboard for Excel (`Ctrl+Shift+C`)
 - Export table to CSV (`Ctrl+E`)
+- Configurable default CSV export directory
 
 ### Table Visualization
 - Interactive 3D surface plot for 3D tables
@@ -95,26 +96,45 @@ python main.py
 - Configurable color maps
 
 ### ECU Flashing
-- One-click flash via RomDrop integration (`Ctrl+Shift+F`)
-- Safety warning dialog with pre-flash checklist (dynamic flash mode only)
+- Native J2534/UDS flash — read and write ECU ROMs directly via Tactrix OpenPort 2.0
+- Flash ROM to ECU with progress tracking and abort support (`Ctrl+Shift+F`)
+- Read ROM from ECU — dump the current calibration
+- Read and clear Diagnostic Trouble Codes (DTCs)
+- Seed-key security access authentication
+- SBL (Secondary Boot Loader) upload for programming session
+- 1 KB block transfers with CRC32 validation
+- ROM validation: size check, vehicle generation detection, checksum correction
+- Safety: battery voltage check, engine-off requirement, state machine prevents step-skipping
 - Auto-saves unsaved changes before flashing
-- Configurable RomDrop executable path in Settings → Tools
+- Configurable J2534 DLL path (auto-detects Tactrix OpenPort via registry)
 
 ### ROM Comparison
 - Side-by-side comparison of two ROMs (`Ctrl+Shift+D`)
+- Cross-definition comparison (e.g., NC1 vs NC2 ROMs)
+- Copy table values from one ROM to another
 - Category tree listing all modified tables with change counts
 - Changed cells highlighted with gray border (matching edit indicators)
 - "Changed only" toggle dims unchanged cells for focus
 - Synchronized scrolling between original and modified panels
 - Keyboard navigation: `↑`/`↓` tables, `T` toggle, `Esc` close
 
+### Project Management
+- Create tuning projects with version-controlled ROM snapshots
+- Named commits with auto-generated tuning log (`TUNING_LOG.md`)
+- Version history browser with revert support
+- Soft delete bad versions (moved to `_trash/`, recoverable)
+- Read-only version comparison between any two snapshots
+
 ### User Interface
+- Main window toolbar and per-table viewer toolbar with quick-access buttons
 - Multi-ROM support with tabs
 - Per-ROM color swatches on tabs to easily identify which ROM is which when multiple files are open
 - Multi-window table viewers
 - Recent files list
 - Session restoration (automatically reopen last ROM)
-- Configurable settings (font size, color maps)
+- First-run setup wizard for RomDrop configuration
+- Configurable settings (font size, color maps, export paths)
+- Scaling property editor for table definitions
 - Verbose activity log console
 - Keyboard shortcuts for all major operations
 - Cross-platform: Windows, Linux, and macOS
@@ -146,7 +166,7 @@ python main.py
 | `G` | Toggle graph panel |
 | `Ctrl+O` | Open ROM file |
 | `Ctrl+Shift+D` | Compare open ROMs |
-| `Ctrl+Shift+F` | Flash ROM to ECU via RomDrop |
+| `Ctrl+Shift+F` | Flash ROM to ECU |
 
 ## Tech Stack
 
@@ -200,6 +220,7 @@ nc-flash/
 │   │   ├── session_mixin.py           # Session restore/save
 │   │   ├── recent_files_mixin.py      # Recent files menu
 │   │   ├── project_mixin.py           # Project operations
+│   │   ├── mcp_mixin.py              # MCP server management
 │   │   └── widgets/                   # Reusable widgets
 │   │       └── toggle_switch.py       # Animated toggle switch
 │   ├── api/                           # Command API (HTTP bridge for MCP)
@@ -226,10 +247,12 @@ nc-flash/
 │   ├── installer.iss                  # Inno Setup installer script
 │   └── requirements-build.txt         # Build-only dependencies
 ├── docs/                              # Documentation
-│   ├── ROM_DEFINITION_FORMAT.md       # XML definition format
-│   ├── LOGGING.md                     # Logging and exception hierarchy
-│   ├── UI_TESTING.md                  # GUI test runner guide
-│   └── WINDOWS_SETUP.md              # Windows setup guide
+│   └── internal/                      # Internal reference docs
+│       ├── ROM_DEFINITION_FORMAT.md   # XML definition format
+│       ├── LOGGING.md                 # Logging and exception hierarchy
+│       ├── UI_TESTING.md             # GUI test runner guide
+│       ├── WINDOWS_SETUP.md          # Windows setup guide
+│       └── ROM_COMPARISON_TOOL.md     # ROM comparison design spec
 ├── main.py                            # Application entry point
 ├── run.bat                            # Windows launcher
 └── run.sh                             # Linux launcher
@@ -243,7 +266,7 @@ nc-flash/
 4. **Edit Values:** Click cells to edit, use shortcuts for bulk operations
 5. **Visualize:** Press `G` to toggle 3D/2D graph view
 6. **Save ROM:** File → Save ROM or Save ROM As...
-7. **Flash to ECU:** Tools → Flash ROM to ECU (or `Ctrl+Shift+F`) — launches RomDrop with your ROM file
+7. **Flash to ECU:** Tools → Flash ROM to ECU (or `Ctrl+Shift+F`) — connects via J2534 adapter and flashes directly
 
 ### Using Projects
 
@@ -283,8 +306,8 @@ pytest -k "test_rom_id"
 ```
 
 **Test Coverage:**
-- Core modules (parser, detector, reader): 86-96%
-- Overall: 70%
+- Core modules (parser, detector, reader): 80-96%
+- Overall: ~32% (UI code is harder to unit-test)
 
 View detailed coverage report: `htmlcov/index.html`
 
@@ -303,14 +326,14 @@ flake8 src/ tests/
 ### CI/CD
 
 Tests run automatically on GitHub Actions for:
-- Python 3.10, 3.11, 3.12
+- Python 3.10, 3.12
 - Ubuntu, Windows, macOS
 
 ## Development Status
 
-**Current Version:** v2.0.0
+**Current Version:** v2.3.0
 
-This version includes full table editing, project management with version history, interactive graph visualization, ROM comparison tool, a polished toolbar-driven UI, and AI assistant integration via MCP server.
+Full table editing, project management with version history, interactive graph visualization, ROM comparison tool, toolbar-driven UI, AI assistant integration via MCP server, and ECU flashing via RomDrop.
 
 ## Contributing
 

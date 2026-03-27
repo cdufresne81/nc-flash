@@ -70,13 +70,13 @@ debug_*.py
 *_debug.py
 *_debug.log
 
-# Generated output files
-repomix-output.xml
-
 # Test screenshots (auto-generated, don't commit)
 docs/screenshots/*.png
 docs/screenshots/*.jpg
 docs/screenshots/*.jpeg
+
+# Personal notes
+Thinking-pad.md
 
 # Projects directory (user projects, don't commit)
 projects/*
