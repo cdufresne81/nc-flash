@@ -516,6 +516,16 @@ class TableOperationsHelper:
         # This is intentionally light - user can apply multiple times
         blend_factor = 0.15
 
+        # Check auto-round setting
+        from ...utils.settings import get_settings
+        from ...utils.formatting import round_one_level_coarser, get_scaling_format
+
+        auto_round = get_settings().get_auto_round()
+        if auto_round:
+            data_fmt = get_scaling_format(
+                self.ctx.rom_definition, self.ctx.current_table.scaling
+            )
+
         # Calculate smoothed values first (don't modify while iterating)
         smoothed_values = {}
 
@@ -532,6 +542,8 @@ class TableOperationsHelper:
                     current = float(values[data_row])
                     neighbor_avg = sum(neighbors) / len(neighbors)
                     smoothed = current + blend_factor * (neighbor_avg - current)
+                    if auto_round:
+                        smoothed = round_one_level_coarser(smoothed, data_fmt)
                     smoothed_values[(data_row, data_col)] = smoothed
             else:
                 # 3D table (2D array) - average with all 8 neighbors
@@ -550,6 +562,8 @@ class TableOperationsHelper:
                     current = float(values[data_row, data_col])
                     neighbor_avg = sum(neighbors) / len(neighbors)
                     smoothed = current + blend_factor * (neighbor_avg - current)
+                    if auto_round:
+                        smoothed = round_one_level_coarser(smoothed, data_fmt)
                     smoothed_values[(data_row, data_col)] = smoothed
 
         if not smoothed_values:
@@ -612,3 +626,44 @@ class TableOperationsHelper:
             if data_changes:
                 self.ctx.viewer.bulk_changes.emit(data_changes)
                 logger.debug(f"Smoothed {len(data_changes)} cell(s)")
+
+    def round_selection(self):
+        """Round selected cells one decimal level coarser.
+
+        Uses the scaling format to determine max precision, then detects
+        each value's effective precision and rounds to one level less.
+        e.g. for %0.2f: 12.11 -> 12.1, 12.10 -> 12.0
+        """
+        from ...utils.formatting import (
+            round_one_level_coarser,
+            get_scaling_format,
+            get_axis_format,
+        )
+
+        if not self.ctx.current_table:
+            return
+
+        data_fmt = get_scaling_format(
+            self.ctx.rom_definition, self.ctx.current_table.scaling
+        )
+
+        def round_data(value: float) -> float:
+            return round_one_level_coarser(value, data_fmt)
+
+        def round_axis(value: float, axis_type_str: str) -> float:
+            axis_type = (
+                AxisType.X_AXIS if axis_type_str == "x_axis" else AxisType.Y_AXIS
+            )
+            axis_fmt = get_axis_format(
+                self.ctx.rom_definition, self.ctx.current_table, axis_type
+            )
+            return round_one_level_coarser(value, axis_fmt)
+
+        data_changes, axis_changes = self.apply_bulk_operation(
+            round_data, "Round", axis_operation_fn=round_axis
+        )
+
+        if data_changes:
+            self.ctx.viewer.bulk_changes.emit(data_changes)
+        if axis_changes:
+            self.ctx.viewer.axis_bulk_changes.emit(axis_changes)

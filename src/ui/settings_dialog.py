@@ -205,6 +205,26 @@ class SettingsDialog(QDialog):
 
         layout.addWidget(toggle_group)
 
+        # Rounding group
+        rounding_group = QGroupBox("Rounding")
+        rounding_layout = QVBoxLayout()
+        rounding_group.setLayout(rounding_layout)
+
+        self.auto_round_checkbox = QCheckBox(
+            "Auto-round after interpolation and smoothing"
+        )
+        rounding_layout.addWidget(self.auto_round_checkbox)
+
+        rounding_help = QLabel(
+            "When enabled, interpolation and smoothing results are\n"
+            "automatically rounded one decimal level coarser than\n"
+            "the table's display format (e.g. 12.11 \u2192 12.1 for %0.2f)"
+        )
+        rounding_help.setStyleSheet("color: gray; font-size: 10px;")
+        rounding_layout.addWidget(rounding_help)
+
+        layout.addWidget(rounding_group)
+
         layout.addStretch()
 
         self.tabs.addTab(tab, "Editor")
@@ -394,6 +414,9 @@ class SettingsDialog(QDialog):
         # Load MCP auto-start setting
         self.mcp_auto_start_checkbox.setChecked(self.settings.get_mcp_auto_start())
 
+        # Load auto-round setting
+        self.auto_round_checkbox.setChecked(self.settings.get_auto_round())
+
         # Load J2534 DLL path (only if ECU tab was created)
         if hasattr(self, "j2534_dll_edit"):
             j2534_path = self.settings.get_j2534_dll_path()
@@ -501,6 +524,9 @@ class SettingsDialog(QDialog):
 
         # Save MCP auto-start setting
         self.settings.set_mcp_auto_start(self.mcp_auto_start_checkbox.isChecked())
+
+        # Save auto-round setting
+        self.settings.set_auto_round(self.auto_round_checkbox.isChecked())
 
         # Save J2534 DLL path (only if ECU tab was created)
         if hasattr(self, "j2534_dll_edit"):

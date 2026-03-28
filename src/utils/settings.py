@@ -302,6 +302,14 @@ class AppSettings:
         """Set whether the MCP server should start automatically on app launch."""
         self.settings.setValue("tools/mcp_auto_start", enabled)
 
+    def get_auto_round(self) -> bool:
+        """Get whether interpolation/smoothing results are auto-rounded one decimal coarser."""
+        return self.settings.value("editor/auto_round", False, type=bool)
+
+    def set_auto_round(self, enabled: bool):
+        """Set whether interpolation/smoothing results are auto-rounded one decimal coarser."""
+        self.settings.setValue("editor/auto_round", enabled)
+
 
 # Global settings instance
 _settings = None

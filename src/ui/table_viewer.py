@@ -644,6 +644,10 @@ class TableViewer(QWidget):
         """Apply light smoothing to selected data cells"""
         self._ops.smooth_selection()
 
+    def round_selection(self):
+        """Round selected cells one decimal level coarser"""
+        self._ops.round_selection()
+
     def select_all_data(self):
         """Select all data cells (excluding axes)"""
         self._ops.select_all_data()

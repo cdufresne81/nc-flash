@@ -245,6 +245,24 @@ def _draw_graph(p, c):
     p.drawLine(2, 18, 18, 18)
 
 
+def _draw_round(p, c):
+    # Stepped staircase being rounded into a curve
+    # Draw the smooth curve
+    path = QPainterPath()
+    path.moveTo(3, 16)
+    path.cubicTo(6, 16, 7, 10, 10, 10)
+    path.cubicTo(13, 10, 14, 4, 17, 4)
+    p.setBrush(Qt.NoBrush)
+    p.setPen(QPen(c, 1.8, Qt.SolidLine, Qt.RoundCap))
+    p.drawPath(path)
+    # Draw tiny dots at rounded positions
+    p.setBrush(c)
+    p.setPen(Qt.NoPen)
+    p.drawEllipse(QPointF(3, 16), 1.5, 1.5)
+    p.drawEllipse(QPointF(10, 10), 1.5, 1.5)
+    p.drawEllipse(QPointF(17, 4), 1.5, 1.5)
+
+
 # Dispatch table
 _ICON_DRAWERS = {
     # Main window
@@ -268,5 +286,6 @@ _ICON_DRAWERS = {
     "interp_h": _draw_interp_h,
     "interp_2d": _draw_interp_2d,
     "smooth": _draw_smooth,
+    "round": _draw_round,
     "graph": _draw_graph,
 }

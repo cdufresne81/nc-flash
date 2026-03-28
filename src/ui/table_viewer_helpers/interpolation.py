@@ -13,6 +13,12 @@ from PySide6.QtWidgets import QMessageBox
 
 from ...core.rom_definition import TableType, AxisType
 from ...core.rom_reader import ScalingConverter
+from ...utils.formatting import (
+    round_one_level_coarser,
+    get_scaling_format,
+    get_axis_format,
+)
+from ...utils.settings import get_settings
 from .context import TableViewerContext, frozen_table_updates
 
 if TYPE_CHECKING:
@@ -97,6 +103,16 @@ class TableInterpolationHelper:
 
         all_changes = []
         axis_changes = []
+
+        # Pre-compute formats for auto-round
+        auto_round = get_settings().get_auto_round()
+        if auto_round:
+            data_fmt = get_scaling_format(
+                self.ctx.rom_definition, self.ctx.current_table.scaling
+            )
+            axis_fmt_str = get_axis_format(
+                self.ctx.rom_definition, self.ctx.current_table, axis_type
+            )
 
         with frozen_table_updates(self.ctx.table_widget):
             for sel_range in selected_ranges:
@@ -208,6 +224,10 @@ class TableInterpolationHelper:
                         # Linear interpolation
                         t = (pos - first_pos) / (last_pos - first_pos)
                         new_val = first_val + t * (last_val - first_val)
+
+                        if auto_round:
+                            fmt = axis_fmt_str if is_axis_line == axis_key else data_fmt
+                            new_val = round_one_level_coarser(new_val, fmt)
 
                         if abs(new_val - old_val) > 1e-9:
                             if is_axis_line == axis_key:
@@ -369,6 +389,13 @@ class TableInterpolationHelper:
 
         all_changes = []
 
+        # Pre-compute format for auto-round
+        auto_round = get_settings().get_auto_round()
+        if auto_round:
+            data_fmt = get_scaling_format(
+                self.ctx.rom_definition, self.ctx.current_table.scaling
+            )
+
         with frozen_table_updates(self.ctx.table_widget):
             for sel_range in selected_ranges:
                 top_row = sel_range.topRow()
@@ -436,6 +463,9 @@ class TableInterpolationHelper:
                             + (1 - tx) * ty * v01
                             + tx * ty * v11
                         )
+
+                        if auto_round:
+                            new_val = round_one_level_coarser(new_val, data_fmt)
 
                         try:
                             old_val = float(item.text())

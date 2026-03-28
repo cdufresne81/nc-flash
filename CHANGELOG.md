@@ -4,6 +4,10 @@ All notable changes to NC Flash are documented here.
 
 ## [Unreleased]
 
+### Added
+- **Round Selection (R key)** — New operation to round selected cells one decimal level coarser based on the scaling format. Press repeatedly: 12.11 → 12.1 → 12.0. Works on both data and axis cells
+- **Auto-round setting** — New checkbox in Settings > Editor to automatically round interpolation and smoothing results one decimal level coarser than the table's display format
+
 ### Fixed
 - **DTC codes don't match RomDrop** — Live DTC reading returned garbage codes (e.g. P03C1 instead of C0121) due to two bugs: the KWP2000 response count byte was not skipped, misaligning all DTC parsing; and chassis codes (C-codes) used standard OBD-II keys (0x4xxx) instead of Mazda NC's actual encoding (0xCxxx)
 

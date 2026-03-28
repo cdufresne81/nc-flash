@@ -5,6 +5,13 @@
 - `examples/metadata/LFDJEA.xml` is untracked — may need committing
 - **Review romdrop.crc fallback** — `src/ecu/rom_utils.py:169` silently skips CRC verification if `romdrop.crc` is missing. Patching still proceeds without validation. Need to decide: should patching be blocked without the CRC database, or is a warning sufficient?
 
+## Recent Completed Work (Mar 28, 2026) - Rounding Feature
+- **Round Selection (R key)** — New bulk operation rounds selected cells one decimal level coarser. Uses scaling format to determine max precision, detects effective decimals, rounds to one less. Repeatable: 12.11 → 12.1 → 12.0. Works on data + axis cells via `apply_bulk_operation`
+- **Auto-round setting** — New `editor/auto_round` boolean setting (default off). When enabled, interpolation (1D + 2D) and smoothing automatically round computed values one decimal coarser. Checkbox added to Settings > Editor tab
+- **Rounding utilities** — `get_effective_decimal_places()`, `round_one_level_coarser()`, `_get_format_precision()` added to `src/utils/formatting.py`
+- **Round toolbar icon** — Curve-with-dots icon added to `icons.py`
+- **29 tests** in `tests/test_formatting.py` covering all rounding functions
+
 ## Recent Completed Work (Mar 27, 2026) - House Cleaning
 - **CHANGELOG restructured** — Unreleased section was a mess (contained v2.1.0 through v2.3.0 items). Split into proper `[v2.3.0]`, `[v2.2.0]`, `[v2.1.1]`, `[v2.1.0]` sections with correct dates. Unreleased now only has current house-cleaning work
 - **GitHub v2.3.0 release notes updated** — Were using stale Unreleased dump; now match the proper v2.3.0 changelog section

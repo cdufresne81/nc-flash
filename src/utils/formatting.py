@@ -40,6 +40,54 @@ def format_value(value: float, format_spec: str) -> str:
         return f"{value:.2f}"
 
 
+def _get_format_precision(format_spec: str) -> int:
+    """Extract the number of decimal places from a Python format spec.
+
+    Returns 0 for integer specifiers (d, x, etc.) and specs with no precision.
+    """
+    m = re.match(r".*?\.(\d+)[fFeEgG]", format_spec)
+    if m:
+        return int(m.group(1))
+    # Integer specifiers or no decimal point
+    return 0
+
+
+def get_effective_decimal_places(value: float, max_decimals: int) -> int:
+    """Count the meaningful decimal places of a float, up to max_decimals.
+
+    Formats the value to max_decimals places, then strips trailing zeros
+    to find the effective precision.
+
+    Examples (max_decimals=2):
+        12.11 -> 2,  12.10 -> 1,  12.00 -> 0
+    """
+    if max_decimals <= 0:
+        return 0
+    formatted = f"{value:.{max_decimals}f}"
+    if "." not in formatted:
+        return 0
+    decimals = formatted.split(".")[1]
+    # Strip trailing zeros
+    stripped = decimals.rstrip("0")
+    return len(stripped)
+
+
+def round_one_level_coarser(value: float, format_spec: str) -> float:
+    """Round a value one decimal level coarser than its current effective precision.
+
+    Uses the format spec to determine the maximum possible precision, then
+    detects the value's effective precision and rounds to one level less.
+
+    Examples (format_spec='.2f'):
+        12.11 -> 12.1,  12.10 -> 12.0,  12.00 -> 12.0 (no change)
+    """
+    max_decimals = _get_format_precision(format_spec)
+    effective = get_effective_decimal_places(value, max_decimals)
+    if effective <= 0:
+        return value
+    return round(value, effective - 1)
+
+
 def get_scaling_range(rom_definition, scaling_name: str):
     """Get (min, max) from a scaling definition, or None if not defined.
 

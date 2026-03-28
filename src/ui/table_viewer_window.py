@@ -218,6 +218,12 @@ class TableViewerWindow(QMainWindow):
         close_shortcut = QShortcut(QKeySequence(Qt.Key_Escape), self)
         close_shortcut.activated.connect(self.close)
 
+        # Alternate increment/decrement shortcuts (] and [)
+        inc_alt = QShortcut(QKeySequence("]"), self)
+        inc_alt.activated.connect(self.viewer.increment_selection)
+        dec_alt = QShortcut(QKeySequence("["), self)
+        dec_alt.activated.connect(self.viewer.decrement_selection)
+
         # Create menu bar and toolbar
         self._create_menu_bar()
         self._create_toolbar()
@@ -285,6 +291,10 @@ class TableViewerWindow(QMainWindow):
         smooth_action = edit_menu.addAction("Smooth Selection")
         smooth_action.setShortcut("S")
         smooth_action.triggered.connect(self.viewer.smooth_selection)
+
+        round_action = edit_menu.addAction("Round Selection")
+        round_action.setShortcut("R")
+        round_action.triggered.connect(self.viewer.round_selection)
 
         edit_menu.addSeparator()
 
@@ -373,12 +383,12 @@ class TableViewerWindow(QMainWindow):
         edit_actions = []
 
         act = tb.addAction(self._make_toolbar_icon("increment"), "")
-        act.setToolTip("Increment  (+)")
+        act.setToolTip("Increment  (+ or ])")
         act.triggered.connect(self.viewer.increment_selection)
         edit_actions.append(act)
 
         act = tb.addAction(self._make_toolbar_icon("decrement"), "")
-        act.setToolTip("Decrement  (\u2212)")
+        act.setToolTip("Decrement  (\u2212 or [)")
         act.triggered.connect(self.viewer.decrement_selection)
         edit_actions.append(act)
 
@@ -419,6 +429,11 @@ class TableViewerWindow(QMainWindow):
         act = tb.addAction(self._make_toolbar_icon("smooth"), "")
         act.setToolTip("Smooth Selection  (S)")
         act.triggered.connect(self.viewer.smooth_selection)
+        edit_actions.append(act)
+
+        act = tb.addAction(self._make_toolbar_icon("round"), "")
+        act.setToolTip("Round Selection  (R)")
+        act.triggered.connect(self.viewer.round_selection)
         edit_actions.append(act)
 
         # Disable edit actions in diff mode
