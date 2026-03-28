@@ -4,8 +4,12 @@ All notable changes to NC Flash are documented here.
 
 ## [Unreleased]
 
+## [v2.3.3] - 2026-03-28
+
 ### Fixed
-- **`Thinking-pad.md` still tracked** — Stash/pop cycle during rebase re-added the file; now properly removed from git tracking
+- **Broken UI on Windows dark theme** — Hardcoded light-theme colors clashed with Windows dark mode system palette, causing unreadable text and selection highlights. App now forces light color scheme via `Qt.ColorScheme.Light`
+
+## [v2.3.2] - 2026-03-28
 
 ## [v2.3.2] - 2026-03-28
 

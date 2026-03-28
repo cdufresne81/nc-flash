@@ -2025,6 +2025,7 @@ def main():
     logger.info("=" * 60)
 
     app = QApplication(sys.argv)
+    app.styleHints().setColorScheme(Qt.ColorScheme.Light)
     app.setApplicationName(APP_NAME)
 
     window = MainWindow()
