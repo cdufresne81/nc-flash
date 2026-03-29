@@ -829,24 +829,27 @@ class FlashManager:
 
             self._set_state(FlashState.SCANNING_RAM)
 
-            total_blocks = 192  # 0xC0
-            block_size = 0x1F0
-            ram = bytearray(total_blocks * block_size)
+            base_address = 0xFFFF0000
+            total_pages = 192  # 0xC0 pages: 0x00 through 0xBF
+            page_size = 0x100
+            read_size = page_size
+            ram = bytearray(total_pages * page_size)
 
-            for i in range(total_blocks):
+            for i in range(total_pages):
                 if self._check_abort():
                     raise FlashAbortedError("RAM scan aborted by user")
 
-                address = i * block_size
-                data = self._uds.read_memory_by_address(address, block_size)
-                ram[address : address + len(data)] = data
-                pct = ((i + 1) / total_blocks) * 100.0
+                address = base_address + i * page_size
+                data = self._uds.read_memory_by_address(address, read_size)
+                offset = i * page_size
+                ram[offset : offset + page_size] = data[:page_size]
+                pct = ((i + 1) / total_pages) * 100.0
                 self._notify(
                     progress_cb,
-                    f"Scanning RAM: block {i + 1}/{total_blocks}",
+                    f"Scanning RAM: page {i + 1}/{total_pages}",
                     percent=pct,
-                    bytes_sent=(i + 1) * block_size,
-                    bytes_total=total_blocks * block_size,
+                    bytes_sent=(i + 1) * page_size,
+                    bytes_total=total_pages * page_size,
                 )
 
             self._set_state(FlashState.COMPLETE)

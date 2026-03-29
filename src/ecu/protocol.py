@@ -525,23 +525,29 @@ class UDSConnection:
 
     def scan_ram(self, progress_callback=None) -> bytearray:
         """
-        Scan ECU RAM addresses 0x0000-0xBFFF.
+        Scan ECU RAM at 0xFFFF0000-0xFFFFBFFF.
 
-        Reads 192 blocks of 0x1F0 bytes each (total ~96KB).
+        Reads 192 pages (0x00-0xBF) stepping by 0x100.  Each UDS request
+        fetches 0x1F0 bytes (matching romdrop), but only the first 0x100
+        bytes per page are kept, giving a clean 48 KB dump.
+
         Based on romdrop's uds_ScanRAM at 0x00404AE2.
 
         Returns:
-            RAM contents as bytearray
+            RAM contents as bytearray (49152 bytes)
         """
-        total_blocks = 192  # 0xC0
-        block_size = 0x1F0
-        ram = bytearray(total_blocks * block_size)
+        base_address = 0xFFFF0000
+        total_pages = 192  # 0xC0 pages: 0x00 through 0xBF
+        page_size = 0x100
+        read_size = page_size
+        ram = bytearray(total_pages * page_size)
 
-        for i in range(total_blocks):
-            address = i * block_size
-            data = self.read_memory_by_address(address, block_size)
-            ram[address : address + len(data)] = data
+        for i in range(total_pages):
+            address = base_address + i * page_size
+            data = self.read_memory_by_address(address, read_size)
+            offset = i * page_size
+            ram[offset : offset + page_size] = data[:page_size]
             if progress_callback:
-                progress_callback(i + 1, total_blocks)
+                progress_callback(i + 1, total_pages)
 
         return ram
