@@ -5,6 +5,12 @@
 - `examples/metadata/LFDJEA.xml` is untracked — may need committing
 - **Review romdrop.crc fallback** — `src/ecu/rom_utils.py:169` silently skips CRC verification if `romdrop.crc` is missing. Patching still proceeds without validation. Need to decide: should patching be blocked without the CRC database, or is a warning sufficient?
 
+## Recent Completed Work (Mar 29, 2026) - Checksum Table Fix (P0601/P0606)
+- **CHECKSUM_TABLE_OFFSET was 0xFF658 — corrected to 0xFF650**: The 8-byte misalignment caused every checksum entry to be misread (checksum field parsed as start address), corrupting all 35 table entries with CHECKSUM_MAGIC before flashing
+- **End address is inclusive, not exclusive**: Table stores last byte of range; fixed `correct_rom_checksums` to pass `end_incl + 1` to `mazda_checksum`
+- **Removed unnecessary exclude_offset logic**: No real checksum entry's range covers the table at 0xFF650; the self-reference fix from the prior commit was a red herring
+- **Added real ROM verification tests**: `test_real_rom_no_corrections` and `test_real_rom_idempotent` using `examples/lf9veb.bin`
+
 ## Recent Completed Work (Mar 28, 2026) - Rounding Feature
 - **Round Selection (R key)** — New bulk operation rounds selected cells one decimal level coarser. Uses scaling format to determine max precision, detects effective decimals, rounds to one less. Repeatable: 12.11 → 12.1 → 12.0. Works on data + axis cells via `apply_bulk_operation`
 - **Auto-round setting** — New `editor/auto_round` boolean setting (default off). When enabled, interpolation (1D + 2D) and smoothing automatically round computed values one decimal coarser. Checkbox added to Settings > Editor tab

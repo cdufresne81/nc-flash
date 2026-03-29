@@ -40,33 +40,37 @@ def correct_rom_checksums(rom_data: bytearray) -> list[tuple[int, int, int, int,
     Fix all checksums in the ROM checksum table.
 
     Reads checksum table at ROM offset CHECKSUM_TABLE_OFFSET.
-    Each 12-byte entry: start_addr(4, BE), end_addr(4, BE), checksum(4, BE).
-    Iterates entries until CHECKSUM_TABLE_END.
+    Each 12-byte entry: start_addr(4, BE), end_addr_inclusive(4, BE), checksum(4, BE).
+    End address is the last byte of the summed range (inclusive).
+    Iterates entries until CHECKSUM_TABLE_END or an invalid sentinel.
 
-    Returns list of (start, end, checksum_offset, old_value, new_value) tuples.
+    Verified against romdrop.exe disassembly at 0x004014B7.
+
+    Returns list of (start, end_inclusive, checksum_offset, old_value, new_value) tuples.
     """
     corrections = []
     offset = CHECKSUM_TABLE_OFFSET
 
     while offset < CHECKSUM_TABLE_END:
         start = int.from_bytes(rom_data[offset : offset + 4], "big")
-        end = int.from_bytes(rom_data[offset + 4 : offset + 8], "big")
+        end_incl = int.from_bytes(rom_data[offset + 4 : offset + 8], "big")
 
-        # End of table sentinel: start==0 and end==0
-        if start == 0 and end == 0:
+        # Sentinel: invalid start address (0xFFFFFFFF or beyond ROM) ends table
+        if start >= len(rom_data):
             break
 
         checksum_offset = offset + 8
         old_value = int.from_bytes(
             rom_data[checksum_offset : checksum_offset + 4], "big"
         )
-        new_value = mazda_checksum(rom_data, start, end)
+        # End address in table is inclusive; mazda_checksum takes exclusive end
+        new_value = mazda_checksum(rom_data, start, end_incl + 1)
 
         if old_value != new_value:
             rom_data[checksum_offset : checksum_offset + 4] = new_value.to_bytes(
                 4, "big"
             )
-            corrections.append((start, end, checksum_offset, old_value, new_value))
+            corrections.append((start, end_incl, checksum_offset, old_value, new_value))
 
         offset += CHECKSUM_ENTRY_SIZE
 
