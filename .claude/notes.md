@@ -5,6 +5,10 @@
 - `examples/metadata/LFDJEA.xml` is untracked — may need committing
 - **Review romdrop.crc fallback** — `src/ecu/rom_utils.py:169` silently skips CRC verification if `romdrop.crc` is missing. Patching still proceeds without validation. Need to decide: should patching be blocked without the CRC database, or is a warning sufficient?
 
+## Recent Completed Work (Mar 29, 2026) - Clear DTCs from Read Dialog (#33)
+- **"Clear DTCs" button in read-DTC dialog** — After reading DTCs, the results dialog now shows a "Clear DTCs" button alongside OK. Clicking it sends the clear command immediately without a second confirmation prompt
+- **Extracted `_do_clear_dtcs()` helper** — Shared by both the dialog button and the standalone "Clear DTCs" toolbar button
+
 ## Recent Completed Work (Mar 29, 2026) - Checksum Table Fix (P0601/P0606)
 - **CHECKSUM_TABLE_OFFSET was 0xFF658 — corrected to 0xFF650**: The 8-byte misalignment caused every checksum entry to be misread (checksum field parsed as start address), corrupting all 35 table entries with CHECKSUM_MAGIC before flashing
 - **End address is inclusive, not exclusive**: Table stores last byte of range; fixed `correct_rom_checksums` to pass `end_incl + 1` to `mazda_checksum`

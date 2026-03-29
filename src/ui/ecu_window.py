@@ -926,9 +926,15 @@ class ECUProgrammingWindow(QMainWindow):
                 QMessageBox.information(self, "DTCs", "No DTCs stored.")
             else:
                 text = "\n".join(f"  {d.formatted}: {d.description}" for d in unique)
-                QMessageBox.information(
-                    self, "DTCs", f"Found {len(unique)} DTC(s):\n\n{text}"
-                )
+                msg = QMessageBox(self)
+                msg.setIcon(QMessageBox.Information)
+                msg.setWindowTitle("DTCs")
+                msg.setText(f"Found {len(unique)} DTC(s):\n\n{text}")
+                msg.addButton(QMessageBox.Ok)
+                clear_btn = msg.addButton("Clear DTCs", QMessageBox.ActionRole)
+                msg.exec()
+                if msg.clickedButton() == clear_btn:
+                    self._do_clear_dtcs(manager)
             self._card_ecu.set_subtitle(
                 f"DTCs: {len(unique)} stored", "#cc8800" if unique else "#44aa44"
             )
@@ -937,6 +943,17 @@ class ECUProgrammingWindow(QMainWindow):
         finally:
             self._ecu_busy = False
             self._update_action_states()
+
+    def _do_clear_dtcs(self, manager: FlashManager):
+        """Send clear-DTC command and update the UI status card."""
+        try:
+            manager.clear_dtcs(uds=self._session.uds)
+            QMessageBox.information(self, "DTCs Cleared", "All DTCs cleared.")
+            self._dtcs = []
+            self._card_ecu.set_subtitle("DTCs: 0 stored", "#44aa44")
+            logger.info("DTCs cleared")
+        except ECUError as e:
+            QMessageBox.critical(self, "Error", f"Failed to clear DTCs:\n{e}")
 
     def _on_clear_dtcs(self):
         if not self._session or not self._session.uds:
@@ -956,10 +973,7 @@ class ECUProgrammingWindow(QMainWindow):
             return
         try:
             manager = FlashManager(self._get_dll_path())
-            manager.clear_dtcs(uds=self._session.uds)
-            QMessageBox.information(self, "DTCs Cleared", "All DTCs cleared.")
-            self._card_ecu.set_subtitle("DTCs: 0 stored", "#44aa44")
-            logger.info("DTCs cleared")
+            self._do_clear_dtcs(manager)
         except ECUError as e:
             QMessageBox.critical(self, "Error", f"Failed to clear DTCs:\n{e}")
         finally:

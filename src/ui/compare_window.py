@@ -586,7 +586,7 @@ class CompareWindow(QMainWindow):
         sidebar_layout.addWidget(self._tree)
 
         self._sidebar.setMinimumWidth(200)
-        self._sidebar.setMaximumWidth(300)
+        self._sidebar.setMaximumWidth(600)
 
     def _build_table_panels(self):
         """Create the two QTableWidget panels with compact labels for side-by-side comparison."""

@@ -4,10 +4,14 @@ All notable changes to NC Flash are documented here.
 
 ## [Unreleased]
 
+### Added
+- **Clear DTCs from read dialog (#33)** — After reading DTCs, the results dialog now shows a "Clear DTCs" button alongside OK, allowing immediate clearing without navigating to a separate action
+
 ### Fixed
 - **DTC toggle switch not showing on Windows 10 (#32)** — Window auto-sizing was based on the hidden table widget's tiny 1-cell dimensions, leaving no room for the toggle container. Now sizes from the toggle's own size hint when in toggle mode
 - **DTC toggle animates on window open** — Toggle switch now snaps to its initial position immediately instead of visually sliding into place when the window opens
 - **Tables with `%d` or `%x` format display as `0.00` after editing** — `format_value()` failed on integer/hex format specifiers because Python's `d`/`x` formats reject floats. Now converts to `int` first. Affects 176 scalings using `%d` and 3 using `%08x`
+- **ROM comparison sidebar too narrow** — Sidebar max width increased from 300px to 600px so long table names are not clipped
 
 ### Changed
 - Toggle switch shows a pointing-hand cursor on hover for better click affordance
