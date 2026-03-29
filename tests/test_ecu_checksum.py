@@ -1,6 +1,11 @@
 """Tests for src/ecu/checksum.py — Mazda ROM checksum calculation."""
 
+import os
+import struct
 import zlib
+
+import pytest
+
 from src.ecu.checksum import mazda_checksum, correct_rom_checksums, crc32, bswap32
 from src.ecu.constants import (
     CHECKSUM_MAGIC,
@@ -8,6 +13,8 @@ from src.ecu.constants import (
     CHECKSUM_ENTRY_SIZE,
     ROM_SIZE,
 )
+
+EXAMPLE_ROM = os.path.join(os.path.dirname(__file__), "..", "examples", "lf9veb.bin")
 
 
 class TestMazdaChecksum:
@@ -69,34 +76,35 @@ class TestCorrectRomChecksums:
     def _build_rom_with_checksum_table(self, entries):
         """Build a 1MB ROM with a checksum table containing given entries.
 
-        Each entry is (start, end) — the checksum field is set to 0
-        so it will always need correction.
+        Each entry is (start, end_inclusive) — end is the last byte of the
+        range (inclusive), matching the real Mazda ROM table format.
+        The checksum field is set to 0 so it will always need correction.
         """
         rom = bytearray(ROM_SIZE)
         offset = CHECKSUM_TABLE_OFFSET
 
-        for start, end in entries:
+        for start, end_incl in entries:
             # Write start address (4 bytes BE)
             rom[offset : offset + 4] = start.to_bytes(4, "big")
-            # Write end address (4 bytes BE)
-            rom[offset + 4 : offset + 8] = end.to_bytes(4, "big")
+            # Write end address inclusive (4 bytes BE)
+            rom[offset + 4 : offset + 8] = end_incl.to_bytes(4, "big")
             # Checksum = 0 (will be corrected)
             rom[offset + 8 : offset + 12] = b"\x00\x00\x00\x00"
             offset += CHECKSUM_ENTRY_SIZE
 
-        # Sentinel: zeros
-        rom[offset : offset + 8] = b"\x00" * 8
+        # Sentinel: 0xFF bytes (matches real ROM — triggers start >= rom_len check)
+        rom[offset : offset + 8] = b"\xff" * 8
         return rom
 
     def test_corrects_single_entry(self):
         """Single checksum entry gets corrected."""
-        rom = self._build_rom_with_checksum_table([(0x0000, 0x0010)])
+        rom = self._build_rom_with_checksum_table([(0x0000, 0x000F)])
         corrections = correct_rom_checksums(rom)
         assert len(corrections) == 1
 
-        start, end, cksum_offset, old_val, new_val = corrections[0]
+        start, end_incl, cksum_offset, old_val, new_val = corrections[0]
         assert start == 0x0000
-        assert end == 0x0010
+        assert end_incl == 0x000F
         assert old_val == 0
         # Verify the stored checksum was written
         stored = int.from_bytes(rom[cksum_offset : cksum_offset + 4], "big")
@@ -104,7 +112,7 @@ class TestCorrectRomChecksums:
 
     def test_already_correct(self):
         """No corrections when checksum is already correct."""
-        rom = self._build_rom_with_checksum_table([(0x0000, 0x0004)])
+        rom = self._build_rom_with_checksum_table([(0x0000, 0x0003)])
         # First, correct it
         correct_rom_checksums(rom)
         # Second pass should find no corrections
@@ -115,57 +123,43 @@ class TestCorrectRomChecksums:
         """Multiple checksum table entries are all corrected."""
         rom = self._build_rom_with_checksum_table(
             [
-                (0x0000, 0x0010),
-                (0x1000, 0x1010),
+                (0x0000, 0x000F),
+                (0x1000, 0x100F),
             ]
         )
         corrections = correct_rom_checksums(rom)
         assert len(corrections) == 2
 
-    def test_self_referencing_range_idempotent(self):
-        """Checksum entry whose range covers the checksum table itself.
+    @pytest.mark.skipif(
+        not os.path.exists(EXAMPLE_ROM), reason="example ROM not available"
+    )
+    def test_real_rom_no_corrections(self):
+        """A stock ROM with valid checksums must not be modified."""
+        with open(EXAMPLE_ROM, "rb") as f:
+            rom = bytearray(f.read())
+        corrections = correct_rom_checksums(rom)
+        assert len(corrections) == 0, (
+            f"correct_rom_checksums modified {len(corrections)} entries "
+            f"in a valid stock ROM — table parsing is wrong"
+        )
 
-        This reproduces the P0601/P0606 bug: if the summed range includes
-        the checksum field, the algorithm must exclude the stored checksum
-        from the sum. Otherwise a correct checksum gets overwritten with 0.
-        """
-        # Entry range covers the entire ROM — includes the checksum table
-        rom = self._build_rom_with_checksum_table([(0x00000, ROM_SIZE)])
+    @pytest.mark.skipif(
+        not os.path.exists(EXAMPLE_ROM), reason="example ROM not available"
+    )
+    def test_real_rom_idempotent(self):
+        """Correcting a modified ROM twice yields no changes on the second pass."""
+        with open(EXAMPLE_ROM, "rb") as f:
+            rom = bytearray(f.read())
+        # Corrupt one checksum entry to force correction
+        cksum_field = CHECKSUM_TABLE_OFFSET + 8
+        rom[cksum_field : cksum_field + 4] = b"\x00\x00\x00\x00"
 
-        # First pass: correct the checksum
         corrections = correct_rom_checksums(rom)
         assert len(corrections) == 1
-        _, _, cksum_offset, _, new_val = corrections[0]
-        assert new_val != 0, "Checksum should not be zero for a non-trivial range"
 
-        # Second pass: must find NO corrections (idempotent)
+        # Second pass: already correct, no changes
         corrections2 = correct_rom_checksums(rom)
-        assert len(corrections2) == 0, (
-            f"Checksum was re-corrected on second pass — "
-            f"self-referencing range bug! Stored value was overwritten."
-        )
-
-    def test_stock_rom_not_corrupted(self):
-        """Simulate a stock ROM with a pre-set correct checksum.
-
-        Verifies that correct_rom_checksums does not corrupt an already-
-        correct ROM where the checksum range spans the checksum table.
-        """
-        # Build ROM with entry covering the whole ROM
-        rom = self._build_rom_with_checksum_table([(0x00000, ROM_SIZE)])
-
-        # Correct it once to get the right value
-        correct_rom_checksums(rom)
-        cksum_offset = CHECKSUM_TABLE_OFFSET + 8
-        correct_value = int.from_bytes(rom[cksum_offset : cksum_offset + 4], "big")
-
-        # Now run correction again — it must NOT change the value
-        correct_rom_checksums(rom)
-        after_value = int.from_bytes(rom[cksum_offset : cksum_offset + 4], "big")
-        assert after_value == correct_value, (
-            f"Stock ROM checksum corrupted: was 0x{correct_value:08X}, "
-            f"now 0x{after_value:08X}"
-        )
+        assert len(corrections2) == 0
 
 
 class TestCrc32:
