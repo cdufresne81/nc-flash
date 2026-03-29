@@ -5,6 +5,11 @@
 - `examples/metadata/LFDJEA.xml` is untracked — may need committing
 - **Review romdrop.crc fallback** — `src/ecu/rom_utils.py:169` silently skips CRC verification if `romdrop.crc` is missing. Patching still proceeds without validation. Need to decide: should patching be blocked without the CRC database, or is a warning sufficient?
 
+## Recent Completed Work (Mar 29, 2026) - Scan RAM UI
+- **"Scan RAM" button in ECU window** — Exposes the existing `scan_ram()` backend (reads 192 blocks of 0x1F0 bytes from ECU RAM 0x0000-0xBFFF) as a UI button alongside Read ROM and DTCs
+- **Threaded with progress** — Uses `_FlashWorker` pattern with `SCANNING_RAM` state, shows block-by-block progress, abortable
+- **Auto-saves RAM dump** — Saves to `~/.nc-flash/reads/{ROM_ID}_RAM_{timestamp}.bin` and opens Explorer to the file
+
 ## Recent Completed Work (Mar 29, 2026) - Clear DTCs from Read Dialog (#33)
 - **"Clear DTCs" button in read-DTC dialog** — After reading DTCs, the results dialog now shows a "Clear DTCs" button alongside OK. Clicking it sends the clear command immediately without a second confirmation prompt
 - **Extracted `_do_clear_dtcs()` helper** — Shared by both the dialog button and the standalone "Clear DTCs" toolbar button

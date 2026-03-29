@@ -67,6 +67,7 @@ class FlashState(Enum):
     CONNECTING = "connecting"
     AUTHENTICATING = "authenticating"
     READING = "reading"
+    SCANNING_RAM = "scanning_ram"
     PREPARING_SBL = "preparing_sbl"
     TRANSFERRING_SBL = "transferring_sbl"
     TRANSFERRING_PROGRAM = "transferring_program"
@@ -83,12 +84,19 @@ _TRANSITIONS = {
     FlashState.CONNECTING: {FlashState.AUTHENTICATING, FlashState.ERROR},
     # Flash path: AUTHENTICATING -> PREPARING_SBL
     # Read path:  AUTHENTICATING -> READING
+    # Scan path:  AUTHENTICATING -> SCANNING_RAM
     FlashState.AUTHENTICATING: {
         FlashState.PREPARING_SBL,
         FlashState.READING,
+        FlashState.SCANNING_RAM,
         FlashState.ERROR,
     },
     FlashState.READING: {FlashState.COMPLETE, FlashState.ERROR, FlashState.ABORTED},
+    FlashState.SCANNING_RAM: {
+        FlashState.COMPLETE,
+        FlashState.ERROR,
+        FlashState.ABORTED,
+    },
     FlashState.PREPARING_SBL: {FlashState.TRANSFERRING_SBL, FlashState.ERROR},
     FlashState.TRANSFERRING_SBL: {
         FlashState.TRANSFERRING_PROGRAM,
@@ -801,45 +809,59 @@ class FlashManager:
     def scan_ram(self, uds=None, progress_cb=None) -> bytearray:
         """Scan ECU RAM (0x0000-0xBFFF) and return contents.
 
+        Uses the borrowed session (via use_session()) when available,
+        otherwise opens a new J2534 connection.
+
         Args:
-            uds: Optional UDSConnection from an active session.
-                 Note: security access is still needed and will be
-                 performed on the provided connection.
+            uds: Optional UDSConnection from an active session
+                 (legacy direct-call path; the UI uses use_session()).
+            progress_cb: Callback receiving (current_block, total_blocks).
         """
+        if self.is_busy:
+            raise FlashError("Operation already in progress")
+
+        self._abort_event.clear()
+        self._state = FlashState.IDLE
+
         try:
-            if uds:
-                uds.diagnostic_session()
-                seed = uds.security_access_request_seed()
-                if not SECURE_MODULE_AVAILABLE:
-                    raise SecureModuleNotAvailable()
-                key = compute_security_key(seed)
-                uds.security_access_send_key(key)
-                return uds.scan_ram(progress_callback=progress_cb)
+            self._connect(progress_cb)
+            self._authenticate(progress_cb)
 
-            from .j2534 import J2534Device, setup_isotp_flow_control
-            from .protocol import UDSConnection
-            from .constants import ISO15765_BS, ISO15765_STMIN
+            self._set_state(FlashState.SCANNING_RAM)
 
-            with J2534Device(self._dll_path) as device:
-                channel_id = device.connect(J2534_PROTOCOL_ISO15765, 0, CAN_BAUDRATE)
-                device.set_config(channel_id, {ISO15765_BS: 0, ISO15765_STMIN: 0})
-                setup_isotp_flow_control(device, channel_id)
+            total_blocks = 192  # 0xC0
+            block_size = 0x1F0
+            ram = bytearray(total_blocks * block_size)
 
-                uds_conn = UDSConnection(device, channel_id)
-                uds_conn.tester_present()
-                uds_conn.diagnostic_session()
-                seed = uds_conn.security_access_request_seed()
+            for i in range(total_blocks):
+                if self._check_abort():
+                    raise FlashAbortedError("RAM scan aborted by user")
 
-                if not SECURE_MODULE_AVAILABLE:
-                    raise SecureModuleNotAvailable()
-                key = compute_security_key(seed)
-                uds_conn.security_access_send_key(key)
+                address = i * block_size
+                data = self._uds.read_memory_by_address(address, block_size)
+                ram[address : address + len(data)] = data
+                pct = ((i + 1) / total_blocks) * 100.0
+                self._notify(
+                    progress_cb,
+                    f"Scanning RAM: block {i + 1}/{total_blocks}",
+                    percent=pct,
+                    bytes_sent=(i + 1) * block_size,
+                    bytes_total=total_blocks * block_size,
+                )
 
-                return uds_conn.scan_ram(progress_callback=progress_cb)
+            self._set_state(FlashState.COMPLETE)
+            return ram
+        except FlashAbortedError:
+            self._set_state(FlashState.ABORTED)
+            raise
         except ECUError:
+            self._set_state(FlashState.ERROR)
             raise
         except Exception as e:
+            self._set_state(FlashState.ERROR)
             raise FlashError(f"Failed to scan RAM: {e}") from e
+        finally:
+            self._cleanup()
 
     def sniff_can(self, duration_seconds: int = 20, progress_cb=None) -> bytes:
         """

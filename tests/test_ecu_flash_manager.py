@@ -21,6 +21,7 @@ class TestFlashState:
             "connecting",
             "authenticating",
             "reading",
+            "scanning_ram",
             "preparing_sbl",
             "transferring_sbl",
             "transferring_program",

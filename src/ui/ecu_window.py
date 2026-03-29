@@ -87,6 +87,10 @@ class _FlashWorker(QObject):
                 self._result = self._manager.read_rom(
                     progress_cb=self._on_progress,
                 )
+            elif self._operation == "scan_ram":
+                self._result = self._manager.scan_ram(
+                    progress_cb=self._on_progress,
+                )
             self.finished.emit()
         except FlashAbortedError:
             self.error.emit("Operation aborted by user")
@@ -280,6 +284,11 @@ class ECUProgrammingWindow(QMainWindow):
         self._btn_clear_dtcs.setMinimumHeight(36)
         self._btn_clear_dtcs.clicked.connect(self._on_clear_dtcs)
         row.addWidget(self._btn_clear_dtcs)
+
+        self._btn_scan_ram = QPushButton("Scan RAM")
+        self._btn_scan_ram.setMinimumHeight(36)
+        self._btn_scan_ram.clicked.connect(self._on_scan_ram)
+        row.addWidget(self._btn_scan_ram)
 
         actions_layout.addLayout(row)
         self._stack.addWidget(actions_page)
@@ -552,6 +561,7 @@ class ECUProgrammingWindow(QMainWindow):
             self._btn_clear_dtcs.setEnabled(False)
             self._btn_full_flash.setEnabled(False)
             self._btn_read_rom.setEnabled(False)
+            self._btn_scan_ram.setEnabled(False)
             self._btn_flash_current.setEnabled(False)
             return
 
@@ -559,9 +569,10 @@ class ECUProgrammingWindow(QMainWindow):
         self._btn_read_dtcs.setEnabled(bool(connected))
         self._btn_clear_dtcs.setEnabled(bool(connected))
 
-        # Read ROM: needs safe conditions + secure module
+        # Read ROM / Scan RAM: needs safe conditions + secure module
         can_read = safe_conditions and SECURE_MODULE_AVAILABLE
         self._btn_read_rom.setEnabled(bool(can_read))
+        self._btn_scan_ram.setEnabled(bool(can_read))
 
         # Flash: needs safe conditions + secure module + ROM loaded
         can_flash = safe_conditions and SECURE_MODULE_AVAILABLE
@@ -597,6 +608,7 @@ class ECUProgrammingWindow(QMainWindow):
             tip = ""
         self._btn_full_flash.setToolTip(tip)
         self._btn_read_rom.setToolTip(tip)
+        self._btn_scan_ram.setToolTip(tip)
         self._btn_flash_current.setToolTip(tip)
 
     def _get_current_rom_data(self) -> bytes | None:
@@ -723,6 +735,15 @@ class ECUProgrammingWindow(QMainWindow):
             return
         self._start_flash("read")
 
+    def _on_scan_ram(self):
+        self._ecu_busy = True
+        self._update_action_states()
+        if not self._check_voltage_warning(operation="read"):
+            self._ecu_busy = False
+            self._update_action_states()
+            return
+        self._start_flash("scan_ram")
+
     def _start_flash(self, operation: str, **kwargs):
         """Start a flash/read operation with inline progress."""
         self._poll_timer.stop()
@@ -732,9 +753,10 @@ class ECUProgrammingWindow(QMainWindow):
         self._progress_state.setText("Preparing...")
         self._progress_state.setStyleSheet("font-weight: bold; font-size: 13px;")
         self._progress_detail.setText("")
-        # Only allow abort during read — aborting a flash risks bricking the ECU
-        self._btn_abort.setEnabled(operation == "read")
-        self._btn_abort.setVisible(operation == "read")
+        # Only allow abort during read-only ops — aborting a flash risks bricking the ECU
+        allow_abort = operation in ("read", "scan_ram")
+        self._btn_abort.setEnabled(allow_abort)
+        self._btn_abort.setVisible(allow_abort)
         self._btn_done.setVisible(False)
 
         manager = FlashManager(self._get_dll_path())
@@ -802,6 +824,7 @@ class ECUProgrammingWindow(QMainWindow):
                 "flash",
                 "dynamic_flash",
                 "read",
+                "scan_ram",
             )
             self._session.release(connection_dead=connection_dead)
 
@@ -840,6 +863,23 @@ class ECUProgrammingWindow(QMainWindow):
                 else:
                     self._progress_detail.setText("ROM save failed. Reconnecting...")
                 # ECU is stuck in programming session — must reconnect
+                QTimer.singleShot(500, self._auto_reconnect)
+            elif self._current_operation == "scan_ram" and worker.result:
+                saved_path = self._auto_save_ram_dump(worker.result)
+                if saved_path:
+                    self._progress_detail.setText(
+                        f"RAM dump saved to {saved_path.name}. Reconnecting..."
+                    )
+                    try:
+                        import subprocess
+
+                        subprocess.Popen(["explorer", "/select,", str(saved_path)])
+                    except Exception:
+                        pass
+                else:
+                    self._progress_detail.setText(
+                        "RAM dump save failed. Reconnecting..."
+                    )
                 QTimer.singleShot(500, self._auto_reconnect)
             elif self._current_operation in ("flash", "dynamic_flash"):
                 self._progress_detail.setText("Flash complete! ECU is rebooting...")
@@ -905,6 +945,29 @@ class ECUProgrammingWindow(QMainWindow):
             return save_path
         except Exception as e:
             logger.error("Failed to auto-save ROM: %s", e)
+            return None
+
+    def _auto_save_ram_dump(self, ram_data: bytearray) -> Path | None:
+        """Auto-save RAM dump to ~/.nc-flash/reads/ as {ROM_ID}_RAM_{timestamp}.bin."""
+        from datetime import datetime
+
+        rom_id = self._card_ecu.get_value().strip()
+        if not rom_id or rom_id == "—":
+            rom_id = "ecu"
+        if rom_id.upper().endswith(".HEX"):
+            rom_id = rom_id[:-4]
+
+        auto_save_dir = Path.home() / ".nc-flash" / "reads"
+        auto_save_dir.mkdir(parents=True, exist_ok=True)
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        file_name = f"{rom_id}_RAM_{timestamp}.bin"
+        save_path = auto_save_dir / file_name
+        try:
+            save_path.write_bytes(ram_data)
+            logger.info("RAM dump saved to %s (%d bytes)", save_path, len(ram_data))
+            return save_path
+        except Exception as e:
+            logger.error("Failed to save RAM dump: %s", e)
             return None
 
     # --- DTC Operations ---

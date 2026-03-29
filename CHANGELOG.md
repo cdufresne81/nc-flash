@@ -6,6 +6,7 @@ All notable changes to NC Flash are documented here.
 
 ### Added
 - **Clear DTCs from read dialog (#33)** — After reading DTCs, the results dialog now shows a "Clear DTCs" button alongside OK, allowing immediate clearing without navigating to a separate action
+- **Scan RAM button in ECU window** — Reads ECU RAM (0x0000–0xBFFF, 192 blocks) via UDS and saves the dump to `~/.nc-flash/reads/`. Uses the existing session, shows block-by-block progress, and supports abort. Based on romdrop's `uds_ScanRAM`
 
 ### Fixed
 - **DTC toggle switch not showing on Windows 10 (#32)** — Window auto-sizing was based on the hidden table widget's tiny 1-cell dimensions, leaving no room for the toggle container. Now sizes from the toggle's own size hint when in toggle mode
