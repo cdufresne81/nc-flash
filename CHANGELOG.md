@@ -9,6 +9,7 @@ All notable changes to NC Flash are documented here.
 - **Scan RAM button in ECU window** — Reads ECU RAM at 0xFFFF0000–0xFFFFBFFF (192 pages of 0x100 bytes, 48 KB) via UDS and saves the dump to `~/.nc-flash/reads/`. Uses the existing session, shows page-by-page progress, and supports abort. Based on romdrop's `uds_ScanRAM`
 
 ### Fixed
+- **Compiled version opens a second blank window for MCP server (#41)** — In PyInstaller builds, `sys.executable` points to the app exe, so spawning the MCP server via `python -m src.mcp.server` re-launched the entire GUI. Now uses an `NCFLASH_MCP_MODE` environment variable to bypass the GUI and run only the MCP server, plus suppresses window creation on Windows
 - **DTC toggle switch not showing on Windows 10 (#32)** — Window auto-sizing was based on the hidden table widget's tiny 1-cell dimensions, leaving no room for the toggle container. Now sizes from the toggle's own size hint when in toggle mode
 - **DTC toggle animates on window open** — Toggle switch now snaps to its initial position immediately instead of visually sliding into place when the window opens
 - **Tables with `%d` or `%x` format display as `0.00` after editing** — `format_value()` failed on integer/hex format specifiers because Python's `d`/`x` formats reject floats. Now converts to `int` first. Affects 176 scalings using `%d` and 3 using `%08x`

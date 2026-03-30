@@ -2025,6 +2025,14 @@ class MainWindow(
 
 def main():
     """Application entry point"""
+    # If launched as MCP server subprocess (frozen/compiled builds), run
+    # the MCP server directly and exit — no GUI, no Qt.
+    if os.environ.get("NCFLASH_MCP_MODE"):
+        from src.mcp.server import main as mcp_main
+
+        mcp_main()
+        return
+
     # Initialize logging before anything else
     # Default: INFO level to console, optionally to file
     log_file = Path.home() / ".nc-flash" / "nc-flash.log"

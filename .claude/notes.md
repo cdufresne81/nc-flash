@@ -5,6 +5,9 @@
 - `examples/metadata/LFDJEA.xml` is untracked — may need committing
 - **Review romdrop.crc fallback** — `src/ecu/rom_utils.py:169` silently skips CRC verification if `romdrop.crc` is missing. Patching still proceeds without validation. Need to decide: should patching be blocked without the CRC database, or is a warning sufficient?
 
+## Recent Completed Work (Mar 30, 2026) - MCP Second Window Fix (#41)
+- **Fixed compiled version opening second blank window for MCP server** — In PyInstaller builds, `sys.executable` is the app exe, so `subprocess.Popen([sys.executable, "-m", "src.mcp.server"])` re-launched the entire GUI. Now sets `NCFLASH_MCP_MODE=1` env var when spawning subprocess; `main()` checks this and bypasses GUI to run MCP server directly. Also uses `STARTUPINFO`/`CREATE_NO_WINDOW` on Windows to suppress any window creation.
+
 ## Recent Completed Work (Mar 29, 2026) - Scan RAM UI
 - **"Scan RAM" button in ECU window** — Exposes the existing `scan_ram()` backend (reads 192 blocks of 0x1F0 bytes from ECU RAM 0x0000-0xBFFF) as a UI button alongside Read ROM and DTCs
 - **Threaded with progress** — Uses `_FlashWorker` pattern with `SCANNING_RAM` state, shows block-by-block progress, abortable

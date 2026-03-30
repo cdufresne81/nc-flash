@@ -67,19 +67,32 @@ class McpMixin:
         try:
             self._start_command_server()
 
-            self._mcp_process = subprocess.Popen(
-                [
-                    sys.executable,
-                    "-m",
-                    "src.mcp.server",
-                    "--transport",
-                    "sse",
-                    "--port",
-                    str(self.MCP_SSE_PORT),
-                ],
-                cwd=str(get_app_root()),
-                stderr=subprocess.PIPE,
-            )
+            mcp_args = ["--transport", "sse", "--port", str(self.MCP_SSE_PORT)]
+            env = os.environ.copy()
+            kwargs = dict(cwd=str(get_app_root()), stderr=subprocess.PIPE)
+
+            if getattr(sys, "frozen", False):
+                # Frozen (PyInstaller) build: sys.executable is the app exe.
+                # Set NCFLASH_MCP_MODE so the exe skips the GUI and runs
+                # the MCP server directly.  Pass MCP args via sys.argv.
+                env["NCFLASH_MCP_MODE"] = "1"
+                cmd = [sys.executable] + mcp_args
+                kwargs["env"] = env
+
+                # On Windows, prevent the subprocess from creating a visible
+                # window (the exe is a GUI app with console=False).
+                if sys.platform == "win32":
+                    si = subprocess.STARTUPINFO()
+                    si.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+                    si.wShowWindow = 0  # SW_HIDE
+                    kwargs["startupinfo"] = si
+                    # CREATE_NO_WINDOW prevents a console flash as well.
+                    kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
+            else:
+                # Dev mode: run as a normal Python module.
+                cmd = [sys.executable, "-m", "src.mcp.server"] + mcp_args
+
+            self._mcp_process = subprocess.Popen(cmd, **kwargs)
             logger.info(
                 f"MCP server started (PID {self._mcp_process.pid},"
                 f" SSE on http://127.0.0.1:{self.MCP_SSE_PORT}/sse)"
