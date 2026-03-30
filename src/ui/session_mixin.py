@@ -157,5 +157,5 @@ class SessionMixin:
             f"{APP_NAME} {APP_VERSION_STRING}\n\n"
             f"{APP_DESCRIPTION}\n\n"
             "Designed to replace EcuFlash for ROM editing tasks.\n"
-            "Works with RomDrop for ECU flashing.",
+            "Native ECU flashing via J2534/UDS.",
         )

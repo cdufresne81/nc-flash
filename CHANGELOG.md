@@ -15,6 +15,7 @@ All notable changes to NC Flash are documented here.
 - **ROM comparison sidebar too narrow** — Sidebar max width increased from 300px to 600px so long table names are not clipped
 
 ### Changed
+- **Remove RomDrop references from UI (#39)** — About dialog and README now say "Native ECU flashing via J2534/UDS" instead of referencing RomDrop, reflecting the current native flashing support
 - Toggle switch shows a pointing-hand cursor on hover for better click affordance
 - Toggle switch clears its background before painting for consistent rendering across Windows versions
 

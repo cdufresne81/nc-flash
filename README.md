@@ -132,7 +132,7 @@ python main.py
 - Multi-window table viewers
 - Recent files list
 - Session restoration (automatically reopen last ROM)
-- First-run setup wizard for RomDrop configuration
+- First-run setup wizard for metadata configuration
 - Configurable settings (font size, color maps, export paths)
 - Scaling property editor for table definitions
 - Verbose activity log console
@@ -212,7 +212,7 @@ nc-flash/
 │   │   ├── history_viewer.py          # Version history dialog
 │   │   ├── commit_dialog.py           # Commit creation dialog
 │   │   ├── project_wizard.py          # New project wizard
-│   │   ├── setup_wizard.py            # First-run RomDrop setup
+│   │   ├── setup_wizard.py            # First-run metadata setup
 │   │   ├── settings_dialog.py         # Settings/preferences
 │   │   ├── scaling_edit_dialog.py     # Scaling property editor
 │   │   ├── data_operation_dialogs.py  # Add/Multiply/Set dialogs
@@ -333,7 +333,7 @@ Tests run automatically on GitHub Actions for:
 
 **Current Version:** v2.3.0
 
-Full table editing, project management with version history, interactive graph visualization, ROM comparison tool, toolbar-driven UI, AI assistant integration via MCP server, and ECU flashing via RomDrop.
+Full table editing, project management with version history, interactive graph visualization, ROM comparison tool, toolbar-driven UI, AI assistant integration via MCP server, and native ECU flashing via J2534/UDS.
 
 ## Contributing
 
