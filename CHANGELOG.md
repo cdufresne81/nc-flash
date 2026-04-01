@@ -4,6 +4,8 @@ All notable changes to NC Flash are documented here.
 
 ## [Unreleased]
 
+## [v2.5.0] - 2026-04-01
+
 ### Added
 - **Clear DTCs from read dialog (#33)** — After reading DTCs, the results dialog now shows a "Clear DTCs" button alongside OK, allowing immediate clearing without navigating to a separate action
 - **Scan RAM button in ECU window** — Reads ECU RAM at 0xFFFF0000–0xFFFFBFFF (192 pages of 0x100 bytes, 48 KB) via UDS and saves the dump to `~/.nc-flash/reads/`. Uses the existing session, shows page-by-page progress, and supports abort. Based on romdrop's `uds_ScanRAM`
