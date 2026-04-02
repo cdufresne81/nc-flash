@@ -4,6 +4,15 @@ All notable changes to NC Flash are documented here.
 
 ## [Unreleased]
 
+### Fixed
+- **[CRITICAL] Mismatched PASSTHRU_MSG_DATA_SIZE between main process and bridge (#44)** — `constants.py` defined 4096 while `j2534_bridge.py` defined 4128. Updated to 4128 per SAE J2534-1 spec to match the bridge and prevent potential struct layout mismatch with J2534 DLLs
+- **[CRITICAL] No ROM validation after checksum correction before flash (#45)** — `correct_rom_checksums()` modifies the ROM buffer in-place but the result was never verified. Now runs a second pass on a copy to confirm all checksums are self-consistent before proceeding to flash
+- **[CRITICAL] Unsafe array indexing in UDS response parsing (#46)** — A malformed negative response (0x7F with fewer than 3 bytes) fell through to the retry loop, silently spinning for up to 60 seconds instead of failing fast. Now raises `UDSError` immediately on short 0x7F responses
+- **No validation of flash_start_index bounds before ROM slicing (#47)** — Added defense-in-depth bounds check in Phase 1 (before any ECU communication) to reject out-of-range flash start indices
+- **No per-block verification after transfer_data (#48)** — Added explicit post-loop assertion that all bytes were transferred. Also added safety comments documenting that Mazda NC KWP2000 has no blockSequenceCounter — block counter validation must never be added
+- **Borrowed J2534 connection not verified alive before flash (#49)** — `use_session()` now validates that device, channel_id, and uds handles are non-None. `_connect()` now sends `TesterPresent` to verify the borrowed session is responsive before proceeding
+- **ECU reset at end of flash not idempotent — ambiguous state on timeout (#50)** — NRC or exception during `ecu_reset()` after committed flash is now treated as non-fatal (logged as warning, flash still completes). `connection_dead` flag in the UI is now conditional on whether ECU communication actually occurred
+
 ## [v2.5.0] - 2026-04-01
 
 ### Added

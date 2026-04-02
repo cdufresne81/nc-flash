@@ -1,14 +1,21 @@
 """Tests for src/ecu/flash_manager.py — FlashManager state machine and guards."""
 
 import logging
+from unittest.mock import MagicMock, patch
+
 import pytest
+
 from src.ecu.flash_manager import (
     FlashManager,
     FlashState,
     _TRANSITIONS,
     SECURE_MODULE_AVAILABLE,
 )
-from src.ecu.exceptions import SecureModuleNotAvailable
+from src.ecu.exceptions import (
+    FlashError,
+    SecureModuleNotAvailable,
+    UDSTimeoutError,
+)
 
 
 class TestFlashState:
@@ -165,3 +172,85 @@ class TestAbort:
         fm = FlashManager()
         fm.abort()
         assert fm._check_abort() is False
+
+
+# -----------------------------------------------------------------------
+# flash_start_index bounds (#47)
+# -----------------------------------------------------------------------
+
+
+class TestFlashStartIndexBounds:
+    """Defense-in-depth bounds check on flash_start_index."""
+
+    @staticmethod
+    def _valid_rom():
+        """1MB ROM with valid generation byte."""
+        rom = bytearray(0x100000)
+        rom[0x2030] = 0x35  # NC1
+        return bytes(rom)
+
+    @patch("src.ecu.flash_manager.correct_rom_checksums", return_value=[])
+    def test_zero_index_raises(self, _mock_cksum):
+        """flash_start_index=0 rejected (below valid range)."""
+        fm = FlashManager()
+        with pytest.raises(FlashError, match="out of bounds"):
+            fm._flash_rom_inner(self._valid_rom(), 0, None)
+
+    @patch("src.ecu.flash_manager.correct_rom_checksums", return_value=[])
+    def test_index_at_rom_end_raises(self, _mock_cksum):
+        """flash_start_index=ROM_SIZE rejected (no data to transfer)."""
+        fm = FlashManager()
+        with pytest.raises(FlashError, match="out of bounds"):
+            fm._flash_rom_inner(self._valid_rom(), 0x100000, None)
+
+    @patch("src.ecu.flash_manager.correct_rom_checksums", return_value=[])
+    def test_negative_index_raises(self, _mock_cksum):
+        """Negative flash_start_index rejected."""
+        fm = FlashManager()
+        with pytest.raises(FlashError, match="out of bounds"):
+            fm._flash_rom_inner(self._valid_rom(), -1, None)
+
+
+# -----------------------------------------------------------------------
+# Borrowed session validation (#49)
+# -----------------------------------------------------------------------
+
+
+class TestBorrowedSessionValidation:
+    """use_session validates handles; _connect verifies ECU is alive."""
+
+    def test_use_session_none_device_raises(self):
+        """use_session rejects None device."""
+        fm = FlashManager()
+        with pytest.raises(FlashError, match="must not be None"):
+            fm.use_session(None, 1, 100, MagicMock())
+
+    def test_use_session_none_channel_raises(self):
+        """use_session rejects None channel_id."""
+        fm = FlashManager()
+        with pytest.raises(FlashError, match="must not be None"):
+            fm.use_session(MagicMock(), None, 100, MagicMock())
+
+    def test_use_session_none_uds_raises(self):
+        """use_session rejects None uds."""
+        fm = FlashManager()
+        with pytest.raises(FlashError, match="must not be None"):
+            fm.use_session(MagicMock(), 1, 100, None)
+
+    def test_borrowed_session_verified_alive(self, mock_j2534_device):
+        """_connect with borrowed session calls tester_present."""
+        uds = MagicMock()
+        fm = FlashManager()
+        fm.use_session(mock_j2534_device, 1, 100, uds)
+        fm._connect()
+        uds.tester_present.assert_called_once()
+        assert fm.state == FlashState.CONNECTING
+
+    def test_borrowed_session_dead_raises(self, mock_j2534_device):
+        """Dead borrowed session raises FlashError from _connect."""
+        uds = MagicMock()
+        uds.tester_present.side_effect = UDSTimeoutError("no response")
+        fm = FlashManager()
+        fm.use_session(mock_j2534_device, 1, 100, uds)
+        with pytest.raises(FlashError, match="not responsive"):
+            fm._connect()

@@ -23,6 +23,7 @@ from ctypes import (
     POINTER,
     Structure,
     byref,
+    c_uint32,
     c_ulong,
     c_ubyte,
 )
@@ -285,12 +286,12 @@ class PassThruMsg(Structure):
     """J2534 PASSTHRU_MSG structure for CAN/ISO-15765 message exchange."""
 
     _fields_ = [
-        ("ProtocolID", c_ulong),
-        ("RxStatus", c_ulong),
-        ("TxFlags", c_ulong),
-        ("Timestamp", c_ulong),
-        ("DataSize", c_ulong),
-        ("ExtraDataIndex", c_ulong),
+        ("ProtocolID", c_uint32),
+        ("RxStatus", c_uint32),
+        ("TxFlags", c_uint32),
+        ("Timestamp", c_uint32),
+        ("DataSize", c_uint32),
+        ("ExtraDataIndex", c_uint32),
         ("Data", c_ubyte * PASSTHRU_MSG_DATA_SIZE),
     ]
 
@@ -303,8 +304,8 @@ class SCONFIG(Structure):
     """J2534 SCONFIG structure for a single configuration parameter."""
 
     _fields_ = [
-        ("Parameter", c_ulong),
-        ("Value", c_ulong),
+        ("Parameter", c_uint32),
+        ("Value", c_uint32),
     ]
 
 
@@ -312,7 +313,7 @@ class SCONFIG_LIST(Structure):
     """J2534 SCONFIG_LIST structure for batch configuration operations."""
 
     _fields_ = [
-        ("NumOfParams", c_ulong),
+        ("NumOfParams", c_uint32),
         ("ConfigPtr", POINTER(SCONFIG)),
     ]
 

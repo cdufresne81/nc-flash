@@ -155,7 +155,18 @@ class UDSConnection:
                 continue
 
             # Check for negative response (0x7F)
-            if resp_data[0] == 0x7F and len(resp_data) >= 3:
+            if resp_data[0] == 0x7F:
+                if len(resp_data) < 3:
+                    logger.warning(
+                        "UDS: malformed negative response for SID 0x%02X "
+                        "(expected >= 3 bytes, got %d)",
+                        service_id,
+                        len(resp_data),
+                    )
+                    raise UDSError(
+                        f"Malformed negative response for SID 0x{service_id:02X}: "
+                        f"expected >= 3 bytes, got {len(resp_data)}"
+                    )
                 nrc = resp_data[2]
                 if nrc == NRC_RESPONSE_PENDING:
                     logger.debug(
@@ -395,10 +406,12 @@ class UDSConnection:
             chunk = data[sent:chunk_end]
             block_num += 1
 
-            # Mazda NC KWP2000-style TransferData: SID(0x36) + raw data only.
+            # SAFETY: Mazda NC KWP2000-style TransferData: SID(0x36) + raw data only.
             # No blockSequenceCounter byte — verified against romdrop
             # disassembly at 0x004047A6 which sends (param_3 + 1) bytes:
             # [0x36][data...] with no counter prefix.
+            # DO NOT add block counter validation — the ECU does not echo one.
+            # Doing so would break the flash and could brick the ECU.
             try:
                 self.send_request(SID_TRANSFER_DATA, chunk, timeout=TIMEOUT_TRANSFER)
             except NegativeResponseError as e:
@@ -411,6 +424,10 @@ class UDSConnection:
 
             if progress_callback:
                 progress_callback(sent, total)
+
+        # Post-condition: all bytes transferred
+        if sent != total:
+            raise TransferError(f"Transfer incomplete: sent {sent} of {total} bytes")
 
         logger.info(f"Tool >> Transfer complete: {sent} bytes in {block_num} blocks")
 

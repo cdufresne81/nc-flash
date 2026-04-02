@@ -293,9 +293,15 @@ class FlashMixin:
                     manager, "flash", rom_data=rom_data, archive_path=archive_path
                 )
         finally:
-            # Flash ends with ECU reset — connection is dead
             if session_acquired and self._ecu_session:
-                self._ecu_session.release(connection_dead=True)
+                # If state is still IDLE, pre-checks failed before any ECU
+                # communication — connection is fine.  Otherwise the ECU
+                # was contacted (programming session, transfer, or reset)
+                # and the connection state is uncertain.
+                from src.ecu.flash_manager import FlashState
+
+                connection_dead = manager.state != FlashState.IDLE
+                self._ecu_session.release(connection_dead=connection_dead)
 
     def _on_read_rom(self):
         """Read ROM from ECU and save to file."""

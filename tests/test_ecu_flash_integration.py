@@ -26,8 +26,10 @@ from src.ecu.constants import (
 )
 from src.ecu.flash_manager import FlashManager, FlashState
 from src.ecu.exceptions import (
+    ChecksumError,
     FlashAbortedError,
     FlashError,
+    NegativeResponseError,
     ROMValidationError,
 )
 
@@ -340,3 +342,113 @@ class TestUseSession:
         mock_dev.stop_msg_filter.assert_called()
         mock_dev.disconnect.assert_called()
         mock_dev.close.assert_called()
+
+
+# ---------------------------------------------------------------------------
+# Checksum Verification (#45)
+# ---------------------------------------------------------------------------
+
+
+class TestChecksumVerification:
+    """Verify that checksum correction is validated before flash."""
+
+    @_apply_secure_patches
+    @patch("src.ecu.flash_manager.correct_rom_checksums")
+    @patch("src.ecu.j2534.J2534Device")
+    @patch("src.ecu.j2534.setup_isotp_flow_control", return_value=100)
+    def test_checksum_verification_failure_raises(
+        self, mock_setup_fc, MockDevice, mock_correct
+    ):
+        """If second-pass verification finds corrections, ChecksumError raised."""
+        # First call returns corrections (normal). Second call also returns
+        # corrections (verification failure — checksums still wrong).
+        mock_correct.side_effect = [
+            [(0x2000, 0x3000, 0xFF650, 0x1234, 0x5678)],
+            [(0x2000, 0x3000, 0xFF650, 0x5678, 0x9ABC)],
+        ]
+        fm = FlashManager()
+        with pytest.raises(ChecksumError, match="still incorrect"):
+            fm.flash_rom(_make_valid_rom())
+
+        # Device should never have been opened (failure before connect)
+        MockDevice.return_value.open.assert_not_called()
+
+    @_apply_secure_patches
+    @patch("src.ecu.flash_manager.correct_rom_checksums")
+    @patch("src.ecu.j2534.J2534Device")
+    @patch("src.ecu.j2534.setup_isotp_flow_control", return_value=100)
+    def test_checksum_verification_passes(
+        self, mock_setup_fc, MockDevice, mock_correct
+    ):
+        """Second-pass returns empty list — verification passes, flash proceeds."""
+        mock_dev = MockDevice.return_value
+        mock_dev.connect.return_value = 1
+
+        # First call corrects, second call verifies (empty = OK)
+        mock_correct.side_effect = [
+            [(0x2000, 0x3000, 0xFF650, 0x1234, 0x5678)],
+            [],
+        ]
+
+        num_sbl = SBL_SIZE // BLOCK_SIZE
+        program_size = ROM_SIZE - ROM_FLASH_START_MIN
+        num_program = (program_size + BLOCK_SIZE - 1) // BLOCK_SIZE
+
+        mock_dev.read_msgs.side_effect = _build_flash_responses(num_sbl, num_program)
+
+        fm = FlashManager()
+        fm.flash_rom(_make_valid_rom())
+        assert fm.state == FlashState.COMPLETE
+
+
+# ---------------------------------------------------------------------------
+# ECU Reset Error Handling (#50)
+# ---------------------------------------------------------------------------
+
+
+class TestEcuResetHandling:
+    """ECU reset failures after committed flash should not fail the operation."""
+
+    @_apply_secure_patches
+    @patch("src.ecu.j2534.J2534Device")
+    @patch("src.ecu.j2534.setup_isotp_flow_control", return_value=100)
+    def test_flash_completes_despite_reset_nrc(self, mock_setup_fc, MockDevice):
+        """NRC during ecu_reset does not prevent COMPLETE state."""
+        mock_dev = MockDevice.return_value
+        mock_dev.connect.return_value = 1
+
+        num_sbl = SBL_SIZE // BLOCK_SIZE
+        program_size = ROM_SIZE - ROM_FLASH_START_MIN
+        num_program = (program_size + BLOCK_SIZE - 1) // BLOCK_SIZE
+
+        responses = _build_flash_responses(num_sbl, num_program)
+        # Replace the last response (ecu_reset) with an NRC
+        from ecu_test_helpers import build_negative_response as build_nrc
+
+        responses[-1] = [build_nrc(SID_ECU_RESET, 0x22)]
+        mock_dev.read_msgs.side_effect = responses
+
+        fm = FlashManager()
+        fm.flash_rom(_make_valid_rom())
+        assert fm.state == FlashState.COMPLETE
+
+    @_apply_secure_patches
+    @patch("src.ecu.j2534.J2534Device")
+    @patch("src.ecu.j2534.setup_isotp_flow_control", return_value=100)
+    def test_flash_completes_despite_reset_exception(self, mock_setup_fc, MockDevice):
+        """Generic exception during ecu_reset does not prevent COMPLETE state."""
+        mock_dev = MockDevice.return_value
+        mock_dev.connect.return_value = 1
+
+        num_sbl = SBL_SIZE // BLOCK_SIZE
+        program_size = ROM_SIZE - ROM_FLASH_START_MIN
+        num_program = (program_size + BLOCK_SIZE - 1) // BLOCK_SIZE
+
+        responses = _build_flash_responses(num_sbl, num_program)
+        # Remove last response and make ecu_reset raise on the read
+        responses.pop()
+        mock_dev.read_msgs.side_effect = responses + [Exception("connection lost")]
+
+        fm = FlashManager()
+        fm.flash_rom(_make_valid_rom())
+        assert fm.state == FlashState.COMPLETE

@@ -35,6 +35,8 @@ from .exceptions import (
     FlashError,
     FlashAbortedError,
     ROMValidationError,
+    ChecksumError,
+    NegativeResponseError,
     J2534Error,
     UDSError,
     SecureModuleNotAvailable,
@@ -164,6 +166,10 @@ class FlashManager:
         When using a borrowed session, _connect() is a no-op and _cleanup()
         does NOT close the device/channel (the session owns those).
         """
+        if device is None or channel_id is None or uds is None:
+            raise FlashError(
+                "Cannot borrow session: device, channel_id, and uds must not be None"
+            )
         self._device = device
         self._channel_id = channel_id
         self._filter_id = filter_id
@@ -279,10 +285,14 @@ class FlashManager:
     def _connect(self, callback: Optional[ProgressCallback] = None) -> None:
         """Establish J2534 connection and setup ISO-TP filters."""
         if not self._owns_connection:
-            # Using borrowed session — connection already established
+            # Using borrowed session — verify ECU is still responsive
             self._set_state(FlashState.CONNECTING)
-            self._notify(callback, "Using existing ECU session", percent=5.0)
-            logger.info("Using borrowed ECU session")
+            self._notify(callback, "Verifying ECU session...", percent=5.0)
+            try:
+                self._uds.tester_present()
+            except Exception as e:
+                raise FlashError(f"Borrowed ECU session is not responsive: {e}") from e
+            logger.info("Borrowed ECU session verified alive")
             return
 
         from .j2534 import J2534Device, setup_isotp_flow_control
@@ -522,6 +532,21 @@ class FlashManager:
                     f"  0x{start:06X}-0x{end:06X}: " f"0x{old:08X} -> 0x{new:08X}"
                 )
 
+        # Verify checksums are now correct (defense-in-depth on a copy)
+        verify_corrections = correct_rom_checksums(bytearray(rom_buf))
+        if verify_corrections:
+            raise ChecksumError(
+                f"Checksum verification failed: {len(verify_corrections)} checksum(s) "
+                f"still incorrect after correction"
+            )
+
+        # Validate flash boundaries (defense-in-depth, before ECU contact)
+        if not (0 < flash_start_index < len(rom_buf)):
+            raise FlashError(
+                f"flash_start_index out of bounds: 0x{flash_start_index:06X} "
+                f"(ROM size: 0x{len(rom_buf):06X})"
+            )
+
         self._notify(callback, f"ROM valid ({generation})", percent=2.0)
 
         # --- Phase 2: Connect ---
@@ -625,7 +650,18 @@ class FlashManager:
         # --- Phase 7: Reset ECU ---
         self._set_state(FlashState.RESETTING)
         self._notify(callback, "Resetting ECU...", percent=95.0)
-        self._uds.ecu_reset()
+        try:
+            self._uds.ecu_reset()
+        except NegativeResponseError as e:
+            # Flash data is already committed. NRC during reset is non-fatal.
+            logger.warning(
+                "ECU reset returned NRC 0x%02X (%s) — flash data already committed",
+                e.nrc,
+                e.description,
+            )
+        except Exception as e:
+            # Any other error during reset is also non-fatal post-commit
+            logger.warning("ECU reset error (non-fatal, flash committed): %s", e)
 
         # --- Done ---
         self._set_state(FlashState.COMPLETE)

@@ -23,6 +23,7 @@ from src.ecu.constants import (
     SECURITY_SEND_KEY,
     NRC_RESPONSE_PENDING,
     TIMEOUT_RESPONSE_PENDING_MAX,
+    PASSTHRU_MSG_DATA_SIZE,
     DOWNLOAD_ADDR,
     DOWNLOAD_SIZE,
     BLOCK_SIZE,
@@ -32,11 +33,16 @@ from src.ecu.exceptions import (
     NegativeResponseError,
     SecurityAccessDenied,
     TransferError,
+    UDSError,
     UDSTimeoutError,
     FlashAbortedError,
 )
 
-from ecu_test_helpers import build_positive_response, build_negative_response
+from ecu_test_helpers import (
+    build_positive_response,
+    build_negative_response,
+    build_uds_response,
+)
 
 # -----------------------------------------------------------------------
 # send_request
@@ -306,3 +312,55 @@ class TestReadMemoryByAddress:
         ]
         result = mock_uds.read_memory_by_address(0x0000, 4)
         assert result == payload
+
+
+# -----------------------------------------------------------------------
+# PASSTHRU_MSG_DATA_SIZE (#44)
+# -----------------------------------------------------------------------
+
+
+class TestPassThruMsgDataSize:
+    """Verify buffer constant matches SAE J2534-1 spec."""
+
+    def test_data_size_matches_spec(self):
+        assert PASSTHRU_MSG_DATA_SIZE == 4128
+
+    def test_passthru_msg_struct_layout(self):
+        """PassThruMsg.Data array uses the spec-correct size."""
+        from ctypes import sizeof
+        from src.ecu.j2534 import PassThruMsg
+
+        # 6 x c_ulong (24 bytes header) + 4128 data bytes
+        assert sizeof(PassThruMsg) == 6 * 4 + PASSTHRU_MSG_DATA_SIZE
+
+
+# -----------------------------------------------------------------------
+# Malformed NRC handling (#46)
+# -----------------------------------------------------------------------
+
+
+class TestMalformedNegativeResponse:
+    """Short 0x7F responses should raise UDSError immediately, not spin."""
+
+    def test_single_byte_0x7f_raises(self, mock_uds, mock_j2534_device):
+        """1-byte [0x7F] response raises UDSError."""
+        mock_j2534_device.read_msgs.return_value = [build_uds_response(bytes([0x7F]))]
+        with pytest.raises(UDSError, match="[Mm]alformed"):
+            mock_uds.send_request(SID_TESTER_PRESENT, b"\x01")
+
+    def test_two_byte_0x7f_raises(self, mock_uds, mock_j2534_device):
+        """2-byte [0x7F, SID] response raises UDSError."""
+        mock_j2534_device.read_msgs.return_value = [
+            build_uds_response(bytes([0x7F, SID_DIAGNOSTIC_SESSION]))
+        ]
+        with pytest.raises(UDSError, match="[Mm]alformed"):
+            mock_uds.send_request(SID_DIAGNOSTIC_SESSION, b"\x85")
+
+    def test_three_byte_nrc_still_works(self, mock_uds, mock_j2534_device):
+        """Normal 3-byte NRC [0x7F, SID, NRC] still raises NegativeResponseError."""
+        mock_j2534_device.read_msgs.return_value = [
+            build_negative_response(SID_DIAGNOSTIC_SESSION, 0x33)
+        ]
+        with pytest.raises(NegativeResponseError) as exc_info:
+            mock_uds.send_request(SID_DIAGNOSTIC_SESSION, b"\x85")
+        assert exc_info.value.nrc == 0x33
