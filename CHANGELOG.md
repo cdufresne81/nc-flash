@@ -4,6 +4,9 @@ All notable changes to NC Flash are documented here.
 
 ## [Unreleased]
 
+### Changed
+- **Coverage is now opt-in** — Removed `--cov` flags from `pytest.ini` addopts so test runs are faster by default. Run `pytest --cov=src --cov-report=term-missing` when coverage is needed
+
 ## [v2.6.1] - 2026-04-03
 
 ### Added
