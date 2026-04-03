@@ -193,6 +193,18 @@ nc-flash/
 │   │   ├── project_manager.py         # Project CRUD, commits, snapshots
 │   │   ├── version_models.py          # Commit and version data structures
 │   │   └── metadata_writer.py         # XML scaling attribute editor
+│   ├── ecu/                           # ECU communication & flashing
+│   │   ├── checksum.py                # ROM checksum calculation
+│   │   ├── constants.py               # ECU protocol constants
+│   │   ├── crc_database.py            # CRC checksum database
+│   │   ├── dtc.py                     # DTC lookup tables
+│   │   ├── exceptions.py              # ECU-specific exceptions
+│   │   ├── flash_manager.py           # Flash read/write orchestration
+│   │   ├── j2534.py                   # J2534 passthru driver interface
+│   │   ├── j2534_bridge.py            # J2534 DLL bridge
+│   │   ├── protocol.py                # UDS/ISO-TP protocol layer
+│   │   ├── rom_utils.py               # ROM validation utilities
+│   │   └── session.py                 # ECU session manager
 │   ├── ui/                            # Qt GUI widgets
 │   │   ├── icons.py                   # Shared QPainter toolbar icons
 │   │   ├── table_viewer_window.py     # Standalone table viewer window
@@ -206,7 +218,11 @@ nc-flash/
 │   │   │   ├── cell_delegate.py       # Custom cell painting
 │   │   │   └── context.py             # Shared state container
 │   │   ├── compare_window.py          # Side-by-side ROM comparison
+│   │   ├── ecu_window.py              # ECU Programming window
+│   │   ├── flash_mixin.py             # Flash operations mixin
+│   │   ├── flash_setup_dialog.py      # Flash setup and DTC dialog
 │   │   ├── graph_viewer.py            # 3D/2D graph visualization
+│   │   ├── patch_dialog.py            # ROM patching dialog
 │   │   ├── table_browser.py           # Category tree browser
 │   │   ├── rom_document.py            # Single ROM tab widget
 │   │   ├── history_viewer.py          # Version history dialog
@@ -331,9 +347,9 @@ Tests run automatically on GitHub Actions for:
 
 ## Development Status
 
-**Current Version:** v2.3.0
+**Current Version:** v2.6.1
 
-Full table editing, project management with version history, interactive graph visualization, ROM comparison tool, toolbar-driven UI, AI assistant integration via MCP server, and native ECU flashing via J2534/UDS.
+Full table editing, project management with version history, interactive graph visualization, ROM comparison tool, toolbar-driven UI, AI assistant integration via MCP server, native ECU flashing via J2534/UDS, screenshot capture, single-instance support with .bin file association, configurable table browser columns, and DTC read/clear from the flash dialog.
 
 ## Contributing
 
