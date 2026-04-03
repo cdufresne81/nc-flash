@@ -6,12 +6,6 @@ All notable changes to NC Flash are documented here.
 
 ## [v2.6.1] - 2026-04-03
 
-### Fixed
-- **CI pipeline failures** — Added missing `pytest-qt` dependency to `requirements-dev.txt` (single-instance IPC tests use `qtbot` fixture) and reformatted 12 files with black
-- **Inconsistent selection highlight on Type/Address columns** — Empty cells in Type and Address columns showed a pale gray instead of matching the Name column's selection highlight. Custom delegate now paints consistent backgrounds for all cells
-
-## [v2.6.0] - 2026-04-03
-
 ### Added
 - **Table browser column visibility setting** — New checkboxes in Settings > Appearance > Table Browser to show/hide the Type and Address columns (both shown by default)
 - **Screenshot buttons (F12)** — Camera toolbar button and menu entry in both the main window (Tools > Screenshot) and table viewer window (File > Screenshot). Captures the window as PNG via save dialog with auto-generated filename
@@ -28,6 +22,8 @@ All notable changes to NC Flash are documented here.
 - **Splitter position persisted** — The main splitter between table browser and activity log now saves/restores its position across sessions
 
 ### Fixed
+- **CI pipeline failures** — Added missing `pytest-qt` dependency to `requirements-dev.txt` (single-instance IPC tests use `qtbot` fixture) and reformatted 12 files with black
+- **Inconsistent selection highlight on Type/Address columns** — Empty cells in Type and Address columns showed a pale gray instead of matching the Name column's selection highlight. Custom delegate now paints consistent backgrounds for all cells
 - **Search highlight bold causes text overlap in table browser** — Removed bold font from search match highlighting; the yellow background is sufficient and bold caused width miscalculation that squashed adjacent characters
 - **DTC read failure crashes ECU info worker (#52)** — ReadDTCByStatus (SID 0x18) NRC 0x22 "Conditions not correct" now returns empty results gracefully instead of raising. DTC read failures no longer discard already-read VIN and ROM ID in the flash setup dialog and ECU info view
 - **Smoothing snaps values to coarse increments** — Smoothing used `round_one_level_coarser` which reduced precision by one decimal level (e.g. 2.03 → 2.0 for `.2f` tables). Now rounds to the format's native precision instead
