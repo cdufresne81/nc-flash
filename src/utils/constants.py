@@ -18,9 +18,6 @@ MAIN_WINDOW_HEIGHT = 900
 MAIN_SPLITTER_LEFT = 420  # Table browser width (30%)
 MAIN_SPLITTER_RIGHT = 980  # Activity log width (70%)
 
-# Table browser settings
-TABLE_BROWSER_COLUMN_WIDTH = 300  # Width of name column
-
 # Log console settings
 LOG_CONSOLE_MAX_LINES = 1000  # Maximum lines kept in console
 LOG_CONSOLE_CLEAR_BUTTON_WIDTH = 80

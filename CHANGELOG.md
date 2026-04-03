@@ -5,6 +5,7 @@ All notable changes to NC Flash are documented here.
 ## [Unreleased]
 
 ### Added
+- **Table browser column visibility setting** — New checkboxes in Settings > Appearance > Table Browser to show/hide the Type and Address columns (both shown by default)
 - **Screenshot buttons (F12)** — Camera toolbar button and menu entry in both the main window (Tools > Screenshot) and table viewer window (File > Screenshot). Captures the window as PNG via save dialog with auto-generated filename
 - **J2534 device layer tests (#54)** — 53 tests covering message construction, all 26 error codes, ISO-TP filter setup, read/write, open/close, and connect/disconnect
 - **Security stub tests (#55)** — 5 always-run CI tests verifying stub raises `SecureModuleNotAvailable` and flash operations are blocked when the private module is absent
@@ -12,6 +13,10 @@ All notable changes to NC Flash are documented here.
 - **.bin file association in installer** — Optional checkbox (unchecked by default) to associate `.bin` files with NC Flash during installation. Sets file type, icon, and open command; cleaned up on uninstall
 - **Single-instance support** — Double-clicking a `.bin` file when NC Flash is already running opens the ROM in the existing window instead of launching a second instance. Uses QLocalServer/QLocalSocket IPC
 - **Command-line file argument** — `NCFlash.exe file.bin` opens the specified ROM on launch
+
+### Changed
+- **Table browser columns auto-sized** — Type and Address columns are now fixed-width (compact), Name column stretches to fill available space. Resizing the splitter automatically adjusts the Name column width
+- **Splitter position persisted** — The main splitter between table browser and activity log now saves/restores its position across sessions
 
 ### Fixed
 - **Search highlight bold causes text overlap in table browser** — Removed bold font from search match highlighting; the yellow background is sufficient and bold caused width miscalculation that squashed adjacent characters

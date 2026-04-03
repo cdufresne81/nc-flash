@@ -310,6 +310,22 @@ class AppSettings:
         """Set whether interpolation/smoothing results are auto-rounded one decimal coarser."""
         self.settings.setValue("editor/auto_round", enabled)
 
+    def get_show_type_column(self) -> bool:
+        """Get whether the Type column is visible in the table browser."""
+        return self.settings.value("display/show_type_column", True, type=bool)
+
+    def set_show_type_column(self, enabled: bool):
+        """Set whether the Type column is visible in the table browser."""
+        self.settings.setValue("display/show_type_column", enabled)
+
+    def get_show_address_column(self) -> bool:
+        """Get whether the Address column is visible in the table browser."""
+        return self.settings.value("display/show_address_column", True, type=bool)
+
+    def set_show_address_column(self, enabled: bool):
+        """Set whether the Address column is visible in the table browser."""
+        self.settings.setValue("display/show_address_column", enabled)
+
 
 # Global settings instance
 _settings = None

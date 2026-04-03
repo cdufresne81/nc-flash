@@ -1,5 +1,10 @@
 # Session Notes
 
+## Recent Completed Work (Apr 3, 2026) - Table Browser Columns & Splitter Persistence
+- **Table browser columns auto-sized** — Type column: Fixed 40px, Address column: Fixed 75px, Name column: Stretch (fills remaining space). Removed `TABLE_BROWSER_COLUMN_WIDTH` constant.
+- **Column visibility settings** — New `show_type_column` / `show_address_column` boolean settings in AppSettings, with checkboxes in Settings > Appearance > Table Browser group. Changes apply immediately to all open tabs.
+- **Splitter position persisted** — Main splitter (`main_splitter`) state saved/restored via `get/set_splitter_state()` in session close/init. Previously these AppSettings methods existed but were never called.
+
 ## Recent Completed Work (Apr 3, 2026) - Safety-Critical Bounds & Atomic Writes (#57-#61)
 - **Integer overflow validation (#59)** — Added `STORAGE_TYPE_BOUNDS` to `storage_types.py` and `_validate_and_pack()` method on `RomReader`. All 3 write methods (`write_table_data`, `write_cell_value`, `write_axis_value`) now validate integer values against storage type bounds before `struct.pack()`. Raises `RomWriteError` with value, type, and range.
 - **Interleaved 3D read bounds (#57)** — `_read_interleaved_3d()` now validates M/N are non-zero and total table footprint fits in ROM before any data access. Raises `RomReadError` with table name, M, N, address.

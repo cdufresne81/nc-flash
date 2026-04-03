@@ -171,8 +171,23 @@ class SettingsDialog(QDialog):
 
         layout.addWidget(colormap_group)
 
+        # Table browser group
+        browser_group = QGroupBox("Table Browser")
+        browser_layout = QVBoxLayout()
+        browser_group.setLayout(browser_layout)
+
+        self.show_type_column_checkbox = QCheckBox("Show Type column")
+        browser_layout.addWidget(self.show_type_column_checkbox)
+
+        self.show_address_column_checkbox = QCheckBox("Show Address column")
+        browser_layout.addWidget(self.show_address_column_checkbox)
+
+        layout.addWidget(browser_group)
+
         # Help text
-        help_label = QLabel("Note: Changes take effect on newly opened tables")
+        help_label = QLabel(
+            "Note: Table display changes take effect on newly opened tables"
+        )
         help_label.setStyleSheet("color: gray; font-size: 10px;")
         layout.addWidget(help_label)
 
@@ -417,6 +432,12 @@ class SettingsDialog(QDialog):
         # Load auto-round setting
         self.auto_round_checkbox.setChecked(self.settings.get_auto_round())
 
+        # Load table browser column visibility
+        self.show_type_column_checkbox.setChecked(self.settings.get_show_type_column())
+        self.show_address_column_checkbox.setChecked(
+            self.settings.get_show_address_column()
+        )
+
         # Load J2534 DLL path (only if ECU tab was created)
         if hasattr(self, "j2534_dll_edit"):
             j2534_path = self.settings.get_j2534_dll_path()
@@ -527,6 +548,12 @@ class SettingsDialog(QDialog):
 
         # Save auto-round setting
         self.settings.set_auto_round(self.auto_round_checkbox.isChecked())
+
+        # Save table browser column visibility
+        self.settings.set_show_type_column(self.show_type_column_checkbox.isChecked())
+        self.settings.set_show_address_column(
+            self.show_address_column_checkbox.isChecked()
+        )
 
         # Save J2534 DLL path (only if ECU tab was created)
         if hasattr(self, "j2534_dll_edit"):

@@ -348,24 +348,29 @@ class MainWindow(
         central_widget.setLayout(layout)
 
         # Main splitter (tabs on left, activity log on right)
-        main_splitter = QSplitter(Qt.Horizontal)
-        layout.addWidget(main_splitter)
+        self.main_splitter = QSplitter(Qt.Horizontal)
+        layout.addWidget(self.main_splitter)
 
         # Tab widget for multiple ROM documents
         self.tab_widget = QTabWidget()
         self.tab_widget.setTabsClosable(True)
         self.tab_widget.setMovable(True)
+        self.tab_widget.tabBar().setElideMode(Qt.ElideNone)
         self.tab_widget.tabCloseRequested.connect(self.close_tab)
         self.tab_widget.currentChanged.connect(self.on_tab_changed)
-        main_splitter.addWidget(self.tab_widget)
+        self.main_splitter.addWidget(self.tab_widget)
 
         # Shared activity log on the right (always visible)
         self.log_console = LogConsole()
-        main_splitter.addWidget(self.log_console)
+        self.main_splitter.addWidget(self.log_console)
 
         # Set initial splitter sizes (30% tabs, 70% log)
         # Matches longest table name width on left, rest for activity log
-        main_splitter.setSizes([MAIN_SPLITTER_LEFT, MAIN_SPLITTER_RIGHT])
+        saved_splitter = self.settings.get_splitter_state()
+        if saved_splitter:
+            self.main_splitter.restoreState(saved_splitter)
+        else:
+            self.main_splitter.setSizes([MAIN_SPLITTER_LEFT, MAIN_SPLITTER_RIGHT])
 
     def init_menu(self):
         """Initialize the menu bar"""

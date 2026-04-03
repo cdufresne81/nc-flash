@@ -108,8 +108,10 @@ class SessionMixin:
                 else:
                     open_files.append(document.rom_path)
 
-        # Save window geometry and session
+        # Save window geometry, splitter, and session
         self.settings.set_window_geometry(self.saveGeometry())
+        if hasattr(self, "main_splitter"):
+            self.settings.set_splitter_state(self.main_splitter.saveState())
         self.settings.set_session_files(open_files)
         logger.info(f"Session saved: {len(open_files)} file(s)")
 
@@ -148,6 +150,12 @@ class SessionMixin:
                 f"Failed to load metadata from new directory:\n{str(e)}\n\n"
                 "Please check the metadata directory path in settings.",
             )
+
+        # Apply table browser column visibility to all open tabs
+        for i in range(self.tab_widget.count()):
+            document = self.tab_widget.widget(i)
+            if document and hasattr(document, "table_browser"):
+                document.table_browser.apply_column_visibility()
 
     def show_about(self):
         """Show about dialog"""

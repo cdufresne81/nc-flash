@@ -17,12 +17,13 @@ from PySide6.QtWidgets import (
     QStyledItemDelegate,
     QStyle,
     QComboBox,
+    QHeaderView,
 )
 from PySide6.QtCore import Signal, Qt, QRect
 from PySide6.QtGui import QShortcut, QKeySequence, QColor, QPen
 
-from ..utils.constants import TABLE_BROWSER_COLUMN_WIDTH
 from ..core.rom_definition import RomDefinition, Table
+from ..utils.settings import get_settings
 
 
 class HighlightDelegate(QStyledItemDelegate):
@@ -195,7 +196,14 @@ class TableBrowser(QWidget):
         # Tree widget for categories and tables
         self.tree = QTreeWidget()
         self.tree.setHeaderLabels(["Name", "Type", "Address"])
-        self.tree.setColumnWidth(0, TABLE_BROWSER_COLUMN_WIDTH)
+        header = self.tree.header()
+        header.setStretchLastSection(False)
+        header.setSectionResizeMode(0, QHeaderView.Stretch)
+        header.setSectionResizeMode(1, QHeaderView.Fixed)
+        header.setSectionResizeMode(2, QHeaderView.Fixed)
+        self.tree.setColumnWidth(1, 40)
+        self.tree.setColumnWidth(2, 75)
+        self.apply_column_visibility()
         # Open tables on double-click or Enter key (not single-click)
         self.tree.itemActivated.connect(self._on_item_activated)
 
@@ -429,3 +437,9 @@ class TableBrowser(QWidget):
                         return True
 
         return False
+
+    def apply_column_visibility(self):
+        """Show or hide Type and Address columns based on settings."""
+        settings = get_settings()
+        self.tree.setColumnHidden(1, not settings.get_show_type_column())
+        self.tree.setColumnHidden(2, not settings.get_show_address_column())
