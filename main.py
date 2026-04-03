@@ -496,7 +496,8 @@ class MainWindow(
         tb.setMovable(False)
         tb.setFloatable(False)
         tb.setIconSize(QSize(20, 20))
-        tb.setStyleSheet("""
+        tb.setStyleSheet(
+            """
             QToolBar {
                 spacing: 1px;
                 padding: 1px 4px;
@@ -514,7 +515,8 @@ class MainWindow(
             QToolButton:pressed {
                 background: rgba(128, 128, 128, 0.3);
             }
-        """)
+        """
+        )
 
         act = tb.addAction(self._make_icon("open"), "")
         act.setToolTip("Open  (Ctrl+O)")
@@ -614,12 +616,10 @@ class MainWindow(
             return None
         # Use Path comparison to handle slash normalization on Windows
         # (QFileDialog returns forward slashes, Path uses backslashes)
-        from pathlib import Path as _Path
-
-        target = _Path(rom_path)
+        target = Path(rom_path)
         for i in range(self.rom_stack.count()):
             doc = self.rom_stack.widget(i)
-            if hasattr(doc, "rom_path") and _Path(doc.rom_path) == target:
+            if hasattr(doc, "rom_path") and Path(doc.rom_path) == target:
                 return doc
         logger.warning(f"No document found for rom_path={rom_path}")
         return None

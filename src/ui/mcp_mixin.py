@@ -152,12 +152,9 @@ class McpMixin:
         """Show connection instructions after manually starting the MCP server."""
         url = f"http://127.0.0.1:{self.MCP_SSE_PORT}/sse"
 
-        app_dir = os.path.dirname(os.path.abspath(__file__))
-        # Go up from src/ui/ to project root
-        project_root = os.path.dirname(os.path.dirname(app_dir))
-        bat_path = os.path.join(project_root, "run-mcp.bat")
+        mcp_command = f"{sys.executable} -m src.mcp.server"
         config_snippet = json.dumps(
-            {"mcpServers": {"nc-flash": {"command": bat_path, "args": []}}},
+            {"mcpServers": {"nc-flash": {"command": mcp_command, "args": []}}},
             indent=2,
         )
 

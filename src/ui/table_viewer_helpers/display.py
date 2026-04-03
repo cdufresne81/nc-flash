@@ -91,7 +91,8 @@ class TableDisplayHelper:
         """Apply table styling based on settings - compact like ECUFlash"""
         font_size = get_settings().get_table_font_size()
 
-        self.ctx.table_widget.setStyleSheet(f"""
+        self.ctx.table_widget.setStyleSheet(
+            f"""
             QTableWidget {{
                 font-size: {font_size}px;
                 gridline-color: #a0a0a0;
@@ -100,12 +101,11 @@ class TableDisplayHelper:
                 padding: 0px 1px;
             }}
             QTableWidget::item:selected {{
-                background-color: rgba(255, 165, 0, 0.4);
-                border: 2px solid #FF8C00;
-                color: black;
-                font-weight: bold;
+                background-color: #0078D7;
+                color: white;
             }}
-        """)
+        """
+        )
 
         # Tight row height - just enough for the font
         row_height = font_size + 2

@@ -4,6 +4,15 @@ All notable changes to NC Flash are documented here.
 
 ## [Unreleased]
 
+### Removed
+- **Dead `GraphViewer` class** — Standalone graph window class in `graph_viewer.py` was never imported; removed along with its `matplotlib.pyplot` import and `APP_NAME` constant
+- **Dead `_apply_table_style` method** — Unused delegation method in `table_viewer.py` that was superseded by `_apply_table_style_internal`
+
+### Fixed
+- **Orange selection CSS inconsistency** — `display.py` helper had an orange selection style that was never applied; replaced with the blue selection style used by the actual code path
+- **Inline `Path` re-import in `main.py`** — `_find_document_by_rom_path` redundantly imported `Path as _Path`; now uses the module-level `Path` import
+- **Stale `run-mcp.bat` reference** — MCP connection info dialog referenced a non-existent batch file; now shows the actual `python -m src.mcp.server` command
+
 ## [v2.6.1] - 2026-04-03
 
 ### Added

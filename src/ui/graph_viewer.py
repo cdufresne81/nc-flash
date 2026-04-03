@@ -2,21 +2,19 @@
 Graph Viewer
 
 Displays 3D visualization of table data with rotation and selection highlighting.
-Provides both a standalone window (GraphViewer) and embeddable widget (GraphWidget).
+Provides an embeddable widget (GraphWidget) for table data visualization.
 """
 
 import logging
 
 import numpy as np
-import matplotlib.pyplot as plt
-from PySide6.QtWidgets import QMainWindow, QVBoxLayout, QWidget, QSizePolicy
+from PySide6.QtWidgets import QVBoxLayout, QWidget, QSizePolicy
 from PySide6.QtCore import Qt, QTimer
 
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
 
 from ..core.rom_definition import Table, TableType, RomDefinition, AxisType
-from ..utils.constants import APP_NAME
 from ..utils.colormap import get_colormap
 from ..utils.formatting import get_scaling_range
 
@@ -513,79 +511,6 @@ class GraphWidget(_GraphPlotMixin, QWidget):
         if self._first_plot:
             self._first_plot = False
             QTimer.singleShot(0, self.canvas.draw_idle)
-
-    def keyPressEvent(self, event):
-        """Handle key presses for graph rotation and zoom"""
-        if not self._handle_graph_key(event):
-            super().keyPressEvent(event)
-
-
-class GraphViewer(_GraphPlotMixin, QMainWindow):
-    """
-    Standalone graph viewer window for table data
-
-    Features:
-    - 3D surface plot for 3D tables
-    - 2D plot for 2D tables
-    - Interactive rotation with mouse
-    - Highlight selected cells
-    - Color gradient matching table viewer
-    """
-
-    _show_plot_title = True
-
-    def __init__(
-        self,
-        table: Table,
-        data: dict,
-        rom_definition: RomDefinition = None,
-        selected_cells: list = None,
-        parent=None,
-    ):
-        super().__init__(parent)
-
-        self.table = table
-        self.data = data
-        self.rom_definition = rom_definition
-        self.selected_cells = selected_cells or []
-        self.ax_3d = None
-        self._scaling_range = self._get_scaling_range()
-
-        # Set window properties
-        self.setWindowTitle(f"{table.name} - Graph View - {APP_NAME}")
-        self.setWindowFlags(
-            Qt.Window
-            | Qt.WindowCloseButtonHint
-            | Qt.CustomizeWindowHint
-            | Qt.WindowTitleHint
-        )
-        self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
-
-        # Create matplotlib figure and canvas
-        self.figure = Figure(figsize=(10, 8))
-        self.canvas = FigureCanvas(self.figure)
-
-        # Set up layout
-        central_widget = QWidget()
-        self.setCentralWidget(central_widget)
-        layout = QVBoxLayout(central_widget)
-        layout.addWidget(self.canvas)
-
-        # Plot the data
-        self._plot_data()
-
-        # Set window size
-        self.resize(800, 600)
-
-    def closeEvent(self, event):
-        """Clean up matplotlib figure to prevent leak in global registry"""
-        plt.close(self.figure)
-        event.accept()
-
-    def _plot_data(self):
-        """Plot the table data and redraw canvas"""
-        self._do_plot()
-        self.canvas.draw()
 
     def keyPressEvent(self, event):
         """Handle key presses for graph rotation and zoom"""

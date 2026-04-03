@@ -224,8 +224,6 @@ class TableViewer(QWidget):
         self.table_widget.setGridStyle(Qt.SolidLine)
 
         # Apply compact styling from settings
-        # Note: _apply_table_style is called before helpers are created,
-        # so we call it directly here. After init, use self._display.apply_table_style()
         self._apply_table_style_internal()
 
         # Connect to cell changed signal for editing
@@ -425,18 +423,12 @@ class TableViewer(QWidget):
         """Check if diff highlights should be shown"""
         return self._diff_mode and self._show_diff_highlights
 
-    def _apply_table_style(self):
-        """Apply table styling - delegates to helper if available"""
-        if hasattr(self, "_display"):
-            self._display.apply_table_style()
-        else:
-            self._apply_table_style_internal()
-
     def _apply_table_style_internal(self):
         """Apply table styling based on settings - compact like ECUFlash"""
         font_size = get_settings().get_table_font_size()
 
-        self.table_widget.setStyleSheet(f"""
+        self.table_widget.setStyleSheet(
+            f"""
             QTableWidget {{
                 font-size: {font_size}px;
                 gridline-color: #a0a0a0;
@@ -448,7 +440,8 @@ class TableViewer(QWidget):
                 background-color: #0078D7;
                 color: white;
             }}
-        """)
+        """
+        )
 
         # Tight row height - just enough for the font
         row_height = font_size + 2
