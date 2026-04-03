@@ -72,12 +72,12 @@ class ProjectManager:
             # v0 = pristine backup (never modified)
             v0_filename = f"v0_{rom_id}_original.bin"
             v0_path = project_dir / v0_filename
-            shutil.copy2(source_path, v0_path)
+            self._atomic_copy(source_path, v0_path)
 
             # Working ROM (editable copy, simple name)
             working_filename = f"{rom_id}.bin"
             working_path = project_dir / working_filename
-            shutil.copy2(source_path, working_path)
+            self._atomic_copy(source_path, working_path)
 
             # Calculate checksum from pristine copy
             with open(v0_path, "rb") as f:
@@ -243,7 +243,7 @@ class ProjectManager:
             project_dir = Path(self.current_project.project_path)
             working_path = project_dir / self.current_project.working_rom
             snapshot_path = project_dir / snapshot_filename
-            shutil.copy2(working_path, snapshot_path)
+            self._atomic_copy(working_path, snapshot_path)
             logger.debug(f"Created snapshot: {snapshot_filename}")
 
             # Add to history
@@ -440,10 +440,9 @@ class ProjectManager:
 
         project_dir = Path(self.current_project.project_path)
 
-        # Overwrite working file
+        # Overwrite working file (atomic: tmp + fsync + rename)
         working_path = project_dir / self.current_project.working_rom
-        with open(working_path, "wb") as f:
-            f.write(snapshot_data)
+        self._atomic_write_binary(working_path, snapshot_data)
 
         # Soft-delete all versions newer than target
         for c in self.commits:
@@ -608,6 +607,50 @@ class ProjectManager:
 
         with open(log_path, "a", encoding="utf-8") as f:
             f.write(entry)
+
+    def _atomic_copy(self, src: Path, dst: Path) -> None:
+        """Copy a file atomically: copy to tmp, verify size, fsync, rename."""
+        tmp_path = str(dst) + ".tmp"
+        try:
+            shutil.copy2(str(src), tmp_path)
+            src_size = src.stat().st_size
+            tmp_size = os.path.getsize(tmp_path)
+            if src_size != tmp_size:
+                raise ProjectSaveError(
+                    f"Size mismatch after copy: {src_size} vs {tmp_size}"
+                )
+            with open(tmp_path, "r+b") as f:
+                f.flush()
+                os.fsync(f.fileno())
+            os.replace(tmp_path, str(dst))
+        except ProjectSaveError:
+            raise
+        except Exception as e:
+            raise ProjectSaveError(f"Failed to copy {src} to {dst}: {e}")
+        finally:
+            try:
+                if os.path.exists(tmp_path):
+                    os.remove(tmp_path)
+            except OSError:
+                pass
+
+    def _atomic_write_binary(self, dst: Path, data: bytes) -> None:
+        """Write binary data atomically: write to tmp, fsync, rename."""
+        tmp_path = str(dst) + ".tmp"
+        try:
+            with open(tmp_path, "wb") as f:
+                f.write(data)
+                f.flush()
+                os.fsync(f.fileno())
+            os.replace(tmp_path, str(dst))
+        except Exception as e:
+            raise ProjectSaveError(f"Failed to write {dst}: {e}")
+        finally:
+            try:
+                if os.path.exists(tmp_path):
+                    os.remove(tmp_path)
+            except OSError:
+                pass
 
     def _save_project_file(self, project: Project):
         """Save project.json (atomic write)"""

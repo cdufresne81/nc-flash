@@ -31,6 +31,17 @@ STORAGE_TYPE_BYTES = {
     "double": 8,
 }
 
+# Integer format char → (min_value, max_value) for pre-pack validation
+# Float/double types intentionally omitted (IEEE 754 handles overflow via inf/nan)
+STORAGE_TYPE_BOUNDS = {
+    "B": (0, 255),
+    "b": (-128, 127),
+    "H": (0, 65535),
+    "h": (-32768, 32767),
+    "I": (0, 4294967295),
+    "i": (-2147483648, 2147483647),
+}
+
 # Default values used when storage type is unknown
 DEFAULT_FORMAT_CHAR = "f"
 DEFAULT_BYTE_SIZE = 4

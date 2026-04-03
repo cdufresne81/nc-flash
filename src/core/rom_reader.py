@@ -23,7 +23,7 @@ from .rom_definition import (
     TableLayout,
     AxisType,
 )
-from .storage_types import STORAGE_TYPE_FORMAT, DEFAULT_FORMAT_CHAR
+from .storage_types import STORAGE_TYPE_FORMAT, STORAGE_TYPE_BOUNDS, DEFAULT_FORMAT_CHAR
 from .exceptions import (
     RomFileNotFoundError,
     RomReadError,
@@ -489,11 +489,33 @@ class RomReader:
         Each row is (M+1) bytes: 1 Y-axis byte followed by M data bytes.
         """
         base = table.address_int
+        if base + 1 >= len(self.rom_data):
+            raise RomReadError(
+                f"Table '{table.name}' base address {hex(base)} exceeds ROM size"
+            )
+
         m = self.rom_data[base]  # X axis count
         n = self.rom_data[base + 1]  # Y axis count (row count)
+
+        if m == 0 or n == 0:
+            raise RomReadError(
+                f"Invalid interleaved dimensions for '{table.name}': "
+                f"M={m}, N={n} at {hex(base)} (both must be > 0)"
+            )
+
         x_start = base + 2
         row_start = x_start + m
         stride = m + 1
+
+        # Validate entire table footprint fits in ROM
+        # Layout: [M][N][X_axis: M bytes][N rows of (1 Y byte + M data bytes)]
+        total_footprint = 2 + m + n * (m + 1)
+        if base + total_footprint > len(self.rom_data):
+            raise RomReadError(
+                f"Interleaved table '{table.name}' exceeds ROM bounds: "
+                f"M={m}, N={n}, footprint={total_footprint} bytes at {hex(base)}, "
+                f"ROM size={len(self.rom_data)}"
+            )
 
         # Read X axis (contiguous)
         x_axis = table.x_axis
@@ -550,6 +572,28 @@ class RomReader:
         )
         return result
 
+    def _validate_and_pack(
+        self, raw_value: float, format_string: str, format_char: str, context: str = ""
+    ) -> bytes:
+        """Validate value range for integer types and pack to bytes.
+
+        For integer format chars (B/b/H/h/I/i): round to int, check bounds, pack.
+        For float/double (f/d): pack directly without range validation.
+
+        Raises:
+            RomWriteError: If integer value is out of range for its storage type.
+        """
+        if format_char in STORAGE_TYPE_BOUNDS:
+            int_val = int(round(raw_value))
+            lo, hi = STORAGE_TYPE_BOUNDS[format_char]
+            if int_val < lo or int_val > hi:
+                raise RomWriteError(
+                    f"Value {int_val} out of range for type '{format_char}' "
+                    f"(valid: {lo}..{hi}){': ' + context if context else ''}"
+                )
+            return struct.pack(format_string, int_val)
+        return struct.pack(format_string, raw_value)
+
     def write_table_data(self, table: Table, values: np.ndarray) -> None:
         """
         Write modified table data back to ROM (in memory, not to file yet)
@@ -604,15 +648,42 @@ class RomReader:
             )
             format_string = f"{endian_char}{format_char}"
 
+            # Validate stride is sufficient for element size
+            if bytes_per_elem > 1 and m * bytes_per_elem + 1 > stride:
+                raise RomWriteError(
+                    f"Interleaved table '{table.name}': stride ({stride}) too small "
+                    f"for {m} elements of {bytes_per_elem} bytes each "
+                    f"(need {m * bytes_per_elem + 1})"
+                )
+
+            # Validate entire write footprint fits in ROM
+            if n > 0 and m > 0:
+                last_byte = (
+                    row_start
+                    + (n - 1) * stride
+                    + 1
+                    + (m - 1) * bytes_per_elem
+                    + bytes_per_elem
+                )
+                if last_byte > len(self.rom_data):
+                    raise RomWriteError(
+                        f"Interleaved write for '{table.name}' exceeds ROM bounds: "
+                        f"last byte at {hex(last_byte - 1)}, "
+                        f"ROM size={len(self.rom_data)}"
+                    )
+
             try:
                 for r in range(n):
                     for c in range(m):
                         idx = r * m + c
                         addr = row_start + r * stride + 1 + c * bytes_per_elem
                         val = raw_values[idx]
-                        if format_char in ("B", "b", "H", "h", "I", "i"):
-                            val = int(round(val))
-                        packed = struct.pack(format_string, val)
+                        packed = self._validate_and_pack(
+                            val,
+                            format_string,
+                            format_char,
+                            context=f"table '{table.name}' cell [{r},{c}]",
+                        )
                         self.rom_data[addr : addr + len(packed)] = packed
                 logger.info(f"Successfully wrote interleaved table data: {table.name}")
             except Exception as e:
@@ -687,21 +758,40 @@ class RomReader:
             # Interleaved: [M][N][X_axis][Y0 D0..DM-1][Y1 D0..DM-1]...
             base = table.address_int
             m = self.rom_data[base]
+            n = self.rom_data[base + 1]
+            max_cols, max_rows = m, n
+        elif table.type.value == "3D":
+            x_axis = table.x_axis
+            y_axis = table.y_axis
+            max_cols = x_axis.elements if x_axis else 1
+            max_rows = y_axis.elements if y_axis else 1
+        else:
+            max_rows = table.elements
+            max_cols = 1
+
+        # Validate row/col indices against table dimensions
+        if row < 0 or row >= max_rows:
+            raise RomWriteError(
+                f"Row index {row} out of range for table '{table.name}' "
+                f"(valid: 0..{max_rows - 1})"
+            )
+        if col < 0 or col >= max_cols:
+            raise RomWriteError(
+                f"Column index {col} out of range for table '{table.name}' "
+                f"(valid: 0..{max_cols - 1})"
+            )
+
+        # Compute address using validated indices
+        if table.layout == TableLayout.INTERLEAVED and table.type.value == "3D":
             row_start = base + 2 + m
             stride = m + 1
             address = row_start + row * stride + 1 + col * bytes_per_elem
         elif table.type.value == "3D":
-            # Contiguous 3D: calculate linear index from row, col
-            x_axis = table.x_axis
-            y_axis = table.y_axis
-            cols = x_axis.elements if x_axis else 1
-            rows = y_axis.elements if y_axis else 1
-
             # Must match the reshape order used in read_table_data
             if table.swapxy:
-                linear_index = col * rows + row
+                linear_index = col * max_rows + row
             else:
-                linear_index = row * cols + col
+                linear_index = row * max_cols + col
             address = table.address_int + (linear_index * bytes_per_elem)
         else:
             # For 1D/2D tables, just use row
@@ -715,11 +805,12 @@ class RomReader:
         format_string = f"{endian_char}{format_char}"
 
         try:
-            # Convert to appropriate integer type if needed
-            if format_char in ("B", "b", "H", "h", "I", "i"):
-                raw_value = int(round(raw_value))
-
-            packed_data = struct.pack(format_string, raw_value)
+            packed_data = self._validate_and_pack(
+                raw_value,
+                format_string,
+                format_char,
+                context=f"table '{table.name}' cell [{row},{col}]",
+            )
 
             # Validate bounds
             if address < 0 or address >= len(self.rom_data):
@@ -770,12 +861,25 @@ class RomReader:
                 f"Scaling '{axis_table.scaling}' not found for axis in table '{table.name}'"
             )
 
-        # Calculate the byte offset
+        # Validate index against axis length
         bytes_per_elem = scaling.bytes_per_element
-        if table.layout == TableLayout.INTERLEAVED and axis_type == "y_axis":
-            # Y axis values are interleaved: first byte of each row
+        if table.layout == TableLayout.INTERLEAVED:
             base = table.address_int
             m = self.rom_data[base]
+            n = self.rom_data[base + 1]
+            max_index = n if axis_type == "y_axis" else m
+        else:
+            max_index = axis_table.elements
+
+        if index < 0 or index >= max_index:
+            raise RomWriteError(
+                f"Axis index {index} out of range for {axis_type} of "
+                f"table '{table.name}' (valid: 0..{max_index - 1})"
+            )
+
+        # Calculate the byte offset
+        if table.layout == TableLayout.INTERLEAVED and axis_type == "y_axis":
+            # Y axis values are interleaved: first byte of each row
             row_start = base + 2 + m
             stride = m + 1
             address = row_start + index * stride
@@ -789,11 +893,12 @@ class RomReader:
         format_string = f"{endian_char}{format_char}"
 
         try:
-            # Convert to appropriate integer type if needed
-            if format_char in ("B", "b", "H", "h", "I", "i"):
-                raw_value = int(round(raw_value))
-
-            packed_data = struct.pack(format_string, raw_value)
+            packed_data = self._validate_and_pack(
+                raw_value,
+                format_string,
+                format_char,
+                context=f"table '{table.name}' {axis_type}[{index}]",
+            )
 
             # Validate bounds
             if address < 0 or address >= len(self.rom_data):

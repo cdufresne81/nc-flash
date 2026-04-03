@@ -19,6 +19,7 @@ from src.core.rom_definition import (
     TableLayout,
 )
 from src.core.rom_reader import RomReader, ScalingConverter
+from src.core.exceptions import RomReadError, RomWriteError
 
 
 def make_romid():
@@ -289,3 +290,213 @@ class TestContiguousUnchanged:
         """Check enum string values match XML attribute values."""
         assert TableLayout.CONTIGUOUS.value == "contiguous"
         assert TableLayout.INTERLEAVED.value == "interleaved"
+
+
+# --- Helper to create a reader from a ROM + table ---
+def _make_reader(rom, m, n, scaling_name="u8", storagetype="uint8"):
+    scaling = make_scaling(name=scaling_name, storagetype=storagetype)
+    definition = RomDefinition(
+        romid=make_romid(),
+        scalings={scaling_name: scaling},
+        tables=[make_interleaved_table("test", "100", m, n, scaling_name=scaling_name)],
+    )
+    reader = RomReader.__new__(RomReader)
+    reader.rom_data = rom
+    reader.definition = definition
+    reader.rom_path = "test.bin"
+    return reader, definition.tables[0]
+
+
+class TestInterleavedReadValidation:
+    """Test bounds checking when reading interleaved 3D tables (#57)."""
+
+    def test_read_m_zero_raises(self):
+        """M=0 should raise RomReadError."""
+        rom = bytearray(512)
+        rom[0x100] = 0  # M = 0
+        rom[0x101] = 3  # N = 3
+        reader, table = _make_reader(rom, 0, 3)
+        # Fix elements to match M*N=0
+        table._elements_override = 0
+        with pytest.raises(RomReadError, match="M=0"):
+            reader.read_table_data(table)
+
+    def test_read_n_zero_raises(self):
+        """N=0 should raise RomReadError."""
+        rom = bytearray(512)
+        rom[0x100] = 3  # M = 3
+        rom[0x101] = 0  # N = 0
+        reader, table = _make_reader(rom, 3, 0)
+        with pytest.raises(RomReadError, match="N=0"):
+            reader.read_table_data(table)
+
+    def test_read_exceeds_rom_raises(self):
+        """M=255 on a small ROM should raise RomReadError."""
+        # ROM only 300 bytes, but M=255, N=3 needs 2+255+3*256 = 1025 bytes from base
+        rom = bytearray(300)
+        rom[0x100] = 255  # M = 255
+        rom[0x101] = 3  # N = 3
+        reader, table = _make_reader(rom, 255, 3)
+        with pytest.raises(RomReadError, match="exceeds ROM bounds"):
+            reader.read_table_data(table)
+
+    def test_read_valid_3x3_no_error(self):
+        """A well-formed 3x3 table should read without error (regression guard)."""
+        rom = build_interleaved_rom(
+            3, 3, [10, 20, 30], [40, 80, 120], [[1, 2, 3], [4, 5, 6], [7, 8, 9]]
+        )
+        reader, table = _make_reader(rom, 3, 3)
+        result = reader.read_table_data(table)
+        assert result["values"].shape == (3, 3)
+
+
+class TestInterleavedWriteValidation:
+    """Test bounds checking when writing interleaved 3D tables (#58)."""
+
+    def test_write_table_data_exceeds_rom(self):
+        """Write to a ROM that's 1 byte too short should raise RomWriteError."""
+        m, n = 3, 3
+        # Build a correct ROM then truncate by 1 byte
+        rom = build_interleaved_rom(
+            m, n, [10, 20, 30], [40, 80, 120], [[1, 2, 3], [4, 5, 6], [7, 8, 9]]
+        )
+        rom = bytearray(rom[:-65])  # Remove the 64-byte padding + 1 more
+        reader, table = _make_reader(rom, m, n)
+        new_values = np.array([[10, 20, 30], [40, 50, 60], [70, 80, 90]], dtype=float)
+        with pytest.raises(RomWriteError, match="exceeds ROM bounds"):
+            reader.write_table_data(table, new_values)
+
+    def test_write_multibyte_interleaved_raises(self):
+        """uint16 interleaved should raise because stride is too small."""
+        m, n = 3, 3
+        rom = build_interleaved_rom(
+            m, n, [10, 20, 30], [40, 80, 120], [[1, 2, 3], [4, 5, 6], [7, 8, 9]]
+        )
+        reader, table = _make_reader(
+            rom, m, n, scaling_name="u16", storagetype="uint16"
+        )
+        new_values = np.array([[10, 20, 30], [40, 50, 60], [70, 80, 90]], dtype=float)
+        with pytest.raises(RomWriteError, match="stride"):
+            reader.write_table_data(table, new_values)
+
+    def test_write_normal_interleaved_succeeds(self):
+        """Standard uint8 interleaved write should still work (regression)."""
+        m, n = 3, 3
+        rom = build_interleaved_rom(
+            m, n, [10, 20, 30], [40, 80, 120], [[1, 2, 3], [4, 5, 6], [7, 8, 9]]
+        )
+        reader, table = _make_reader(rom, m, n)
+        new_values = np.array([[10, 20, 30], [40, 50, 60], [70, 80, 90]], dtype=float)
+        reader.write_table_data(table, new_values)
+        result = reader.read_table_data(table)
+        np.testing.assert_array_equal(result["values"], new_values)
+
+
+class TestCellIndexValidation:
+    """Test cell and axis index validation (#60)."""
+
+    def test_write_cell_row_too_large(self):
+        """Row beyond table dimensions should raise."""
+        rom = build_interleaved_rom(
+            3, 3, [10, 20, 30], [40, 80, 120], [[1, 2, 3], [4, 5, 6], [7, 8, 9]]
+        )
+        reader, table = _make_reader(rom, 3, 3)
+        with pytest.raises(RomWriteError, match="Row index 5 out of range"):
+            reader.write_cell_value(table, row=5, col=0, raw_value=1)
+
+    def test_write_cell_col_too_large(self):
+        """Column beyond table dimensions should raise."""
+        rom = build_interleaved_rom(
+            3, 3, [10, 20, 30], [40, 80, 120], [[1, 2, 3], [4, 5, 6], [7, 8, 9]]
+        )
+        reader, table = _make_reader(rom, 3, 3)
+        with pytest.raises(RomWriteError, match="Column index 5 out of range"):
+            reader.write_cell_value(table, row=0, col=5, raw_value=1)
+
+    def test_write_cell_negative_row(self):
+        """Negative row should raise."""
+        rom = build_interleaved_rom(
+            3, 3, [10, 20, 30], [40, 80, 120], [[1, 2, 3], [4, 5, 6], [7, 8, 9]]
+        )
+        reader, table = _make_reader(rom, 3, 3)
+        with pytest.raises(RomWriteError, match="Row index -1 out of range"):
+            reader.write_cell_value(table, row=-1, col=0, raw_value=1)
+
+    def test_write_cell_valid_indices(self):
+        """Valid indices should work (regression)."""
+        rom = build_interleaved_rom(
+            3, 3, [10, 20, 30], [40, 80, 120], [[1, 2, 3], [4, 5, 6], [7, 8, 9]]
+        )
+        reader, table = _make_reader(rom, 3, 3)
+        reader.write_cell_value(table, row=2, col=2, raw_value=99)
+        result = reader.read_table_data(table)
+        assert result["values"][2, 2] == 99
+
+    def test_write_axis_index_too_large(self):
+        """Axis index beyond length should raise."""
+        rom = build_interleaved_rom(
+            3, 3, [10, 20, 30], [40, 80, 120], [[1, 2, 3], [4, 5, 6], [7, 8, 9]]
+        )
+        reader, table = _make_reader(rom, 3, 3)
+        with pytest.raises(RomWriteError, match="Axis index 5 out of range"):
+            reader.write_axis_value(table, "y_axis", 5, raw_value=1)
+
+    def test_write_axis_negative_index(self):
+        """Negative axis index should raise."""
+        rom = build_interleaved_rom(
+            3, 3, [10, 20, 30], [40, 80, 120], [[1, 2, 3], [4, 5, 6], [7, 8, 9]]
+        )
+        reader, table = _make_reader(rom, 3, 3)
+        with pytest.raises(RomWriteError, match="Axis index -1 out of range"):
+            reader.write_axis_value(table, "x_axis", -1, raw_value=1)
+
+
+class TestIntegerOverflowValidation:
+    """Test integer overflow validation in struct.pack (#59)."""
+
+    def test_write_cell_uint8_overflow(self):
+        """Value 256 in uint8 cell should raise RomWriteError."""
+        rom = build_interleaved_rom(
+            3, 3, [10, 20, 30], [40, 80, 120], [[1, 2, 3], [4, 5, 6], [7, 8, 9]]
+        )
+        reader, table = _make_reader(rom, 3, 3)
+        with pytest.raises(RomWriteError, match="out of range"):
+            reader.write_cell_value(table, row=0, col=0, raw_value=256)
+
+    def test_write_cell_int8_underflow(self):
+        """Value -129 in int8 cell should raise RomWriteError."""
+        rom = build_interleaved_rom(
+            3, 3, [10, 20, 30], [40, 80, 120], [[1, 2, 3], [4, 5, 6], [7, 8, 9]]
+        )
+        reader, table = _make_reader(rom, 3, 3, scaling_name="i8", storagetype="int8")
+        with pytest.raises(RomWriteError, match="out of range"):
+            reader.write_cell_value(table, row=0, col=0, raw_value=-129)
+
+    def test_write_cell_valid_uint8(self):
+        """Value 200 in uint8 should succeed."""
+        rom = build_interleaved_rom(
+            3, 3, [10, 20, 30], [40, 80, 120], [[1, 2, 3], [4, 5, 6], [7, 8, 9]]
+        )
+        reader, table = _make_reader(rom, 3, 3)
+        reader.write_cell_value(table, row=0, col=0, raw_value=200)
+        result = reader.read_table_data(table)
+        assert result["values"][0, 0] == 200
+
+    def test_write_axis_uint8_overflow(self):
+        """Value 300 in uint8 axis should raise RomWriteError."""
+        rom = build_interleaved_rom(
+            3, 3, [10, 20, 30], [40, 80, 120], [[1, 2, 3], [4, 5, 6], [7, 8, 9]]
+        )
+        reader, table = _make_reader(rom, 3, 3)
+        with pytest.raises(RomWriteError, match="out of range"):
+            reader.write_axis_value(table, "x_axis", 0, raw_value=300)
+
+    def test_write_table_data_uint8_overflow(self):
+        """Bulk write with one value out of range should raise RomWriteError."""
+        rom = build_interleaved_rom(
+            3, 3, [10, 20, 30], [40, 80, 120], [[1, 2, 3], [4, 5, 6], [7, 8, 9]]
+        )
+        reader, table = _make_reader(rom, 3, 3)
+        bad_values = np.array([[1, 2, 3], [4, 500, 6], [7, 8, 9]], dtype=float)
+        with pytest.raises(RomWriteError, match="out of range"):
+            reader.write_table_data(table, bad_values)

@@ -15,7 +15,7 @@ from src.core.version_models import (
     TableChanges,
     CellChange,
 )
-from src.core.exceptions import ProjectError
+from src.core.exceptions import ProjectError, ProjectSaveError
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -499,3 +499,51 @@ class TestCommitDialogSanitization:
         from src.ui.commit_dialog import CommitDialog
 
         assert CommitDialog._sanitize_name("v2 timing") == "v2_timing"
+
+
+# ===========================================================================
+# Atomic writes (#61)
+# ===========================================================================
+
+
+class TestAtomicWrites:
+    def test_snapshot_size_matches_source(self, pm, project_dir):
+        """Snapshot file should have same size as working ROM after commit."""
+        changes = _make_changes()
+        commit = pm.commit_changes(message="test", changes=changes, version_name="a")
+        snapshot_path = project_dir / commit.snapshot_filename
+        working_path = project_dir / pm.current_project.working_rom
+        assert snapshot_path.stat().st_size == working_path.stat().st_size
+
+    def test_revert_restores_snapshot_content(self, pm, project_dir):
+        """After revert, working ROM should match the target snapshot."""
+        changes = _make_changes()
+        commit_v1 = pm.commit_changes(message="v1", changes=changes, version_name="a")
+        # Modify the working ROM
+        working_path = project_dir / pm.current_project.working_rom
+        working_path.write_bytes(b"\xFF" * 1024)
+        # Commit v2 with modified data
+        commit_v2 = pm.commit_changes(message="v2", changes=changes, version_name="b")
+        # Read v1 snapshot content
+        v1_snapshot = (project_dir / commit_v1.snapshot_filename).read_bytes()
+        # Revert to v1
+        pm.revert_to_version(commit_v1.version)
+        # Working ROM should now match v1 snapshot
+        assert working_path.read_bytes() == v1_snapshot
+
+    def test_atomic_copy_cleans_up_on_failure(self, pm, project_dir, monkeypatch):
+        """If os.replace fails, .tmp file should be cleaned up."""
+        import os
+
+        original_replace = os.replace
+
+        def fail_replace(src, dst):
+            raise OSError("simulated replace failure")
+
+        monkeypatch.setattr(os, "replace", fail_replace)
+        source = project_dir / pm.current_project.working_rom
+        dest = project_dir / "test_copy.bin"
+        with pytest.raises(ProjectSaveError):
+            pm._atomic_copy(source, dest)
+        # No .tmp file should remain
+        assert not (project_dir / "test_copy.bin.tmp").exists()

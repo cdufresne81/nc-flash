@@ -1,5 +1,14 @@
 # Session Notes
 
+## Recent Completed Work (Apr 3, 2026) - Safety-Critical Bounds & Atomic Writes (#57-#61)
+- **Integer overflow validation (#59)** — Added `STORAGE_TYPE_BOUNDS` to `storage_types.py` and `_validate_and_pack()` method on `RomReader`. All 3 write methods (`write_table_data`, `write_cell_value`, `write_axis_value`) now validate integer values against storage type bounds before `struct.pack()`. Raises `RomWriteError` with value, type, and range.
+- **Interleaved 3D read bounds (#57)** — `_read_interleaved_3d()` now validates M/N are non-zero and total table footprint fits in ROM before any data access. Raises `RomReadError` with table name, M, N, address.
+- **Interleaved 3D write bounds (#58)** — `write_table_data()` interleaved branch now validates entire write footprint fits in ROM and rejects multi-byte storage types (stride too small). Raises `RomWriteError`.
+- **Cell/axis index validation (#60)** — `write_cell_value()` validates row/col against table dimensions before computing address. `write_axis_value()` validates index against axis length. Uses ROM-derived M/N for interleaved tables. Raises `RomWriteError`.
+- **Atomic project file writes (#61)** — Added `_atomic_copy()` and `_atomic_write_binary()` to `ProjectManager`. Replaced 4 non-atomic writes: create_project (v0 + working), commit_changes (snapshot), revert_to_version (working ROM overwrite). All use tmp+fsync+os.replace pattern with cleanup on failure.
+- **18 new tests** — 15 in `test_interleaved_tables.py` (read/write bounds, index validation, integer overflow), 3 in `test_project_manager.py` (atomic writes).
+- **Branch:** `fix/safety-critical-bounds-atomics-57-61` — NOT committed yet.
+
 ## Recent Completed Work (Apr 2, 2026) - DTC NRC 0x22 Fix (#52)
 - **Handle NRC 0x22 gracefully in DTC reads** — `read_dtc_count()` and `read_dtc_status()` in protocol.py now catch NRC 0x22 and return 0/[] instead of raising. Defense-in-depth added in flash_manager.py `read_dtcs()`.
 - **Isolate DTC reads from VIN/ROM ID** — In flash_setup_dialog.py and flash_mixin.py, DTC read is now wrapped in its own try/except so failures don't discard already-read VIN and ROM ID.

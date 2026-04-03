@@ -12,6 +12,11 @@ All notable changes to NC Flash are documented here.
 ### Fixed
 - **DTC read failure crashes ECU info worker (#52)** — ReadDTCByStatus (SID 0x18) NRC 0x22 "Conditions not correct" now returns empty results gracefully instead of raising. DTC read failures no longer discard already-read VIN and ROM ID in the flash setup dialog and ECU info view
 - **Smoothing snaps values to coarse increments** — Smoothing used `round_one_level_coarser` which reduced precision by one decimal level (e.g. 2.03 → 2.0 for `.2f` tables). Now rounds to the format's native precision instead
+- **Interleaved 3D read has no bounds checking (#57)** — `_read_interleaved_3d()` now validates M/N are non-zero and total table footprint fits in ROM before any data access. Corrupt ROMs raise `RomReadError` with clear diagnostics instead of crashing
+- **Interleaved 3D write can overflow ROM bounds (#58)** — `write_table_data()` interleaved branch now validates entire write footprint fits in ROM and rejects multi-byte storage types incompatible with interleaved stride
+- **Integer overflow in scaling conversion (#59)** — All three write methods (`write_table_data`, `write_cell_value`, `write_axis_value`) now validate integer values against storage type bounds before `struct.pack()`. Values outside the valid range raise `RomWriteError` instead of crashing or silently wrapping
+- **Cell write index not validated (#60)** — `write_cell_value()` validates row/col against table dimensions and `write_axis_value()` validates index against axis length before computing addresses. Out-of-bounds indices raise `RomWriteError` instead of silently corrupting neighboring tables
+- **Project file writes not atomic (#61)** — ROM snapshot copies, working ROM overwrites on revert, and project creation copies now use atomic tmp+fsync+rename pattern. Crash during save no longer corrupts ROM snapshots or working files
 
 ## [v2.5.0] - 2026-04-01
 
