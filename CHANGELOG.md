@@ -10,6 +10,7 @@ All notable changes to NC Flash are documented here.
 
 ### Fixed
 - **Select All skips first data row in 3D tables** — `select_all_data` started selection at row 2 instead of row 1, missing the first data row in 3D tables
+- **display_to_raw bypasses `^` to `**` expression conversion** — `display_to_raw` and `_axis_display_to_raw` called `simple_eval` directly on scaling `frexpr` without converting calculator-style `^` exponentiation to Python `**`. Now delegates to `ScalingConverter.from_display()` which handles the conversion
 - **Orange selection CSS inconsistency** — `display.py` helper had an orange selection style that was never applied; replaced with the blue selection style used by the actual code path
 - **Inline `Path` re-import in `main.py`** — `_find_document_by_rom_path` redundantly imported `Path as _Path`; now uses the module-level `Path` import
 - **Stale `run-mcp.bat` reference** — MCP connection info dialog referenced a non-existent batch file; now shows the actual `python -m src.mcp.server` command
