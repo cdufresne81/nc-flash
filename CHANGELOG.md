@@ -4,8 +4,11 @@ All notable changes to NC Flash are documented here.
 
 ## [Unreleased]
 
+## [v2.6.1] - 2026-04-03
+
 ### Fixed
 - **CI pipeline failures** — Added missing `pytest-qt` dependency to `requirements-dev.txt` (single-instance IPC tests use `qtbot` fixture) and reformatted 12 files with black
+- **Inconsistent selection highlight on Type/Address columns** — Empty cells in Type and Address columns showed a pale gray instead of matching the Name column's selection highlight. Custom delegate now paints consistent backgrounds for all cells
 
 ## [v2.6.0] - 2026-04-03
 
