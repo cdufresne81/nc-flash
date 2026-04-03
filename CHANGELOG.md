@@ -4,6 +4,11 @@ All notable changes to NC Flash are documented here.
 
 ## [Unreleased]
 
+### Added
+- **J2534 device layer tests (#54)** — 53 tests covering message construction, all 26 error codes, ISO-TP filter setup, read/write, open/close, and connect/disconnect
+- **Security stub tests (#55)** — 5 always-run CI tests verifying stub raises `SecureModuleNotAvailable` and flash operations are blocked when the private module is absent
+- **Flash abort scenario tests (#56)** — 14 tests covering abort during SBL upload, ROM transfer, pre-transfer phase, connection drops, and cleanup failures
+
 ### Fixed
 - **DTC read failure crashes ECU info worker (#52)** — ReadDTCByStatus (SID 0x18) NRC 0x22 "Conditions not correct" now returns empty results gracefully instead of raising. DTC read failures no longer discard already-read VIN and ROM ID in the flash setup dialog and ECU info view
 - **Smoothing snaps values to coarse increments** — Smoothing used `round_one_level_coarser` which reduced precision by one decimal level (e.g. 2.03 → 2.0 for `.2f` tables). Now rounds to the format's native precision instead
