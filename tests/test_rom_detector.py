@@ -204,7 +204,8 @@ class TestErrorHandling:
         test_metadata.mkdir()
 
         incomplete_xml = test_metadata / "incomplete.xml"
-        incomplete_xml.write_text("""<?xml version="1.0"?>
+        incomplete_xml.write_text(
+            """<?xml version="1.0"?>
 <roms>
     <rom>
         <romid>
@@ -212,7 +213,8 @@ class TestErrorHandling:
             <!-- Missing internalidaddress and internalidstring -->
         </romid>
     </rom>
-</roms>""")
+</roms>"""
+        )
 
         detector = RomDetector(str(test_metadata))
         # Should skip this incomplete definition

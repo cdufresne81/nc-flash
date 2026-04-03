@@ -436,7 +436,8 @@ class TableViewer(QWidget):
         """Apply table styling based on settings - compact like ECUFlash"""
         font_size = get_settings().get_table_font_size()
 
-        self.table_widget.setStyleSheet(f"""
+        self.table_widget.setStyleSheet(
+            f"""
             QTableWidget {{
                 font-size: {font_size}px;
                 gridline-color: #a0a0a0;
@@ -448,7 +449,8 @@ class TableViewer(QWidget):
                 background-color: #0078D7;
                 color: white;
             }}
-        """)
+        """
+        )
 
         # Tight row height - just enough for the font
         row_height = font_size + 2

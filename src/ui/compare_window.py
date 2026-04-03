@@ -377,7 +377,8 @@ class CompareWindow(QMainWindow):
         tb.setMovable(False)
         tb.setFloatable(False)
         tb.setIconSize(QSize(20, 20))
-        tb.setStyleSheet("""
+        tb.setStyleSheet(
+            """
             QToolBar {
                 spacing: 1px;
                 padding: 1px 4px;
@@ -395,7 +396,8 @@ class CompareWindow(QMainWindow):
             QToolButton:pressed {
                 background: rgba(128, 128, 128, 0.3);
             }
-        """)
+        """
+        )
 
         # ROM labels with color swatches
         rom_label_a = self._make_rom_label(self._name_a, self._color_a)
@@ -531,7 +533,8 @@ class CompareWindow(QMainWindow):
         self._tree.setHeaderHidden(True)
         self._tree.setRootIsDecorated(True)
         self._tree.setIndentation(14)
-        self._tree.setStyleSheet("""
+        self._tree.setStyleSheet(
+            """
             QTreeWidget {
                 border: none;
                 outline: none;
@@ -547,7 +550,8 @@ class CompareWindow(QMainWindow):
             QTreeWidget::item:hover:!selected {
                 background: #f0f4fa;
             }
-        """)
+        """
+        )
 
         # Group tables by category
         self._tree_items = {}  # diff index -> QTreeWidgetItem
@@ -655,7 +659,8 @@ class CompareWindow(QMainWindow):
             f"Copy table from {self._name_a} \u2192 {self._name_b}"
         )
         self._copy_a_to_b_btn.clicked.connect(lambda: self._copy_table("a_to_b"))
-        self._copy_a_to_b_btn.setStyleSheet("""
+        self._copy_a_to_b_btn.setStyleSheet(
+            """
             QToolButton {
                 padding: 4px; border: 1px solid transparent; border-radius: 3px;
             }
@@ -664,7 +669,8 @@ class CompareWindow(QMainWindow):
                 border: 1px solid rgba(128, 128, 128, 0.25);
             }
             QToolButton:pressed { background: rgba(128, 128, 128, 0.3); }
-        """)
+        """
+        )
         center_layout.addWidget(self._copy_a_to_b_btn)
 
         self._copy_b_to_a_btn = QToolButton()
