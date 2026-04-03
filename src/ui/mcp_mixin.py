@@ -10,7 +10,6 @@ This is a mixin class — it has no __init__ and relies on MainWindow providing:
 - self._command_server (CommandServer or None)
 - self.mcp_action (QAction, checkable)
 - self._toolbar_mcp (QAction for toolbar icon)
-- self._make_icon(name) method
 - self.settings (AppSettings instance)
 - self.change_tracker (ChangeTracker instance)
 - self.table_undo_manager (TableUndoManager instance)
@@ -42,6 +41,7 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
 )
 
+from src.ui.icons import make_icon
 from src.utils.formatting import printf_to_python_format, format_value
 from src.utils.logging_config import get_logger
 from src.utils.paths import get_app_root
@@ -140,12 +140,12 @@ class McpMixin:
             self.mcp_action.setText(
                 f"&MCP Server (Running on port {self.MCP_SSE_PORT})"
             )
-            self._toolbar_mcp.setIcon(self._make_icon("mcp_on"))
+            self._toolbar_mcp.setIcon(make_icon(self, "mcp_on"))
             self._toolbar_mcp.setToolTip(f"MCP Server running — {url}\nClick to stop")
             self.statusBar().showMessage(f"MCP server started on {url}", 5000)
         else:
             self.mcp_action.setText("&MCP Server")
-            self._toolbar_mcp.setIcon(self._make_icon("mcp_off"))
+            self._toolbar_mcp.setIcon(make_icon(self, "mcp_off"))
             self._toolbar_mcp.setToolTip("MCP Server (off) — click to start")
 
     def _show_mcp_connection_info(self):

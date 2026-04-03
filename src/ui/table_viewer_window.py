@@ -32,6 +32,7 @@ from PySide6.QtGui import (
 )
 
 from ..utils.constants import APP_NAME
+from .icons import make_icon
 
 logger = logging.getLogger(__name__)
 from ..core.table_undo_manager import make_table_key
@@ -348,7 +349,8 @@ class TableViewerWindow(QMainWindow):
         tb.setMovable(False)
         tb.setFloatable(False)
         tb.setIconSize(QSize(20, 20))
-        tb.setStyleSheet("""
+        tb.setStyleSheet(
+            """
             QToolBar {
                 spacing: 1px;
                 padding: 1px 4px;
@@ -370,15 +372,16 @@ class TableViewerWindow(QMainWindow):
                 background: rgba(0, 120, 215, 0.15);
                 border: 1px solid rgba(0, 120, 215, 0.4);
             }
-        """)
+        """
+        )
         self._toolbar = tb
 
         # --- File actions ---
-        act = tb.addAction(self._make_toolbar_icon("copy"), "")
+        act = tb.addAction(make_icon(self, "copy"), "")
         act.setToolTip("Copy Table to Clipboard  (Ctrl+Shift+C)")
         act.triggered.connect(self.viewer.copy_table_to_clipboard)
 
-        act = tb.addAction(self._make_toolbar_icon("export"), "")
+        act = tb.addAction(make_icon(self, "export"), "")
         act.setToolTip("Export to CSV  (Ctrl+E)")
         act.triggered.connect(self._export_to_csv)
 
@@ -387,56 +390,56 @@ class TableViewerWindow(QMainWindow):
         # --- Edit actions (disabled in diff/read-only mode) ---
         edit_actions = []
 
-        act = tb.addAction(self._make_toolbar_icon("increment"), "")
+        act = tb.addAction(make_icon(self, "increment"), "")
         act.setToolTip("Increment  (+ or ])")
         act.triggered.connect(self.viewer.increment_selection)
         edit_actions.append(act)
 
-        act = tb.addAction(self._make_toolbar_icon("decrement"), "")
+        act = tb.addAction(make_icon(self, "decrement"), "")
         act.setToolTip("Decrement  (\u2212 or [)")
         act.triggered.connect(self.viewer.decrement_selection)
         edit_actions.append(act)
 
         tb.addSeparator()
 
-        act = tb.addAction(self._make_toolbar_icon("add"), "")
+        act = tb.addAction(make_icon(self, "add"), "")
         act.setToolTip("Add to Data...")
         act.triggered.connect(self.viewer.add_to_selection)
         edit_actions.append(act)
 
-        act = tb.addAction(self._make_toolbar_icon("multiply"), "")
+        act = tb.addAction(make_icon(self, "multiply"), "")
         act.setToolTip("Multiply Data...  (*)")
         act.triggered.connect(self.viewer.multiply_selection)
         edit_actions.append(act)
 
-        act = tb.addAction(self._make_toolbar_icon("set_value"), "")
+        act = tb.addAction(make_icon(self, "set_value"), "")
         act.setToolTip("Set Value...  (=)")
         act.triggered.connect(self.viewer.set_value_selection)
         edit_actions.append(act)
 
         tb.addSeparator()
 
-        act = tb.addAction(self._make_toolbar_icon("interp_v"), "")
+        act = tb.addAction(make_icon(self, "interp_v"), "")
         act.setToolTip("Interpolate Vertically  (V)")
         act.triggered.connect(self.viewer.interpolate_vertical)
         edit_actions.append(act)
 
-        act = tb.addAction(self._make_toolbar_icon("interp_h"), "")
+        act = tb.addAction(make_icon(self, "interp_h"), "")
         act.setToolTip("Interpolate Horizontally  (H)")
         act.triggered.connect(self.viewer.interpolate_horizontal)
         edit_actions.append(act)
 
-        act = tb.addAction(self._make_toolbar_icon("interp_2d"), "")
+        act = tb.addAction(make_icon(self, "interp_2d"), "")
         act.setToolTip("Interpolate 2D  (B)")
         act.triggered.connect(self.viewer.interpolate_2d)
         edit_actions.append(act)
 
-        act = tb.addAction(self._make_toolbar_icon("smooth"), "")
+        act = tb.addAction(make_icon(self, "smooth"), "")
         act.setToolTip("Smooth Selection  (S)")
         act.triggered.connect(self.viewer.smooth_selection)
         edit_actions.append(act)
 
-        act = tb.addAction(self._make_toolbar_icon("round"), "")
+        act = tb.addAction(make_icon(self, "round"), "")
         act.setToolTip("Round Selection  (R)")
         act.triggered.connect(self.viewer.round_selection)
         edit_actions.append(act)
@@ -449,7 +452,7 @@ class TableViewerWindow(QMainWindow):
         # --- View actions ---
         if self.table.type != TableType.ONE_D:
             tb.addSeparator()
-            self._tb_graph_action = tb.addAction(self._make_toolbar_icon("graph"), "")
+            self._tb_graph_action = tb.addAction(make_icon(self, "graph"), "")
             self._tb_graph_action.setToolTip("Show Graph  (G)")
             self._tb_graph_action.setCheckable(True)
             self._tb_graph_action.triggered.connect(self._toggle_graph)
@@ -458,15 +461,9 @@ class TableViewerWindow(QMainWindow):
 
         tb.addSeparator()
 
-        act = tb.addAction(self._make_toolbar_icon("screenshot"), "")
+        act = tb.addAction(make_icon(self, "screenshot"), "")
         act.setToolTip("Screenshot  (F12)")
         act.triggered.connect(self._take_screenshot)
-
-    def _make_toolbar_icon(self, name: str):
-        """Create a crisp toolbar icon by name using QPainter."""
-        from .icons import make_icon
-
-        return make_icon(self, name)
 
     def _on_toggle_diff_highlights(self):
         """Toggle diff highlighting visibility"""

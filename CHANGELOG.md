@@ -7,6 +7,7 @@ All notable changes to NC Flash are documented here.
 ### Removed
 - **Dead `GraphViewer` class** — Standalone graph window class in `graph_viewer.py` was never imported; removed along with its `matplotlib.pyplot` import and `APP_NAME` constant
 - **Dead `_apply_table_style` method** — Unused delegation method in `table_viewer.py` that was superseded by `_apply_table_style_internal`
+- **Trivial `_make_icon`/`_make_toolbar_icon` wrappers** — Removed pass-through methods in `MainWindow` and `TableViewerWindow` that simply delegated to `make_icon()`; callers now invoke `make_icon()` directly
 
 ### Fixed
 - **Select All skips first data row in 3D tables** — `select_all_data` started selection at row 2 instead of row 1, missing the first data row in 3D tables
