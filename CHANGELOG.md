@@ -4,6 +4,9 @@ All notable changes to NC Flash are documented here.
 
 ## [Unreleased]
 
+### Fixed
+- **Select All skips first data row in 3D tables** — `select_all_data` started selection at row 2 instead of row 1, missing the first data row in 3D tables
+
 ## [v2.6.1] - 2026-04-03
 
 ### Added

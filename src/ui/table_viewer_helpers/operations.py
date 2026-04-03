@@ -506,17 +506,17 @@ class TableOperationsHelper:
                 self.ctx.table_widget.setCurrentCell(0, 1)
 
         elif table_type == TableType.THREE_D:
-            # Select data region (ECUFlash layout: data starts at row 2, col 1)
-            # Row 0: Axis labels, Row 1: X-axis values
+            # Select data region
+            # Row 0: X-axis values, Row 1+: data
             # Col 0: Y-axis values
             num_rows = self.ctx.table_widget.rowCount()
             num_cols = self.ctx.table_widget.columnCount()
 
-            if num_rows > 2 and num_cols > 1:
-                # Data starts at row 2, col 1
-                selection = QTableWidgetSelectionRange(2, 1, num_rows - 1, num_cols - 1)
+            if num_rows > 1 and num_cols > 1:
+                # Data starts at row 1, col 1
+                selection = QTableWidgetSelectionRange(1, 1, num_rows - 1, num_cols - 1)
                 self.ctx.table_widget.setRangeSelected(selection, True)
-                self.ctx.table_widget.setCurrentCell(2, 1)
+                self.ctx.table_widget.setCurrentCell(1, 1)
 
     def smooth_selection(self):
         """
