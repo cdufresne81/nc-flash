@@ -525,9 +525,6 @@ class RomReader:
         if x_axis:
             x_scaling = self.definition.get_scaling(x_axis.scaling)
             if x_scaling:
-                x_raw = np.array(
-                    [self.rom_data[x_start + i] for i in range(m)], dtype=np.float64
-                )
                 x_converter = ScalingConverter(x_scaling)
                 x_display = x_converter.to_display(x_raw)
             else:

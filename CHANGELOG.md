@@ -4,6 +4,10 @@ All notable changes to NC Flash are documented here.
 
 ## [Unreleased]
 
+### Fixed
+- **Compare window cleanup for version comparisons** — CompareWindow `closeEvent` now clears both `compare_window` and `_compare_window` attributes on the parent, fixing a leak where history-viewer comparisons were never cleaned up due to an attribute name mismatch
+- **Redundant x-axis read in interleaved 3D tables** — `_read_interleaved_3d()` read x-axis data twice; removed the duplicate read inside the scaling branch since the unconditional read above already populated `x_raw`
+
 ## [v2.6.1] - 2026-04-03
 
 ### Added
