@@ -506,45 +506,45 @@ class MainWindow(
         """
         )
 
-        act = tb.addAction(self._make_icon("open"), "")
+        act = tb.addAction(make_icon(self, "open"), "")
         act.setToolTip("Open  (Ctrl+O)")
         act.triggered.connect(self.open_file)
 
-        act = tb.addAction(self._make_icon("save"), "")
+        act = tb.addAction(make_icon(self, "save"), "")
         act.setToolTip("Save  (Ctrl+S)")
         act.triggered.connect(self._save)
 
         tb.addSeparator()
 
-        act = tb.addAction(self._make_icon("compare"), "")
+        act = tb.addAction(make_icon(self, "compare"), "")
         act.setToolTip("Compare Open ROMs  (Ctrl+Shift+D)")
         act.triggered.connect(self._on_compare_roms)
         self._toolbar_compare = act
 
-        act = tb.addAction(self._make_icon("history"), "")
+        act = tb.addAction(make_icon(self, "history"), "")
         act.setToolTip("Version History")
         act.triggered.connect(self.show_history)
         act.setEnabled(False)
         self._toolbar_history = act
 
-        act = tb.addAction(self._make_icon("flash"), "")
+        act = tb.addAction(make_icon(self, "flash"), "")
         act.setToolTip("ECU Programming (Ctrl+Shift+E)")
         act.triggered.connect(self._on_open_ecu_window)
         self._toolbar_flash = act
 
         tb.addSeparator()
 
-        self._toolbar_mcp = tb.addAction(self._make_icon("mcp_off"), "")
+        self._toolbar_mcp = tb.addAction(make_icon(self, "mcp_off"), "")
         self._toolbar_mcp.setToolTip("MCP Server (off)")
         self._toolbar_mcp.triggered.connect(self._toggle_mcp_server)
 
-        act = tb.addAction(self._make_icon("settings"), "")
+        act = tb.addAction(make_icon(self, "settings"), "")
         act.setToolTip("Settings")
         act.triggered.connect(self.show_settings)
 
         tb.addSeparator()
 
-        act = tb.addAction(self._make_icon("screenshot"), "")
+        act = tb.addAction(make_icon(self, "screenshot"), "")
         act.setToolTip("Screenshot  (F12)")
         act.triggered.connect(self._take_screenshot)
 
@@ -574,10 +574,6 @@ class MainWindow(
             QMessageBox.critical(
                 self, "Error", f"Failed to save screenshot to:\n{file_path}"
             )
-
-    def _make_icon(self, name: str) -> QIcon:
-        """Create a crisp toolbar icon by name using QPainter."""
-        return make_icon(self, name)
 
     # ========== Tab and Document Management ==========
 
