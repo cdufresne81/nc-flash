@@ -31,7 +31,9 @@ def _find_py32() -> list[str] | None:
     try:
         r = subprocess.run(
             [*cmd, "-c", "print('ok')"],
-            capture_output=True, text=True, timeout=10,
+            capture_output=True,
+            text=True,
+            timeout=10,
         )
         if r.returncode == 0 and "ok" in r.stdout:
             return cmd
@@ -44,7 +46,9 @@ def _ensure_pyinstaller(py_cmd: list[str]) -> bool:
     """Make sure PyInstaller is importable in the target Python."""
     r = subprocess.run(
         [*py_cmd, "-m", "PyInstaller", "--version"],
-        capture_output=True, text=True, timeout=15,
+        capture_output=True,
+        text=True,
+        timeout=15,
     )
     if r.returncode == 0:
         return True
@@ -52,7 +56,9 @@ def _ensure_pyinstaller(py_cmd: list[str]) -> bool:
     print("Installing PyInstaller in 32-bit Python...")
     r = subprocess.run(
         [*py_cmd, "-m", "pip", "install", "pyinstaller>=6.0,<7.0"],
-        capture_output=True, text=True, timeout=120,
+        capture_output=True,
+        text=True,
+        timeout=120,
     )
     if r.returncode != 0:
         print(f"Failed to install PyInstaller:\n{r.stderr}", file=sys.stderr)

@@ -9,7 +9,13 @@ All notable changes to NC Flash are documented here.
 
 ### Changed
 - **MCP connection dialog** — Now shows correct `run-mcp.bat` path for Claude Desktop config (dev and compiled builds) instead of broken inline Python command
-- **MCP edit pipeline refactored** — `_api_edit_table` now uses shared `_capture_table_originals` and `_apply_external_cell_edits` methods, eliminating 40+ lines of duplicated edit logic
+- **MCP server uses app metadata directory** — MCP subprocess now receives `--metadata-dir` from the app's configured settings, ensuring disk-based and live MCP tools use the same XML definitions
+- **Architectural refactoring** — Four phases of structural cleanup with no behavior changes:
+  - Unified table CSS into shared `get_table_stylesheet()` function, eliminating 3 duplicate stylesheet blocks
+  - Replaced null-byte `\0` composite keys with `TableKey` namedtuple for type-safe dict keys across undo/change tracking
+  - Extracted shared edit pipeline (`_apply_external_cell_edits`, `_apply_external_axis_edits`, `_capture_table_originals`) — compare-copy and MCP edit now share one code path instead of three duplicated copies
+  - Simplified 4-hop signal chain to 2 hops — `TableViewer` now emits `Table` objects directly, removing 4 forwarding signals and methods from `TableViewerWindow`
+- **Dead code removed** — Unused `apply_table_style()` method in `display.py`
 
 ### Fixed
 - **MCP `write_table` param validation** — Changed `cells: list[dict]` to `cells: list` in server tool signature to fix FastMCP Pydantic rejection of valid JSON arrays (`-32602: Invalid request parameters`)
