@@ -87,30 +87,6 @@ class TableDisplayHelper:
             del self._saved_h_resize_modes
             del self._saved_v_resize_modes
 
-    def apply_table_style(self):
-        """Apply table styling based on settings - compact like ECUFlash"""
-        font_size = get_settings().get_table_font_size()
-
-        self.ctx.table_widget.setStyleSheet(
-            f"""
-            QTableWidget {{
-                font-size: {font_size}px;
-                gridline-color: #a0a0a0;
-            }}
-            QTableWidget::item {{
-                padding: 0px 1px;
-            }}
-            QTableWidget::item:selected {{
-                background-color: #0078D7;
-                color: white;
-            }}
-        """
-        )
-
-        # Tight row height - just enough for the font
-        row_height = font_size + 2
-        self.ctx.table_widget.verticalHeader().setDefaultSectionSize(row_height)
-
     def display_table(self, table: Table, data: dict):
         """
         Display table data

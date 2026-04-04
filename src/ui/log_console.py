@@ -102,13 +102,15 @@ class LogConsole(QWidget):
         self.console.setFont(font)
 
         # Style the console
-        self.console.setStyleSheet("""
+        self.console.setStyleSheet(
+            """
             QTextEdit {
                 background-color: #1e1e1e;
                 color: #d4d4d4;
                 border: 1px solid #3c3c3c;
             }
-        """)
+        """
+        )
 
         layout.addWidget(self.console)
 

@@ -270,14 +270,14 @@ class McpMixin:
         if not document:
             return {"success": False, "error": f"ROM not open in app: {rom_path}"}
 
-        from src.core.table_undo_manager import extract_rom_path as _extract_rom_path
+        from src.core.table_undo_manager import extract_rom_path
 
         rom_path_str = str(Path(rom_path))
         tables = []
         for key, pending in self.change_tracker._pending.items():
             if not pending.has_changes():
                 continue
-            key_rom = _extract_rom_path(key)
+            key_rom = extract_rom_path(key)
             if key_rom == rom_path_str or key_rom == str(Path(rom_path).resolve()):
                 tables.append(
                     {

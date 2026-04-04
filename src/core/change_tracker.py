@@ -316,9 +316,12 @@ class ChangeTracker:
 
         self._notify_change()
 
-    def _get_pending_key(self, change: CellChange) -> str:
+    def _get_pending_key(self, change: CellChange):
         """Get the correct pending dict key from a CellChange."""
-        return change.table_key if change.table_key else change.table_address
+        if change.table_key is not None:
+            return change.table_key
+        # Fallback: construct a TableKey from the address (no ROM path)
+        return make_table_key(None, change.table_address)
 
     def _handle_pending_undo(self, change: CellChange):
         """Handle pending changes update during undo"""

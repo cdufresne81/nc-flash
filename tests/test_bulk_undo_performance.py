@@ -15,7 +15,7 @@ direct _update_project_ui() call from _update_pending_from_undo().
 
 import pytest
 from PySide6.QtWidgets import QApplication
-from src.core.table_undo_manager import TableUndoManager
+from src.core.table_undo_manager import TableUndoManager, make_table_key
 from src.core.change_tracker import ChangeTracker
 from src.core.version_models import CellChange
 from src.core.rom_definition import Table, TableType
@@ -119,7 +119,7 @@ def test_bulk_undo_calls_update_project_ui_once(qapp, table):
 
     # Record bulk in undo manager
     window.undo_manager.record_bulk_cell_changes(table, changes, "Test Bulk Op")
-    window.undo_manager.set_active_stack(table.address)
+    window.undo_manager.set_active_stack(make_table_key(None, table.address))
 
     # Reset counter before undo
     window.update_project_ui_calls = 0
@@ -147,7 +147,7 @@ def test_bulk_redo_calls_update_project_ui_once(qapp, table):
         )
 
     window.undo_manager.record_bulk_cell_changes(table, changes, "Test Bulk Op")
-    window.undo_manager.set_active_stack(table.address)
+    window.undo_manager.set_active_stack(make_table_key(None, table.address))
 
     # Undo first
     window.undo_manager.undo_group.undo()
@@ -170,7 +170,7 @@ def test_single_cell_undo_calls_update_project_ui_once(qapp, table):
 
     window.change_tracker.record_pending_change(table, 0, 0, 10.0, 20.0, 100, 200)
     window.undo_manager.record_cell_change(table, 0, 0, 10.0, 20.0, 100, 200)
-    window.undo_manager.set_active_stack(table.address)
+    window.undo_manager.set_active_stack(make_table_key(None, table.address))
 
     window.update_project_ui_calls = 0
     window.undo_manager.undo_group.undo()

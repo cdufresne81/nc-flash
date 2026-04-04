@@ -5,12 +5,13 @@ Manages per-table QUndoStacks using Qt's QUndoGroup pattern.
 Each open table has its own undo stack, with the active stack
 determined by window focus.
 
-Stack keys are composite (rom_path\0table_address) to isolate
+Stack keys are TableKey namedtuples (rom_path, table_address) to isolate
 undo stacks when multiple ROMs share the same table addresses.
 """
 
+from collections import namedtuple
 from PySide6.QtGui import QUndoGroup, QUndoStack
-from typing import Dict, Optional, Callable, List, Tuple
+from typing import Dict, Optional, Callable, List, Tuple, Union
 import logging
 
 from .undo_commands import (
@@ -26,41 +27,38 @@ logger = logging.getLogger(__name__)
 
 MAX_UNDO_PER_TABLE = 100
 
+TableKey = namedtuple("TableKey", ["rom_path", "table_address"])
 
-def make_table_key(rom_path, table_address: str) -> str:
+
+def make_table_key(rom_path, table_address: str) -> TableKey:
     """Build a composite key unique per ROM per table.
 
     Args:
-        rom_path: Path to the ROM file (str or Path)
+        rom_path: Path to the ROM file (str, Path, or None)
         table_address: Hex address string (e.g., "0x1000")
 
     Returns:
-        Composite key string like "C:\\path\\rom.bin\\x000x1000"
+        TableKey namedtuple (hashable, usable as dict key)
     """
-    return f"{rom_path}\0{table_address}" if rom_path else table_address
+    return TableKey(str(rom_path) if rom_path else None, table_address)
 
 
-def extract_table_address(table_key: str) -> str:
-    """Extract the raw table address from a composite key.
-
-    Args:
-        table_key: Composite key or bare address
-
-    Returns:
-        Raw table address (e.g., "0x1000")
-    """
-    if "\0" in table_key:
+def extract_table_address(table_key) -> str:
+    """Extract the raw table address from a TableKey or legacy string key."""
+    if isinstance(table_key, TableKey):
+        return table_key.table_address
+    # Legacy fallback for string keys
+    if isinstance(table_key, str) and "\0" in table_key:
         return table_key.rsplit("\0", 1)[1]
-    return table_key
+    return str(table_key)
 
 
-def extract_rom_path(table_key: str) -> Optional[str]:
-    """Extract the ROM path from a composite key.
-
-    Returns:
-        ROM path string, or None if key has no ROM prefix.
-    """
-    if "\0" in table_key:
+def extract_rom_path(table_key) -> Optional[str]:
+    """Extract the ROM path from a TableKey or legacy string key."""
+    if isinstance(table_key, TableKey):
+        return table_key.rom_path
+    # Legacy fallback for string keys
+    if isinstance(table_key, str) and "\0" in table_key:
         return table_key.rsplit("\0", 1)[0]
     return None
 

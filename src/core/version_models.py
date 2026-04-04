@@ -47,7 +47,9 @@ class CellChange:
     new_value: float  # Display value
     old_raw: float  # Raw binary value
     new_raw: float  # Raw binary value
-    table_key: str = ""  # Composite key (rom_path|address) for multi-ROM isolation
+    table_key: object = (
+        None  # TableKey namedtuple for multi-ROM isolation (not serialized)
+    )
 
     def to_dict(self) -> dict:
         """Serialize to dictionary for JSON storage"""
@@ -197,7 +199,9 @@ class AxisChange:
     new_value: float  # Display value
     old_raw: float  # Raw binary value
     new_raw: float  # Raw binary value
-    table_key: str = ""  # Composite key (rom_path|address) for multi-ROM isolation
+    table_key: object = (
+        None  # TableKey namedtuple for multi-ROM isolation (not serialized)
+    )
 
     def to_dict(self) -> dict:
         """Serialize to dictionary for JSON storage"""

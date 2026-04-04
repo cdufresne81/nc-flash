@@ -34,3 +34,30 @@ MAX_RECENT_FILES = 10
 # Table viewer window
 TABLE_VIEWER_DEFAULT_WIDTH = 800
 TABLE_VIEWER_DEFAULT_HEIGHT = 600
+
+
+def get_table_stylesheet(font_size: int, include_selection: bool = True) -> str:
+    """Return the shared QTableWidget stylesheet.
+
+    Args:
+        font_size: Font size in pixels for table cells.
+        include_selection: Whether to include selection highlight rules.
+                          Set False for read-only compare panels.
+    """
+    css = f"""
+        QTableWidget {{
+            font-size: {font_size}px;
+            gridline-color: #a0a0a0;
+        }}
+        QTableWidget::item {{
+            padding: 0px 1px;
+        }}
+    """
+    if include_selection:
+        css += """
+        QTableWidget::item:selected {
+            background-color: #0078D7;
+            color: white;
+        }
+    """
+    return css

@@ -425,21 +425,10 @@ class TableViewer(QWidget):
 
     def _apply_table_style_internal(self):
         """Apply table styling based on settings - compact like ECUFlash"""
-        font_size = get_settings().get_table_font_size()
+        from ..utils.constants import get_table_stylesheet
 
-        self.table_widget.setStyleSheet(f"""
-            QTableWidget {{
-                font-size: {font_size}px;
-                gridline-color: #a0a0a0;
-            }}
-            QTableWidget::item {{
-                padding: 0px 1px;
-            }}
-            QTableWidget::item:selected {{
-                background-color: #0078D7;
-                color: white;
-            }}
-        """)
+        font_size = get_settings().get_table_font_size()
+        self.table_widget.setStyleSheet(get_table_stylesheet(font_size))
 
         # Tight row height - just enough for the font
         row_height = font_size + 2

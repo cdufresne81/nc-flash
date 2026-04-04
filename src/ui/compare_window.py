@@ -604,16 +604,10 @@ class CompareWindow(QMainWindow):
 
     def _build_table_panels(self):
         """Create the two QTableWidget panels with compact labels for side-by-side comparison."""
+        from ..utils.constants import get_table_stylesheet
+
         font_size = get_settings().get_table_font_size()
-        table_css = f"""
-            QTableWidget {{
-                font-size: {font_size}px;
-                gridline-color: #a0a0a0;
-            }}
-            QTableWidget::item {{
-                padding: 0px 1px;
-            }}
-        """
+        table_css = get_table_stylesheet(font_size, include_selection=False)
         row_height = font_size + 2
         label_css = "font-size: 11px; color: #888; padding: 2px 4px; border-bottom: 1px solid #d0d0d0;"
 

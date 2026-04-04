@@ -72,8 +72,8 @@ class TableViewerWindow(QMainWindow):
     axis_bulk_changes = Signal(Table, list)
 
     # Signal emitted when this window receives focus
-    # Args: table_address (str)
-    window_focused = Signal(str)
+    # Args: TableKey namedtuple
+    window_focused = Signal(object)
 
     def __init__(
         self,

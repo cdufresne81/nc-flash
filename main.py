@@ -1694,11 +1694,11 @@ class MainWindow(
     # ========== Undo/Redo Callback Methods ==========
     # These are called by TableUndoManager when undo/redo operations occur
 
-    def _find_table_window(self, table_key: str):
-        """Find visible table viewer window by composite key, using cache during bulk ops.
+    def _find_table_window(self, table_key):
+        """Find visible table viewer window by TableKey, using cache during bulk ops.
 
         Args:
-            table_key: Composite key (rom_path|table_address) or bare table_address
+            table_key: TableKey namedtuple (rom_path, table_address)
         """
         rom_path_str = extract_rom_path(table_key)
         table_address = extract_table_address(table_key)
@@ -1728,7 +1728,9 @@ class MainWindow(
         Apply a cell change to open table viewers and ROM data.
         Called by TableUndoManager during undo/redo operations.
         """
-        window = self._find_table_window(change.table_key or change.table_address)
+        window = self._find_table_window(
+            change.table_key if change.table_key is not None else change.table_address
+        )
         if window:
             # Update the viewer display
             window.viewer.update_cell_value(change.row, change.col, change.new_value)
@@ -1756,7 +1758,9 @@ class MainWindow(
         Apply an axis change to open table viewers and ROM data.
         Called by TableUndoManager during undo/redo operations.
         """
-        window = self._find_table_window(change.table_key or change.table_address)
+        window = self._find_table_window(
+            change.table_key if change.table_key is not None else change.table_address
+        )
         if window:
             # Update the viewer display
             window.viewer.update_axis_cell_value(
@@ -2051,13 +2055,13 @@ class MainWindow(
             document, write_bulk, f"axis bulk changes in {table.name}"
         )
 
-    def _on_table_window_focused(self, table_key: str):
+    def _on_table_window_focused(self, table_key):
         """
         Handle table viewer window gaining focus - highlight corresponding tree item
         and activate the correct undo stack.
 
         Args:
-            table_key: Composite key (rom_path|table_address) of the focused table
+            table_key: TableKey namedtuple of the focused table
         """
         # Activate the undo stack for this table (enables per-table undo/redo)
         self.table_undo_manager.set_active_stack(table_key)
