@@ -6,9 +6,7 @@ All notable changes to NC Flash are documented here.
 
 ### Changed
 - **`.gitignore` cleanup** — Added `tests/gui/debug_*.txt` pattern and lowercase `thinking-pad.md` to `.gitignore`; removed 6 one-off debug GUI test scripts
-
-### Fixed
-- **Stale README version and project structure** — Updated version from v2.3.0 to v2.6.1, added missing `src/ecu/` module tree (13 files) and new UI files (`ecu_window.py`, `flash_mixin.py`, `flash_setup_dialog.py`, `patch_dialog.py`), and refreshed the development status description
+- **Coverage is now opt-in** — Removed `--cov` flags from `pytest.ini` addopts so test runs are faster by default. Run `pytest --cov=src --cov-report=term-missing` when coverage is needed
 
 ### Removed
 - **Dead `GraphViewer` class** — Standalone graph window class in `graph_viewer.py` was never imported; removed along with its `matplotlib.pyplot` import and `APP_NAME` constant
@@ -16,6 +14,7 @@ All notable changes to NC Flash are documented here.
 - **Trivial `_make_icon`/`_make_toolbar_icon` wrappers** — Removed pass-through methods in `MainWindow` and `TableViewerWindow` that simply delegated to `make_icon()`; callers now invoke `make_icon()` directly
 
 ### Fixed
+- **Stale README version and project structure** — Updated version from v2.3.0 to v2.6.1, added missing `src/ecu/` module tree (13 files) and new UI files (`ecu_window.py`, `flash_mixin.py`, `flash_setup_dialog.py`, `patch_dialog.py`), and refreshed the development status description
 - **Select All skips first data row in 3D tables** — `select_all_data` started selection at row 2 instead of row 1, missing the first data row in 3D tables
 - **display_to_raw bypasses `^` to `**` expression conversion** — `display_to_raw` and `_axis_display_to_raw` called `simple_eval` directly on scaling `frexpr` without converting calculator-style `^` exponentiation to Python `**`. Now delegates to `ScalingConverter.from_display()` which handles the conversion
 - **Compare window cleanup for version comparisons** — CompareWindow `closeEvent` now clears both `compare_window` and `_compare_window` attributes on the parent, fixing a leak where history-viewer comparisons were never cleaned up due to an attribute name mismatch
