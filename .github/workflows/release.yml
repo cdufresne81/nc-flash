@@ -15,10 +15,10 @@ jobs:
     runs-on: windows-latest
 
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v5
 
     - name: Checkout secure module
-      uses: actions/checkout@v4
+      uses: actions/checkout@v5
       with:
         repository: cdufresne81/nc-flash-secure
         token: ${{ secrets.SECURE_REPO_PAT }}
@@ -31,13 +31,13 @@ jobs:
       shell: bash
 
     - name: Set up Python (32-bit, for J2534 bridge)
-      uses: actions/setup-python@v5
+      uses: actions/setup-python@v6
       with:
         python-version: '3.12'
         architecture: 'x86'
 
     - name: Set up Python (64-bit, must be last to stay on PATH)
-      uses: actions/setup-python@v5
+      uses: actions/setup-python@v6
       with:
         python-version: '3.12'
         architecture: 'x64'
@@ -126,10 +126,10 @@ jobs:
     runs-on: ubuntu-22.04
 
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v5
 
     - name: Checkout secure module
-      uses: actions/checkout@v4
+      uses: actions/checkout@v5
       with:
         repository: cdufresne81/nc-flash-secure
         token: ${{ secrets.SECURE_REPO_PAT }}
@@ -141,7 +141,7 @@ jobs:
         cp -r _secure_tmp/* src/ecu/_secure/
 
     - name: Set up Python
-      uses: actions/setup-python@v5
+      uses: actions/setup-python@v6
       with:
         python-version: '3.12'
 
@@ -214,7 +214,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v5
 
     - name: Download all artifacts
       uses: actions/download-artifact@v4

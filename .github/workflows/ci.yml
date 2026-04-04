@@ -25,10 +25,10 @@ jobs:
             python-version: '3.12'
 
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v5
 
     - name: Checkout secure module
-      uses: actions/checkout@v4
+      uses: actions/checkout@v5
       with:
         repository: cdufresne81/nc-flash-secure
         token: ${{ secrets.SECURE_REPO_PAT }}
@@ -40,7 +40,7 @@ jobs:
         cp -r _secure_tmp/* src/ecu/_secure/
 
     - name: Set up Python ${{ matrix.python-version }}
-      uses: actions/setup-python@v5
+      uses: actions/setup-python@v6
       with:
         python-version: ${{ matrix.python-version }}
 
@@ -74,10 +74,10 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v5
 
     - name: Checkout secure module
-      uses: actions/checkout@v4
+      uses: actions/checkout@v5
       with:
         repository: cdufresne81/nc-flash-secure
         token: ${{ secrets.SECURE_REPO_PAT }}
@@ -89,7 +89,7 @@ jobs:
         cp -r _secure_tmp/* src/ecu/_secure/
 
     - name: Set up Python
-      uses: actions/setup-python@v5
+      uses: actions/setup-python@v6
       with:
         python-version: '3.12'
 
