@@ -1,5 +1,24 @@
 # Session Notes
 
+## Recent Completed Work (Apr 4, 2026) - Architectural Review & Refactoring
+
+**Full architectural review** — 40K lines read into 1M context, produced review and plan at `.claude/plans/zippy-pondering-puppy.md`.
+
+**Completed refactoring (Phase 3 & 5 of 7):**
+- **Unified table CSS** — Created `get_table_stylesheet()` in `src/utils/constants.py`, replaced 3 duplicate CSS blocks in `table_viewer.py`, `display.py` (removed dead method), and `compare_window.py`
+- **TableKey namedtuple** — Replaced null-byte `\0` separator in composite keys with `TableKey = namedtuple('TableKey', ['rom_path', 'table_address'])` in `table_undo_manager.py`. Updated `change_tracker.py`, `version_models.py`, `main.py`, `mcp_mixin.py`, `table_viewer_window.py`, and all tests. `extract_rom_path`/`extract_table_address` still work as backward-compatible wrappers.
+- **Architecture rules saved** — 6 rules in memory (`feedback_architecture_rules.md`)
+
+**Remaining phases (not yet started):**
+- Phase 1: Extract edit pipeline service (3 copies → 1)
+- Phase 2: Replace shared mutable dicts with ModificationTracker
+- Phase 4: Eliminate signal forwarding hop in TableViewerWindow
+- Phase 6: Extract shared table population logic from compare_window
+- Phase 7: Convert mixins to composition (incremental)
+
+**Open GitHub issues:** #65 (test dead flash mixin removal with hardware), #66 (test auto-save dedup with hardware)
+**Pending branches:** `fix/remove-dead-flash-mixin`, `fix/dedup-auto-save` (need Tactrix dongle validation)
+
 ## Recent Completed Work (Apr 4, 2026) - Full Code Audit & Cleanup
 
 **Code audit session** — loaded entire ~42K line codebase into 1M context, identified and fixed:
@@ -11,16 +30,6 @@
 - Cleaned up debug scripts, updated README, made pytest coverage opt-in
 
 **Audit document:** `docs/internal/CODE_AUDIT.md` — full findings
-**Design plan (saved, not yet executed):** `.claude/plans/sparkling-meandering-token.md`
-**Open GitHub issues:** #65 (test dead flash mixin removal with hardware), #66 (test auto-save dedup with hardware)
-**Pending branches:** `fix/remove-dead-flash-mixin`, `fix/dedup-auto-save` (need Tactrix dongle validation)
-
-**Key architectural issues identified (not yet addressed):**
-- MainWindow is a god object (2,200 lines + 5 mixins)
-- Cell edit signal chain is 4 hops across 5 files
-- Shared mutable dicts as pseudo-global state
-- Compare window reimplements 290 lines of table display logic
-- MCP has 3 communication layers
 
 ## Recent Completed Work (Apr 4, 2026) - Copy All, Workspace, Settings Redesign
 - **Comparison Copy All** — Two new toolbar buttons ("Copy All A→B" / "Copy All B→A") in CompareWindow. Copies all eligible differing tables in one operation with progress dialog, cancellation support, and partial failure handling. Sidebar labels update to show "(identical)" after copy.

@@ -180,7 +180,7 @@ class TableClipboardHelper:
 
             # Emit single bulk signal for atomic undo (matches operations.py pattern)
             if changes_made:
-                self.ctx.viewer.bulk_changes.emit(changes_made)
+                self.ctx.viewer.bulk_changes.emit(self.ctx.current_table, changes_made)
                 logger.debug(f"Pasted {len(changes_made)} cell(s)")
 
     def copy_table_to_clipboard(self):

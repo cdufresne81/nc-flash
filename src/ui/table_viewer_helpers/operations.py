@@ -365,9 +365,9 @@ class TableOperationsHelper:
 
         # Emit signals
         if data_changes:
-            self.ctx.viewer.bulk_changes.emit(data_changes)
+            self.ctx.viewer.bulk_changes.emit(self.ctx.current_table, data_changes)
         if axis_changes:
-            self.ctx.viewer.axis_bulk_changes.emit(axis_changes)
+            self.ctx.viewer.axis_bulk_changes.emit(self.ctx.current_table, axis_changes)
 
     def decrement_selection(self):
         """Decrement selected cells by fixed amount (using appropriate increment per cell type)"""
@@ -397,9 +397,9 @@ class TableOperationsHelper:
 
         # Emit signals
         if data_changes:
-            self.ctx.viewer.bulk_changes.emit(data_changes)
+            self.ctx.viewer.bulk_changes.emit(self.ctx.current_table, data_changes)
         if axis_changes:
-            self.ctx.viewer.axis_bulk_changes.emit(axis_changes)
+            self.ctx.viewer.axis_bulk_changes.emit(self.ctx.current_table, axis_changes)
 
     def add_to_selection(self):
         """Add custom value to selected cells (dialog)"""
@@ -423,9 +423,11 @@ class TableOperationsHelper:
 
             # Emit signals
             if data_changes:
-                self.ctx.viewer.bulk_changes.emit(data_changes)
+                self.ctx.viewer.bulk_changes.emit(self.ctx.current_table, data_changes)
             if axis_changes:
-                self.ctx.viewer.axis_bulk_changes.emit(axis_changes)
+                self.ctx.viewer.axis_bulk_changes.emit(
+                    self.ctx.current_table, axis_changes
+                )
 
     def multiply_selection(self):
         """Multiply selected cells by factor (dialog)"""
@@ -449,9 +451,11 @@ class TableOperationsHelper:
 
             # Emit signals
             if data_changes:
-                self.ctx.viewer.bulk_changes.emit(data_changes)
+                self.ctx.viewer.bulk_changes.emit(self.ctx.current_table, data_changes)
             if axis_changes:
-                self.ctx.viewer.axis_bulk_changes.emit(axis_changes)
+                self.ctx.viewer.axis_bulk_changes.emit(
+                    self.ctx.current_table, axis_changes
+                )
 
     def set_value_selection(self):
         """Set all selected cells to value (dialog)"""
@@ -479,9 +483,11 @@ class TableOperationsHelper:
 
             # Emit signals
             if data_changes:
-                self.ctx.viewer.bulk_changes.emit(data_changes)
+                self.ctx.viewer.bulk_changes.emit(self.ctx.current_table, data_changes)
             if axis_changes:
-                self.ctx.viewer.axis_bulk_changes.emit(axis_changes)
+                self.ctx.viewer.axis_bulk_changes.emit(
+                    self.ctx.current_table, axis_changes
+                )
 
     def select_all_data(self):
         """Select all data cells (excluding axes)"""
@@ -656,7 +662,7 @@ class TableOperationsHelper:
 
             # Emit signal for all changes
             if data_changes:
-                self.ctx.viewer.bulk_changes.emit(data_changes)
+                self.ctx.viewer.bulk_changes.emit(self.ctx.current_table, data_changes)
                 logger.debug(f"Smoothed {len(data_changes)} cell(s)")
 
     def round_selection(self):
@@ -696,6 +702,6 @@ class TableOperationsHelper:
         )
 
         if data_changes:
-            self.ctx.viewer.bulk_changes.emit(data_changes)
+            self.ctx.viewer.bulk_changes.emit(self.ctx.current_table, data_changes)
         if axis_changes:
-            self.ctx.viewer.axis_bulk_changes.emit(axis_changes)
+            self.ctx.viewer.axis_bulk_changes.emit(self.ctx.current_table, axis_changes)

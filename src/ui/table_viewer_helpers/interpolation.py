@@ -259,13 +259,15 @@ class TableInterpolationHelper:
                 logger.debug(
                     f"{direction_label} interpolation: updated {len(all_changes)} data cells"
                 )
-                self.ctx.viewer.bulk_changes.emit(all_changes)
+                self.ctx.viewer.bulk_changes.emit(self.ctx.current_table, all_changes)
 
             if axis_changes:
                 logger.info(
                     f"{direction_label} interpolation: updated {len(axis_changes)} axis cells"
                 )
-                self.ctx.viewer.axis_bulk_changes.emit(axis_changes)
+                self.ctx.viewer.axis_bulk_changes.emit(
+                    self.ctx.current_table, axis_changes
+                )
 
         if not all_changes and not axis_changes:
             logger.debug(f"{direction_label} interpolation: no changes made")
@@ -485,6 +487,8 @@ class TableInterpolationHelper:
                     logger.debug(
                         f"2D bilinear interpolation: updated {len(all_changes)} cells"
                     )
-                    self.ctx.viewer.bulk_changes.emit(all_changes)
+                    self.ctx.viewer.bulk_changes.emit(
+                        self.ctx.current_table, all_changes
+                    )
                 else:
                     logger.debug("2D bilinear interpolation: no changes made")

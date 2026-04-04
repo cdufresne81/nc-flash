@@ -5,6 +5,17 @@ All notable changes to NC Flash are documented here.
 ## [Unreleased]
 
 ### Added
+- **MCP STDIO launcher for compiled builds** — `packaging/run-mcp.bat` enables Claude Desktop integration with installed NCFlash via STDIO transport; included in the Windows installer
+
+### Changed
+- **MCP connection dialog** — Now shows correct `run-mcp.bat` path for Claude Desktop config (dev and compiled builds) instead of broken inline Python command
+- **MCP edit pipeline refactored** — `_api_edit_table` now uses shared `_capture_table_originals` and `_apply_external_cell_edits` methods, eliminating 40+ lines of duplicated edit logic
+
+### Fixed
+- **MCP `write_table` param validation** — Changed `cells: list[dict]` to `cells: list` in server tool signature to fix FastMCP Pydantic rejection of valid JSON arrays (`-32602: Invalid request parameters`)
+- **MCP table name whitespace mismatch** — Added stripped-name fallback in `_build_name_cache` and `.strip()` on API input boundaries so table names with trailing whitespace (from XML definitions) resolve correctly across all MCP tools
+
+### Added
 - **Comparison Copy All** — Two new buttons in the compare window table headers (`→→|` and `|←←`) copy all eligible differing tables between ROMs in one operation, with confirmation dialog, progress bar, and cancellation support
 - **Workspace directory** — Single configurable root directory for all user content (ROMs, projects, metadata, exports, screenshots, colormaps, ECU reads). All path settings derive defaults from the workspace root, with individual overrides still supported. First-run migration copies bundled metadata and colormaps into the workspace.
 - **Settings dialog redesign** — Replaced tab-based settings with tree sidebar navigation, stacked pages, and instant search with highlighted results. Data-driven `SettingDescriptor` registry makes adding new settings a one-line change.

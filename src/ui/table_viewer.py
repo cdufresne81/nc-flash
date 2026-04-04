@@ -83,20 +83,20 @@ class TableViewer(QWidget):
     """Widget for viewing and editing table data with gradient coloring"""
 
     # Signal emitted when a cell value changes
-    # Args: table_address, row, col, old_value, new_value, old_raw, new_raw
-    cell_changed = Signal(str, int, int, float, float, float, float)
+    # Args: Table, row, col, old_value, new_value, old_raw, new_raw
+    cell_changed = Signal(object, int, int, float, float, float, float)
 
     # Signal emitted when bulk operation completes (for single undo)
-    # Args: list of (row, col, old_value, new_value, old_raw, new_raw) tuples
-    bulk_changes = Signal(list)
+    # Args: Table, list of (row, col, old_value, new_value, old_raw, new_raw) tuples
+    bulk_changes = Signal(object, list)
 
     # Signal emitted when an axis cell value changes
-    # Args: table_address, axis_type ('x_axis' or 'y_axis'), index, old_value, new_value, old_raw, new_raw
-    axis_changed = Signal(str, str, int, float, float, float, float)
+    # Args: Table, axis_type ('x_axis' or 'y_axis'), index, old_value, new_value, old_raw, new_raw
+    axis_changed = Signal(object, str, int, float, float, float, float)
 
     # Signal emitted when axis bulk operation completes (for single undo)
-    # Args: list of (axis_type, index, old_value, new_value, old_raw, new_raw) tuples
-    axis_bulk_changes = Signal(list)
+    # Args: Table, list of (axis_type, index, old_value, new_value, old_raw, new_raw) tuples
+    axis_bulk_changes = Signal(object, list)
 
     # Signal emitted when cell is updated programmatically (e.g., undo/redo)
     # Used to notify parent that data has changed and graph should refresh
@@ -723,7 +723,7 @@ class TableViewer(QWidget):
 
     def _on_cell_changed_track_modifications(
         self,
-        table_address: str,
+        table,
         data_row: int,
         data_col: int,
         old_value: float,
@@ -732,23 +732,18 @@ class TableViewer(QWidget):
         new_raw: float,
     ):
         """Track cell modifications from cell_changed signal"""
-        self.mark_cell_modified(table_address, data_row, data_col)
+        self.mark_cell_modified(table.address, data_row, data_col)
 
-    def _on_bulk_changes_track_modifications(self, changes: list):
+    def _on_bulk_changes_track_modifications(self, table, changes: list):
         """Track cell modifications from bulk_changes signal"""
-        if not self.current_table:
-            return
-
         for change in changes:
-            # Bulk changes can have different formats depending on the operation
-            # Most operations emit: (row, col, old_value, new_value, old_raw, new_raw)
             if len(change) >= 2:
                 data_row, data_col = change[0], change[1]
-                self.mark_cell_modified(self.current_table.address, data_row, data_col)
+                self.mark_cell_modified(table.address, data_row, data_col)
 
     def _on_axis_changed_track_modifications(
         self,
-        table_address: str,
+        table,
         axis_type: str,
         data_idx: int,
         old_value: float,
@@ -757,20 +752,14 @@ class TableViewer(QWidget):
         new_raw: float,
     ):
         """Track axis cell modifications from axis_changed signal"""
-        self.mark_axis_cell_modified(table_address, axis_type, data_idx)
+        self.mark_axis_cell_modified(table.address, axis_type, data_idx)
 
-    def _on_axis_bulk_changes_track_modifications(self, changes: list):
+    def _on_axis_bulk_changes_track_modifications(self, table, changes: list):
         """Track axis cell modifications from axis_bulk_changes signal"""
-        if not self.current_table:
-            return
-
         for change in changes:
-            # Axis bulk changes: (axis_type, index, old_value, new_value, old_raw, new_raw)
             if len(change) >= 2:
                 axis_type, data_idx = change[0], change[1]
-                self.mark_axis_cell_modified(
-                    self.current_table.address, axis_type, data_idx
-                )
+                self.mark_axis_cell_modified(table.address, axis_type, data_idx)
 
     def _check_and_remove_border_if_original(
         self, table_address: str, data_row: int, data_col: int, current_value: float

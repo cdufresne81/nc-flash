@@ -43,6 +43,7 @@ Name: "binassoc"; Description: "Associate .bin files with NC Flash"; GroupDescri
 [Files]
 Source: "..\dist\NCFlash\{#MyAppExeName}"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\dist\NCFlash\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "run-mcp.bat"; DestDir: "{app}"; Flags: ignoreversion
 
 [Registry]
 Root: HKA; Subkey: "Software\Classes\.bin"; ValueType: string; ValueName: ""; ValueData: "NCFlash.BinFile"; Flags: uninsdeletevalue; Tasks: binassoc

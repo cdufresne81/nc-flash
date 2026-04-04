@@ -101,9 +101,9 @@ class TableEditHelper:
         finally:
             self.ctx.editing_in_progress = False
 
-        # Emit the change signal (use address as unique identifier)
+        # Emit the change signal with the Table object
         self.ctx.viewer.cell_changed.emit(
-            self.ctx.current_table.address,
+            self.ctx.current_table,
             data_row,
             data_col,
             old_value,
@@ -286,9 +286,9 @@ class TableEditHelper:
         finally:
             self.ctx.editing_in_progress = False
 
-        # Emit the axis change signal (use address as unique identifier)
+        # Emit the axis change signal with the Table object
         self.ctx.viewer.axis_changed.emit(
-            self.ctx.current_table.address,
+            self.ctx.current_table,
             axis_type_str,
             data_idx,
             old_value,

@@ -242,15 +242,19 @@ class TestGetSelectedDataCells:
 
 
 class TestSignalForwarding:
+    """Verify viewer signals emit Table object directly (no window forwarding hop)."""
+
     def test_cell_changed_includes_table_object(self, window_2d):
-        """cell_changed signal should include the Table object."""
+        """viewer.cell_changed signal should include the Table object."""
         received = []
-        window_2d.cell_changed.connect(
+        window_2d.viewer.cell_changed.connect(
             lambda table, *args: received.append((table, args))
         )
 
-        # Simulate cell change by calling the internal handler directly
-        window_2d._on_cell_changed("0x100", 0, 0, 10.0, 20.0, 10.0, 20.0)
+        # Emit directly from viewer (simulates editing.py behavior)
+        window_2d.viewer.cell_changed.emit(
+            window_2d.table, 0, 0, 10.0, 20.0, 10.0, 20.0
+        )
         assert len(received) == 1
         table_obj, args = received[0]
         assert table_obj is window_2d.table
@@ -258,25 +262,26 @@ class TestSignalForwarding:
 
     def test_bulk_changes_includes_table_object(self, window_2d):
         received = []
-        window_2d.bulk_changes.connect(
+        window_2d.viewer.bulk_changes.connect(
             lambda table, changes: received.append((table, changes))
         )
 
         changes = [(0, 0, 10.0, 20.0, 10.0, 20.0)]
-        window_2d._on_bulk_changes(changes)
+        window_2d.viewer.bulk_changes.emit(window_2d.table, changes)
         assert len(received) == 1
         assert received[0][0] is window_2d.table
-        # Qt signals may convert tuples to lists, so compare element-wise
         assert len(received[0][1]) == 1
         assert list(received[0][1][0]) == list(changes[0])
 
     def test_axis_changed_includes_table_object(self, window_2d):
         received = []
-        window_2d.axis_changed.connect(
+        window_2d.viewer.axis_changed.connect(
             lambda table, *args: received.append((table, args))
         )
 
-        window_2d._on_axis_changed("0x100", "y_axis", 0, 100.0, 150.0, 100.0, 150.0)
+        window_2d.viewer.axis_changed.emit(
+            window_2d.table, "y_axis", 0, 100.0, 150.0, 100.0, 150.0
+        )
         assert len(received) == 1
         table_obj, args = received[0]
         assert table_obj is window_2d.table
@@ -284,15 +289,14 @@ class TestSignalForwarding:
 
     def test_axis_bulk_changes_includes_table_object(self, window_2d):
         received = []
-        window_2d.axis_bulk_changes.connect(
+        window_2d.viewer.axis_bulk_changes.connect(
             lambda table, changes: received.append((table, changes))
         )
 
         changes = [("y_axis", 0, 100.0, 150.0, 100.0, 150.0)]
-        window_2d._on_axis_bulk_changes(changes)
+        window_2d.viewer.axis_bulk_changes.emit(window_2d.table, changes)
         assert len(received) == 1
         assert received[0][0] is window_2d.table
-        # Qt signals may convert tuples to lists, so compare element-wise
         assert len(received[0][1]) == 1
         assert list(received[0][1][0]) == list(changes[0])
 

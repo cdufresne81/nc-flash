@@ -484,8 +484,7 @@ class MainWindow(
         tb.setMovable(False)
         tb.setFloatable(False)
         tb.setIconSize(QSize(20, 20))
-        tb.setStyleSheet(
-            """
+        tb.setStyleSheet("""
             QToolBar {
                 spacing: 1px;
                 padding: 1px 4px;
@@ -503,8 +502,7 @@ class MainWindow(
             QToolButton:pressed {
                 background: rgba(128, 128, 128, 0.3);
             }
-        """
-        )
+        """)
 
         act = tb.addAction(make_icon(self, "open"), "")
         act.setToolTip("Open  (Ctrl+O)")
@@ -1253,30 +1251,11 @@ class MainWindow(
         if not document:
             return
 
-        # --- Capture pre-copy originals for border tracking ---
-        # Must happen before ROM writes so _check_and_remove_border_if_original
-        # uses the true original when undoing (even if the table viewer opens later).
-        import numpy as np
-
+        # Capture originals before any writes
         old_data = dst_reader.read_table_data(dst_table)
-        if rom_path not in self.original_table_values:
-            self.original_table_values[rom_path] = {}
-        if dst_table.address not in self.original_table_values[rom_path]:
-            self.original_table_values[rom_path][dst_table.address] = {
-                "values": np.copy(old_data["values"]),
-                "x_axis": (
-                    np.copy(old_data["x_axis"])
-                    if old_data.get("x_axis") is not None
-                    else None
-                ),
-                "y_axis": (
-                    np.copy(old_data["y_axis"])
-                    if old_data.get("y_axis") is not None
-                    else None
-                ),
-            }
+        self._capture_table_originals(rom_path, dst_table.address, old_data)
 
-        # --- Value cells ---
+        # --- Compute cell changes ---
         old_vals = old_data["values"]
         new_vals = src_data["values"]
 
@@ -1333,24 +1312,16 @@ class MainWindow(
                             )
                         )
 
-        if cell_changes:
-            desc = f"Compare Copy: {dst_table.name}"
-            self.table_undo_manager.record_bulk_cell_changes(
-                dst_table, cell_changes, desc, rom_path=rom_path
-            )
-            self.change_tracker.record_pending_bulk_changes(
-                dst_table, cell_changes, rom_path=rom_path
-            )
+        # Apply cell edits through shared pipeline
+        self._apply_external_cell_edits(
+            document,
+            dst_table,
+            cell_changes,
+            f"Compare Copy: {dst_table.name}",
+            rom_path=rom_path,
+        )
 
-            def write_cells():
-                for row, col, _ov, _nv, _or, new_raw in cell_changes:
-                    document.rom_reader.write_cell_value(dst_table, row, col, new_raw)
-
-            self._write_to_rom_and_mark_modified(
-                document, write_cells, f"compare copy in {dst_table.name}"
-            )
-
-        # --- Axis cells ---
+        # --- Compute and apply axis changes ---
         for axis_type, axis_key in [
             (AxisType.Y_AXIS, "y_axis"),
             (AxisType.X_AXIS, "x_axis"),
@@ -1388,64 +1359,13 @@ class MainWindow(
                         )
                     )
 
-            if axis_changes:
-                desc = f"Compare Copy Axis: {dst_table.name}"
-                self.table_undo_manager.record_axis_bulk_changes(
-                    dst_table, axis_changes, desc, rom_path=rom_path
-                )
-                self.change_tracker.record_pending_axis_bulk_changes(
-                    dst_table, axis_changes, rom_path=rom_path
-                )
-
-                def write_axes(changes=axis_changes):
-                    for ax_type, idx, _ov, _nv, _or, new_raw in changes:
-                        document.rom_reader.write_axis_value(
-                            dst_table, ax_type, idx, new_raw
-                        )
-
-                self._write_to_rom_and_mark_modified(
-                    document, write_axes, f"compare copy axis in {dst_table.name}"
-                )
-
-        # --- Update modified_cells for cell border highlighting ---
-        if rom_path not in self.modified_cells:
-            self.modified_cells[rom_path] = {}
-
-        if cell_changes:
-            if dst_table.address not in self.modified_cells[rom_path]:
-                self.modified_cells[rom_path][dst_table.address] = set()
-            for row, col, _ov, _nv, _or, _nr in cell_changes:
-                self.modified_cells[rom_path][dst_table.address].add((row, col))
-
-        # Update axis modified tracking
-        for axis_type, axis_key in [
-            (AxisType.Y_AXIS, "y_axis"),
-            (AxisType.X_AXIS, "x_axis"),
-        ]:
-            ak = f"{dst_table.address}:{axis_key}"
-            src_axis = src_data.get(axis_key)
-            old_axis = old_data.get(axis_key)
-            if src_axis is None or old_axis is None:
-                continue
-            for i in range(min(len(old_axis), len(src_axis))):
-                if old_axis[i] != src_axis[i]:
-                    if ak not in self.modified_cells[rom_path]:
-                        self.modified_cells[rom_path][ak] = set()
-                    self.modified_cells[rom_path][ak].add(i)
-
-        # --- Refresh open table viewer windows showing this table ---
-        from src.core.table_undo_manager import make_table_key
-
-        table_key = make_table_key(rom_path, dst_table.address)
-        window = self._find_table_window(table_key)
-        if window:
-            viewer = window.viewer
-            viewer.begin_bulk_update()
-            try:
-                for row, col, _ov, new_val, _or, _nr in cell_changes:
-                    viewer.update_cell_value(row, col, new_val)
-            finally:
-                viewer.end_bulk_update()
+            self._apply_external_axis_edits(
+                document,
+                dst_table,
+                axis_changes,
+                f"Compare Copy Axis: {dst_table.name}",
+                rom_path=rom_path,
+            )
 
         self._update_tab_title(document)
 
@@ -1583,26 +1503,7 @@ class MainWindow(
 
             if data:
                 # Store original table values if this is the first time loading this table
-                # Use table.address as the key since table names are not unique
-                if rom_path not in self.original_table_values:
-                    self.original_table_values[rom_path] = {}
-                if table.address not in self.original_table_values[rom_path]:
-                    import numpy as np
-
-                    # Deep copy the original values
-                    self.original_table_values[rom_path][table.address] = {
-                        "values": np.copy(data["values"]),
-                        "x_axis": (
-                            np.copy(data["x_axis"])
-                            if data.get("x_axis") is not None
-                            else None
-                        ),
-                        "y_axis": (
-                            np.copy(data["y_axis"])
-                            if data.get("y_axis") is not None
-                            else None
-                        ),
-                    }
+                self._capture_table_originals(rom_path, table.address, data)
 
                 # Initialize modified cells tracking for this ROM if needed
                 if rom_path not in self.modified_cells:
@@ -1620,17 +1521,11 @@ class MainWindow(
                     bg_color=self.rom_colors.get(rom_path),
                 )
 
-                # Connect cell_changed signal to change tracker
-                viewer_window.cell_changed.connect(self._on_table_cell_changed)
-
-                # Connect bulk_changes signal to change tracker
-                viewer_window.bulk_changes.connect(self._on_table_bulk_changes)
-
-                # Connect axis_changed signal to change tracker
-                viewer_window.axis_changed.connect(self._on_table_axis_changed)
-
-                # Connect axis_bulk_changes signal to change tracker
-                viewer_window.axis_bulk_changes.connect(
+                # Connect viewer signals directly to change handlers (no forwarding hop)
+                viewer_window.viewer.cell_changed.connect(self._on_table_cell_changed)
+                viewer_window.viewer.bulk_changes.connect(self._on_table_bulk_changes)
+                viewer_window.viewer.axis_changed.connect(self._on_table_axis_changed)
+                viewer_window.viewer.axis_bulk_changes.connect(
                     self._on_table_axis_bulk_changes
                 )
 
@@ -1903,12 +1798,20 @@ class MainWindow(
     def _get_sender_rom_context(self):
         """Get ROM path and document from the signal sender.
 
-        Common setup for all cell/axis change handlers. Returns
-        (rom_path, document) where rom_path may be None if not set
-        on the sender, and document may be None if not found.
+        Common setup for all cell/axis change handlers. The sender is the
+        TableViewer widget, nested inside a QSplitter inside the
+        TableViewerWindow. Walk up the parent chain to find rom_path.
+
+        Returns (rom_path, document) where rom_path may be None if not set,
+        and document may be None if not found.
         """
         sender = self.sender()
-        rom_path = getattr(sender, "rom_path", None)
+        rom_path = None
+        # Walk up the widget parent chain to find rom_path (on TableViewerWindow)
+        widget = sender
+        while widget is not None and rom_path is None:
+            rom_path = getattr(widget, "rom_path", None)
+            widget = widget.parent() if hasattr(widget, "parent") else None
         document = (
             self._find_document_by_rom_path(rom_path)
             if rom_path
@@ -1936,6 +1839,126 @@ class MainWindow(
             logger.exception(
                 f"Unexpected error writing {description}: {type(e).__name__}: {e}"
             )
+
+    def _capture_table_originals(self, rom_path, table_address, data):
+        """Capture original table values for smart border removal on undo.
+
+        Only captures once per (rom_path, table_address) — subsequent calls
+        are no-ops, preserving the true original values from disk.
+        """
+        import numpy as np
+
+        if rom_path not in self.original_table_values:
+            self.original_table_values[rom_path] = {}
+        if table_address not in self.original_table_values[rom_path]:
+            self.original_table_values[rom_path][table_address] = {
+                "values": np.copy(data["values"]),
+                "x_axis": (
+                    np.copy(data["x_axis"]) if data.get("x_axis") is not None else None
+                ),
+                "y_axis": (
+                    np.copy(data["y_axis"]) if data.get("y_axis") is not None else None
+                ),
+            }
+
+    def _apply_external_cell_edits(
+        self, document, table, cell_changes, description, rom_path=None
+    ):
+        """Apply pre-computed cell changes through the full edit pipeline.
+
+        Used by compare-copy and MCP write operations — external edits
+        that need undo, change tracking, ROM write, border highlighting,
+        and viewer refresh in one atomic operation.
+
+        Args:
+            document: RomDocument to edit
+            table: Table definition
+            cell_changes: List of (row, col, old_val, new_val, old_raw, new_raw)
+            description: Undo description (e.g. "Compare Copy: Table Name")
+            rom_path: ROM path for multi-ROM isolation (default: document.rom_reader.rom_path)
+        """
+        if not cell_changes:
+            return
+
+        if rom_path is None:
+            rom_path = document.rom_reader.rom_path
+
+        # Record undo + pending changes
+        self.table_undo_manager.record_bulk_cell_changes(
+            table, cell_changes, description, rom_path=rom_path
+        )
+        self.change_tracker.record_pending_bulk_changes(
+            table, cell_changes, rom_path=rom_path
+        )
+
+        # Write to ROM
+        def write_cells():
+            for row, col, _ov, _nv, _or, new_raw in cell_changes:
+                document.rom_reader.write_cell_value(table, row, col, new_raw)
+
+        self._write_to_rom_and_mark_modified(document, write_cells, description)
+
+        # Update modified_cells for border highlighting
+        if rom_path not in self.modified_cells:
+            self.modified_cells[rom_path] = {}
+        if table.address not in self.modified_cells[rom_path]:
+            self.modified_cells[rom_path][table.address] = set()
+        for row, col, _ov, _nv, _or, _nr in cell_changes:
+            self.modified_cells[rom_path][table.address].add((row, col))
+
+        # Refresh open table viewer window
+        table_key = make_table_key(rom_path, table.address)
+        window = self._find_table_window(table_key)
+        if window:
+            viewer = window.viewer
+            viewer.begin_bulk_update()
+            try:
+                for row, col, _ov, new_val, _or, _nr in cell_changes:
+                    viewer.update_cell_value(row, col, new_val)
+            finally:
+                viewer.end_bulk_update()
+
+    def _apply_external_axis_edits(
+        self, document, table, axis_changes, description, rom_path=None
+    ):
+        """Apply pre-computed axis changes through the full edit pipeline.
+
+        Args:
+            document: RomDocument to edit
+            table: Table definition (parent table containing the axis)
+            axis_changes: List of (axis_type, index, old_val, new_val, old_raw, new_raw)
+            description: Undo description
+            rom_path: ROM path for multi-ROM isolation
+        """
+        if not axis_changes:
+            return
+
+        if rom_path is None:
+            rom_path = document.rom_reader.rom_path
+
+        # Record undo + pending changes
+        self.table_undo_manager.record_axis_bulk_changes(
+            table, axis_changes, description, rom_path=rom_path
+        )
+        self.change_tracker.record_pending_axis_bulk_changes(
+            table, axis_changes, rom_path=rom_path
+        )
+
+        # Write to ROM
+        def write_axes():
+            for ax_type, idx, _ov, _nv, _or, new_raw in axis_changes:
+                document.rom_reader.write_axis_value(table, ax_type, idx, new_raw)
+
+        self._write_to_rom_and_mark_modified(document, write_axes, description)
+
+        # Update modified_cells for axis border highlighting
+        if rom_path not in self.modified_cells:
+            self.modified_cells[rom_path] = {}
+        for ax_type, idx, _ov, _nv, _or, _nr in axis_changes:
+            ak = f"{table.address}:{ax_type}"
+            if ak not in self.modified_cells[rom_path]:
+                self.modified_cells[rom_path][ak] = set()
+            self.modified_cells[rom_path][ak].add(idx)
 
     def _on_table_cell_changed(
         self,

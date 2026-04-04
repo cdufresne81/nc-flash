@@ -67,7 +67,15 @@ class McpMixin:
         try:
             self._start_command_server()
 
-            mcp_args = ["--transport", "sse", "--port", str(self.MCP_SSE_PORT)]
+            metadata_dir = self.settings.get_metadata_directory()
+            mcp_args = [
+                "--transport",
+                "sse",
+                "--port",
+                str(self.MCP_SSE_PORT),
+                "--metadata-dir",
+                metadata_dir,
+            ]
             env = os.environ.copy()
             kwargs = dict(cwd=str(get_app_root()), stderr=subprocess.PIPE)
 
@@ -152,9 +160,14 @@ class McpMixin:
         """Show connection instructions after manually starting the MCP server."""
         url = f"http://127.0.0.1:{self.MCP_SSE_PORT}/sse"
 
-        mcp_command = f"{sys.executable} -m src.mcp.server"
+        if getattr(sys, "frozen", False):
+            # Compiled build: run-mcp.bat sits next to NCFlash.exe
+            bat_path = str(Path(sys.executable).parent / "run-mcp.bat")
+        else:
+            # Dev mode: run-mcp.bat is at the project root
+            bat_path = str(get_app_root() / "run-mcp.bat")
         config_snippet = json.dumps(
-            {"mcpServers": {"nc-flash": {"command": mcp_command, "args": []}}},
+            {"mcpServers": {"nc-flash": {"command": bat_path, "args": []}}},
             indent=2,
         )
 
@@ -291,7 +304,7 @@ class McpMixin:
     def _api_read_table(self, request: dict) -> dict:
         """Handle /api/read-table — read live in-memory values."""
         rom_path = request.get("rom_path", "")
-        table_name = request.get("table_name", "")
+        table_name = request.get("table_name", "").strip()
 
         document = self._find_document_by_rom_path(rom_path)
         if not document:
@@ -385,12 +398,11 @@ class McpMixin:
 
     def _api_edit_table(self, request: dict) -> dict:
         """Handle /api/edit-table — write values through the editing pipeline."""
-        import numpy as np
         from src.core.rom_reader import ScalingConverter
         from src.core.table_undo_manager import make_table_key
 
         rom_path = request.get("rom_path", "")
-        table_name = request.get("table_name", "")
+        table_name = request.get("table_name", "").strip()
         cells = request.get("cells", [])
 
         if not cells:
@@ -482,61 +494,18 @@ class McpMixin:
                 "message": "No changes needed",
             }
 
-        # Capture originals for border tracking
+        # Capture originals and apply through shared pipeline
         rom_path_key = document.rom_reader.rom_path
-        if rom_path_key not in self.original_table_values:
-            self.original_table_values[rom_path_key] = {}
-        if table.address not in self.original_table_values[rom_path_key]:
-            self.original_table_values[rom_path_key][table.address] = {
-                "values": np.copy(old_data["values"]),
-                "x_axis": (
-                    np.copy(old_data["x_axis"])
-                    if old_data.get("x_axis") is not None
-                    else None
-                ),
-                "y_axis": (
-                    np.copy(old_data["y_axis"])
-                    if old_data.get("y_axis") is not None
-                    else None
-                ),
-            }
+        self._capture_table_originals(rom_path_key, table.address, old_data)
 
-        # Record undo + change tracking
         desc = f"AI: edit {len(changes)} cell(s) in {table_name}"
+        self._apply_external_cell_edits(
+            document, table, changes, desc, rom_path=rom_path_key
+        )
+
+        # Activate undo stack so Ctrl+Z works immediately
         table_key = make_table_key(rom_path_key, table.address)
-        self.table_undo_manager.record_bulk_cell_changes(
-            table, changes, desc, rom_path=rom_path_key
-        )
-        self.change_tracker.record_pending_bulk_changes(
-            table, changes, rom_path=rom_path_key
-        )
         self.table_undo_manager.set_active_stack(table_key)
-
-        # Write to ROM
-        def write_cells():
-            for row, col, _ov, _nv, _or, new_raw in changes:
-                document.rom_reader.write_cell_value(table, row, col, new_raw)
-
-        self._write_to_rom_and_mark_modified(document, write_cells, desc)
-
-        # Update modified_cells for border highlighting
-        if rom_path_key not in self.modified_cells:
-            self.modified_cells[rom_path_key] = {}
-        if table.address not in self.modified_cells[rom_path_key]:
-            self.modified_cells[rom_path_key][table.address] = set()
-        for row, col, _ov, _nv, _or, _nr in changes:
-            self.modified_cells[rom_path_key][table.address].add((row, col))
-
-        # Refresh open table viewer window if visible
-        window = self._find_table_window(table_key)
-        if window:
-            viewer = window.viewer
-            viewer.begin_bulk_update()
-            try:
-                for row, col, _ov, new_val, _or, _nr in changes:
-                    viewer.update_cell_value(row, col, new_val)
-            finally:
-                viewer.end_bulk_update()
 
         self._update_tab_title(document)
         self._write_workspace_state()

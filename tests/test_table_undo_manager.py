@@ -7,7 +7,11 @@ using Qt's QUndoGroup pattern.
 
 import pytest
 from PySide6.QtWidgets import QApplication
-from src.core.table_undo_manager import TableUndoManager, MAX_UNDO_PER_TABLE
+from src.core.table_undo_manager import (
+    TableUndoManager,
+    MAX_UNDO_PER_TABLE,
+    make_table_key,
+)
 from src.core.version_models import CellChange, AxisChange
 from src.core.rom_definition import Table, TableType
 
@@ -78,7 +82,7 @@ def test_separate_undo_stacks(manager, table_a, table_b):
     manager.record_cell_change(table_b, 0, 0, 30.0, 40.0, 300, 400)
 
     # Activate table A's stack
-    manager.set_active_stack(table_a.address)
+    manager.set_active_stack(make_table_key(None, table_a.address))
 
     # Undo should only affect table A
     assert manager.can_undo()
@@ -95,7 +99,7 @@ def test_separate_undo_stacks(manager, table_a, table_b):
     assert last_cell[1].new_value == 10.0  # Reverted to old value
 
     # Table B's change should still be undoable when we switch to it
-    manager.set_active_stack(table_b.address)
+    manager.set_active_stack(make_table_key(None, table_b.address))
     assert manager.can_undo()
 
     count_before = len(manager._test_applied_changes)
@@ -120,7 +124,7 @@ def test_focus_switches_active_stack(manager, table_a, table_b):
     assert not manager.can_undo()
 
     # Activate table B
-    manager.set_active_stack(table_b.address)
+    manager.set_active_stack(make_table_key(None, table_b.address))
     assert manager.can_undo()
 
     # Undo should affect table B only
@@ -132,7 +136,7 @@ def test_focus_switches_active_stack(manager, table_a, table_b):
     assert not manager.can_undo()
 
     # Switch to table A - should still have undo
-    manager.set_active_stack(table_a.address)
+    manager.set_active_stack(make_table_key(None, table_a.address))
     assert manager.can_undo()
 
 
@@ -145,7 +149,7 @@ def test_bulk_changes_single_undo(manager, table_a):
     ]
 
     manager.record_bulk_cell_changes(table_a, changes, "Vertical Interpolation")
-    manager.set_active_stack(table_a.address)
+    manager.set_active_stack(make_table_key(None, table_a.address))
 
     # One undo should revert all 3 changes
     initial_count = len(manager._test_applied_changes)
@@ -167,7 +171,7 @@ def test_bulk_changes_single_undo(manager, table_a):
 def test_undo_redo_cycle(manager, table_a):
     """Test complete undo/redo cycle"""
     manager.record_cell_change(table_a, 0, 0, 10.0, 20.0, 100, 200)
-    manager.set_active_stack(table_a.address)
+    manager.set_active_stack(make_table_key(None, table_a.address))
 
     assert manager.can_undo()
     assert not manager.can_redo()
@@ -186,7 +190,7 @@ def test_undo_redo_cycle(manager, table_a):
 def test_new_change_clears_redo(manager, table_a):
     """Test that new change after undo clears redo stack"""
     manager.record_cell_change(table_a, 0, 0, 10.0, 20.0, 100, 200)
-    manager.set_active_stack(table_a.address)
+    manager.set_active_stack(make_table_key(None, table_a.address))
 
     # Undo
     manager.undo_group.undo()
@@ -204,7 +208,7 @@ def test_undo_limit(manager, table_a):
     for i in range(MAX_UNDO_PER_TABLE + 10):
         manager.record_cell_change(table_a, i % 10, 0, float(i), float(i + 1), i, i + 1)
 
-    manager.set_active_stack(table_a.address)
+    manager.set_active_stack(make_table_key(None, table_a.address))
 
     # Count available undos
     undo_count = 0
@@ -218,7 +222,7 @@ def test_undo_limit(manager, table_a):
 def test_axis_change_undo(manager, table_a):
     """Test axis change undo/redo"""
     manager.record_axis_change(table_a, "x_axis", 0, 1000.0, 1500.0, 100, 150)
-    manager.set_active_stack(table_a.address)
+    manager.set_active_stack(make_table_key(None, table_a.address))
 
     assert manager.can_undo()
 
@@ -240,7 +244,7 @@ def test_bulk_axis_change_undo(manager, table_a):
     ]
 
     manager.record_axis_bulk_changes(table_a, changes, "Y-Axis Interpolation")
-    manager.set_active_stack(table_a.address)
+    manager.set_active_stack(make_table_key(None, table_a.address))
 
     initial_count = len(manager._test_applied_changes)
     manager.undo_group.undo()
@@ -256,16 +260,16 @@ def test_clear_all_stacks(manager, table_a, table_b):
     manager.record_cell_change(table_a, 0, 0, 10.0, 20.0, 100, 200)
     manager.record_cell_change(table_b, 0, 0, 30.0, 40.0, 300, 400)
 
-    manager.set_active_stack(table_a.address)
+    manager.set_active_stack(make_table_key(None, table_a.address))
     assert manager.can_undo()
 
     manager.clear_all()
 
     # No more undos on any table
-    manager.set_active_stack(table_a.address)
+    manager.set_active_stack(make_table_key(None, table_a.address))
     assert not manager.can_undo()
 
-    manager.set_active_stack(table_b.address)
+    manager.set_active_stack(make_table_key(None, table_b.address))
     assert not manager.can_undo()
 
 
@@ -274,11 +278,11 @@ def test_get_active_table_address(manager, table_a, table_b):
     manager.record_cell_change(table_a, 0, 0, 10.0, 20.0, 100, 200)
     manager.record_cell_change(table_b, 0, 0, 30.0, 40.0, 300, 400)
 
-    manager.set_active_stack(table_a.address)
-    assert manager.get_active_table_address() == table_a.address
+    manager.set_active_stack(make_table_key(None, table_a.address))
+    assert manager.get_active_table_address() == make_table_key(None, table_a.address)
 
-    manager.set_active_stack(table_b.address)
-    assert manager.get_active_table_address() == table_b.address
+    manager.set_active_stack(make_table_key(None, table_b.address))
+    assert manager.get_active_table_address() == make_table_key(None, table_b.address)
 
     manager.set_active_stack(None)
     assert manager.get_active_table_address() is None
@@ -291,6 +295,6 @@ def test_undo_text(manager, table_a):
         [(0, 0, 10.0, 20.0, 100, 200)],
         "Multiply by 1.5",
     )
-    manager.set_active_stack(table_a.address)
+    manager.set_active_stack(make_table_key(None, table_a.address))
 
     assert "Multiply by 1.5" in manager.undo_text()

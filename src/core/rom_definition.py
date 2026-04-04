@@ -185,8 +185,18 @@ class RomDefinition:
         return categories
 
     def _build_name_cache(self) -> Dict[str, Table]:
-        """Build and cache the table-by-name lookup dict."""
-        return {table.name: table for table in self.tables}
+        """Build and cache the table-by-name lookup dict.
+
+        Stores both the original name and the stripped name so lookups
+        work regardless of trailing whitespace in the XML definition.
+        """
+        cache: Dict[str, Table] = {}
+        for table in self.tables:
+            cache[table.name] = table
+            stripped = table.name.strip()
+            if stripped != table.name:
+                cache[stripped] = table
+        return cache
 
     def get_tables_by_category(self) -> Dict[str, List[Table]]:
         """Group tables by category for UI display (cached after first call)"""

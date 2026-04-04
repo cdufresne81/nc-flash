@@ -55,22 +55,6 @@ class TableViewerWindow(QMainWindow):
     - Editable cells with change tracking
     """
 
-    # Forward cell_changed signal from viewer
-    # Args: table, row, col, old_value, new_value, old_raw, new_raw
-    cell_changed = Signal(Table, int, int, float, float, float, float)
-
-    # Forward bulk_changes signal from viewer
-    # Args: table, list of (row, col, old_value, new_value, old_raw, new_raw) tuples
-    bulk_changes = Signal(Table, list)
-
-    # Forward axis_changed signal from viewer
-    # Args: table, axis_type ('x_axis' or 'y_axis'), index, old_value, new_value, old_raw, new_raw
-    axis_changed = Signal(Table, str, int, float, float, float, float)
-
-    # Forward axis_bulk_changes signal from viewer
-    # Args: table, list of (axis_type, index, old_value, new_value, old_raw, new_raw) tuples
-    axis_bulk_changes = Signal(Table, list)
-
     # Signal emitted when this window receives focus
     # Args: TableKey namedtuple
     window_focused = Signal(object)
@@ -176,17 +160,11 @@ class TableViewerWindow(QMainWindow):
         else:
             self.graph_widget = None
 
-        # Connect cell_changed signal
-        self.viewer.cell_changed.connect(self._on_cell_changed)
-
-        # Connect bulk_changes signal
-        self.viewer.bulk_changes.connect(self._on_bulk_changes)
-
-        # Connect axis_changed signal
-        self.viewer.axis_changed.connect(self._on_axis_changed)
-
-        # Connect axis_bulk_changes signal
-        self.viewer.axis_bulk_changes.connect(self._on_axis_bulk_changes)
+        # Schedule graph refresh on any data change
+        self.viewer.cell_changed.connect(lambda *_: self._schedule_graph_refresh())
+        self.viewer.bulk_changes.connect(lambda *_: self._schedule_graph_refresh())
+        self.viewer.axis_changed.connect(lambda *_: self._schedule_graph_refresh())
+        self.viewer.axis_bulk_changes.connect(lambda *_: self._schedule_graph_refresh())
 
         # Connect selection changed to update graph
         self.viewer.table_widget.itemSelectionChanged.connect(
@@ -349,8 +327,7 @@ class TableViewerWindow(QMainWindow):
         tb.setMovable(False)
         tb.setFloatable(False)
         tb.setIconSize(QSize(20, 20))
-        tb.setStyleSheet(
-            """
+        tb.setStyleSheet("""
             QToolBar {
                 spacing: 1px;
                 padding: 1px 4px;
@@ -372,8 +349,7 @@ class TableViewerWindow(QMainWindow):
                 background: rgba(0, 120, 215, 0.15);
                 border: 1px solid rgba(0, 120, 215, 0.4);
             }
-        """
-        )
+        """)
         self._toolbar = tb
 
         # --- File actions ---
@@ -610,29 +586,6 @@ class TableViewerWindow(QMainWindow):
         # Set focus on graph so arrow keys work immediately
         self.graph_widget.setFocus()
 
-    def _on_cell_changed(
-        self,
-        table_name: str,
-        row: int,
-        col: int,
-        old_value: float,
-        new_value: float,
-        old_raw: float,
-        new_raw: float,
-    ):
-        """Forward cell change signal with table object"""
-        self.cell_changed.emit(
-            self.table, row, col, old_value, new_value, old_raw, new_raw
-        )
-        # Schedule debounced graph refresh (consolidates with selection-change draws)
-        self._schedule_graph_refresh()
-
-    def _on_bulk_changes(self, changes: list):
-        """Forward bulk changes signal with table object"""
-        self.bulk_changes.emit(self.table, changes)
-        # Schedule debounced graph refresh (consolidates with selection-change draws)
-        self._schedule_graph_refresh()
-
     def _refresh_graph(self):
         """Refresh graph display after data changes (cell/axis edits).
 
@@ -654,29 +607,6 @@ class TableViewerWindow(QMainWindow):
     def _schedule_graph_refresh(self):
         """Schedule a debounced graph refresh (restarts timer on each call)"""
         self._refresh_timer.start()
-
-    def _on_axis_changed(
-        self,
-        table_name: str,
-        axis_type: str,
-        index: int,
-        old_value: float,
-        new_value: float,
-        old_raw: float,
-        new_raw: float,
-    ):
-        """Forward axis change signal with table object"""
-        self.axis_changed.emit(
-            self.table, axis_type, index, old_value, new_value, old_raw, new_raw
-        )
-        # Schedule debounced graph refresh (consolidates with selection-change draws)
-        self._schedule_graph_refresh()
-
-    def _on_axis_bulk_changes(self, changes: list):
-        """Forward axis bulk changes signal with table object"""
-        self.axis_bulk_changes.emit(self.table, changes)
-        # Schedule debounced graph refresh (consolidates with selection-change draws)
-        self._schedule_graph_refresh()
 
     def _auto_size_window(self):
         """Auto-size window to fit table content, clamped to screen.

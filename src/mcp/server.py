@@ -177,7 +177,7 @@ def _create_mcp(port: int = DEFAULT_SSE_PORT) -> FastMCP:
         return _get_ctx().read_live_table(rom_path, table_name)
 
     @server.tool()
-    def write_table(rom_path: str, table_name: str, cells: list[dict]) -> dict:
+    def write_table(rom_path: str, table_name: str, cells: list) -> dict:
         """Write values to a ROM table through the app's editing pipeline.
 
         Changes appear in the app with full undo support.
