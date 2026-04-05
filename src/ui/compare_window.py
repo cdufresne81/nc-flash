@@ -378,8 +378,7 @@ class CompareWindow(QMainWindow):
         tb.setMovable(False)
         tb.setFloatable(False)
         tb.setIconSize(QSize(20, 20))
-        tb.setStyleSheet(
-            """
+        tb.setStyleSheet("""
             QToolBar {
                 spacing: 1px;
                 padding: 1px 4px;
@@ -397,8 +396,7 @@ class CompareWindow(QMainWindow):
             QToolButton:pressed {
                 background: rgba(128, 128, 128, 0.3);
             }
-        """
-        )
+        """)
 
         # ROM labels with color swatches
         rom_label_a = self._make_rom_label(self._name_a, self._color_a)
@@ -553,8 +551,7 @@ class CompareWindow(QMainWindow):
         self._tree.setHeaderHidden(True)
         self._tree.setRootIsDecorated(True)
         self._tree.setIndentation(14)
-        self._tree.setStyleSheet(
-            """
+        self._tree.setStyleSheet("""
             QTreeWidget {
                 border: none;
                 outline: none;
@@ -570,8 +567,7 @@ class CompareWindow(QMainWindow):
             QTreeWidget::item:hover:!selected {
                 background: #f0f4fa;
             }
-        """
-        )
+        """)
 
         # Group tables by category
         self._tree_items = {}  # diff index -> QTreeWidgetItem

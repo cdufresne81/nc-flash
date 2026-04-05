@@ -327,8 +327,7 @@ class TableViewerWindow(QMainWindow):
         tb.setMovable(False)
         tb.setFloatable(False)
         tb.setIconSize(QSize(20, 20))
-        tb.setStyleSheet(
-            """
+        tb.setStyleSheet("""
             QToolBar {
                 spacing: 1px;
                 padding: 1px 4px;
@@ -350,8 +349,7 @@ class TableViewerWindow(QMainWindow):
                 background: rgba(0, 120, 215, 0.15);
                 border: 1px solid rgba(0, 120, 215, 0.4);
             }
-        """
-        )
+        """)
         self._toolbar = tb
 
         # --- File actions ---
