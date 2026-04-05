@@ -4,19 +4,22 @@ All notable changes to NC Flash are documented here.
 
 ## [Unreleased]
 
+## [v2.7.0] - 2026-04-05
+
+### Added
+- **Comparison Copy All** — Two new buttons in the compare window table headers (`→→|` and `|←←`) copy all eligible differing tables between ROMs in one operation, with confirmation dialog, progress bar, and cancellation support
+- **Workspace directory** — Single configurable root directory for all user content (ROMs, projects, metadata, exports, screenshots, colormaps, ECU reads). All path settings derive defaults from the workspace root, with individual overrides still supported. First-run migration copies bundled metadata and colormaps into the workspace.
+- **Settings dialog redesign** — Replaced tab-based settings with tree sidebar navigation, stacked pages, and instant search with highlighted results. Data-driven `SettingDescriptor` registry makes adding new settings a one-line change.
+- **New path settings** — `ROMs Directory`, `Screenshots Directory`, and `Reads Directory` settings with workspace-derived defaults. File dialogs (Open ROM, Save As, Screenshot, Project Wizard) now default to the appropriate workspace subdirectory.
+- **MCP STDIO launcher for compiled builds** — `packaging/run-mcp.bat` enables Claude Desktop integration with installed NCFlash via STDIO transport; included in the Windows installer
+- **Code audit documentation** — `docs/internal/CODE_AUDIT.md` captures full codebase audit findings (bugs, dead code, duplication, test gaps) from the v2.6.1 audit pass
+- **UI test coverage** — 70 new tests covering compare_window diff computation, table_browser filtering/search/selection, graph_viewer color calculations, and table_viewer_window signal forwarding and coordinate extraction
+
 ### Changed
 - **Settings dialog height** — Reduced default height from 700 to 640 pixels
 - **CI: upgrade GitHub Actions to Node.js 24** — Bumped `actions/checkout` v4→v5 and `actions/setup-python` v5→v6 in CI and release workflows to resolve Node.js 20 deprecation warnings
 - **Version diff reads snapshots directly** — Eliminated unnecessary temp file round-trip when comparing ROM versions in History Viewer; snapshot `.bin` files are now passed directly to `RomReader`
 - **ROM reader log level** — Downgraded ROM initialization log messages from INFO to DEBUG to reduce log noise
-
-### Fixed
-- **CI: fix hanging IPC server tests** — `TestMainWindowIpcServer` created a full `MainWindow` that triggered modal dialogs in CI, hanging the pipeline at 83%. Replaced with lightweight `_IpcTestWidget` that tests only IPC logic
-
-### Added
-- **MCP STDIO launcher for compiled builds** — `packaging/run-mcp.bat` enables Claude Desktop integration with installed NCFlash via STDIO transport; included in the Windows installer
-
-### Changed
 - **MCP connection dialog** — Now shows correct `run-mcp.bat` path for Claude Desktop config (dev and compiled builds) instead of broken inline Python command
 - **MCP server uses app metadata directory** — MCP subprocess now receives `--metadata-dir` from the app's configured settings, ensuring disk-based and live MCP tools use the same XML definitions
 - **Architectural refactoring** — Four phases of structural cleanup with no behavior changes:
@@ -24,21 +27,6 @@ All notable changes to NC Flash are documented here.
   - Replaced null-byte `\0` composite keys with `TableKey` namedtuple for type-safe dict keys across undo/change tracking
   - Extracted shared edit pipeline (`_apply_external_cell_edits`, `_apply_external_axis_edits`, `_capture_table_originals`) — compare-copy and MCP edit now share one code path instead of three duplicated copies
   - Simplified 4-hop signal chain to 2 hops — `TableViewer` now emits `Table` objects directly, removing 4 forwarding signals and methods from `TableViewerWindow`
-- **Dead code removed** — Unused `apply_table_style()` method in `display.py`
-
-### Fixed
-- **MCP `write_table` param validation** — Changed `cells: list[dict]` to `cells: list` in server tool signature to fix FastMCP Pydantic rejection of valid JSON arrays (`-32602: Invalid request parameters`)
-- **MCP table name whitespace mismatch** — Added stripped-name fallback in `_build_name_cache` and `.strip()` on API input boundaries so table names with trailing whitespace (from XML definitions) resolve correctly across all MCP tools
-
-### Added
-- **Comparison Copy All** — Two new buttons in the compare window table headers (`→→|` and `|←←`) copy all eligible differing tables between ROMs in one operation, with confirmation dialog, progress bar, and cancellation support
-- **Workspace directory** — Single configurable root directory for all user content (ROMs, projects, metadata, exports, screenshots, colormaps, ECU reads). All path settings derive defaults from the workspace root, with individual overrides still supported. First-run migration copies bundled metadata and colormaps into the workspace.
-- **Settings dialog redesign** — Replaced tab-based settings with tree sidebar navigation, stacked pages, and instant search with highlighted results. Data-driven `SettingDescriptor` registry makes adding new settings a one-line change.
-- **New path settings** — `ROMs Directory`, `Screenshots Directory`, and `Reads Directory` settings with workspace-derived defaults. File dialogs (Open ROM, Save As, Screenshot, Project Wizard) now default to the appropriate workspace subdirectory.
-- **Code audit documentation** — `docs/internal/CODE_AUDIT.md` captures full codebase audit findings (bugs, dead code, duplication, test gaps) from the v2.6.1 audit pass
-- **UI test coverage** — 70 new tests covering compare_window diff computation, table_browser filtering/search/selection, graph_viewer color calculations, and table_viewer_window signal forwarding and coordinate extraction
-
-### Changed
 - **`.gitignore` cleanup** — Added `tests/gui/debug_*.txt` pattern and lowercase `thinking-pad.md` to `.gitignore`; removed 6 one-off debug GUI test scripts
 - **Coverage is now opt-in** — Removed `--cov` flags from `pytest.ini` addopts so test runs are faster by default. Run `pytest --cov=src --cov-report=term-missing` when coverage is needed
 - **Interpolation log level reduced** — Interpolation success messages (horizontal, vertical, 2D bilinear) downgraded from `info` to `debug` to reduce log noise during normal editing
@@ -46,13 +34,10 @@ All notable changes to NC Flash are documented here.
 - **ECU reads path now configurable** — Replaced hardcoded `~/.nc-flash/reads/` in ECU window with settings-based `get_reads_directory()`, defaulting to workspace/reads
 - **Settings path getters deduplicated** — Extracted `_get_workspace_path()` helper in `AppSettings`, eliminating 7 near-identical getter methods with inline imports
 
-### Removed
-- **Dead `GraphViewer` class** — Standalone graph window class in `graph_viewer.py` was never imported; removed along with its `matplotlib.pyplot` import and `APP_NAME` constant
-- **Dead `_apply_table_style` method** — Unused delegation method in `table_viewer.py` that was superseded by `_apply_table_style_internal`
-- **Trivial `_make_icon`/`_make_toolbar_icon` wrappers** — Removed pass-through methods in `MainWindow` and `TableViewerWindow` that simply delegated to `make_icon()`; callers now invoke `make_icon()` directly
-- **Dead flash mixin code** — Removed ~475 lines of dead code from `flash_mixin.py` (`_FlashWorker`, `FlashProgressDialog`, `_on_flash_rom`, `_on_read_rom`, `_on_read_rom_finished`, `_on_clear_dtcs`, `_on_ecu_info`, `_run_flash_operation`) superseded by `ecu_window.py`
-
 ### Fixed
+- **CI: fix hanging IPC server tests** — `TestMainWindowIpcServer` created a full `MainWindow` that triggered modal dialogs in CI, hanging the pipeline at 83%. Replaced with lightweight `_IpcTestWidget` that tests only IPC logic
+- **MCP `write_table` param validation** — Changed `cells: list[dict]` to `cells: list` in server tool signature to fix FastMCP Pydantic rejection of valid JSON arrays (`-32602: Invalid request parameters`)
+- **MCP table name whitespace mismatch** — Added stripped-name fallback in `_build_name_cache` and `.strip()` on API input boundaries so table names with trailing whitespace (from XML definitions) resolve correctly across all MCP tools
 - **Deduplicate `_auto_save_rom` and `_auto_save_ram_dump`** — Extracted shared logic into `_auto_save_to_reads_dir` in `ecu_window.py`; both methods now delegate to the common helper
 - **Stale README version and project structure** — Updated version from v2.3.0 to v2.6.1, added missing `src/ecu/` module tree (13 files) and new UI files (`ecu_window.py`, `flash_mixin.py`, `flash_setup_dialog.py`, `patch_dialog.py`), and refreshed the development status description
 - **Select All skips first data row in 3D tables** — `select_all_data` started selection at row 2 instead of row 1, missing the first data row in 3D tables
@@ -64,6 +49,13 @@ All notable changes to NC Flash are documented here.
 - **Inline `Path` re-import in `main.py`** — `_find_document_by_rom_path` redundantly imported `Path as _Path`; now uses the module-level `Path` import
 - **Stale `run-mcp.bat` reference** — MCP connection info dialog referenced a non-existent batch file; now shows the actual `python -m src.mcp.server` command
 - **test_runner set_level_filter bug** — `set_level_filter()` accessed non-existent `self.main_window.table_browser`; now correctly retrieves the table browser from the current ROM document via `get_current_document()`
+
+### Removed
+- **Dead `GraphViewer` class** — Standalone graph window class in `graph_viewer.py` was never imported; removed along with its `matplotlib.pyplot` import and `APP_NAME` constant
+- **Dead `_apply_table_style` method** — Unused delegation method in `table_viewer.py` that was superseded by `_apply_table_style_internal`
+- **Dead code removed** — Unused `apply_table_style()` method in `display.py`
+- **Trivial `_make_icon`/`_make_toolbar_icon` wrappers** — Removed pass-through methods in `MainWindow` and `TableViewerWindow` that simply delegated to `make_icon()`; callers now invoke `make_icon()` directly
+- **Dead flash mixin code** — Removed ~475 lines of dead code from `flash_mixin.py` (`_FlashWorker`, `FlashProgressDialog`, `_on_flash_rom`, `_on_read_rom`, `_on_read_rom_finished`, `_on_clear_dtcs`, `_on_ecu_info`, `_run_flash_operation`) superseded by `ecu_window.py`
 
 ## [v2.6.1] - 2026-04-03
 
