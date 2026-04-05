@@ -53,6 +53,7 @@ All notable changes to NC Flash are documented here.
 - **Dead flash mixin code** — Removed ~475 lines of dead code from `flash_mixin.py` (`_FlashWorker`, `FlashProgressDialog`, `_on_flash_rom`, `_on_read_rom`, `_on_read_rom_finished`, `_on_clear_dtcs`, `_on_ecu_info`, `_run_flash_operation`) superseded by `ecu_window.py`
 
 ### Fixed
+- **Deduplicate `_auto_save_rom` and `_auto_save_ram_dump`** — Extracted shared logic into `_auto_save_to_reads_dir` in `ecu_window.py`; both methods now delegate to the common helper
 - **Stale README version and project structure** — Updated version from v2.3.0 to v2.6.1, added missing `src/ecu/` module tree (13 files) and new UI files (`ecu_window.py`, `flash_mixin.py`, `flash_setup_dialog.py`, `patch_dialog.py`), and refreshed the development status description
 - **Select All skips first data row in 3D tables** — `select_all_data` started selection at row 2 instead of row 1, missing the first data row in 3D tables
 - **display_to_raw bypasses `^` to `**` expression conversion** — `display_to_raw` and `_axis_display_to_raw` called `simple_eval` directly on scaling `frexpr` without converting calculator-style `^` exponentiation to Python `**`. Now delegates to `ScalingConverter.from_display()` which handles the conversion

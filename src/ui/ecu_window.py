@@ -922,15 +922,24 @@ class ECUProgrammingWindow(QMainWindow):
         self._progress_detail.setText("Reconnecting...")
         QTimer.singleShot(500, self._on_connect)
 
-    def _auto_save_rom(self, rom_data: bytearray) -> Path | None:
-        """Auto-save ROM to project root as {ROM_ID}_{timestamp}.bin."""
+    def _auto_save_to_reads_dir(
+        self, data: bytes | bytearray, label: str = ""
+    ) -> Path | None:
+        """Auto-save data to ~/.nc-flash/reads/ with timestamped filename.
+
+        Args:
+            data: Raw bytes to save.
+            label: Optional label inserted before timestamp
+                   (e.g., "RAM" -> "{id}_RAM_{ts}.bin").
+
+        Returns:
+            Path to saved file, or None on failure.
+        """
         from datetime import datetime
 
-        # Get ROM ID from ECU card (read during conditions)
         rom_id = self._card_ecu.get_value().strip()
         if not rom_id or rom_id == "—":
             rom_id = "ecu_read"
-        # Strip .HEX suffix if present
         if rom_id.upper().endswith(".HEX"):
             rom_id = rom_id[:-4]
 
@@ -939,40 +948,29 @@ class ECUProgrammingWindow(QMainWindow):
         auto_save_dir = Path(get_settings().get_reads_directory())
         auto_save_dir.mkdir(parents=True, exist_ok=True)
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        file_name = f"{rom_id}_{timestamp}.bin"
+
+        parts = [rom_id]
+        if label:
+            parts.append(label)
+        parts.append(timestamp)
+        file_name = "_".join(parts) + ".bin"
+
         save_path = auto_save_dir / file_name
         try:
-            save_path.write_bytes(rom_data)
-            logger.info("ROM auto-saved to %s", save_path)
+            save_path.write_bytes(data)
+            logger.info("Saved to %s (%d bytes)", save_path, len(data))
             return save_path
         except Exception as e:
-            logger.error("Failed to auto-save ROM: %s", e)
+            logger.error("Failed to save to %s: %s", save_path, e)
             return None
+
+    def _auto_save_rom(self, rom_data: bytearray) -> Path | None:
+        """Auto-save ROM read to ~/.nc-flash/reads/."""
+        return self._auto_save_to_reads_dir(rom_data)
 
     def _auto_save_ram_dump(self, ram_data: bytearray) -> Path | None:
-        """Auto-save RAM dump to ~/.nc-flash/reads/ as {ROM_ID}_RAM_{timestamp}.bin."""
-        from datetime import datetime
-
-        rom_id = self._card_ecu.get_value().strip()
-        if not rom_id or rom_id == "—":
-            rom_id = "ecu"
-        if rom_id.upper().endswith(".HEX"):
-            rom_id = rom_id[:-4]
-
-        from src.utils.settings import get_settings
-
-        auto_save_dir = Path(get_settings().get_reads_directory())
-        auto_save_dir.mkdir(parents=True, exist_ok=True)
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        file_name = f"{rom_id}_RAM_{timestamp}.bin"
-        save_path = auto_save_dir / file_name
-        try:
-            save_path.write_bytes(ram_data)
-            logger.info("RAM dump saved to %s (%d bytes)", save_path, len(ram_data))
-            return save_path
-        except Exception as e:
-            logger.error("Failed to save RAM dump: %s", e)
-            return None
+        """Auto-save RAM dump to ~/.nc-flash/reads/."""
+        return self._auto_save_to_reads_dir(ram_data, label="RAM")
 
     # --- DTC Operations ---
 
