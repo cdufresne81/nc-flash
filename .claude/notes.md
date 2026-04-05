@@ -1,5 +1,15 @@
 # Session Notes
 
+## Recent Completed Work (Apr 5, 2026) - MCP Single Source of Truth
+
+**Unified MCP data path** — All MCP tools now delegate to the running NC Flash app via its command API (single source of truth for ROM definitions and data). Previously, disk-read tools (list_tables, get_rom_info, read_table, etc.) had their own standalone ROM detection and definition loading, which failed for ROMs whose definition XML wasn't in the MCP server's metadata directory (e.g., LF4XEG).
+
+- Added 4 new command API endpoints: `/api/rom-info`, `/api/list-tables`, `/api/table-statistics`, `/api/compare-tables`
+- Rewrote `rom_context.py` — removed standalone `RomDetector`/`RomReader`/`load_definition`, all tools now use `_post_to_app()`
+- `read_table` and `read_live_table` are now equivalent (both read from app)
+- Updated all MCP tests to delegation-based (mock `_post_to_app`)
+- Files: `src/api/command_server.py`, `src/ui/mcp_mixin.py`, `src/mcp/rom_context.py`, `src/mcp/server.py`, `tests/test_mcp_server.py`
+
 ## Recent Completed Work (Apr 4, 2026) - Architectural Review & Refactoring
 
 **Full architectural review** — 40K lines read into 1M context, produced review and plan at `.claude/plans/zippy-pondering-puppy.md`.

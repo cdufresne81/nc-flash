@@ -270,6 +270,14 @@ class McpMixin:
                 return self._api_read_table(request)
             elif endpoint == "/api/edit-table":
                 return self._api_edit_table(request)
+            elif endpoint == "/api/rom-info":
+                return self._api_rom_info(request)
+            elif endpoint == "/api/list-tables":
+                return self._api_list_tables(request)
+            elif endpoint == "/api/table-statistics":
+                return self._api_table_statistics(request)
+            elif endpoint == "/api/compare-tables":
+                return self._api_compare_tables(request)
             else:
                 return {"success": False, "error": f"Unknown endpoint: {endpoint}"}
         except Exception as e:
@@ -513,4 +521,370 @@ class McpMixin:
         result = {"success": True, "cells_modified": len(changes)}
         if errors:
             result["warnings"] = errors
+        return result
+
+    # ========== ROM metadata endpoints (single source of truth for MCP) ==========
+
+    def _api_rom_info(self, request: dict) -> dict:
+        """Handle /api/rom-info — return ROM identification and summary."""
+        rom_path = request.get("rom_path", "")
+        document = self._find_document_by_rom_path(rom_path)
+        if not document:
+            return {"success": False, "error": f"ROM not open in app: {rom_path}"}
+
+        defn = document.rom_definition
+        romid = defn.romid
+        categories = defn.get_tables_by_category()
+        category_summary = {
+            cat: len(tables) for cat, tables in sorted(categories.items())
+        }
+        table_count = sum(1 for t in defn.tables if not t.is_axis)
+        file_size = Path(rom_path).resolve().stat().st_size
+
+        return {
+            "success": True,
+            "rom_path": str(Path(rom_path).resolve()),
+            "file_size_bytes": file_size,
+            "identification": {
+                "xmlid": romid.xmlid,
+                "ecuid": romid.ecuid,
+                "internalidstring": romid.internalidstring,
+                "make": romid.make,
+                "model": romid.model,
+                "year": romid.year,
+                "market": romid.market,
+                "submodel": romid.submodel,
+                "transmission": romid.transmission,
+            },
+            "table_count": table_count,
+            "category_summary": category_summary,
+        }
+
+    def _api_list_tables(self, request: dict) -> dict:
+        """Handle /api/list-tables — list tables with optional filtering."""
+        from src.core.rom_definition import TableType
+
+        rom_path = request.get("rom_path", "")
+        category = request.get("category")
+        search = request.get("search")
+        level = request.get("level")
+
+        document = self._find_document_by_rom_path(rom_path)
+        if not document:
+            return {"success": False, "error": f"ROM not open in app: {rom_path}"}
+
+        defn = document.rom_definition
+
+        if category:
+            categories = defn.get_tables_by_category()
+            tables = categories.get(category, [])
+        else:
+            tables = [t for t in defn.tables if not t.is_axis]
+
+        if search:
+            search_lower = search.lower()
+            tables = [t for t in tables if search_lower in t.name.lower()]
+
+        if level is not None:
+            tables = [t for t in tables if t.level == level]
+
+        result = []
+        for table in tables:
+            info = self._api_table_summary(table, defn)
+            result.append(info)
+
+        return {"success": True, "tables": result}
+
+    def _api_table_summary(self, table, defn):
+        """Build a summary dict for a table (used by _api_list_tables)."""
+        from src.core.rom_definition import TableType
+
+        scaling = defn.get_scaling(table.scaling)
+        info = {
+            "name": table.name,
+            "category": table.category or "Uncategorized",
+            "type": table.type.value,
+            "address": table.address,
+            "elements": table.elements,
+            "level": table.level,
+        }
+        if scaling:
+            info["units"] = scaling.units
+            info["storage_type"] = scaling.storagetype
+
+        if table.type == TableType.ONE_D:
+            info["dimensions"] = str(table.elements)
+        elif table.type == TableType.TWO_D:
+            y_axis = table.y_axis
+            if y_axis:
+                info["dimensions"] = str(y_axis.elements)
+                y_scaling = defn.get_scaling(y_axis.scaling)
+                info["y_axis"] = {
+                    "name": y_axis.name,
+                    "units": y_scaling.units if y_scaling else "",
+                }
+        elif table.type == TableType.THREE_D:
+            x_axis = table.x_axis
+            y_axis = table.y_axis
+            cols = x_axis.elements if x_axis else 0
+            rows = y_axis.elements if y_axis else 0
+            info["dimensions"] = f"{cols}x{rows}"
+            if x_axis:
+                x_scaling = defn.get_scaling(x_axis.scaling)
+                info["x_axis"] = {
+                    "name": x_axis.name,
+                    "units": x_scaling.units if x_scaling else "",
+                }
+            if y_axis:
+                y_scaling = defn.get_scaling(y_axis.scaling)
+                info["y_axis"] = {
+                    "name": y_axis.name,
+                    "units": y_scaling.units if y_scaling else "",
+                }
+
+        return info
+
+    def _api_table_statistics(self, request: dict) -> dict:
+        """Handle /api/table-statistics — statistical analysis of a table."""
+        import numpy as np
+
+        rom_path = request.get("rom_path", "")
+        table_name = request.get("table_name", "").strip()
+
+        document = self._find_document_by_rom_path(rom_path)
+        if not document:
+            return {"success": False, "error": f"ROM not open in app: {rom_path}"}
+
+        table = document.rom_definition.get_table_by_name(table_name)
+        if table is None:
+            return {"success": False, "error": f"Table not found: {table_name}"}
+
+        data = document.rom_reader.read_table_data(table)
+        if data is None:
+            return {
+                "success": False,
+                "error": f"Failed to read table data: {table_name}",
+            }
+
+        scaling = document.rom_definition.get_scaling(table.scaling)
+        values = data["values"].flatten().astype(float)
+        valid = values[~np.isnan(values)] if np.any(np.isnan(values)) else values
+
+        stats = {
+            "success": True,
+            "table_name": table_name,
+            "type": table.type.value,
+            "total_cells": len(values),
+        }
+
+        if scaling:
+            stats["units"] = scaling.units
+            stats["scaling_min"] = scaling.min
+            stats["scaling_max"] = scaling.max
+
+        if len(valid) > 0:
+            stats["min"] = float(np.min(valid))
+            stats["max"] = float(np.max(valid))
+            stats["mean"] = round(float(np.mean(valid)), 4)
+            stats["median"] = round(float(np.median(valid)), 4)
+            stats["std_dev"] = round(float(np.std(valid)), 4)
+            stats["percentiles"] = {
+                "p25": round(float(np.percentile(valid, 25)), 4),
+                "p75": round(float(np.percentile(valid, 75)), 4),
+                "p90": round(float(np.percentile(valid, 90)), 4),
+                "p95": round(float(np.percentile(valid, 95)), 4),
+            }
+
+        if "x_axis" in data:
+            x_vals = data["x_axis"].flatten().astype(float)
+            stats["x_axis_range"] = {
+                "min": float(np.min(x_vals)),
+                "max": float(np.max(x_vals)),
+                "count": len(x_vals),
+            }
+        if "y_axis" in data:
+            y_vals = data["y_axis"].flatten().astype(float)
+            stats["y_axis_range"] = {
+                "min": float(np.min(y_vals)),
+                "max": float(np.max(y_vals)),
+                "count": len(y_vals),
+            }
+
+        return stats
+
+    def _api_compare_tables(self, request: dict) -> dict:
+        """Handle /api/compare-tables — compare tables between two open ROMs."""
+        rom_path_a = request.get("rom_path_a", "")
+        rom_path_b = request.get("rom_path_b", "")
+        table_name = request.get("table_name")
+
+        doc_a = self._find_document_by_rom_path(rom_path_a)
+        if not doc_a:
+            return {"success": False, "error": f"ROM not open in app: {rom_path_a}"}
+        doc_b = self._find_document_by_rom_path(rom_path_b)
+        if not doc_b:
+            return {"success": False, "error": f"ROM not open in app: {rom_path_b}"}
+
+        if table_name:
+            return self._api_compare_single_table(doc_a, doc_b, table_name)
+        else:
+            return self._api_compare_all_tables(doc_a, doc_b)
+
+    def _api_compare_all_tables(self, doc_a, doc_b) -> dict:
+        """Summary of all differing tables between two ROMs."""
+        import numpy as np
+
+        defn_a = doc_a.rom_definition
+        defn_b = doc_b.rom_definition
+
+        tables_a = {t.name: t for t in defn_a.tables if not t.is_axis}
+        tables_b = {t.name: t for t in defn_b.tables if not t.is_axis}
+
+        common_names = set(tables_a.keys()) & set(tables_b.keys())
+        a_only = sorted(set(tables_a.keys()) - set(tables_b.keys()))
+        b_only = sorted(set(tables_b.keys()) - set(tables_a.keys()))
+
+        changed_tables = []
+        for name in sorted(common_names):
+            table_a = tables_a[name]
+            table_b = tables_b[name]
+
+            try:
+                data_a = doc_a.rom_reader.read_table_data(table_a)
+                data_b = doc_b.rom_reader.read_table_data(table_b)
+            except Exception:
+                continue
+
+            if data_a is None or data_b is None:
+                continue
+
+            vals_a = data_a["values"].flat
+            vals_b = data_b["values"].flat
+
+            if len(vals_a) != len(vals_b):
+                changed_tables.append(
+                    {
+                        "name": name,
+                        "reason": "shape_mismatch",
+                        "dimensions_a": str(data_a["values"].shape),
+                        "dimensions_b": str(data_b["values"].shape),
+                    }
+                )
+                continue
+
+            all_nan_a = (
+                np.all(np.isnan(vals_a))
+                if np.issubdtype(data_a["values"].dtype, np.floating)
+                else False
+            )
+            all_nan_b = (
+                np.all(np.isnan(vals_b))
+                if np.issubdtype(data_b["values"].dtype, np.floating)
+                else False
+            )
+            if all_nan_a and all_nan_b:
+                continue
+
+            diffs = np.array(vals_a) != np.array(vals_b)
+            if np.any(diffs):
+                total = len(vals_a)
+                changed = int(np.sum(diffs))
+                changed_tables.append(
+                    {
+                        "name": name,
+                        "changed_cells": changed,
+                        "total_cells": total,
+                        "change_percent": round(changed / total * 100, 1),
+                    }
+                )
+
+        return {
+            "success": True,
+            "rom_a": Path(doc_a.rom_reader.rom_path).name,
+            "rom_b": Path(doc_b.rom_reader.rom_path).name,
+            "summary": {
+                "total_common_tables": len(common_names),
+                "changed_table_count": len(changed_tables),
+                "a_only_count": len(a_only),
+                "b_only_count": len(b_only),
+            },
+            "changed_tables": changed_tables,
+            "a_only_tables": a_only,
+            "b_only_tables": b_only,
+        }
+
+    def _api_compare_single_table(self, doc_a, doc_b, table_name: str) -> dict:
+        """Cell-by-cell diff for a single table."""
+        from src.core.rom_definition import TableType
+
+        defn_a = doc_a.rom_definition
+        defn_b = doc_b.rom_definition
+
+        table_a = defn_a.get_table_by_name(table_name)
+        table_b = defn_b.get_table_by_name(table_name)
+
+        if table_a is None and table_b is None:
+            return {
+                "success": False,
+                "error": f"Table not found in either ROM: {table_name}",
+            }
+        if table_a is None:
+            return {
+                "success": False,
+                "error": f"Table '{table_name}' only exists in ROM B",
+            }
+        if table_b is None:
+            return {
+                "success": False,
+                "error": f"Table '{table_name}' only exists in ROM A",
+            }
+
+        data_a = doc_a.rom_reader.read_table_data(table_a)
+        data_b = doc_b.rom_reader.read_table_data(table_b)
+        if data_a is None or data_b is None:
+            return {
+                "success": False,
+                "error": f"Failed to read table data: {table_name}",
+            }
+
+        scaling_a = defn_a.get_scaling(table_a.scaling)
+        fmt_a = printf_to_python_format(scaling_a.format) if scaling_a else ".2f"
+        scaling_b = defn_b.get_scaling(table_b.scaling)
+        fmt_b = printf_to_python_format(scaling_b.format) if scaling_b else ".2f"
+
+        vals_a = data_a["values"].flatten()
+        vals_b = data_b["values"].flatten()
+
+        min_len = min(len(vals_a), len(vals_b))
+        diffs = []
+        for i in range(min_len):
+            if vals_a[i] != vals_b[i]:
+                delta = vals_b[i] - vals_a[i]
+                diffs.append(
+                    {
+                        "index": i,
+                        "value_a": format_value(vals_a[i], fmt_a),
+                        "value_b": format_value(vals_b[i], fmt_b),
+                        "delta": format_value(delta, fmt_a),
+                    }
+                )
+
+        result = {
+            "success": True,
+            "table_name": table_name,
+            "type": table_a.type.value,
+            "total_cells": min_len,
+            "changed_cells": len(diffs),
+            "diffs": diffs,
+        }
+
+        if table_a.type == TableType.THREE_D:
+            x_axis = table_a.x_axis
+            y_axis = table_a.y_axis
+            if x_axis and y_axis:
+                result["dimensions"] = {
+                    "cols": x_axis.elements,
+                    "rows": y_axis.elements,
+                }
+
         return result

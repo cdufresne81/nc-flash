@@ -6,9 +6,13 @@ JSON POST requests and dispatches them to a callback on the Qt main
 thread via a queue + QTimer polling pattern.
 
 Endpoints:
-    POST /api/read-table   — read live in-memory table values
-    POST /api/modified     — list tables with unsaved modifications
-    POST /api/edit-table   — write values through the app's editing pipeline
+    POST /api/rom-info          — ROM identification and summary
+    POST /api/list-tables       — list calibration tables with filtering
+    POST /api/read-table        — read table values (includes pending edits)
+    POST /api/modified          — list tables with unsaved modifications
+    POST /api/edit-table        — write values through the editing pipeline
+    POST /api/table-statistics  — statistical analysis of table values
+    POST /api/compare-tables    — compare tables between two open ROMs
 """
 
 import json
@@ -22,7 +26,15 @@ from PySide6.QtCore import QObject, QTimer
 
 logger = logging.getLogger(__name__)
 
-VALID_ENDPOINTS = {"/api/read-table", "/api/modified", "/api/edit-table"}
+VALID_ENDPOINTS = {
+    "/api/rom-info",
+    "/api/list-tables",
+    "/api/read-table",
+    "/api/modified",
+    "/api/edit-table",
+    "/api/table-statistics",
+    "/api/compare-tables",
+}
 
 
 class _RequestHandler(BaseHTTPRequestHandler):

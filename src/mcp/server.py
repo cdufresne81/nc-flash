@@ -5,12 +5,12 @@ Exposes ROM inspection and editing tools via the Model Context Protocol.
 Supports STDIO transport (default, for CLI clients like Claude Code)
 and SSE transport (for app-managed server, any client connects via HTTP).
 
-Disk-based tools (read_table, list_tables, etc.) have no Qt dependency.
-Live tools (read_live_table, write_table, list_modified_tables) communicate
-with the running app via its command API HTTP bridge.
+All tools delegate to the running NC Flash app via its command API HTTP
+bridge.  The app is the single source of truth for ROM definitions and
+table data.
 
 Usage:
-    python -m src.mcp.server [--metadata-dir PATH] [--transport stdio|sse] [--port PORT]
+    python -m src.mcp.server [--transport stdio|sse] [--port PORT]
 """
 
 import argparse
@@ -63,13 +63,14 @@ def _create_mcp(port: int = DEFAULT_SSE_PORT) -> FastMCP:
 
     @server.tool()
     def get_rom_info(rom_path: str) -> dict:
-        """Auto-detect ROM type and return identification info.
+        """Get ROM identification info from the running NC Flash app.
 
         Returns make, model, year, ECU ID, xmlid, file size, table count,
         and a category summary (category name → table count).
+        Requires the ROM to be open in NC Flash.
 
         Args:
-            rom_path: Path to the ROM binary file.
+            rom_path: Path to the ROM binary file (as shown in get_workspace).
         """
         return _get_ctx().get_rom_info(rom_path)
 
@@ -84,9 +85,10 @@ def _create_mcp(port: int = DEFAULT_SSE_PORT) -> FastMCP:
 
         Returns table name, category, type (1D/2D/3D), dimensions, address,
         units, level. For 2D/3D tables, includes axis names and units.
+        Requires the ROM to be open in NC Flash.
 
         Args:
-            rom_path: Path to the ROM binary file.
+            rom_path: Path to the ROM binary file (as shown in get_workspace).
             category: Filter by category name (exact match).
             search: Filter by name substring (case-insensitive).
             level: Filter by complexity level (1-4).
@@ -95,7 +97,7 @@ def _create_mcp(port: int = DEFAULT_SSE_PORT) -> FastMCP:
 
     @server.tool()
     def read_table(rom_path: str, table_name: str) -> dict:
-        """Read a table's scaled display values with full axis context.
+        """Read a table's current values from the running NC Flash app.
 
         1D → flat list of values.
         2D → column of values with Y-axis.
@@ -103,9 +105,11 @@ def _create_mcp(port: int = DEFAULT_SSE_PORT) -> FastMCP:
 
         Values are formatted using the definition's printf format spec.
         Axes include name, units, scaling expression, and formatted values.
+        Includes any pending (unsaved) edits.
+        Requires the ROM to be open in NC Flash.
 
         Args:
-            rom_path: Path to the ROM binary file.
+            rom_path: Path to the ROM binary file (as shown in get_workspace).
             table_name: Exact name of the table to read.
         """
         return _get_ctx().read_table(rom_path, table_name)
@@ -116,7 +120,7 @@ def _create_mcp(port: int = DEFAULT_SSE_PORT) -> FastMCP:
         rom_path_b: str,
         table_name: Optional[str] = None,
     ) -> dict:
-        """Compare tables between two ROM files.
+        """Compare tables between two ROMs open in NC Flash.
 
         Without table_name: returns a summary of all differing tables
         (count, names, change percentage).
@@ -125,10 +129,11 @@ def _create_mcp(port: int = DEFAULT_SSE_PORT) -> FastMCP:
         both ROMs and deltas.
 
         Supports cross-definition comparison (tables matched by name).
+        Both ROMs must be open in NC Flash.
 
         Args:
-            rom_path_a: Path to the first ROM binary file.
-            rom_path_b: Path to the second ROM binary file.
+            rom_path_a: Path to the first ROM binary file (as shown in get_workspace).
+            rom_path_b: Path to the second ROM binary file (as shown in get_workspace).
             table_name: Optional table name for detailed comparison.
         """
         return _get_ctx().compare_tables(rom_path_a, rom_path_b, table_name)
@@ -139,9 +144,10 @@ def _create_mcp(port: int = DEFAULT_SSE_PORT) -> FastMCP:
 
         Returns min, max, mean, median, std dev, percentiles (p25/p75/p90/p95),
         and axis ranges.
+        Requires the ROM to be open in NC Flash.
 
         Args:
-            rom_path: Path to the ROM binary file.
+            rom_path: Path to the ROM binary file (as shown in get_workspace).
             table_name: Exact name of the table to analyze.
         """
         return _get_ctx().get_table_statistics(rom_path, table_name)
@@ -166,8 +172,8 @@ def _create_mcp(port: int = DEFAULT_SSE_PORT) -> FastMCP:
     def read_live_table(rom_path: str, table_name: str) -> dict:
         """Read a table's current in-memory values from the running app.
 
-        Unlike read_table (which reads from disk), this returns unsaved edits.
-        Same output format as read_table.
+        Equivalent to read_table — both read from the app's in-memory state.
+        Kept for backward compatibility.
         Requires the app to be running with MCP server enabled.
 
         Args:
@@ -199,7 +205,7 @@ def main():
     parser = argparse.ArgumentParser(description="NC Flash MCP Server")
     parser.add_argument(
         "--metadata-dir",
-        help="Path to ROM metadata directory (default: <app_root>/examples/metadata)",
+        help="Accepted for backward compatibility (no longer used — the app is the source of truth)",
     )
     parser.add_argument(
         "--transport",

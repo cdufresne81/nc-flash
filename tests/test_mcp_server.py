@@ -1,7 +1,8 @@
 """
 Tests for MCP server ROM context.
 
-Uses the sample ROM at examples/lf9veb.bin.
+All tools delegate to the NC Flash app's command API.  Tests verify
+correct payload construction, response handling, and error propagation.
 """
 
 import json
@@ -9,19 +10,14 @@ import pytest
 from pathlib import Path
 
 from src.mcp.rom_context import RomContext
+from src.core.exceptions import RomEditorError
 from src.utils.formatting import printf_to_python_format
 
 
 @pytest.fixture
-def ctx(definitions_dir):
-    """Create a RomContext with the project's metadata directory."""
-    return RomContext(metadata_dir=str(definitions_dir))
-
-
-@pytest.fixture
-def rom_path(sample_rom_path):
-    """Return ROM path as string (matching MCP tool interface)."""
-    return str(sample_rom_path)
+def ctx():
+    """Create a RomContext (no metadata_dir needed — delegates to app)."""
+    return RomContext()
 
 
 # ------------------------------------------------------------------
@@ -47,265 +43,6 @@ class TestPrintfConversion:
 
     def test_unrecognized_returns_default(self):
         assert printf_to_python_format("not-a-format") == ".2f"
-
-
-# ------------------------------------------------------------------
-# get_rom_info
-# ------------------------------------------------------------------
-
-
-class TestGetRomInfo:
-    def test_returns_identification(self, ctx, rom_path):
-        info = ctx.get_rom_info(rom_path)
-        assert "identification" in info
-        ident = info["identification"]
-        assert ident["xmlid"]
-        assert ident["make"]
-        assert ident["model"]
-
-    def test_returns_table_count(self, ctx, rom_path):
-        info = ctx.get_rom_info(rom_path)
-        assert info["table_count"] > 0
-
-    def test_returns_category_summary(self, ctx, rom_path):
-        info = ctx.get_rom_info(rom_path)
-        assert "category_summary" in info
-        summary = info["category_summary"]
-        assert len(summary) > 0
-        # All values should be positive integers
-        for count in summary.values():
-            assert count > 0
-
-    def test_returns_file_size(self, ctx, rom_path):
-        info = ctx.get_rom_info(rom_path)
-        assert info["file_size_bytes"] > 0
-
-    def test_invalid_rom_raises(self, ctx, tmp_path):
-        fake_rom = tmp_path / "fake.bin"
-        fake_rom.write_bytes(b"\x00" * 100)
-        with pytest.raises(Exception):
-            ctx.get_rom_info(str(fake_rom))
-
-
-# ------------------------------------------------------------------
-# list_tables
-# ------------------------------------------------------------------
-
-
-class TestListTables:
-    def test_returns_all_tables(self, ctx, rom_path):
-        tables = ctx.list_tables(rom_path)
-        assert len(tables) > 0
-
-    def test_table_has_required_fields(self, ctx, rom_path):
-        tables = ctx.list_tables(rom_path)
-        first = tables[0]
-        assert "name" in first
-        assert "category" in first
-        assert "type" in first
-        assert "address" in first
-        assert "level" in first
-
-    def test_filter_by_category(self, ctx, rom_path):
-        all_tables = ctx.list_tables(rom_path)
-        # Pick a category from the first table
-        category = all_tables[0]["category"]
-        filtered = ctx.list_tables(rom_path, category=category)
-        assert len(filtered) > 0
-        assert all(t["category"] == category for t in filtered)
-
-    def test_filter_by_search(self, ctx, rom_path):
-        # Search for a common substring
-        filtered = ctx.list_tables(rom_path, search="ign")
-        # All results should contain the search term
-        for t in filtered:
-            assert "ign" in t["name"].lower()
-
-    def test_filter_by_level(self, ctx, rom_path):
-        filtered = ctx.list_tables(rom_path, level=1)
-        assert all(t["level"] == 1 for t in filtered)
-
-    def test_3d_table_has_axes(self, ctx, rom_path):
-        tables = ctx.list_tables(rom_path)
-        tables_3d = [t for t in tables if t["type"] == "3D"]
-        if tables_3d:
-            t = tables_3d[0]
-            assert "x_axis" in t
-            assert "y_axis" in t
-            assert "name" in t["x_axis"]
-            assert "units" in t["x_axis"]
-
-    def test_empty_category_returns_empty(self, ctx, rom_path):
-        result = ctx.list_tables(rom_path, category="Nonexistent Category XYZ")
-        assert result == []
-
-
-# ------------------------------------------------------------------
-# read_table
-# ------------------------------------------------------------------
-
-
-class TestReadTable:
-    def _get_table_by_type(self, ctx, rom_path, table_type):
-        """Helper: find a table of the given type."""
-        tables = ctx.list_tables(rom_path)
-        for t in tables:
-            if t["type"] == table_type:
-                return t["name"]
-        return None
-
-    def test_read_1d_table(self, ctx, rom_path):
-        name = self._get_table_by_type(ctx, rom_path, "1D")
-        if name is None:
-            pytest.skip("No 1D table found")
-        result = ctx.read_table(rom_path, name)
-        assert result["metadata"]["type"] == "1D"
-        assert isinstance(result["values"], list)
-        assert len(result["values"]) > 0
-        # Values should be formatted strings
-        assert isinstance(result["values"][0], str)
-
-    def test_read_2d_table(self, ctx, rom_path):
-        name = self._get_table_by_type(ctx, rom_path, "2D")
-        if name is None:
-            pytest.skip("No 2D table found")
-        result = ctx.read_table(rom_path, name)
-        assert result["metadata"]["type"] == "2D"
-        assert isinstance(result["values"], list)
-        if "y_axis" in result:
-            assert "name" in result["y_axis"]
-            assert "values" in result["y_axis"]
-
-    def test_read_3d_table(self, ctx, rom_path):
-        name = self._get_table_by_type(ctx, rom_path, "3D")
-        if name is None:
-            pytest.skip("No 3D table found")
-        result = ctx.read_table(rom_path, name)
-        assert result["metadata"]["type"] == "3D"
-        # 3D values should be a grid (list of lists)
-        assert isinstance(result["values"], list)
-        assert isinstance(result["values"][0], list)
-        # Should have axis info
-        assert "x_axis" in result
-        assert "y_axis" in result
-        assert "name" in result["x_axis"]
-        assert "units" in result["x_axis"]
-        assert "values" in result["x_axis"]
-        assert "scaling_expression" in result["x_axis"]
-
-    def test_read_table_metadata(self, ctx, rom_path):
-        tables = ctx.list_tables(rom_path)
-        name = tables[0]["name"]
-        result = ctx.read_table(rom_path, name)
-        meta = result["metadata"]
-        assert "name" in meta
-        assert "type" in meta
-        assert "address" in meta
-
-    def test_read_nonexistent_table_raises(self, ctx, rom_path):
-        with pytest.raises(Exception, match="Table not found"):
-            ctx.read_table(rom_path, "Nonexistent Table XYZ")
-
-
-# ------------------------------------------------------------------
-# compare_tables
-# ------------------------------------------------------------------
-
-
-class TestCompareTables:
-    def test_compare_same_rom_no_diffs(self, ctx, rom_path):
-        """Comparing a ROM to itself should show zero changes."""
-        result = ctx.compare_tables(rom_path, rom_path)
-        assert result["summary"]["changed_table_count"] == 0
-        assert result["changed_tables"] == []
-
-    def test_compare_summary_structure(self, ctx, rom_path):
-        result = ctx.compare_tables(rom_path, rom_path)
-        assert "summary" in result
-        assert "total_common_tables" in result["summary"]
-        assert "changed_table_count" in result["summary"]
-        assert "a_only_count" in result["summary"]
-        assert "b_only_count" in result["summary"]
-
-    def test_compare_single_table_same_rom(self, ctx, rom_path):
-        tables = ctx.list_tables(rom_path)
-        name = tables[0]["name"]
-        result = ctx.compare_tables(rom_path, rom_path, table_name=name)
-        assert result["changed_cells"] == 0
-        assert result["diffs"] == []
-
-    def test_compare_nonexistent_table_raises(self, ctx, rom_path):
-        with pytest.raises(Exception):
-            ctx.compare_tables(rom_path, rom_path, table_name="Nonexistent XYZ")
-
-
-# ------------------------------------------------------------------
-# get_table_statistics
-# ------------------------------------------------------------------
-
-
-class TestGetTableStatistics:
-    def test_returns_statistics(self, ctx, rom_path):
-        tables = ctx.list_tables(rom_path)
-        name = tables[0]["name"]
-        stats = ctx.get_table_statistics(rom_path, name)
-        assert "min" in stats
-        assert "max" in stats
-        assert "mean" in stats
-        assert "median" in stats
-        assert "std_dev" in stats
-        assert "percentiles" in stats
-
-    def test_percentiles_structure(self, ctx, rom_path):
-        tables = ctx.list_tables(rom_path)
-        name = tables[0]["name"]
-        stats = ctx.get_table_statistics(rom_path, name)
-        p = stats["percentiles"]
-        assert "p25" in p
-        assert "p75" in p
-        assert "p90" in p
-        assert "p95" in p
-
-    def test_3d_table_has_axis_ranges(self, ctx, rom_path):
-        tables = ctx.list_tables(rom_path)
-        tables_3d = [t for t in tables if t["type"] == "3D"]
-        if not tables_3d:
-            pytest.skip("No 3D table found")
-        stats = ctx.get_table_statistics(rom_path, tables_3d[0]["name"])
-        assert "x_axis_range" in stats
-        assert "y_axis_range" in stats
-
-    def test_nonexistent_table_raises(self, ctx, rom_path):
-        with pytest.raises(Exception, match="Table not found"):
-            ctx.get_table_statistics(rom_path, "Nonexistent Table XYZ")
-
-    def test_statistics_are_consistent(self, ctx, rom_path):
-        """min <= p25 <= median <= p75 <= max"""
-        tables = ctx.list_tables(rom_path)
-        name = tables[0]["name"]
-        stats = ctx.get_table_statistics(rom_path, name)
-        assert stats["min"] <= stats["percentiles"]["p25"]
-        assert stats["percentiles"]["p25"] <= stats["median"]
-        assert stats["median"] <= stats["percentiles"]["p75"]
-        assert stats["percentiles"]["p75"] <= stats["max"]
-
-
-# ------------------------------------------------------------------
-# Caching
-# ------------------------------------------------------------------
-
-
-class TestCaching:
-    def test_same_rom_reuses_cache(self, ctx, rom_path):
-        ctx.get_rom_info(rom_path)
-        assert len(ctx._cache) == 1
-        ctx.get_rom_info(rom_path)
-        assert len(ctx._cache) == 1
-
-    def test_cache_eviction(self, ctx, rom_path):
-        # Fill cache with the same ROM (only 1 unique key)
-        ctx.get_rom_info(rom_path)
-        assert len(ctx._cache) <= RomContext.MAX_CACHE_SIZE
 
 
 # ------------------------------------------------------------------
@@ -362,3 +99,329 @@ class TestGetWorkspace:
         result = ctx.get_workspace()
         assert result["open_roms"] == []
         assert "message" in result
+
+
+# ------------------------------------------------------------------
+# get_rom_info — delegates to /api/rom-info
+# ------------------------------------------------------------------
+
+
+class TestGetRomInfo:
+    def test_delegates_to_app(self, ctx, monkeypatch):
+        captured = []
+        mock_resp = {
+            "success": True,
+            "rom_path": "C:/test/rom.bin",
+            "file_size_bytes": 1048576,
+            "identification": {
+                "xmlid": "LF4XEG",
+                "ecuid": "test",
+                "internalidstring": "LF4XEG",
+                "make": "Mazda",
+                "model": "MX5",
+                "year": None,
+                "market": None,
+                "submodel": None,
+                "transmission": None,
+            },
+            "table_count": 42,
+            "category_summary": {"Engine": 10, "Fuel": 15},
+        }
+        monkeypatch.setattr(
+            ctx,
+            "_post_to_app",
+            lambda p: (captured.append(p), mock_resp)[1],
+        )
+
+        result = ctx.get_rom_info("C:/test/rom.bin")
+
+        assert captured[0]["endpoint"] == "/api/rom-info"
+        assert captured[0]["rom_path"] == "C:/test/rom.bin"
+        assert result["identification"]["xmlid"] == "LF4XEG"
+        assert result["table_count"] == 42
+        assert "success" not in result
+
+    def test_raises_on_app_error(self, ctx, monkeypatch):
+        monkeypatch.setattr(
+            ctx,
+            "_post_to_app",
+            lambda p: {"success": False, "error": "ROM not open in app"},
+        )
+        with pytest.raises(RomEditorError, match="ROM not open"):
+            ctx.get_rom_info("C:/test/rom.bin")
+
+
+# ------------------------------------------------------------------
+# list_tables — delegates to /api/list-tables
+# ------------------------------------------------------------------
+
+
+class TestListTables:
+    def test_delegates_to_app(self, ctx, monkeypatch):
+        captured = []
+        mock_resp = {
+            "success": True,
+            "tables": [
+                {
+                    "name": "Fuel VE",
+                    "category": "Fuel",
+                    "type": "3D",
+                    "address": "f0000",
+                    "elements": 400,
+                    "level": 1,
+                    "units": "g/rev",
+                    "dimensions": "20x20",
+                    "x_axis": {"name": "RPM", "units": "rpm"},
+                    "y_axis": {"name": "Load", "units": "g/rev"},
+                }
+            ],
+        }
+        monkeypatch.setattr(
+            ctx,
+            "_post_to_app",
+            lambda p: (captured.append(p), mock_resp)[1],
+        )
+
+        result = ctx.list_tables("C:/test/rom.bin", search="fuel", level=1)
+
+        assert captured[0]["endpoint"] == "/api/list-tables"
+        assert captured[0]["rom_path"] == "C:/test/rom.bin"
+        assert captured[0]["search"] == "fuel"
+        assert captured[0]["level"] == 1
+        assert "category" not in captured[0]
+        assert len(result) == 1
+        assert result[0]["name"] == "Fuel VE"
+
+    def test_omits_none_filters(self, ctx, monkeypatch):
+        captured = []
+        monkeypatch.setattr(
+            ctx,
+            "_post_to_app",
+            lambda p: (captured.append(p), {"success": True, "tables": []})[1],
+        )
+        ctx.list_tables("C:/test/rom.bin")
+        assert "category" not in captured[0]
+        assert "search" not in captured[0]
+        assert "level" not in captured[0]
+
+    def test_raises_on_app_error(self, ctx, monkeypatch):
+        monkeypatch.setattr(
+            ctx,
+            "_post_to_app",
+            lambda p: {"success": False, "error": "ROM not open in app"},
+        )
+        with pytest.raises(RomEditorError):
+            ctx.list_tables("C:/test/rom.bin")
+
+
+# ------------------------------------------------------------------
+# read_table — delegates to /api/read-table
+# ------------------------------------------------------------------
+
+
+class TestReadTable:
+    def test_delegates_to_app(self, ctx, monkeypatch):
+        captured = []
+        mock_resp = {
+            "success": True,
+            "metadata": {
+                "name": "Fuel VE",
+                "type": "3D",
+                "address": "f0000",
+                "elements": 4,
+                "dimensions": "2x2",
+            },
+            "values": [["1.00", "2.00"], ["3.00", "4.00"]],
+            "x_axis": {"name": "RPM", "units": "rpm", "values": ["1000", "2000"]},
+            "y_axis": {"name": "Load", "units": "g/rev", "values": ["0.5", "1.0"]},
+        }
+        monkeypatch.setattr(
+            ctx,
+            "_post_to_app",
+            lambda p: (captured.append(p), mock_resp)[1],
+        )
+
+        result = ctx.read_table("C:/test/rom.bin", "Fuel VE")
+
+        assert captured[0]["endpoint"] == "/api/read-table"
+        assert captured[0]["table_name"] == "Fuel VE"
+        assert result["metadata"]["type"] == "3D"
+        assert result["values"] == [["1.00", "2.00"], ["3.00", "4.00"]]
+        assert "success" not in result
+
+    def test_raises_on_table_not_found(self, ctx, monkeypatch):
+        monkeypatch.setattr(
+            ctx,
+            "_post_to_app",
+            lambda p: {"success": False, "error": "Table not found: Nope"},
+        )
+        with pytest.raises(RomEditorError, match="Table not found"):
+            ctx.read_table("C:/test/rom.bin", "Nope")
+
+
+# ------------------------------------------------------------------
+# compare_tables — delegates to /api/compare-tables
+# ------------------------------------------------------------------
+
+
+class TestCompareTables:
+    def test_delegates_summary(self, ctx, monkeypatch):
+        captured = []
+        mock_resp = {
+            "success": True,
+            "rom_a": "a.bin",
+            "rom_b": "b.bin",
+            "summary": {
+                "total_common_tables": 50,
+                "changed_table_count": 3,
+                "a_only_count": 0,
+                "b_only_count": 0,
+            },
+            "changed_tables": [],
+            "a_only_tables": [],
+            "b_only_tables": [],
+        }
+        monkeypatch.setattr(
+            ctx,
+            "_post_to_app",
+            lambda p: (captured.append(p), mock_resp)[1],
+        )
+
+        result = ctx.compare_tables("C:/a.bin", "C:/b.bin")
+
+        assert captured[0]["endpoint"] == "/api/compare-tables"
+        assert captured[0]["rom_path_a"] == "C:/a.bin"
+        assert captured[0]["rom_path_b"] == "C:/b.bin"
+        assert "table_name" not in captured[0]
+        assert result["summary"]["changed_table_count"] == 3
+
+    def test_delegates_single_table(self, ctx, monkeypatch):
+        captured = []
+        mock_resp = {
+            "success": True,
+            "table_name": "Fuel VE",
+            "type": "3D",
+            "total_cells": 400,
+            "changed_cells": 5,
+            "diffs": [],
+        }
+        monkeypatch.setattr(
+            ctx,
+            "_post_to_app",
+            lambda p: (captured.append(p), mock_resp)[1],
+        )
+
+        result = ctx.compare_tables("C:/a.bin", "C:/b.bin", table_name="Fuel VE")
+
+        assert captured[0]["table_name"] == "Fuel VE"
+        assert result["changed_cells"] == 5
+
+    def test_raises_on_app_error(self, ctx, monkeypatch):
+        monkeypatch.setattr(
+            ctx,
+            "_post_to_app",
+            lambda p: {"success": False, "error": "ROM not open in app"},
+        )
+        with pytest.raises(RomEditorError):
+            ctx.compare_tables("C:/a.bin", "C:/b.bin")
+
+
+# ------------------------------------------------------------------
+# get_table_statistics — delegates to /api/table-statistics
+# ------------------------------------------------------------------
+
+
+class TestGetTableStatistics:
+    def test_delegates_to_app(self, ctx, monkeypatch):
+        captured = []
+        mock_resp = {
+            "success": True,
+            "table_name": "Fuel VE",
+            "type": "3D",
+            "total_cells": 400,
+            "units": "g/rev",
+            "min": 0.5,
+            "max": 2.0,
+            "mean": 1.25,
+            "median": 1.20,
+            "std_dev": 0.3,
+            "percentiles": {"p25": 0.9, "p75": 1.5, "p90": 1.8, "p95": 1.9},
+        }
+        monkeypatch.setattr(
+            ctx,
+            "_post_to_app",
+            lambda p: (captured.append(p), mock_resp)[1],
+        )
+
+        result = ctx.get_table_statistics("C:/test/rom.bin", "Fuel VE")
+
+        assert captured[0]["endpoint"] == "/api/table-statistics"
+        assert captured[0]["table_name"] == "Fuel VE"
+        assert result["min"] == 0.5
+        assert result["max"] == 2.0
+        assert result["percentiles"]["p75"] == 1.5
+        assert "success" not in result
+
+    def test_raises_on_app_error(self, ctx, monkeypatch):
+        monkeypatch.setattr(
+            ctx,
+            "_post_to_app",
+            lambda p: {"success": False, "error": "Table not found: Nope"},
+        )
+        with pytest.raises(RomEditorError, match="Table not found"):
+            ctx.get_table_statistics("C:/test/rom.bin", "Nope")
+
+
+# ------------------------------------------------------------------
+# Live bridge — list_modified_tables, read_live_table, write_table
+# ------------------------------------------------------------------
+
+
+class TestRomContextLiveBridge:
+    def test_post_to_app_no_workspace(self, ctx, tmp_path, monkeypatch):
+        """When workspace.json has no command_api_url, returns error."""
+        monkeypatch.setattr("src.mcp.rom_context.get_app_root", lambda: tmp_path)
+        result = ctx._post_to_app({"endpoint": "/api/modified", "rom_path": "x"})
+        assert result["success"] is False
+        assert "not available" in result["error"]
+
+    def test_post_to_app_connection_refused(self, ctx, tmp_path, monkeypatch):
+        """When the app is not running, returns connection error."""
+        monkeypatch.setattr("src.mcp.rom_context.get_app_root", lambda: tmp_path)
+        workspace = {"command_api_url": "http://127.0.0.1:19999"}
+        (tmp_path / "workspace.json").write_text(json.dumps(workspace))
+
+        result = ctx._post_to_app({"endpoint": "/api/modified", "rom_path": "x"})
+        assert result["success"] is False
+        assert "Cannot connect" in result["error"]
+
+    def test_list_modified_tables_delegates(self, ctx, monkeypatch):
+        captured = []
+        monkeypatch.setattr(
+            ctx, "_post_to_app", lambda p: (captured.append(p), {"success": True})[1]
+        )
+        ctx.list_modified_tables("/path/to/rom.bin")
+        assert len(captured) == 1
+        assert captured[0]["endpoint"] == "/api/modified"
+        assert captured[0]["rom_path"] == "/path/to/rom.bin"
+
+    def test_read_live_table_delegates(self, ctx, monkeypatch):
+        captured = []
+        monkeypatch.setattr(
+            ctx, "_post_to_app", lambda p: (captured.append(p), {"success": True})[1]
+        )
+        ctx.read_live_table("/path/to/rom.bin", "Fuel VE")
+        assert len(captured) == 1
+        assert captured[0]["endpoint"] == "/api/read-table"
+        assert captured[0]["table_name"] == "Fuel VE"
+
+    def test_write_table_delegates(self, ctx, monkeypatch):
+        captured = []
+        monkeypatch.setattr(
+            ctx, "_post_to_app", lambda p: (captured.append(p), {"success": True})[1]
+        )
+        cells = [{"row": 0, "col": 0, "value": 42.5}]
+        ctx.write_table("/path/to/rom.bin", "Fuel VE", cells)
+        assert len(captured) == 1
+        assert captured[0]["endpoint"] == "/api/edit-table"
+        assert captured[0]["cells"] == cells

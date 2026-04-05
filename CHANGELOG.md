@@ -12,6 +12,7 @@ All notable changes to NC Flash are documented here.
 - **Settings dialog redesign** — Replaced tab-based settings with tree sidebar navigation, stacked pages, and instant search with highlighted results. Data-driven `SettingDescriptor` registry makes adding new settings a one-line change.
 - **New path settings** — `ROMs Directory`, `Screenshots Directory`, and `Reads Directory` settings with workspace-derived defaults. File dialogs (Open ROM, Save As, Screenshot, Project Wizard) now default to the appropriate workspace subdirectory.
 - **MCP STDIO launcher for compiled builds** — `packaging/run-mcp.bat` enables Claude Desktop integration with installed NCFlash via STDIO transport; included in the Windows installer
+- **4 new MCP command API endpoints** — `/api/rom-info`, `/api/list-tables`, `/api/table-statistics`, `/api/compare-tables` — all served by the app, enabling MCP tools to work with any ROM the app can open
 - **Code audit documentation** — `docs/internal/CODE_AUDIT.md` captures full codebase audit findings (bugs, dead code, duplication, test gaps) from the v2.6.1 audit pass
 - **UI test coverage** — 70 new tests covering compare_window diff computation, table_browser filtering/search/selection, graph_viewer color calculations, and table_viewer_window signal forwarding and coordinate extraction
 
@@ -21,7 +22,7 @@ All notable changes to NC Flash are documented here.
 - **Version diff reads snapshots directly** — Eliminated unnecessary temp file round-trip when comparing ROM versions in History Viewer; snapshot `.bin` files are now passed directly to `RomReader`
 - **ROM reader log level** — Downgraded ROM initialization log messages from INFO to DEBUG to reduce log noise
 - **MCP connection dialog** — Now shows correct `run-mcp.bat` path for Claude Desktop config (dev and compiled builds) instead of broken inline Python command
-- **MCP server uses app metadata directory** — MCP subprocess now receives `--metadata-dir` from the app's configured settings, ensuring disk-based and live MCP tools use the same XML definitions
+- **MCP single source of truth** — All MCP tools now delegate to the running NC Flash app via its command API. Removed standalone ROM detection and definition loading from the MCP server — the app is the single source of truth for ROM definitions and table data. Fixes MCP tools failing for ROMs whose definition XML wasn't bundled with the MCP server (e.g., LF4XEG)
 - **Architectural refactoring** — Four phases of structural cleanup with no behavior changes:
   - Unified table CSS into shared `get_table_stylesheet()` function, eliminating 3 duplicate stylesheet blocks
   - Replaced null-byte `\0` composite keys with `TableKey` namedtuple for type-safe dict keys across undo/change tracking
