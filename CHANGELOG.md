@@ -46,6 +46,12 @@ All notable changes to NC Flash are documented here.
 - **ECU reads path now configurable** — Replaced hardcoded `~/.nc-flash/reads/` in ECU window with settings-based `get_reads_directory()`, defaulting to workspace/reads
 - **Settings path getters deduplicated** — Extracted `_get_workspace_path()` helper in `AppSettings`, eliminating 7 near-identical getter methods with inline imports
 
+### Removed
+- **Dead `GraphViewer` class** — Standalone graph window class in `graph_viewer.py` was never imported; removed along with its `matplotlib.pyplot` import and `APP_NAME` constant
+- **Dead `_apply_table_style` method** — Unused delegation method in `table_viewer.py` that was superseded by `_apply_table_style_internal`
+- **Trivial `_make_icon`/`_make_toolbar_icon` wrappers** — Removed pass-through methods in `MainWindow` and `TableViewerWindow` that simply delegated to `make_icon()`; callers now invoke `make_icon()` directly
+- **Dead flash mixin code** — Removed ~475 lines of dead code from `flash_mixin.py` (`_FlashWorker`, `FlashProgressDialog`, `_on_flash_rom`, `_on_read_rom`, `_on_read_rom_finished`, `_on_clear_dtcs`, `_on_ecu_info`, `_run_flash_operation`) superseded by `ecu_window.py`
+
 ### Fixed
 - **Stale README version and project structure** — Updated version from v2.3.0 to v2.6.1, added missing `src/ecu/` module tree (13 files) and new UI files (`ecu_window.py`, `flash_mixin.py`, `flash_setup_dialog.py`, `patch_dialog.py`), and refreshed the development status description
 - **Select All skips first data row in 3D tables** — `select_all_data` started selection at row 2 instead of row 1, missing the first data row in 3D tables
@@ -57,11 +63,6 @@ All notable changes to NC Flash are documented here.
 - **Inline `Path` re-import in `main.py`** — `_find_document_by_rom_path` redundantly imported `Path as _Path`; now uses the module-level `Path` import
 - **Stale `run-mcp.bat` reference** — MCP connection info dialog referenced a non-existent batch file; now shows the actual `python -m src.mcp.server` command
 - **test_runner set_level_filter bug** — `set_level_filter()` accessed non-existent `self.main_window.table_browser`; now correctly retrieves the table browser from the current ROM document via `get_current_document()`
-
-### Removed
-- **Dead `GraphViewer` class** — Standalone graph window class in `graph_viewer.py` was never imported; removed along with its `matplotlib.pyplot` import and `APP_NAME` constant
-- **Dead `_apply_table_style` method** — Unused delegation method in `table_viewer.py` that was superseded by `_apply_table_style_internal`
-- **Trivial `_make_icon`/`_make_toolbar_icon` wrappers** — Removed pass-through methods in `MainWindow` and `TableViewerWindow` that simply delegated to `make_icon()`; callers now invoke `make_icon()` directly
 
 ## [v2.6.1] - 2026-04-03
 
