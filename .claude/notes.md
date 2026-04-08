@@ -1,5 +1,17 @@
 # Session Notes
 
+## Recent Completed Work (Apr 7, 2026) - Paste scaling clamp bug
+
+- **Paste silently dropped out-of-range cells** — `clipboard.py::paste_selection` clamped pasted values against the XML-declared scaling `min`/`max` and silently skipped anything outside. Bug was latent since the clipboard refactor (commit `c5b0623`), not a recent regression. Broke copy between sibling tables where the source held raw bytes exceeding the stated max (VCT Target → [Flex] VCT Target with `35`s against `max=25`), and fully disabled paste for scalings with placeholder `min=0/max=0` (Speed Density - Volumetric Efficiency). Removed the clamp — `display_to_raw` is the real safety net. Added 2 regression tests in `TestPasteIgnoresScalingClamp`.
+
+## Recent Completed Work (Apr 5, 2026) - Bugfixes & Regression Tests
+
+- **Interpolation auto-round fix** — V/H/2D interpolation used `round_one_level_coarser()` instead of `round(val, precision)` when auto-round was enabled, coarsening values (2.04→2.0, 0.01→0.0). Extracted `compute_interpolated_1d_values()` and `compute_interpolated_2d_values()` as pure functions. Added 24 regression tests.
+- **MCP workspace.json path fix** — `workspace.json` was written to `get_app_root()` which resolves to per-process `_MEIPASS` in PyInstaller builds. Moved to `get_user_data_dir()` via new `get_workspace_path()` helper in `paths.py`.
+- **Black target-version pinned** — Added `pyproject.toml` with `target-version = ["py312"]` to prevent formatting divergence between local Python 3.14 and CI Python 3.12.
+- **Flaky CI test fix** — `test_wrong_path_returns_404` handled `ConnectionAbortedError` race condition.
+- **Parameter naming standardized** — `fmt_precision` → `precision` across all pure computation functions.
+
 ## Recent Completed Work (Apr 5, 2026) - MCP Single Source of Truth
 
 **Unified MCP data path** — All MCP tools now delegate to the running NC Flash app via its command API (single source of truth for ROM definitions and data). Previously, disk-read tools (list_tables, get_rom_info, read_table, etc.) had their own standalone ROM detection and definition loading, which failed for ROMs whose definition XML wasn't in the MCP server's metadata directory (e.g., LF4XEG).

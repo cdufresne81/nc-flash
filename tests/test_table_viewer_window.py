@@ -66,8 +66,11 @@ def _make_scaling():
     )
 
 
-def _make_definition():
-    return RomDefinition(romid=_make_romid(), scalings={"TestScaling": _make_scaling()})
+def _make_definition(scaling=None):
+    return RomDefinition(
+        romid=_make_romid(),
+        scalings={"TestScaling": scaling or _make_scaling()},
+    )
 
 
 def _make_2d_table():
@@ -332,3 +335,74 @@ class TestWindowProperties:
 
     def test_3d_table_has_graph_widget(self, window_3d):
         assert window_3d.graph_widget is not None
+
+
+# ---------------------------------------------------------------------------
+# Tests: Clipboard paste ignores XML scaling min/max clamp
+# ---------------------------------------------------------------------------
+
+
+def _first_data_coords(tw):
+    """Select the first non-axis cell and return its (data_row, data_col)."""
+    for row in range(tw.rowCount()):
+        for col in range(tw.columnCount()):
+            item = tw.item(row, col)
+            if item is None:
+                continue
+            coords = item.data(Qt.UserRole)
+            if coords is not None and not isinstance(coords[0], str):
+                tw.clearSelection()
+                tw.setCurrentCell(row, col)
+                return coords
+    raise AssertionError("no data cell found")
+
+
+@pytest.mark.parametrize(
+    "scaling_max,pasted,expected",
+    [
+        # VCT Target → [Flex] VCT Target: source held 35, scaling max=25.
+        (25.0, "35", 35.0),
+        # Speed Density - Volumetric Efficiency: placeholder min=0/max=0 scaling
+        # disabled paste entirely for any non-zero value.
+        (0.0, "42", 42.0),
+    ],
+    ids=["above_xml_max", "placeholder_zero_max"],
+)
+def test_paste_ignores_scaling_min_max_clamp(
+    qapp, mock_settings, scaling_max, pasted, expected
+):
+    """
+    Regression: paste_selection used to silently skip cells whose value fell
+    outside the XML-declared scaling min/max. display_to_raw is the real
+    safety net — see clipboard.py::paste_selection.
+    """
+    scaling = Scaling(
+        name="TestScaling",
+        units="",
+        toexpr="x",
+        frexpr="x",
+        format="%0.0f",
+        min=0.0,
+        max=scaling_max,
+        inc=1.0,
+        storagetype="float",
+        endian="big",
+    )
+    table = _make_3d_table()
+    data = {
+        "values": np.array([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]]),
+        "x_axis": np.array([10.0, 20.0, 30.0]),
+        "y_axis": np.array([100.0, 200.0]),
+    }
+    win = TableViewerWindow(
+        table, data, _make_definition(scaling), rom_path="/tmp/test.bin"
+    )
+    try:
+        dr, dc = _first_data_coords(win.viewer.table_widget)
+        QApplication.clipboard().setText(pasted)
+
+        win.viewer.paste_selection()
+
+        assert win.viewer.current_data["values"][dr, dc] == pytest.approx(expected)
+    finally:
+        win.close()

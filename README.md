@@ -359,7 +359,7 @@ Tests run automatically on GitHub Actions for:
 
 ## Development Status
 
-**Current Version:** v2.6.1
+**Current Version:** v2.7.1
 
 Full table editing, project management with version history, interactive graph visualization, ROM comparison tool, toolbar-driven UI, AI assistant integration via MCP server, native ECU flashing via J2534/UDS, screenshot capture, single-instance support with .bin file association, configurable table browser columns, and DTC read/clear from the flash dialog.
 

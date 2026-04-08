@@ -135,16 +135,12 @@ class TableClipboardHelper:
                     if abs(new_value - old_value) < 1e-10:
                         continue
 
-                    # Validate against scaling if available
-                    if self.ctx.rom_definition and self.ctx.current_table.scaling:
-                        scaling = self.ctx.rom_definition.get_scaling(
-                            self.ctx.current_table.scaling
-                        )
-                        if scaling:
-                            if scaling.min is not None and new_value < scaling.min:
-                                continue
-                            if scaling.max is not None and new_value > scaling.max:
-                                continue
+                    # Note: intentionally no scaling min/max clamp here. The
+                    # XML-declared min/max is unreliable (some definitions use
+                    # min=0/max=0 as placeholders, and sibling tables legitimately
+                    # hold raw bytes outside the stated range). display_to_raw
+                    # below is the real safety net — it rejects values that
+                    # cannot be encoded in the storage type.
 
                     # Convert to raw values
                     old_raw = self.edit.display_to_raw(old_value)

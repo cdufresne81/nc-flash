@@ -13,7 +13,7 @@ You are running mandatory pre-commit checks. All steps must pass before committi
 - Python files staged: !`git diff --cached --name-only -- '*.py' | head -20 || echo "None"`
 - Current CHANGELOG Unreleased section: !`python -c "
 import re
-with open('CHANGELOG.md') as f:
+with open('CHANGELOG.md', encoding='utf-8') as f:
     text = f.read()
 match = re.search(r'## \[Unreleased\](.*?)(?=\n## \[v)', text, re.DOTALL)
 print(match.group(0).strip() if match else 'ERROR: No [Unreleased] section found!')
