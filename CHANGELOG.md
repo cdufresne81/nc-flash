@@ -4,6 +4,13 @@ All notable changes to NC Flash are documented here.
 
 ## [Unreleased]
 
+### Changed
+- **Vectorized ROM XOR patch** — `patch_rom` now uses numpy for the 1MB XOR instead of a Python byte loop (~100x faster, results identical)
+- **Vectorized `find_first_difference`** — uses numpy `where` instead of a Python byte loop for the 1MB ROM comparison used before dynamic flashing
+
+### Fixed
+- **Stale result group in Patch ROM dialog** — applying a second patch after a first success no longer leaves stale CRC/cal-ID info visible when the second patch fails validation
+
 ## [v2.7.1] - 2026-04-07
 
 ### Fixed
