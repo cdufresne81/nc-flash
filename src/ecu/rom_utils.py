@@ -2,6 +2,8 @@
 
 import logging
 
+import numpy as np
+
 from .constants import (
     ROM_SIZE,
     ROM_FLASH_START_MIN,
@@ -88,10 +90,12 @@ def find_first_difference(rom_a: bytes, rom_b: bytes) -> int:
 
     Returns -1 if ROMs are identical.
     """
-    min_len = min(len(rom_a), len(rom_b))
-    for i in range(min_len):
-        if rom_a[i] != rom_b[i]:
-            return i
+    a = np.frombuffer(rom_a, dtype=np.uint8)
+    b = np.frombuffer(rom_b, dtype=np.uint8)
+    min_len = min(len(a), len(b))
+    diffs = np.where(a[:min_len] != b[:min_len])[0]
+    if len(diffs) > 0:
+        return int(diffs[0])
     if len(rom_a) != len(rom_b):
         return min_len
     return -1
@@ -239,8 +243,9 @@ def patch_rom(stock_rom: bytes, patch_data: bytes) -> PatchResult:
     patched[0xFFB04:0xFFB08] = b"\xff\xff\xff\xff"
 
     # XOR patch onto ROM from offset 0x2000 to end
-    for i in range(_CAL_CRC_OFFSET, ROM_SIZE):
-        patched[i] ^= patch_data[i]
+    np.frombuffer(patched, dtype=np.uint8)[_CAL_CRC_OFFSET:] ^= np.frombuffer(
+        patch_data, dtype=np.uint8
+    )[_CAL_CRC_OFFSET:]
 
     # Extract identifiers from patched result
     cal_id = get_cal_id(patched)
