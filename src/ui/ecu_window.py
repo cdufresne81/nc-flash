@@ -40,6 +40,7 @@ from src.ecu.flash_manager import (
     SECURE_MODULE_AVAILABLE,
 )
 from src.ecu.exceptions import ECUError, FlashAbortedError, ROMValidationError
+from src.ecu.rom_utils import get_cal_id
 from src.ui.log_console import LogConsole
 
 logger = logging.getLogger(__name__)
@@ -622,6 +623,38 @@ class ECUProgrammingWindow(QMainWindow):
 
     # --- Flash Operations ---
 
+    def _check_rom_compatibility(self, new_rom: bytes, archive_path: str) -> bool:
+        """Warn if the new ROM's calibration ID differs from the archive.
+
+        A cal-ID mismatch means the ROM being flashed came from a different
+        ECU calibration than what was last written to this ECU. Dynamic flashing
+        across calibrations can leave the ECU in an inconsistent state.
+
+        Returns True if it is safe to proceed, False if the user cancelled.
+        """
+        try:
+            archive_data = Path(archive_path).read_bytes()
+            new_cal = get_cal_id(new_rom).decode("ascii", errors="replace").rstrip("\x00")
+            archive_cal = get_cal_id(archive_data).decode("ascii", errors="replace").rstrip("\x00")
+        except (ROMValidationError, OSError):
+            return True  # Can't read cal-IDs — don't block
+
+        if new_cal == archive_cal:
+            return True
+
+        reply = QMessageBox.warning(
+            self,
+            "Calibration Mismatch — Wrong Project?",
+            f"The ROM you are about to flash has calibration ID <b>{new_cal}</b>, "
+            f"but the last ROM written to this ECU had calibration ID <b>{archive_cal}</b>.<br><br>"
+            "Dynamic flashing across different calibrations can leave the ECU in an "
+            "inconsistent state and may brick it.<br><br>"
+            "Are you sure you want to continue?",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No,
+        )
+        return reply == QMessageBox.Yes
+
     def _check_voltage_warning(self, operation: str = "flash") -> bool:
         """Warn if battery voltage is low. Returns True if OK to proceed.
 
@@ -682,6 +715,8 @@ class ECUProgrammingWindow(QMainWindow):
             archive_path = str(rom_path.parent / ARCHIVE_FILENAME)
 
             if Path(archive_path).is_file():
+                if not self._check_rom_compatibility(rom_data, archive_path):
+                    return
                 self._start_flash(
                     "dynamic_flash", rom_data=rom_data, archive_path=archive_path
                 )
