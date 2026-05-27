@@ -4,6 +4,8 @@ All notable changes to NC Flash are documented here.
 
 ## [Unreleased]
 
+## [v2.7.2] - 2026-05-27
+
 ### Changed
 - **Vectorized ROM XOR patch** — `patch_rom` now uses numpy for the 1MB XOR instead of a Python byte loop (~100x faster, results identical)
 - **Vectorized `find_first_difference`** — uses numpy `where` instead of a Python byte loop for the 1MB ROM comparison used before dynamic flashing
@@ -146,7 +148,7 @@ All notable changes to NC Flash are documented here.
 ## [v2.3.2] - 2026-03-28
 
 ### Fixed
-- **PermissionError when installed for all users** — Session logs and auto-saved ROM reads were written to the app install directory (`Path(__file__).parent`), which is read-only under `C:\Program Files`. Both now write to `~/.nc-flash/` (logs → `~/.nc-flash/logs/`, reads → `~/.nc-flash/reads/`)
+- **PermissionError when installed for all users** — Session logs and auto-saved ROM reads were written to the app install directory (`Path(__file__).parent`), which is read-only under `C:\\Program Files`. Both now write to `~/.nc-flash/` (logs → `~/.nc-flash/logs/`, reads → `~/.nc-flash/reads/`)
 
 ## [v2.3.1] - 2026-03-27
 
