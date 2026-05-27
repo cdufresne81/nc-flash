@@ -1,5 +1,11 @@
 # Session Notes
 
+## Recent Completed Work (Apr 17, 2026) - ROM utils vectorization + patch dialog fix
+
+- **Vectorized XOR in `patch_rom`** — replaced Python byte loop (1MB, ~1-2s) with numpy in-place `^=` on bytearray buffer view (sub-ms). `src/ecu/rom_utils.py`. Added `import numpy as np` at module level.
+- **Vectorized `find_first_difference`** — replaced Python byte loop with `np.where(a != b)[0]`. Same file.
+- **Patch dialog UX fix** — `PatchRomDialog._apply_patch` now hides the result group before each attempt, so stale CRC/cal-ID from a prior success isn't shown after a failed retry. `src/ui/patch_dialog.py`.
+
 ## Recent Completed Work (Apr 7, 2026) - Paste scaling clamp bug
 
 - **Paste silently dropped out-of-range cells** — `clipboard.py::paste_selection` clamped pasted values against the XML-declared scaling `min`/`max` and silently skipped anything outside. Bug was latent since the clipboard refactor (commit `c5b0623`), not a recent regression. Broke copy between sibling tables where the source held raw bytes exceeding the stated max (VCT Target → [Flex] VCT Target with `35`s against `max=25`), and fully disabled paste for scalings with placeholder `min=0/max=0` (Speed Density - Volumetric Efficiency). Removed the clamp — `display_to_raw` is the real safety net. Added 2 regression tests in `TestPasteIgnoresScalingClamp`.

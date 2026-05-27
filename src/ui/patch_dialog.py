@@ -182,6 +182,7 @@ class PatchRomDialog(QDialog):
             return
 
         # Apply patch
+        self._result_group.setVisible(False)
         try:
             result = patch_rom(stock_data, patch_data)
         except ROMValidationError as e:
