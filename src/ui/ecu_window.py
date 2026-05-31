@@ -634,8 +634,14 @@ class ECUProgrammingWindow(QMainWindow):
         """
         try:
             archive_data = Path(archive_path).read_bytes()
-            new_cal = get_cal_id(new_rom).decode("ascii", errors="replace").rstrip("\x00")
-            archive_cal = get_cal_id(archive_data).decode("ascii", errors="replace").rstrip("\x00")
+            new_cal = (
+                get_cal_id(new_rom).decode("ascii", errors="replace").rstrip("\x00")
+            )
+            archive_cal = (
+                get_cal_id(archive_data)
+                .decode("ascii", errors="replace")
+                .rstrip("\x00")
+            )
         except (ROMValidationError, OSError):
             return True  # Can't read cal-IDs — don't block
 
