@@ -4,16 +4,10 @@ All notable changes to NC Flash are documented here.
 
 ## [Unreleased]
 
-## [v2.7.2] - 2026-05-27
+### Added
+- **Calibration mismatch warning before dynamic flash (#68)** — If the ROM being flashed has a different calibration ID than the last ROM written to the ECU (per the archive), a warning dialog is shown before proceeding. Prevents accidentally bricking the ECU by dynamic-flashing a ROM from the wrong project. User can still force-flash with confirmation.
 
-### Changed
-- **Vectorized ROM XOR patch** — `patch_rom` now uses numpy for the 1MB XOR instead of a Python byte loop (~100x faster, results identical)
-- **Vectorized `find_first_difference`** — uses numpy `where` instead of a Python byte loop for the 1MB ROM comparison used before dynamic flashing
-
-### Fixed
-- **Stale result group in Patch ROM dialog** — applying a second patch after a first success no longer leaves stale CRC/cal-ID info visible when the second patch fails validation
-
-## [v2.7.1] - 2026-04-07
+## [v2.7.2] - 2026-05-27 - 2026-04-07
 
 ### Fixed
 - **Paste silently dropped out-of-range cells** — `TableClipboardHelper.paste_selection` clamped pasted values against the XML-declared scaling `min`/`max`, silently skipping any cell outside that range. This broke copy between sibling tables when the source held raw bytes exceeding the stated max (e.g. `VCT Target` → `[Flex] VCT Target` with `35`s against a `max=25` scaling), and fully disabled paste for tables whose scaling had placeholder `min=0/max=0` (e.g. `Speed Density - Volumetric Efficiency`). Removed the clamp — `display_to_raw` is the real safety net. Added two regression tests.

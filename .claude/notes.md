@@ -1,5 +1,10 @@
 # Session Notes
 
+## Recent Completed Work (May 27, 2026) - Calibration mismatch warning before dynamic flash (#68)
+
+- **Pre-flash cal-ID check** — `_on_flash_current()` in `ecu_window.py` now compares the calibration ID of the ROM being flashed against the archive (last known ECU state) before starting a dynamic flash. If they differ, a `QMessageBox.warning` asks the user to confirm before proceeding. Check runs in the main thread before the worker starts, so no threading complexity. Gracefully skips validation if cal-IDs can't be read.
+- **3 new tests** in `TestCalIdCompatibility` (`test_ecu_rom_utils.py`) — verify same cal-ID matches, different cal-IDs mismatch, tuned ROM retains stock cal-ID.
+
 ## Recent Completed Work (Apr 17, 2026) - ROM utils vectorization + patch dialog fix
 
 - **Vectorized XOR in `patch_rom`** — replaced Python byte loop (1MB, ~1-2s) with numpy in-place `^=` on bytearray buffer view (sub-ms). `src/ecu/rom_utils.py`. Added `import numpy as np` at module level.

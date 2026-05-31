@@ -322,6 +322,34 @@ class TestPatchRomValidation:
         assert bytes(patched[0x2000:]) == bytes(stock_arr[0x2000:])
 
 
+class TestCalIdCompatibility:
+    """Tests for cal-ID comparison — the foundation of the project-mismatch check."""
+
+    def _rom_with_cal_id(self, cal_id: bytes) -> bytes:
+        rom = bytearray(ROM_SIZE)
+        rom[CAL_ID_OFFSETS[0] : CAL_ID_OFFSETS[0] + 6] = cal_id
+        return bytes(rom)
+
+    def test_same_cal_id_matches(self):
+        """Two ROMs with identical cal-IDs are from the same project."""
+        rom_a = self._rom_with_cal_id(b"LF9VEB")
+        rom_b = self._rom_with_cal_id(b"LF9VEB")
+        assert get_cal_id(rom_a) == get_cal_id(rom_b)
+
+    def test_different_cal_id_mismatches(self):
+        """Two ROMs with different cal-IDs are from different projects."""
+        rom_a = self._rom_with_cal_id(b"LF9VEB")
+        rom_b = self._rom_with_cal_id(b"LF4XEG")
+        assert get_cal_id(rom_a) != get_cal_id(rom_b)
+
+    def test_tuned_rom_same_cal_id_as_stock(self):
+        """A tuned ROM retains the same cal-ID as its stock base."""
+        stock = self._rom_with_cal_id(b"LF9VEB")
+        tuned = bytearray(stock)
+        tuned[0xC0060] = 0xFF  # arbitrary tuning change elsewhere
+        assert get_cal_id(stock) == get_cal_id(bytes(tuned))
+
+
 class TestPatchRomGoldenFileLF5AEG:
     """Golden-file test for LF5AEG calibration."""
 

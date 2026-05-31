@@ -10,7 +10,8 @@
       "WebFetch",
       "WebSearch",
       "Skill(eyesight)",
-      "Skill(precommit)"
+      "Skill(precommit)",
+      "Bash(echo \"exit: $?\")"
     ],
     "ask": [
       "Bash(rm -rf*)",
