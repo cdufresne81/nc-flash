@@ -4,6 +4,8 @@ All notable changes to NC Flash are documented here.
 
 ## [Unreleased]
 
+## [v2.8.0] - 2026-05-31
+
 ### Added
 - **Calibration mismatch warning before dynamic flash (#68)** — If the ROM being flashed has a different calibration ID than the last ROM written to the ECU (per the archive), a warning dialog is shown before proceeding. Prevents accidentally bricking the ECU by dynamic-flashing a ROM from the wrong project. User can still force-flash with confirmation.
 
