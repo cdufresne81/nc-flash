@@ -1,5 +1,17 @@
 # Session Notes
 
+## Recent Completed Work (Jun 14, 2026) - V2 TCM definitions imported (#70)
+
+- **Imported 4 V2 TCM definitions from NC_TCM into `examples/metadata/`** — LFG1TF000, LFG1TG000, LFACTA000, LFAMTA000 (`*_v02.xml`). Removed the legacy V1 `lfg1tf000.xml`. Added `examples/LFG1TF000.bin` (real dump) and `tests/test_tcm_v2_detection.py`.
+- **No parser change needed** — V2 TCM defs use the SAME RomDrop XML schema as the ECU defs, so `DefinitionParser`/`RomDetector` handle them unchanged. Detection matches via `internalidstring` `SW-LFG1TF000.HEX` at `internalidaddress` 0x10612.
+- **Validation status** — Only LFG1TF000 is hardware-validated (against `examples/LFG1TF000.bin`); LFG1TG000, LFACTA000, and LFAMTA000 await real TCM dumps before they can be trusted.
+- **Scope: Phase A only** — This is data + test + docs (zero `src/` changes), closing #70. Phase B (TCM flashing) is a separate future R&D effort, NOT in this branch. See `.claude/plans/tcm-v2-import.md`.
+
+## Recent Completed Work (Jun 10, 2026) - Auto-Blip table definitions for LF9VEB
+
+- **Auto-Blip category added to `examples/metadata/lf9veb.xml`** — 8 scalings + 8 tables (Enable, APP Threshold, Min VSS, Min RPM, Max RPM Target, Decay Factor, Max Duration, RPM Delta→TP Offset 2D) for the custom autoblip patch living in ROM free space (calibration block 0xFCAC0). These addresses only contain valid data on autoblip-patched ROMs (generator: nc-flash-re/tools/autoblip_patch.py); on stock or plain-Romdrop ROMs they read 0xFF. Validated with `tools/validate_autoblip_defs.py` (new one-shot checker: parses defs with DefinitionParser, reads expected defaults from a patched ROM — all 8 PASS).
+- Note: autoblip-patched ROMs cannot go through the Patch ROM dialog (`patch_rom` hard-fails on `romdrop.crc` patch CRC mismatch, by design). Workflow is full-image flash of the pre-patched bin; `correct_rom_checksums` handles the 3 stale Mazda checksum entries.
+
 ## Recent Completed Work (May 27, 2026) - Calibration mismatch warning before dynamic flash (#68)
 
 - **Pre-flash cal-ID check** — `_on_flash_current()` in `ecu_window.py` now compares the calibration ID of the ROM being flashed against the archive (last known ECU state) before starting a dynamic flash. If they differ, a `QMessageBox.warning` asks the user to confirm before proceeding. Check runs in the main thread before the worker starts, so no threading complexity. Gracefully skips validation if cal-IDs can't be read.
