@@ -61,6 +61,7 @@ python main.py
 ### Core Features
 - Automatic ROM ID detection and XML definition matching
 - Read NC Miata ECU ROM binary files
+- Read NC Miata TCM (transmission) ROMs via the V2 TCM definitions — read/inspect only; TCM flashing is not supported
 - View 1D, 2D, and 3D tables with proper axis labels
 - Interleaved 3D table support for TCM-style ROMs
 - Save modified ROM files
@@ -268,8 +269,10 @@ nc-flash/
 ├── tests/                             # Unit and integration tests
 ├── examples/                          # Example ROM files
 │   ├── metadata/                      # ROM metadata XML files
-│   │   └── lf9veb.xml                 # NC Miata ROM definition (511 tables)
-│   └── lf9veb.bin                     # Stock NC Miata ROM binary
+│   │   ├── lf9veb.xml                 # NC Miata ECU ROM definition (511 tables)
+│   │   └── *_v02.xml                  # V2 TCM definitions (LFG1TF000/TG000, LFACTA000, LFAMTA000)
+│   ├── lf9veb.bin                     # Stock NC Miata ECU ROM binary
+│   └── LFG1TF000.bin                  # Example NC TCM ROM dump
 ├── packaging/                         # Build & installer scripts
 │   ├── build.bat                      # Windows build script
 │   ├── installer.iss                  # Inno Setup installer script

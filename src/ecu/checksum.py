@@ -46,6 +46,13 @@ def correct_rom_checksums(rom_data: bytearray) -> list[tuple[int, int, int, int,
 
     Verified against romdrop.exe disassembly at 0x004014B7.
 
+    ECU-ONLY: the checksum table offset (CHECKSUM_TABLE_OFFSET = 0xFF650) and
+    the Mazda 32-bit-sum scheme are specific to the NC ECU. Do NOT call this on
+    a TCM ROM — the TCM uses a different (currently un-reverse-engineered)
+    checksum scheme, and running this against a TCM image would read garbage at
+    0xFF650 and write incorrect values. TCM flashing (see issue #72) must
+    implement and use its own checksum routine before any write.
+
     Returns list of (start, end_inclusive, checksum_offset, old_value, new_value) tuples.
     """
     corrections = []

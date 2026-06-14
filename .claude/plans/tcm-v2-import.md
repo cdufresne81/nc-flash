@@ -41,6 +41,12 @@
 - **Erase / program command sequences** — The exact UDS (or kernel-level) command sequence to erase flash blocks and program new data on the TCM is unknown and must be derived empirically/from RE.
 - **Checksum module** — The TCM ROM's checksum scheme (algorithm, covered ranges, table location) is unknown. It differs from the Mazda ECU checksum table at 0xFF650 and must be worked out independently before any written image will be accepted/run.
 
+**Investigation findings (Jun 14, 2026):**
+
+- **No TCM checksum is computed or corrected anywhere today.** `correct_rom_checksums()` (`src/ecu/checksum.py`) is the only checksum-correction routine, and it is **ECU-only** — hardcoded to the ECU checksum table at `0xFF650` with the Mazda 32-bit-sum scheme. It is called from exactly one place, `flash_manager._flash_rom_inner` (ECU dynamic flash), and always on a *copy*. It never runs on file save and never on a TCM ROM. So **editing + saving a TCM today is non-destructive** (no ECU logic touches it) but yields an image with stale TCM checksums — harmless because there is no TCM flash path. A docstring guard-note was added to `correct_rom_checksums()` so no future dev reuses it for the TCM.
+- **Phase B requirement:** the TCM flash path must implement and use its **own** checksum routine and must never call `correct_rom_checksums()`. The TCM def's `<checksummodule>` is currently empty and unused.
+- **NC_TCM public repo has no flash/seed-key source.** Its `tools/` folder ships only `NC_TCM_Read.exe` (read-only) and a `.gitkeep`. David's ability to flash TCUs comes from a separate/private tool — we must obtain the TCM seed/key + flash sequence from him to build Phase B.
+
 **Hard guardrails for Phase B:**
 
 - **Must NOT touch the validated ECU flash path.** The ECU read/flash code (security algorithm, flash manager, J2534 bridge) is hardware-proven and live. TCM flashing must be built as a fully separate path with no shared mutable state and no edits to ECU flashing logic.
