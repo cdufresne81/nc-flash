@@ -6,6 +6,13 @@
 - **No parser change needed** — V2 TCM defs use the SAME RomDrop XML schema as the ECU defs, so `DefinitionParser`/`RomDetector` handle them unchanged. Detection matches via `internalidstring` `SW-LFG1TF000.HEX` at `internalidaddress` 0x10612.
 - **Validation status** — Only LFG1TF000 is hardware-validated (against `examples/LFG1TF000.bin`); LFG1TG000, LFACTA000, and LFAMTA000 await real TCM dumps before they can be trusted.
 - **Scope: Phase A only** — This is data + test + docs (zero `src/` changes), closing #70. Phase B (TCM flashing) is a separate future R&D effort, NOT in this branch. See `.claude/plans/tcm-v2-import.md`.
+- **Phase A merged** — PR #73 merged to master (admin-merge after CI green; master requires review + CI, see memory `project_master_branch_protection`). Phase B filed as #72.
+
+## Recent Completed Work (Jun 14, 2026) - TCM README + checksum investigation (follow-up)
+
+- **Checksum investigation (re: TCM brick risk)** — `correct_rom_checksums()` (`src/ecu/checksum.py`) is ECU-only (table @ 0xFF650) and called from ONE place: `flash_manager._flash_rom_inner` (ECU dynamic flash), on a copy. It NEVER runs on save and NEVER on a TCM ROM. So editing+saving a TCM today is non-destructive; there's no TCM checksum handling and none is needed until Phase B. Added an ECU-only docstring guard-note to `correct_rom_checksums()` so it isn't reused for TCM. Phase B must implement its own TCM checksum routine.
+- **NC_TCM has no flash source** — public NC_TCM `tools/` ships only `NC_TCM_Read.exe` + `.gitkeep`. David's TCU flashing is an external/private tool; need him to share seed/key + flash sequence for Phase B.
+- **README** — documented TCM read support (read-only) and the V2 defs + example dump in Features and project structure.
 
 ## Recent Completed Work (Jun 10, 2026) - Auto-Blip table definitions for LF9VEB
 

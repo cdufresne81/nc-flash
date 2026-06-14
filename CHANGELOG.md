@@ -8,6 +8,9 @@ All notable changes to NC Flash are documented here.
 - **V2 TCM ROM definitions** — Imported transmission control module (TCM) definitions from the NC_TCM project (djobes) for `LFG1TF000`, `LFG1TG000`, `LFACTA000`, and `LFAMTA000` (Mazda MX-5 NC transmission control module). Note: `LFG1TG000`, `LFACTA000`, and `LFAMTA000` are imported but NOT yet validated against real TCM dumps — only `LFG1TF000` has a hardware-backed test.
 - **TCM sample dump and detection test** — Added `examples/LFG1TF000.bin` sample TCM dump and `tests/test_tcm_v2_detection.py` validating real detection of the `LFG1TF000` V2 definition.
 
+### Changed
+- **TCM read-only documentation & checksum guard-note** — README now documents TCM ROM read support (read/inspect only — no TCM flashing) plus the V2 defs and example dump. Added an ECU-only guard-note to `correct_rom_checksums()` clarifying it must never run on a TCM ROM (the TCM needs its own, not-yet-implemented checksum routine — see #72). No behavior change; `correct_rom_checksums()` was already ECU-flash-only and never touches TCM ROMs.
+
 ### Removed
 - **Legacy V1 TCM definition** — Removed `examples/metadata/lfg1tf000.xml` (superseded by `LFG1TF000_v02.xml`), resolving ambiguous detection.
 
