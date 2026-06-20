@@ -5,7 +5,7 @@ All notable changes to NC Flash are documented here.
 ## [Unreleased]
 
 ### Added
-- **V2 TCM ROM definitions** — Imported transmission control module (TCM) definitions from the NC_TCM project (djobes) for `LFG1TF000`, `LFG1TG000`, `LFACTA000`, and `LFAMTA000` (Mazda MX-5 NC transmission control module). Note: `LFG1TG000`, `LFACTA000`, and `LFAMTA000` are imported but NOT yet validated against real TCM dumps — only `LFG1TF000` has a hardware-backed test.
+- **V2 TCM ROM definitions** — Imported transmission control module (TCM) definitions from the NC_TCM project (djobes) for `LFG1TF000` and `LFG1TG000` (Mazda MX-5 NC transmission control module). Note: `LFG1TG000` is imported but NOT yet validated against real TCM dumps — only `LFG1TF000` has a hardware-backed test.
 - **TCM sample dump and detection test** — Added `examples/LFG1TF000.bin` sample TCM dump and `tests/test_tcm_v2_detection.py` validating real detection of the `LFG1TF000` V2 definition.
 
 ### Changed
