@@ -23,7 +23,8 @@
 **Validation status:**
 
 - **LFG1TF000 — hardware-validated.** Detection and table reads confirmed against the real dump `examples/LFG1TF000.bin`.
-- **LFG1TG000 / LFACTA000 / LFAMTA000 — NOT yet validated.** These were imported from NC_TCM but no real dumps are on hand. They must be checked against genuine ROM dumps before being trusted; treat their addresses/scalings as provisional until then.
+- **LFG1TG000 — NOT yet validated.** Imported from NC_TCM but no real dump is on hand. Must be checked against a genuine ROM dump before being trusted; treat its addresses/scalings as provisional until then.
+- **LFACTA000 / LFAMTA000 — REMOVED.** Owner confirmed these two imported definitions were incorrect; `LFACTA000_v02.xml` and `LFAMTA000_v02.xml` were removed from `examples/metadata/`.
 
 **Net effect:** Users can open and inspect V2 TCM ROMs (reads only — there is no TCM write path). No risk to any existing ECU functionality because nothing in `src/` was modified.
 
