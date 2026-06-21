@@ -365,6 +365,34 @@ class TestReadMemoryByAddress:
         result = mock_uds.read_memory_by_address(0x0000, 4)
         assert result == payload
 
+    def test_passes_through_timeout_and_pending_max(self):
+        """The read-retry path forwards its tight per-block budget to
+        send_request so a dropped block fails fast instead of stalling."""
+        from src.ecu.protocol import UDSConnection
+
+        transport = MagicMock()
+        transport.receive_message.return_value = build_positive_response(
+            SID_READ_MEM_BY_ADDR, b"\x00\x01\x02\x03"
+        ).Data[4:8]
+        # Easiest: stub send_request and assert the kwargs are threaded through.
+        uds = UDSConnection(transport)
+        with patch.object(uds, "send_request", return_value=b"\x00") as sr:
+            uds.read_memory_by_address(0x10, 4, timeout=1234, pending_max=2345)
+        _args, kwargs = sr.call_args
+        assert kwargs["timeout"] == 1234
+        assert kwargs["pending_max"] == 2345
+
+
+class TestUdsFlush:
+    def test_flush_delegates_to_transport(self):
+        """UDSConnection.flush() must delegate to the transport's flush()."""
+        from src.ecu.protocol import UDSConnection
+
+        transport = MagicMock()
+        uds = UDSConnection(transport)
+        uds.flush()
+        transport.flush.assert_called_once_with()
+
 
 # -----------------------------------------------------------------------
 # PASSTHRU_MSG_DATA_SIZE (#44)

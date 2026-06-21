@@ -93,6 +93,7 @@ class ECUSession(QObject):
 
         from .j2534 import J2534Device, setup_isotp_flow_control
         from .protocol import UDSConnection
+        from .transport import J2534Transport
         from .constants import (
             J2534_PROTOCOL_ISO15765,
             CAN_BAUDRATE,
@@ -111,7 +112,7 @@ class ECUSession(QObject):
                 self._channel_id, {ISO15765_BS: 0, ISO15765_STMIN: 0}
             )
             self._filter_id = setup_isotp_flow_control(self._device, self._channel_id)
-            self._uds = UDSConnection(self._device, self._channel_id)
+            self._uds = UDSConnection(J2534Transport(self._device, self._channel_id))
 
             # Single Tester Present to verify ECU is alive
             self._uds.tester_present()

@@ -9,8 +9,7 @@ def _make_uds(response_bytes):
     from src.ecu.protocol import UDSConnection
 
     uds = UDSConnection.__new__(UDSConnection)
-    uds._device = MagicMock()
-    uds._channel_id = 1
+    uds._transport = MagicMock()
     uds.send_request = MagicMock(return_value=response_bytes)
     return uds
 

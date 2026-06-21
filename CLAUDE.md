@@ -27,6 +27,8 @@ Reference these before modifying related functionality:
 - `docs/internal/ROM_DEFINITION_FORMAT.md` - XML format for ROM definitions
 - `docs/internal/UI_TESTING.md` - GUI test runner, screenshots, and test scripts
 - `docs/internal/CODE_AUDIT.md` - Full codebase audit findings (bugs, dead code, duplication, test gaps)
+- `docs/internal/WICAN_TRANSPORT.md` - Design & build plan for WiCAN PRO wireless (WiFi/SLCAN) ECU transport; reference before touching the ECU transport/session/flash-connect layer
+- `docs/internal/WICAN_MANUAL_TEST.md` - Hardware-in-the-loop checklist for the WiCAN ROM read path (firmware version ping, bench-tool read + byte-compare, UI flow); run after touching the transport, firmware, or adapter-selector UI
 
 **Rule:** When creating new documentation in `docs/`, add it to this list with a brief description of when to reference it.
 

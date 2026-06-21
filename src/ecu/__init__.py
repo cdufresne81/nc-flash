@@ -41,6 +41,22 @@ from .rom_utils import (
 from .dtc import get_dtc_description, get_dtc_prefix, format_dtc
 from .flash_manager import FlashManager, FlashState, SECURE_MODULE_AVAILABLE
 
+# Transports are PySide6-free core modules; guard imports anyway so a broken
+# optional dependency (e.g. WiCAN's stack) never takes down the package.
+from .transport import (
+    EcuTransport,
+    J2534Transport,
+    FakeTransport,
+    create_ecu_transport,
+)
+
+try:
+    from .wican_transport import WiCANTransport, WiCANError
+except ImportError:
+    # Optional WiCAN transport stack unavailable.
+    WiCANTransport = None  # type: ignore[misc, assignment]
+    WiCANError = None  # type: ignore[misc, assignment]
+
 try:
     from .session import ECUSession, ECUSessionState
 except ImportError:
@@ -88,6 +104,13 @@ __all__ = [
     "FlashManager",
     "FlashState",
     "SECURE_MODULE_AVAILABLE",
+    # Transports
+    "EcuTransport",
+    "J2534Transport",
+    "FakeTransport",
+    "WiCANTransport",
+    "WiCANError",
+    "create_ecu_transport",
     # Session
     "ECUSession",
     "ECUSessionState",

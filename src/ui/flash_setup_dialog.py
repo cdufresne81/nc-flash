@@ -52,6 +52,7 @@ class _ECUInfoWorker(QObject):
             else:
                 from src.ecu.j2534 import J2534Device, setup_isotp_flow_control
                 from src.ecu.protocol import UDSConnection
+                from src.ecu.transport import J2534Transport
                 from src.ecu.constants import (
                     J2534_PROTOCOL_ISO15765,
                     CAN_BAUDRATE,
@@ -66,7 +67,7 @@ class _ECUInfoWorker(QObject):
                     device.set_config(channel_id, {ISO15765_BS: 0, ISO15765_STMIN: 0})
                     setup_isotp_flow_control(device, channel_id)
 
-                    uds = UDSConnection(device, channel_id)
+                    uds = UDSConnection(J2534Transport(device, channel_id))
                     uds.tester_present()
 
                     vin_data = uds.read_vin_block()
