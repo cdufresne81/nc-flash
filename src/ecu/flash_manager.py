@@ -722,7 +722,7 @@ class FlashManager:
         logger.info("Flash operation completed successfully")
 
     def _read_block_with_retry(self, offset: int, size: int) -> bytes:
-        """Read one ROM block, retrying on a lost/garbled response.
+        """Read one memory block (ROM or RAM), retrying on a lost/garbled response.
 
         A read is idempotent (re-requesting an address never changes ECU state),
         so on a lossy link a block whose response is dropped or corrupted is
@@ -752,7 +752,7 @@ class FlashManager:
                     )
                 if attempt > 1:
                     logger.info(
-                        "ROM read recovered block at 0x%06X on attempt %d",
+                        "memory read recovered block at 0x%06X on attempt %d",
                         offset,
                         attempt,
                     )
@@ -763,7 +763,8 @@ class FlashManager:
                 # idempotent — flush stale frames and try again.
                 last_exc = exc
                 logger.warning(
-                    "ROM read block at 0x%06X timed out (attempt %d/%d); " "retrying",
+                    "memory read block at 0x%06X timed out (attempt %d/%d); "
+                    "retrying",
                     offset,
                     attempt,
                     READ_BLOCK_RETRIES,
@@ -774,7 +775,7 @@ class FlashManager:
                     logger.debug("Flush before read retry failed: %s", flush_exc)
 
         raise FlashError(
-            f"ROM read failed at 0x{offset:06X} after {READ_BLOCK_RETRIES} "
+            f"memory read failed at 0x{offset:06X} after {READ_BLOCK_RETRIES} "
             f"attempts: {last_exc}"
         )
 
@@ -1015,7 +1016,11 @@ class FlashManager:
                     raise FlashAbortedError("RAM scan aborted by user")
 
                 address = base_address + i * page_size
-                data = self._uds.read_memory_by_address(address, read_size)
+                # Idempotent per-page retry, same as read_rom: a lossy WiCAN link
+                # can drop a frame mid-page, and re-requesting a RAM address never
+                # changes ECU state. On a reliable J2534 link this is a straight
+                # passthrough (first attempt always succeeds).
+                data = self._read_block_with_retry(address, read_size)
                 offset = i * page_size
                 ram[offset : offset + page_size] = data[:page_size]
                 pct = ((i + 1) / total_pages) * 100.0

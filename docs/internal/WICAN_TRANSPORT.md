@@ -133,6 +133,10 @@ loaded bus. → A full 1 MB flash is **~13–14 min**; dynamic flash proportiona
   block sequence counter (verified vs romdrop); the ECU writes sequentially, so resending a
   consumed block shifts everything = brick. Resilience instead = TCP reliability + NRC 0x78
   pending-wait + **clean abort-and-restart-from-scratch** (re-auth, re-SBL, re-transfer).
+  **IMPLEMENTED (build-only, NOT hardware-validated):** `src/ecu/wican_flash.py` (`WiCANFlasher`)
+  + `src/ecu/link_quality.py` — pre-flight link-quality gate, battery guard, abort-and-restart-from-
+  scratch (a fresh whole flash per attempt, never a mid-stream resend), and optional read-back
+  verify. Bench-validate (user-gated) before production use. See `.claude/plans/wican-ecu-functions-goal.md`.
 - **Pre-flight link-quality gate (FLASH ONLY):** ~25 TesterPresent round-trips; require 0 loss
   + stable latency (p95 under a ceiling) + RSSI ok, else block the flash. Reads/diagnostics are
   never gated (idempotent/recoverable).

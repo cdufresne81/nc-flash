@@ -57,6 +57,37 @@ Once the adapter selector exists, this section should verify:
 4. Save the dump and byte-compare it to `wican_stmin0_full.bin` (identical).
 5. Confirm the device protocol is **restored** to its previous value on disconnect.
 
+## 3b. ECU diagnostic functions — RAM scan, read/clear DTC (goal 2 Part A)
+
+These drive the SAME `WiCANTransport` + `FlashManager` seam the UI will use
+(`tools/wican_bench_ecu.py`), so a green run is evidence the functions work over
+WiCAN. READ RAM and READ DTC are non-destructive; CLEAR DTC mutates ECU state
+(benign, but a write — confirm with the owner, and it needs `--yes`).
+
+```bash
+# READ DTC (no auth needed) — expect the same codes a J2534/OBD reader shows:
+python tools/wican_bench_ecu.py --host 192.168.1.169 --port 35000 --read-dtc
+
+# READ RAM (needs _secure auth) — 48 KB dump + sanity summary:
+python tools/wican_bench_ecu.py --host 192.168.1.169 --port 35000 --scan-ram \
+    --out wican_ram.bin
+
+# CLEAR DTC (mutates state) — read -> clear -> re-read:
+python tools/wican_bench_ecu.py --host 192.168.1.169 --port 35000 --clear-dtc --yes
+```
+
+PASS criteria:
+- **READ DTC** — codes match a J2534/OBD-II read of the same ECU state (run both
+  back-to-back). `RESULT: OK`.
+- **READ RAM** — `RESULT: OK — dump looks like real memory` (non-uniform, mixed
+  byte values). RAM is volatile, so there is no byte-oracle; the sanity summary
+  guards against an all-zero/all-0xFF "silent failure" dump.
+- **CLEAR DTC** — `RESULT: OK — clear took`. If a hard fault is present with the
+  engine running, codes may re-set immediately; the verdict accepts a reduced
+  set. Re-read with `--read-dtc` to confirm.
+
+`--auto-config` works here too (flips to `slcan` over HTTP, restores on exit).
+
 ## 4. Teardown
 
 - Confirm the WiCAN protocol was restored (the bench tool / configurator does this

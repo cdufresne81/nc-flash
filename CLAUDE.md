@@ -29,6 +29,7 @@ Reference these before modifying related functionality:
 - `docs/internal/CODE_AUDIT.md` - Full codebase audit findings (bugs, dead code, duplication, test gaps)
 - `docs/internal/WICAN_TRANSPORT.md` - Design & build plan for WiCAN PRO wireless (WiFi/SLCAN) ECU transport; reference before touching the ECU transport/session/flash-connect layer
 - `docs/internal/WICAN_MANUAL_TEST.md` - Hardware-in-the-loop checklist for the WiCAN ROM read path (firmware version ping, bench-tool read + byte-compare, UI flow); run after touching the transport, firmware, or adapter-selector UI
+- `docs/internal/WICAN_PART_C_FINDINGS.md` - Investigation findings (CAN-wedge reboot root cause + clean-teardown fix, no-reboot protocol switch, unified read+write SD architecture); reference before implementing the firmware reboot fix or deciding the WiCAN WRITE-over-SD architecture
 
 **Rule:** When creating new documentation in `docs/`, add it to this list with a brief description of when to reference it.
 
