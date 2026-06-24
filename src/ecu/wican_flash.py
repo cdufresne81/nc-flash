@@ -37,6 +37,8 @@ from typing import Callable, Optional
 from .checksum import correct_rom_checksums
 from .constants import (
     BATTERY_VOLTAGE_WARNING,
+    FLASH_COUNTER_OFFSET,
+    FLASH_COUNTER_SIZE,
     ROM_FLASH_START_MIN,
 )
 from .exceptions import (
@@ -70,6 +72,19 @@ DEFAULT_RESTART_BACKOFF_S = 3.0
 #: (ROM validation, checksum, security denied, user abort) is non-recoverable by
 #: retrying and propagates immediately.
 _RESTARTABLE = (WiCANError, TransferError, UDSTimeoutError)
+
+#: MASTER GATE for the WiCAN write path at the UI seam.
+#: **ON (Option B Phase 6).** The brick-prone host-driven, block-by-block WiFi
+#: write (this module's ``WiCANFlasher``) was the reason this was OFF (an
+#: interrupted programming session needs a reflash, not a power cycle — see memory
+#: ``project_wican_write_bricks_on_interrupt``); it has been **superseded** by the
+#: SD-staged, firmware-driven local-CAN flash (``WiCANSdFlasher``, "Option B"),
+#: which removes WiFi from the flash loop and was proven byte-perfect on the live
+#: MX-5 NC ECU (2026-06-23). ``_build_flash_driver`` routes WiCAN writes to that
+#: SD flasher; this gate now enables it. It stays behind the ``version_ping``
+#: firmware rev-gate (NCFRv5+), the link/battery pre-flight gate, and the SD-image
+#: CRC32 digest gate. J2534 flashing is never gated by this.
+WICAN_WRITE_ENABLED = True
 
 
 class WiCANFlasher:
@@ -280,7 +295,16 @@ class WiCANFlasher:
         """
         expected = bytearray(rom_data)
         correct_rom_checksums(expected)  # match what was actually written
-        written = self._fresh_fm().read_rom(progress_cb=progress_cb)
+        written = bytearray(self._fresh_fm().read_rom(progress_cb=progress_cb))
+
+        # The ECU stamps its own flash-cycle counter during programming, so those
+        # bytes never match the source. Mask the counter region on BOTH sides
+        # (matching get_calibration_crc's clear_flash_counter) so the read-back
+        # compares only what we actually wrote — otherwise a byte-perfect flash
+        # would "fail" on the ECU-managed counter (hardware-confirmed 2026-06-23).
+        ctr, clen = FLASH_COUNTER_OFFSET, FLASH_COUNTER_SIZE
+        expected[ctr : ctr + clen] = b"\xff" * clen
+        written[ctr : ctr + clen] = b"\xff" * clen
 
         start = ROM_FLASH_START_MIN
         off = find_first_difference(written[start:], expected[start:])

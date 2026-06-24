@@ -12,6 +12,7 @@ import logging
 from pathlib import Path
 
 from PySide6.QtWidgets import (
+    QApplication,
     QMainWindow,
     QWidget,
     QVBoxLayout,
@@ -327,7 +328,14 @@ class ECUProgrammingWindow(QMainWindow):
         root.addWidget(self._stack)
 
         # --- Activity Log ---
-        self._log = LogConsole(auto_register=True)
+        # Restrict to ECU-relevant loggers and drop Qt diagnostics so unrelated
+        # subsystems / scary "Qt: Cannot set parent..." traces don't unnerve the
+        # user mid-flash. Qt records still reach the session log file.
+        self._log = LogConsole(
+            auto_register=True,
+            allowed_logger_prefixes=["src.ecu", "src.ui.ecu_window", "__main__"],
+            drop_qt_logger=True,
+        )
         self._log.setMinimumHeight(150)
         root.addWidget(self._log, stretch=1)
 
@@ -336,9 +344,40 @@ class ECUProgrammingWindow(QMainWindow):
     def _get_dll_path(self) -> str:
         return self._main_window.settings.get_j2534_dll_path() or DEFAULT_J2534_DLL
 
+    def _build_adapter_config(self) -> dict:
+        """Build the transport config for ECUSession from saved settings."""
+        s = self._main_window.settings
+        if s.get_ecu_adapter() == "wican":
+            return {
+                "kind": "wican",
+                "host": s.get_wican_host(),
+                "port": s.get_wican_port(),
+                "auto_config": s.get_wican_auto_config(),
+            }
+        return {"kind": "j2534", "dll_path": self._get_dll_path()}
+
+    def _is_wican(self) -> bool:
+        return bool(self._session and self._session.adapter_kind == "wican")
+
+    def _on_connect_progress(self, message: str):
+        """Show a connect-step message on the connection label."""
+        self._conn_label.setText(message)
+        # The WiCAN connect runs synchronously on the UI thread; pump once so the
+        # step message (incl. the ~6 s SLCAN-reboot notice) paints before the
+        # blocking switch/open call rather than after it returns.
+        QApplication.processEvents()
+
     def _on_connect(self):
         if self._session and self._session.is_connected:
             return
+
+        # Tear down any previous (non-connected) session before replacing it, so
+        # a stale WiCAN session — e.g. left DISCONNECTED-but-still-SLCAN after a
+        # failed read/flash — restores its protocol instead of being orphaned and
+        # stranding the adapter / losing the user's original protocol.
+        if self._session is not None:
+            self._session.cleanup()
+            self._session = None
 
         # Disconnect main window session if active
         if (
@@ -348,15 +387,25 @@ class ECUProgrammingWindow(QMainWindow):
             if self._main_window._ecu_session.is_connected:
                 self._main_window._ecu_session.disconnect_ecu()
 
-        self._conn_label.setText("Connecting...")
+        adapter = self._build_adapter_config()
+        if adapter["kind"] == "wican":
+            connecting_msg = "Connecting to WiCAN (may reboot to SLCAN, ~6s)..."
+        else:
+            connecting_msg = "Connecting..."
+        self._conn_label.setText(connecting_msg)
         self._conn_label.setStyleSheet(
             "font-weight: bold; font-size: 13px; color: #ccaa44; border: none;"
         )
         self._btn_connect.setEnabled(False)
+        if adapter["kind"] == "wican":
+            # Paint the connecting label before the blocking WiCAN protocol
+            # switch. J2534 connect is fast and stays behaviourally unchanged.
+            QApplication.processEvents()
 
-        self._session = ECUSession(self._get_dll_path(), parent=self)
+        self._session = ECUSession(adapter_config=adapter, parent=self)
         self._session.state_changed.connect(self._on_session_state)
         self._session.connection_lost.connect(self._on_connection_lost)
+        self._session.progress.connect(self._on_connect_progress)
         self._session.connect_ecu()
 
     def _on_disconnect(self):
@@ -694,6 +743,48 @@ class ECUProgrammingWindow(QMainWindow):
             return reply == QMessageBox.Yes
         return True
 
+    def _confirm_wican_flash(self) -> bool:
+        """Gate the WiCAN (WiFi) flash path before a write starts.
+
+        Returns True for J2534 (no extra prompt). For WiCAN the host-driven write
+        path is hard-disabled (make-safe) until the SD-staged flash ships: show a
+        plain-language explanation and refuse. Once ``WICAN_WRITE_ENABLED`` is
+        flipped on, fall back to the experimental-risk confirmation.
+        """
+        if not self._is_wican():
+            return True
+        from src.ecu.wican_flash import WICAN_WRITE_ENABLED
+
+        if not WICAN_WRITE_ENABLED:
+            QMessageBox.information(
+                self,
+                "WiCAN Flash Unavailable",
+                "Flashing over WiCAN (WiFi) is temporarily disabled.\n\n"
+                "The host-driven wireless write can soft-brick the ECU if the link "
+                "drops mid-flash, so it is turned off while the safer SD-staged "
+                "flash path is being built.\n\n"
+                "Use a J2534 cable to flash for now. Reading, RAM scan and DTC "
+                "functions over WiCAN are unaffected.",
+            )
+            return False
+        reply = QMessageBox.warning(
+            self,
+            "Flash over WiCAN (Wireless)",
+            "Wireless flashing uses the SD-staged path: the ROM is uploaded to the "
+            "adapter's SD card and CRC-checked BEFORE any ECU contact, then the "
+            "adapter flashes the ECU directly over CAN — WiFi is not in the flash "
+            "loop, so a dropped WiFi link cannot interrupt the programming session.\n\n"
+            "• The link is checked first — a flash is refused on a lossy link.\n"
+            "• Keep the ignition ON and stay near the adapter during upload + flash.\n"
+            "• AFTER the flash completes you MUST cycle the ignition (key OFF ~10 s, "
+            "then ON) to boot the new calibration — the ECU stays in its bootloader "
+            "until you do.\n\n"
+            "Proceed?",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No,
+        )
+        return reply == QMessageBox.Yes
+
     def _on_flash_current(self):
         """One-click flash: dynamic if archive exists, else full."""
         self._ecu_busy = True
@@ -701,6 +792,8 @@ class ECUProgrammingWindow(QMainWindow):
         started = False
         try:
             if not self._check_voltage_warning():
+                return
+            if not self._confirm_wican_flash():
                 return
             doc = self._main_window.get_current_document()
             if not doc:
@@ -719,15 +812,24 @@ class ECUProgrammingWindow(QMainWindow):
             rom_path = Path(doc.rom_path).resolve()
             rom_data = rom_path.read_bytes()
             archive_path = str(rom_path.parent / ARCHIVE_FILENAME)
+            source_name = rom_path.name
 
             if Path(archive_path).is_file():
                 if not self._check_rom_compatibility(rom_data, archive_path):
                     return
                 self._start_flash(
-                    "dynamic_flash", rom_data=rom_data, archive_path=archive_path
+                    "dynamic_flash",
+                    rom_data=rom_data,
+                    archive_path=archive_path,
+                    source_name=source_name,
                 )
             else:
-                self._start_flash("flash", rom_data=rom_data, archive_path=archive_path)
+                self._start_flash(
+                    "flash",
+                    rom_data=rom_data,
+                    archive_path=archive_path,
+                    source_name=source_name,
+                )
             started = True
         except Exception:
             pass
@@ -742,6 +844,8 @@ class ECUProgrammingWindow(QMainWindow):
         started = False
         try:
             if not self._check_voltage_warning():
+                return
+            if not self._confirm_wican_flash():
                 return
             doc = self._main_window.get_current_document()
             if not doc:
@@ -758,7 +862,12 @@ class ECUProgrammingWindow(QMainWindow):
             rom_path = Path(doc.rom_path).resolve()
             rom_data = rom_path.read_bytes()
             archive_path = str(rom_path.parent / ARCHIVE_FILENAME)
-            self._start_flash("flash", rom_data=rom_data, archive_path=archive_path)
+            self._start_flash(
+                "flash",
+                rom_data=rom_data,
+                archive_path=archive_path,
+                source_name=rom_path.name,
+            )
             started = True
         except Exception:
             pass
@@ -785,8 +894,83 @@ class ECUProgrammingWindow(QMainWindow):
             return
         self._start_flash("scan_ram")
 
-    def _start_flash(self, operation: str, **kwargs):
-        """Start a flash/read operation with inline progress."""
+    def _build_flash_driver(self, operation: str, source_name: str | None = None):
+        """Select and prepare the flash/read driver for the current adapter.
+
+        ``source_name`` (the ROM file's name as shown in NC Flash) is used only by
+        the WiCAN SD-staged flasher, to name the staged SD image meaningfully.
+
+        Returns a driver exposing the operation's method (``read_rom`` /
+        ``scan_ram`` / ``flash_rom`` / ``dynamic_flash``):
+
+          * J2534: a ``FlashManager`` borrowing the open J2534 session.
+          * WiCAN read/scan: a ``FlashManager`` borrowing the WiCAN ``uds``.
+          * WiCAN flash: a ``WiCANFlasher`` (pre-flight link gate + battery guard
+            + abort-and-restart, no mid-stream resend) over the WiCAN transport.
+
+        Sets ``self._session_acquired``. Returns ``None`` if a WiCAN operation
+        has no open connection (the caller aborts the op).
+        """
+        # Make-safe backstop (Option B Phase 0): the host-driven WiCAN write path
+        # soft-bricks the ECU on a mid-flash link drop, so it is hard-disabled at
+        # this single choke point until the SD-staged flash ships. Reads / RAM
+        # scan / DTC over WiCAN stay live. _confirm_wican_flash already explains
+        # this to the user before we reach here; this guard catches any other
+        # caller. J2534 flashing is never affected.
+        from src.ecu.wican_flash import WICAN_WRITE_ENABLED
+
+        if (
+            self._is_wican()
+            and operation in ("flash", "dynamic_flash")
+            and not WICAN_WRITE_ENABLED
+        ):
+            logger.warning(
+                "WiCAN %s blocked: host-driven WiCAN write is disabled pending "
+                "Option B (SD-staged firmware-driven flash)",
+                operation,
+            )
+            return None
+
+        self._session_acquired = False
+        device = channel_id = filter_id = uds = None
+        if self._session and self._session.is_connected:
+            try:
+                device, channel_id, filter_id, uds = self._session.acquire()
+                self._session_acquired = True
+            except RuntimeError:
+                device = channel_id = filter_id = uds = None
+
+        if self._is_wican():
+            transport = self._session.transport if self._session else None
+            if operation in ("flash", "dynamic_flash"):
+                if transport is None:
+                    logger.error("WiCAN flash requested with no open transport")
+                    return None
+                # Option B: the SD-staged, firmware-driven flash (supersedes the
+                # brick-prone host-driven WiCANFlasher). Only reached once
+                # WICAN_WRITE_ENABLED is flipped on (the make-safe gate above).
+                from src.ecu.wican_sd_flash import WiCANSdFlasher
+
+                return WiCANSdFlasher(transport, source_name=source_name)
+            if uds is None:
+                logger.error("WiCAN %s requested with no open connection", operation)
+                return None
+            manager = FlashManager()
+            manager.use_uds(uds)
+            return manager
+
+        # J2534 (default) — unchanged behaviour.
+        manager = FlashManager(self._get_dll_path())
+        if self._session_acquired:
+            manager.use_session(device, channel_id, filter_id, uds)
+        return manager
+
+    def _start_flash(self, operation: str, *, source_name: str | None = None, **kwargs):
+        """Start a flash/read operation with inline progress.
+
+        ``source_name`` (kept out of ``**kwargs`` so it is not forwarded to the
+        worker) names the staged SD image for the WiCAN write path.
+        """
         self._poll_timer.stop()
         self._update_action_states()  # Disable all buttons
         self._stack.setCurrentIndex(1)  # Show progress page
@@ -800,48 +984,60 @@ class ECUProgrammingWindow(QMainWindow):
         self._btn_abort.setVisible(allow_abort)
         self._btn_done.setVisible(False)
 
-        manager = FlashManager(self._get_dll_path())
-
-        # Borrow session if connected
-        session_acquired = False
-        if self._session and self._session.is_connected:
-            try:
-                device, channel_id, filter_id, uds = self._session.acquire()
-                manager.use_session(device, channel_id, filter_id, uds)
-                session_acquired = True
-            except RuntimeError:
-                pass
+        manager = self._build_flash_driver(operation, source_name=source_name)
+        if manager is None:
+            # WiCAN op with no open transport — bail back to the actions page.
+            self._stack.setCurrentIndex(0)
+            self._ecu_busy = False
+            self._update_action_states()
+            return
 
         self._current_manager = manager
-        self._session_acquired = session_acquired
         self._current_operation = operation
 
         worker = _FlashWorker(manager, operation, **kwargs)
         thread = QThread()
         worker.moveToThread(thread)
 
+        self._flash_thread = thread
+        self._flash_worker = worker
+
+        # IMPORTANT: connect *bound methods* of this window, NOT bare lambdas. The
+        # window is a QObject living in the GUI thread, so a queued connection
+        # delivers the slot to the GUI thread. A bare lambda has no receiver
+        # QObject, so Qt runs it in the *sender's* (worker) thread — and every GUI
+        # mutation inside _on_flash_finished (setVisible, QMessageBox, repaint)
+        # would then execute off the GUI thread, raising "QObject::setParent:
+        # Cannot set parent, new parent is in a different thread" and intermittently
+        # crashing on a cross-thread paint. The handlers read _flash_thread /
+        # _flash_worker (set just above) to reach the thread + worker.
         worker.progress.connect(self._on_flash_progress, Qt.QueuedConnection)
-        worker.finished.connect(
-            lambda: self._on_flash_finished(True, thread, worker),
-            Qt.QueuedConnection,
-        )
-        worker.error.connect(
-            lambda msg: self._on_flash_finished(False, thread, worker, msg),
-            Qt.QueuedConnection,
-        )
+        worker.finished.connect(self._on_worker_finished, Qt.QueuedConnection)
+        worker.error.connect(self._on_worker_error, Qt.QueuedConnection)
         try:
             self._btn_abort.clicked.disconnect()
         except RuntimeError:
             pass  # No previous connections
-        self._btn_abort.clicked.connect(manager.abort)
+        # Only read-only FlashManager ops expose abort; WiCANFlasher (write) does
+        # not, and abort is disabled for writes anyway (aborting risks a brick).
+        if hasattr(manager, "abort"):
+            self._btn_abort.clicked.connect(manager.abort)
 
         thread.started.connect(worker.run)
         worker.finished.connect(thread.quit)
         worker.error.connect(thread.quit)
 
-        self._flash_thread = thread
-        self._flash_worker = worker
         thread.start()
+
+    def _on_worker_finished(self):
+        """Worker `finished` slot — runs on the GUI thread (bound-method receiver)."""
+        self._on_flash_finished(True, self._flash_thread, self._flash_worker)
+
+    def _on_worker_error(self, error_msg: str):
+        """Worker `error` slot — runs on the GUI thread (bound-method receiver)."""
+        self._on_flash_finished(
+            False, self._flash_thread, self._flash_worker, error_msg
+        )
 
     def _on_flash_progress(self, p: FlashProgress):
         self._progress_state.setText(p.state.value.replace("_", " ").title())
@@ -923,8 +1119,33 @@ class ECUProgrammingWindow(QMainWindow):
                     )
                 QTimer.singleShot(500, self._auto_reconnect)
             elif self._current_operation in ("flash", "dynamic_flash"):
-                self._progress_detail.setText("Flash complete! ECU is rebooting...")
-                QTimer.singleShot(3000, self._auto_reconnect)
+                # Both adapters finish the flash with an IDENTICAL UDS ECUReset
+                # (0x11 0x01) after RequestTransferExit. The NC ECU then sits in its
+                # programming bootloader until a PHYSICAL ignition cycle boots the new
+                # calibration — the standard documented Mazda NC final step, required
+                # for J2534 and WiCAN alike (the ECU can't tell the adapters apart).
+                # The host cannot do it, so make it an explicit, unmissable
+                # instruction rather than silently "reconnecting" to a bootloader.
+                self._progress_detail.setText(
+                    "Flash written & confirmed. Cycle the ignition to finish."
+                )
+                QTimer.singleShot(
+                    300,
+                    lambda: QMessageBox.information(
+                        self,
+                        "Flash Complete — Cycle the Ignition",
+                        "The ROM was written and every block was confirmed by the "
+                        "ECU.\n\n"
+                        "To boot the new calibration you MUST now cycle the "
+                        "ignition:\n"
+                        "  1. Turn the key OFF and wait ~10 seconds.\n"
+                        "  2. Turn the key back ON (or start the engine).\n\n"
+                        "The ECU stays in its programming bootloader until you do "
+                        "this — it is the normal final step, not an error.\n\n"
+                        "Then click Done to reconnect. To verify the flash "
+                        "byte-for-byte, use Read ROM and compare against your tune.",
+                    ),
+                )
         else:
             # "ROMs are identical" is not a failure — show as info
             is_info = "identical" in error_msg.lower()
@@ -957,6 +1178,13 @@ class ECUProgrammingWindow(QMainWindow):
 
     def _auto_reconnect(self):
         """Try to reconnect after ECU reset."""
+        if self._session and self._session.adapter_kind == "wican":
+            # Reuse the same session so the SLCAN switch is kept (no reboot):
+            # release() already closed the link without restoring the protocol,
+            # so we only need to reopen the transport.
+            self._progress_detail.setText("Reconnecting...")
+            QTimer.singleShot(500, self._session.connect_ecu)
+            return
         if self._session:
             self._session.disconnect_ecu()
             self._session = None
@@ -1101,8 +1329,9 @@ class ECUProgrammingWindow(QMainWindow):
             if reply != QMessageBox.Yes:
                 event.ignore()
                 return
-            # Force-stop the running operation
-            if self._current_manager:
+            # Force-stop the running operation (read-only FlashManager ops only;
+            # WiCANFlasher writes have no abort — they restart-from-scratch).
+            if self._current_manager and hasattr(self._current_manager, "abort"):
                 self._current_manager.abort()
             if self._flash_thread and self._flash_thread.isRunning():
                 self._flash_thread.quit()

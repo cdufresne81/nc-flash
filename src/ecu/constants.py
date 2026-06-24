@@ -103,6 +103,12 @@ TIMEOUT_RESPONSE_PENDING_MAX = 60000  # max wait for NRC 0x78 retries
 
 # --- Flash Counter ---
 FLASH_COUNTER_CMD = bytes([SID_ROUTINE_CONTROL, 0x00, 0xB2, 0x00])
+#: ROM region the ECU itself stamps each time it is programmed (a flash-cycle
+#: counter). It is NOT part of the image we write, so a read-back verify must
+#: exclude it — otherwise a byte-perfect flash "fails" on these bytes. Matches the
+#: region ``get_calibration_crc(clear_flash_counter=True)`` masks before hashing.
+FLASH_COUNTER_OFFSET = 0xFFB00
+FLASH_COUNTER_SIZE = 8
 
 # --- Archive ---
 ARCHIVE_FILENAME = (

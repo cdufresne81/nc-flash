@@ -100,6 +100,7 @@ class UDSConnection:
         data: bytes = b"",
         timeout: int = TIMEOUT_DEFAULT,
         pending_max: Optional[int] = None,
+        quiet_nrcs: Optional[set[int]] = None,
     ) -> bytes:
         """
         Send a UDS request and return the positive response payload.
@@ -117,6 +118,12 @@ class UDSConnection:
                 path passes a much smaller value so a *dropped* block response
                 fails fast and can be retried, instead of stalling the full
                 cumulative budget on every lost block.
+            quiet_nrcs: NRCs the caller expects and handles gracefully. When the
+                ECU returns one of these, the generic ``UDS NRC:`` record is
+                logged at DEBUG instead of WARNING so a benign/expected refusal
+                does not alarm the user (the ``NegativeResponseError`` is still
+                raised so the caller's handling is unchanged). Default ``None``
+                keeps every NRC at WARNING.
 
         Returns:
             Response payload bytes (after the positive response SID)
@@ -183,8 +190,17 @@ class UDSConnection:
                     elapsed = int((time.monotonic() - start) * 1000)
                     continue
                 desc = get_nrc_description(nrc)
-                logger.warning(
-                    f"UDS NRC: SID=0x{service_id:02X} NRC=0x{nrc:02X} ({desc})"
+                # Expected/handled NRCs (per caller's quiet_nrcs) are demoted to
+                # DEBUG so a benign refusal does not raise a scary WARNING in the
+                # user-facing Activity Log; the exception is still raised below.
+                nrc_level = (
+                    logging.DEBUG
+                    if quiet_nrcs is not None and nrc in quiet_nrcs
+                    else logging.WARNING
+                )
+                logger.log(
+                    nrc_level,
+                    f"UDS NRC: SID=0x{service_id:02X} NRC=0x{nrc:02X} ({desc})",
                 )
                 raise NegativeResponseError(nrc, desc)
 
@@ -228,7 +244,14 @@ class UDSConnection:
         """
         from .constants import SID_OBD_CURRENT_DATA
 
-        response = self.send_request(SID_OBD_CURRENT_DATA, bytes([pid]))
+        # On a post-op reconnect the ECU answers OBD reads with NRC 0x22
+        # (conditions not correct). These reads are best-effort (the callers
+        # swallow failures and return None), so quiet that expected NRC.
+        response = self.send_request(
+            SID_OBD_CURRENT_DATA,
+            bytes([pid]),
+            quiet_nrcs={NRC_CONDITIONS_NOT_CORRECT},
+        )
         # Response: [pid_echo, data...] (send_request strips the 0x41 positive SID)
         if not response or response[0] != pid:
             from .exceptions import UDSError
@@ -504,7 +527,11 @@ class UDSConnection:
             Number of DTCs
         """
         try:
-            response = self.send_request(SID_READ_DTC_COUNT, bytes([0x02, 0x00]))
+            response = self.send_request(
+                SID_READ_DTC_COUNT,
+                bytes([0x02, 0x00]),
+                quiet_nrcs={NRC_CONDITIONS_NOT_CORRECT},
+            )
         except NegativeResponseError as e:
             if e.nrc == NRC_CONDITIONS_NOT_CORRECT:
                 logger.info(
@@ -533,6 +560,7 @@ class UDSConnection:
             response = self.send_request(
                 SID_READ_DTC_STATUS,
                 bytes([0x00, 0xFF, 0x00]),
+                quiet_nrcs={NRC_CONDITIONS_NOT_CORRECT},
             )
         except NegativeResponseError as e:
             if e.nrc == NRC_CONDITIONS_NOT_CORRECT:

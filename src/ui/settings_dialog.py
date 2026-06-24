@@ -262,6 +262,25 @@ SETTINGS_REGISTRY = [
         setter="set_mcp_auto_start",
         keywords=["mcp", "ai", "server", "claude", "assistant", "model context"],
     ),
+    # -- ECU > Adapter --
+    SettingDescriptor(
+        key="ecu.adapter.kind",
+        label="ECU Adapter",
+        description=(
+            "Which adapter NC Flash uses to talk to the ECU. J2534 (wired, e.g. "
+            "Tactrix OpenPort) is the default and recommended for flashing. WiCAN "
+            "(wireless WiFi/SLCAN) is opt-in; WiCAN flashing is experimental."
+        ),
+        category="ECU",
+        subcategory="Adapter",
+        widget_type="combobox",
+        getter="get_ecu_adapter",
+        setter="set_ecu_adapter",
+        widget_options={
+            "items": [("J2534 (wired)", "j2534"), ("WiCAN (WiFi)", "wican")]
+        },
+        keywords=["adapter", "j2534", "wican", "wifi", "transport", "connection"],
+    ),
     # -- ECU > J2534 --
     SettingDescriptor(
         key="ecu.j2534.dll_path",
@@ -295,6 +314,64 @@ SETTINGS_REGISTRY = [
             "callback_name": "_test_j2534_connection",
         },
         keywords=["test", "connection", "j2534", "device"],
+    ),
+    # -- ECU > WiCAN --
+    SettingDescriptor(
+        key="ecu.wican.host",
+        label="WiCAN Host / IP",
+        description="IP address or hostname of the WiCAN adapter (e.g. 192.168.1.169).",
+        category="ECU",
+        subcategory="WiCAN",
+        widget_type="text",
+        getter="get_wican_host",
+        setter="set_wican_host",
+        widget_options={"placeholder": "192.168.1.169"},
+        keywords=["wican", "host", "ip", "address", "wifi"],
+    ),
+    SettingDescriptor(
+        key="ecu.wican.port",
+        label="WiCAN SLCAN Port",
+        description="TCP port of the WiCAN SLCAN socket (the PRO is often 35000).",
+        category="ECU",
+        subcategory="WiCAN",
+        widget_type="spinbox",
+        getter="get_wican_port",
+        setter="set_wican_port",
+        widget_options={"min": 1, "max": 65535},
+        keywords=["wican", "port", "slcan", "tcp"],
+    ),
+    SettingDescriptor(
+        key="ecu.wican.auto_config",
+        label="Auto-configure adapter (SLCAN switch + restore)",
+        description=(
+            "Switch the WiCAN into SLCAN mode on connect (a ~6 s reboot) and "
+            "restore its previous protocol on disconnect. Turn off if you keep "
+            "the device permanently in SLCAN mode."
+        ),
+        category="ECU",
+        subcategory="WiCAN",
+        widget_type="checkbox",
+        getter="get_wican_auto_config",
+        setter="set_wican_auto_config",
+        keywords=["wican", "slcan", "auto", "config", "protocol", "switch"],
+    ),
+    SettingDescriptor(
+        key="ecu.wican.test_connection",
+        label="Test Connection",
+        description=(
+            "Open the WiCAN link and report reachability + link quality "
+            "(packet loss / latency). Honours the auto-configure setting above."
+        ),
+        category="ECU",
+        subcategory="WiCAN",
+        widget_type="button",
+        getter="",
+        setter=None,
+        widget_options={
+            "text": "Test Connection",
+            "callback_name": "_test_wican_connection",
+        },
+        keywords=["wican", "test", "connection", "link", "ping", "quality"],
     ),
     # -- ECU > Flash Security --
     SettingDescriptor(
@@ -557,6 +634,12 @@ class SettingsDialog(QDialog):
             btn.clicked.connect(lambda _=False, e=edit, f=filt: self._browse_file(e, f))
             row.addWidget(btn)
             lo.addLayout(row)
+            self._widgets[desc.key] = edit
+
+        elif wtype == "text":
+            edit = QLineEdit()
+            edit.setPlaceholderText(desc.widget_options.get("placeholder", ""))
+            lo.addWidget(edit)
             self._widgets[desc.key] = edit
 
         elif wtype == "spinbox":
@@ -884,6 +967,78 @@ class SettingsDialog(QDialog):
                 f"Could not connect to J2534 device:\n{e}",
             )
 
+    def _test_wican_connection(self):
+        """Open the WiCAN link from the current field values and grade it."""
+        from PySide6.QtWidgets import QMessageBox
+
+        host_edit = self._widgets.get("ecu.wican.host")
+        port_spin = self._widgets.get("ecu.wican.port")
+        auto_cb = self._widgets.get("ecu.wican.auto_config")
+        host = (host_edit.text().strip() if host_edit else "") or "192.168.1.169"
+        port = port_spin.value() if port_spin else 35000
+        auto_config = auto_cb.isChecked() if auto_cb else True
+
+        try:
+            from src.ecu.transport import create_ecu_transport
+            from src.ecu.protocol import UDSConnection
+            from src.ecu.link_quality import check_link_quality
+            from src.ecu.wican_config import WiCANConfigurator, WiCANConfigError
+            from src.ecu.wican_transport import WiCANError
+        except ImportError as e:
+            QMessageBox.warning(self, "Unavailable", f"WiCAN modules unavailable:\n{e}")
+            return
+
+        QApplication.setOverrideCursor(Qt.WaitCursor)
+        configurator = None
+        prev_protocol = None
+        transport = None
+        try:
+            if auto_config:
+                configurator = WiCANConfigurator(host)
+                prev_protocol = configurator.switch_to_slcan()
+            transport = create_ecu_transport(
+                {"kind": "wican", "host": host, "port": port}
+            )
+            transport.open()
+            uds = UDSConnection(transport)
+            result = check_link_quality(uds)
+            QApplication.restoreOverrideCursor()
+            if result.ok:
+                QMessageBox.information(
+                    self,
+                    "Connection OK",
+                    f"WiCAN reachable at {host}:{port}.\n\n"
+                    f"Link: {result.replies}/{result.pings} replied, "
+                    f"loss {result.loss_pct:.0f}%, p95 {result.p95_ms:.0f} ms.\n"
+                    f"{result.reason}",
+                )
+            else:
+                QMessageBox.warning(
+                    self,
+                    "Link Marginal",
+                    f"WiCAN reachable at {host}:{port}, but the link is not "
+                    f"flash-ready:\n\n{result.reason}\n\n"
+                    "Reads may still work; do not flash over this link.",
+                )
+        except (WiCANError, WiCANConfigError, OSError) as e:
+            QApplication.restoreOverrideCursor()
+            QMessageBox.warning(
+                self, "Connection Failed", f"Could not reach the WiCAN adapter:\n{e}"
+            )
+        finally:
+            if QApplication.overrideCursor() is not None:
+                QApplication.restoreOverrideCursor()
+            if transport is not None:
+                try:
+                    transport.close()
+                except Exception:
+                    pass
+            if configurator is not None and prev_protocol and prev_protocol != "slcan":
+                try:
+                    configurator.restore(prev_protocol)
+                except Exception:
+                    pass
+
     # ------------------------------------------------------------------ #
     # Load / Apply settings
     # ------------------------------------------------------------------ #
@@ -902,8 +1057,8 @@ class SettingsDialog(QDialog):
                 continue
             value = getter()
 
-            if desc.widget_type in ("path_dir", "path_file"):
-                widget.setText(value)
+            if desc.widget_type in ("path_dir", "path_file", "text"):
+                widget.setText(str(value))
             elif desc.widget_type == "spinbox":
                 widget.setValue(int(value))
             elif desc.widget_type == "combobox":
@@ -946,7 +1101,7 @@ class SettingsDialog(QDialog):
             if setter is None:
                 continue
 
-            if desc.widget_type in ("path_dir", "path_file"):
+            if desc.widget_type in ("path_dir", "path_file", "text"):
                 val = widget.text().strip()
                 if val:
                     setter(val)

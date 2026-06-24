@@ -114,6 +114,23 @@ DEFAULT_RX_STMIN = 0
 #: Reads are idempotent, so even a false trigger only costs one harmless re-read.
 DEFAULT_N_CR_MS = 500
 
+#: ISO-TP outbound STmin FLOOR for multi-frame messages WE transmit (writes /
+#: flash TransferData). Unlike :data:`DEFAULT_RX_STMIN` (which paces the ECU's
+#: Consecutive Frames when we RECEIVE), this paces OUR Consecutive Frames when we
+#: SEND. The ECU advertises STmin=0 in a programming session, so without a floor
+#: the tool blasts a 1 KB TransferData block as ~146 back-to-back CFs and overruns
+#: the WiCAN gateway's TCP->CAN forwarding buffer — frames are dropped inside the
+#: gateway, the ECU's reassembly never completes, and it never answers (the
+#: hardware-observed FULL FLASH failure: a 60 s timeout on SID 0x36 after the whole
+#: block was sent). This is the exact mirror of the receive-side overflow
+#: :data:`DEFAULT_RX_STMIN` already guards. A whole-millisecond floor is used (not
+#: a 0xF1-0xF9 microsecond code) because Windows ``time.sleep`` granularity makes
+#: sub-millisecond pacing unreliable. Pacing ONLY changes inter-frame timing within
+#: one message — never the payload, never a resend — so the flash
+#: no-mid-stream-resend (anti-brick) invariant holds. Reads are single-frame
+#: requests, so this never affects them. Tune from a bench TX sweep.
+DEFAULT_TX_STMIN = 3
+
 #: NC Flash fast-read protocol (custom WiCAN firmware only). The command is one
 #: line ``X<8 hex start><8 hex length>\r`` on the SLCAN socket; the firmware then
 #: streams the raw ROM bytes straight back. See :meth:`WiCANTransport.fast_read`.
@@ -150,6 +167,26 @@ _FAST_READ_CHUNK = 128 * 1024
 #: Default overall budget (ms) for a streamed fast read (a full 1 MB lands in
 #: ~60 s; this leaves generous margin for a slower link before declaring a stall).
 FAST_READ_TIMEOUT_MS = 180000
+
+#: SD-staged flash (Option B WRITE). The firmware drives the ECU program sequence
+#: locally over CAN and streams newline-delimited ASCII progress markers back over
+#: the SAME socket the fast-read uses. Command: ``W<mode><staged_name>\r`` where
+#: mode is 'L' (live flash) or 'D' (dry-run, no ECU write). Must match
+#: ``NCFLASH_FASTWRITE_CMD`` and the markers in the firmware (ncflash_fastwrite.c).
+_FAST_WRITE_CMD = "W"
+_FAST_WRITE_SYNC = b"NCFWSYNC"  #: streamed once after the firmware takes the bus
+_FAST_WRITE_DONE = b"NCFWDONE"  #: terminal success
+_FAST_WRITE_PROG = b"NCFWPROG"  #: per-N-blocks: ``NCFWPROG <done>/<total>``
+_FAST_WRITE_ERR = b"FWERR"  #: terminal failure: ``FWERR a=.. st=.. nrc=..``
+
+#: Overall budget (ms) for a streamed flash. A full ~1 MB program at the ECU's
+#: per-block rate runs a few minutes; this leaves wide margin (the firmware owns
+#: the flash regardless, so this only bounds how long the host observes).
+FAST_WRITE_TIMEOUT_MS = 600000
+
+#: Idle/heartbeat (ms): no bytes for this long means the firmware is dead, not
+#: merely slow. Generous because an ECU erase can sit silent for several seconds.
+_FAST_WRITE_IDLE_MS = 30000
 
 
 class WiCANError(ECUError):
@@ -188,6 +225,7 @@ class WiCANTransport(EcuTransport):
         n_cr_ms: Optional[int] = DEFAULT_N_CR_MS,
         tcp_nodelay: bool = True,
         so_rcvbuf: Optional[int] = None,
+        tx_stmin: int = DEFAULT_TX_STMIN,
     ):
         """
         Args:
@@ -221,6 +259,12 @@ class WiCANTransport(EcuTransport):
             so_rcvbuf: If set, request this socket receive-buffer size (bytes) so
                 a fast Consecutive-Frame burst is less likely to be dropped
                 before we read it. ``None`` leaves the OS default.
+            tx_stmin: Outbound STmin floor (ms) for multi-frame messages WE send
+                (write/flash TransferData) — the tool never sends Consecutive
+                Frames closer together than this even when the ECU's Flow Control
+                advertises STmin=0, capping the TCP->CAN burst the gateway must
+                absorb. See :data:`DEFAULT_TX_STMIN`. Does not affect reads
+                (single-frame requests) or the J2534 path.
         """
         self._host = host
         self._port = port
@@ -233,6 +277,7 @@ class WiCANTransport(EcuTransport):
         self._n_cr_ms = n_cr_ms
         self._tcp_nodelay = tcp_nodelay
         self._so_rcvbuf = so_rcvbuf
+        self._tx_stmin = tx_stmin
 
         self._sock: Optional[socket.socket] = None
         self._stream = SlcanFrameStream()
@@ -248,6 +293,7 @@ class WiCANTransport(EcuTransport):
             rx_block_size=rx_block_size,
             rx_stmin=rx_stmin,
             n_cr_ms=n_cr_ms,
+            tx_stmin=tx_stmin,
         )
 
     # --- lifecycle ---
@@ -654,6 +700,131 @@ class WiCANTransport(EcuTransport):
         line = bytes(tail[idx : end if end >= 0 else len(tail)])
         return " | firmware: " + line.decode("ascii", "replace").strip()
 
+    @classmethod
+    def _fwerr_suffix(cls, buf: bytearray) -> str:
+        """Return the firmware's on-abort ``FWERR ...`` diagnostic if present.
+
+        The fastwrite firmware streams an ASCII ``FWERR a=.. st=.. nrc=..`` line
+        as the last thing before it stops on a flash abort. Mirror of
+        :meth:`_frerr_suffix` for the WRITE path.
+        """
+        tail = buf[-cls._FRERR_TAIL :]
+        idx = tail.rfind(_FAST_WRITE_ERR)
+        if idx < 0:
+            return ""
+        end = tail.find(b"\n", idx)
+        line = bytes(tail[idx : end if end >= 0 else len(tail)])
+        return " | firmware: " + line.decode("ascii", "replace").strip()
+
+    def fast_write(
+        self,
+        staged_name: str,
+        *,
+        mode: str = "L",
+        progress_cb=None,
+        timeout_ms: int = FAST_WRITE_TIMEOUT_MS,
+        idle_ms: int = _FAST_WRITE_IDLE_MS,
+    ) -> None:
+        """Trigger the firmware SD-staged flash and stream its progress markers.
+
+        Sends ``W<mode><staged_name>\\r`` (mode ``'L'`` live flash, ``'D'`` dry-run
+        — no ECU write), resyncs onto the ``NCFWSYNC`` marker (discarding any
+        leading CAN frames, like :meth:`_fast_read_one`), then parses the
+        newline-delimited progress lines the firmware streams back:
+
+          * ``NCFWPROG <done>/<total>`` → ``progress_cb(done, total)``
+          * ``NCFWDONE``               → returns normally (flash sequence done)
+          * ``FWERR a=.. st=.. nrc=..``→ raises :class:`WiCANError`
+
+        This only **observes** — the firmware owns the flash, so killing the
+        socket does NOT stop it (there is deliberately no host-side abort). The
+        WRITE path has no mid-stream resend; on ``FWERR`` the recovery is a whole
+        restart-from-scratch by the caller. Raises :class:`WiCANError` on
+        ``FWERR``, a stall (no bytes for ``idle_ms``), socket close, or the
+        overall ``timeout_ms`` deadline.
+
+        Args:
+            staged_name: the SD leaf filename uploaded via ``/upload/sd/<name>``.
+            mode: ``'L'`` to flash the ECU, ``'D'`` to dry-run (verify+walk only).
+            progress_cb: called ``progress_cb(done, total)`` per ``NCFWPROG``.
+        """
+        if mode not in ("L", "D"):
+            raise WiCANError(f"fast_write mode must be 'L' or 'D', got {mode!r}")
+
+        self._drain_frames()
+        cmd = f"{_FAST_WRITE_CMD}{mode}{staged_name}\r".encode("ascii")
+        self._send_raw(cmd)
+
+        sock = self._sock
+        deadline = time.monotonic() + timeout_ms / 1000.0
+        buf = bytearray()
+        synced = False
+        last_data = time.monotonic()
+
+        while True:
+            now = time.monotonic()
+            if now > deadline:
+                raise WiCANError(f"fast write timed out{self._fwerr_suffix(buf)}")
+            if now - last_data > idle_ms / 1000.0:
+                raise WiCANError(
+                    f"fast write stalled (no data for {idle_ms} ms)"
+                    f"{self._fwerr_suffix(buf)}"
+                )
+            try:
+                readable, _, _ = select.select([sock], [], [], min(1.0, deadline - now))
+            except OSError as exc:
+                raise WiCANError(f"fast write select failed: {exc}") from exc
+            if not readable:
+                tail = self._fwerr_suffix(buf)
+                if tail:
+                    raise WiCANError(f"fast write aborted{tail}")
+                continue
+            try:
+                chunk = sock.recv(_RECV_CHUNK * 16)
+            except (BlockingIOError, InterruptedError):
+                continue
+            except OSError as exc:
+                raise WiCANError(f"fast write recv failed: {exc}") from exc
+            if chunk == b"":
+                raise WiCANError(
+                    f"socket closed by peer during fast write{self._fwerr_suffix(buf)}"
+                )
+            buf.extend(chunk)
+            last_data = time.monotonic()
+
+            # Resync onto NCFWSYNC, discarding leading CAN traffic.
+            if not synced:
+                idx = buf.find(_FAST_WRITE_SYNC)
+                if idx < 0:
+                    if len(buf) > _FAST_READ_MAX_PRESTREAM:
+                        del buf[: -len(_FAST_WRITE_SYNC)]
+                    continue
+                del buf[: idx + len(_FAST_WRITE_SYNC)]
+                synced = True
+
+            # Parse complete newline-delimited marker lines.
+            while True:
+                nl = buf.find(b"\n")
+                if nl < 0:
+                    break
+                line = bytes(buf[:nl]).strip()
+                del buf[: nl + 1]
+                if not line:
+                    continue
+                if line.startswith(_FAST_WRITE_ERR):
+                    raise WiCANError(
+                        "fast write failed | firmware: "
+                        + line.decode("ascii", "replace")
+                    )
+                if line.startswith(_FAST_WRITE_DONE):
+                    return
+                if line.startswith(_FAST_WRITE_PROG) and progress_cb:
+                    try:
+                        done, total = line.split()[1].split(b"/")
+                        progress_cb(int(done), int(total))
+                    except (IndexError, ValueError):
+                        pass  # malformed progress line — ignore, keep streaming
+
     def version_ping(self, window_ms: int = 3000) -> Optional[bytes]:
         """Probe which fast-read firmware is live (or that none is).
 
@@ -707,6 +878,16 @@ class WiCANTransport(EcuTransport):
     @property
     def description(self) -> str:
         return f"WiCAN ({self._host}:{self._port})"
+
+    @property
+    def host(self) -> str:
+        """The device IP/hostname (e.g. for the HTTP SD-upload endpoint)."""
+        return self._host
+
+    @property
+    def port(self) -> int:
+        """The SLCAN TCP port."""
+        return self._port
 
     # --- raw frame I/O wired into the ISO-TP session ---
 

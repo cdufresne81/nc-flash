@@ -195,6 +195,17 @@ class WiCANConfigurator:
         except OSError:
             pass
 
+    def write_recovery(self, protocol: str) -> None:
+        """Public: persist the TRUE original protocol to the recovery sidecar.
+
+        Lets an event-driven caller (e.g. ``ECUSession``, which connects and
+        disconnects across separate events) get the same hard-kill durability as
+        :meth:`slcan_session` without the context manager: write the breadcrumb
+        BEFORE switching to ``slcan``, then restore + :meth:`clear_recovery` on a
+        clean disconnect. ``switch_to_slcan`` / ``restore`` are left untouched.
+        """
+        self._write_recovery(protocol)
+
     # -- Reads -------------------------------------------------------------
 
     def read_config_raw(self, timeout_s: Optional[float] = None) -> str:

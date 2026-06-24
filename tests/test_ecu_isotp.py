@@ -609,6 +609,75 @@ class TestTimeoutsAndConfig:
 
 
 # ---------------------------------------------------------------------------
+# Outbound CF pacing floor (the WiCAN write/flash fix)
+# ---------------------------------------------------------------------------
+
+
+class TestOutboundTxStminFloor:
+    """``tx_stmin`` paces OUR Consecutive-Frame burst even when the peer asks for 0.
+
+    The WiCAN write fix: an unpaced ~146-CF TransferData burst overruns the SLCAN
+    gateway's TCP->CAN buffer (the ECU advertises STmin=0 in a programming
+    session), so the ECU's reassembly never completes and it never answers. A
+    host-side floor caps our send rate WITHOUT altering the payload or resending,
+    preserving the flash no-mid-stream-resend invariant. Pacing is verified by
+    capturing the exact sleep durations (deterministic, no wall-clock flakiness).
+    """
+
+    @staticmethod
+    def _reassemble(sent) -> bytes:
+        # Rebuild the payload from the emitted frames (FF + CFs) to prove pacing
+        # never alters the bytes on the wire (brick-safety / content-identical).
+        ff = sent[0][1]
+        length = ((ff[0] & 0x0F) << 8) | ff[1]
+        buf = bytearray(ff[2:8])
+        for _can_id, data in sent[1:]:
+            buf.extend(data[1:8])
+        return bytes(buf[:length])
+
+    def _send(self, monkeypatch, *, payload, tx_stmin, peer_stmin, honor_peer_fc=True):
+        rec = FrameRecorder(
+            script=[fc_frame(FC_CONTINUE_TO_SEND, bs=0, stmin=peer_stmin)]
+        )
+        sess = make_session(rec, tx_stmin=tx_stmin, honor_peer_fc=honor_peer_fc)
+        sleeps: list[float] = []
+        monkeypatch.setattr(time, "sleep", lambda s: sleeps.append(s))
+        sess.send(payload, timeout_ms=5000)
+        return rec, sleeps
+
+    def test_floor_paces_when_peer_requests_zero(self, monkeypatch):
+        payload = bytes(range(27))  # FF + 3 CFs -> 2 inter-frame gaps
+        rec, sleeps = self._send(
+            monkeypatch, payload=payload, tx_stmin=10, peer_stmin=0
+        )
+        assert sleeps == [pytest.approx(0.010), pytest.approx(0.010)]
+        assert self._reassemble(rec.sent) == payload  # payload untouched
+
+    def test_peer_stmin_wins_when_larger_than_floor(self, monkeypatch):
+        # Effective separation = max(peer, floor): the ECU may ask for MORE.
+        payload = bytes(range(27))
+        _rec, sleeps = self._send(
+            monkeypatch, payload=payload, tx_stmin=2, peer_stmin=0x0A
+        )
+        assert sleeps == [pytest.approx(0.010), pytest.approx(0.010)]
+
+    def test_default_floor_zero_does_not_pace(self, monkeypatch):
+        # Default tx_stmin=0 -> identical to the historical behaviour (J2534/tests).
+        payload = bytes(range(27))
+        rec, sleeps = self._send(monkeypatch, payload=payload, tx_stmin=0, peer_stmin=0)
+        assert sleeps == []
+        assert self._reassemble(rec.sent) == payload
+
+    def test_floor_applies_even_when_not_honoring_peer_fc(self, monkeypatch):
+        # tx_stmin is OUR link protection; it applies regardless of honor_peer_fc.
+        payload = bytes(range(20))  # FF + 2 CFs -> 1 gap
+        _rec, sleeps = self._send(
+            monkeypatch, payload=payload, tx_stmin=5, peer_stmin=0, honor_peer_fc=False
+        )
+        assert sleeps == [pytest.approx(0.005)]
+
+
+# ---------------------------------------------------------------------------
 # Short-frame rejection (silent-corruption guards)
 # ---------------------------------------------------------------------------
 

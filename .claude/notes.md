@@ -1,5 +1,348 @@
 # Session Notes
 
+## 🏷️ WiCAN staged SD file named after the ROM (Jun 24, 2026)
+
+User: timestamp-only staged names (`<CAL_ID>_<YYYYMMDD>-<HHMM>.bin`) say nothing about the tune →
+name the SD file after the ROM shown in NC Flash, `<display-name>_<YYYYMMDD>_<HHMM>.bin`.
+Must be robust to spaces + accents (éà).
+
+- **Constraint (why not verbatim):** the staged name is used raw in 3 ASCII-only hops — FAT name,
+  `/upload/sd/<name>` HTTP path, and firmware `W<mode><name>\r` (`.encode("ascii")`). Non-ASCII →
+  `UnicodeEncodeError` (flash never starts); a space could truncate the firmware command → wrong/missing
+  file. So preserving accents/spaces verbatim is a firmware-change, brick-path issue — declined.
+- **Impl:** new `_sanitize_filename_stem` in `wican_sd_package.py` — basename only, drop trailing ext,
+  **transliterate accents via NFKD** (é→e, à→a; readable, not `_`), spaces/unsafe→`_`, collapse `__` and
+  **`..`** (upload guard rejects `..`) but KEEP a single `.` (so `12.5` survives), cap 64, fallback `ecu_rom`.
+  Pure-ASCII, no spaces/separators guaranteed. New `source_name` param threaded `build_flash_package` ←
+  `WiCANSdFlasher` ← `_build_flash_driver` ← `_start_flash` ← `_on_flash_current`/`_on_full_flash`
+  (`rom_path.name`). Manifest `rom_id` identity UNCHANGED; `source_name` only names the staged file
+  (falls back to cal-ID label when blank). Format separator now `_` (was `-`): `YYYYMMDD_HHMM`.
+- **Example (user-confirmed):** `Testé AFR à 12.5.bin` → `Teste_AFR_a_12.5_20260624_1039.bin`.
+- **Tests:** `test_ecu_wican_sd_package.py` (transliteration/space/`..`/length/empty + source_name drives
+  name / blank-falls-back / new `_HHMM` format), `test_ecu_wican_sd_flash.py::TestSourceName`,
+  `test_ecu_window_flash_driver.py` (UI forwards `rom_path.name`). 83 passed / 1 skip; black clean.
+  **No change to staged bytes / manifest plan / flash sequence — SD filename only.** Not committed.
+
+## 🐞 DTC toggle regression FIXED (Jun 24, 2026) — pre-existing, NOT from WiCAN work
+
+User flipped a DTC Activation Flags toggle (1-D toggle-category table, e.g. `P0222`/`P0122`) and hit
+`AttributeError: 'str' object has no attribute 'address'` in both the modification tracker
+(`table_viewer._on_cell_changed_track_modifications`) and the undo recorder
+(`main._on_table_cell_changed → table_undo_manager.record_cell_change`).
+
+- **Root cause:** `table_viewer._on_toggle_changed` emitted `cell_changed` with `current_table.address`
+  (a `str`), but every other edit path AND all three `cell_changed` consumers pass/expect the **Table object**
+  (they read `.address`/`.name` themselves). Pre-existing since the toggle feature shipped — commit `05ebbeb`,
+  **2026-02-07** (verified via `git log -L`); **none of this session's WiCAN files touched table_viewer/main/undo**.
+- **Fix:** emit `self._ctx.current_table` (matches `editing.py`'s normal cell-edit emit). One-line change.
+- **Test:** `test_table_viewer_window.py::TestSignalForwarding::test_toggle_emits_table_object_not_address`
+  drives the **real** `_on_toggle_changed` handler (the prior signal tests emitted manually → never caught this).
+  Fails against the old `.address` emit. 15/15 in that file pass; black clean. (2 `test_paste_*` failures in the
+  combined run are pre-existing Windows clipboard-contention flakes — pass in isolation.)
+- **Not committed** — awaiting user / land-the-plane.
+
+## ✅ HARDWARE-VALIDATED + /simplify (Jun 23, 2026 — late evening)
+
+**User re-tested all Flash operations via the UI → green** (the bound-method threading fix holds; no more setParent/endPaint).
+
+**Live-device bench validation (WiCAN @ 192.168.1.169, MX-5 NC ECU), all non-destructive:**
+- `wican_fw_ping` → link alive, **NCFRv5**.
+- `wican_bench_ecu --read-dtc` → auth + security + `read_dtc_status`/`read_dtc_count` clean (15 DTCs) — exercises the `quiet_nrcs` change on real HW, no errors.
+- `wican_bench_read` full 1 MB via `FlashManager.read_rom` (the changed `_read_block_with_retry`) → **27 block(s) re-requested after dropped frames, ALL recovered**, byte-for-byte identical to the post-flash oracle (`GATE: PASS`), 341 s, no WARNING/ERROR. **Directly proves the read-retry+backoff fix on real hardware** — 27 drops/1024 blocks is exactly what aborted the read under the old 4-retry cap.
+
+**/simplify pass (4 agents: reuse/simplification/efficiency/altitude):** 1 fix applied — `_ConsoleScopeFilter` now precomputes the dotted prefix pairs in `__init__` (no per-record `p + "."` alloc on the log hot path). All other findings skipped as preference/YAGNI/wrong-for-use-case (notably: rejected "capture stack only on QtFatalMsg" — the crash precursor was a WARNING, so that would have missed it). Full suite stayed green (1341 passed).
+
+**Still NOT committed** — awaiting user / land-the-plane.
+
+## 🔧 POST-ENABLE HARDWARE FIXES (Jun 23, 2026 — evening) — read robustness, clean state log, crash diagnostics
+
+User drove the now-enabled UI write path on the live ECU and hit two issues; both addressed (host-only, unit-tested):
+
+1. **READ couldn't finish** — a 1 MB WiCAN read aborted at block ~957/1024 (`0x0EF400`) after only **4** back-to-back
+   ISO-TP consecutive-frame N_Cr timeouts at one offset → ~5 min of work lost to a sub-second link stall.
+   Fix (`flash_manager.py`): `READ_BLOCK_RETRIES` **4 → 8** + a short growing backoff between retries
+   (`READ_BLOCK_RETRY_BACKOFF_S=0.2 × attempt`, cap `1.0 s`; only the failing block waits, never after the last
+   attempt). Reads are idempotent so this can't corrupt; clean blocks still return on attempt 1. Tests in
+   `TestReadBlockRetry` (backoff grows / never-after-last / recovery still flushes). **Write path untouched** (no resend).
+2. **App closed unexpectedly after a dynamic flash — ROOT-CAUSED & FIXED via the diagnostic.** The op itself
+   SUCCEEDED (flash + RAM scan both completed on the ECU); the crash was purely post-op UI. Added Qt diagnostics
+   (`src/utils/qt_diagnostics.py` + `install_qt_diagnostics()` in `main.py`, routes Qt warnings to the `qt` logger +
+   dumps a Python stack for crash-trigger substrings + arms `faulthandler`). **The captured stack pinned it exactly:**
+   `_on_flash_finished → _btn_done.setVisible(True)` running on the WORKER thread. **Cause:** `_start_flash` connected
+   `worker.finished`/`worker.error` to **bare lambdas** with `Qt.QueuedConnection` — a bare lambda has no receiver
+   QObject, so Qt ran the slot in the *sender (worker)* thread, and every GUI mutation in `_on_flash_finished`
+   (setVisible / QMessageBox / repaint) fired off the GUI thread → "Cannot set parent … different thread" +
+   intermittent `endPaint` paint crash. (`progress → self._on_flash_progress` never crashed because it's a bound
+   method = GUI-thread receiver.) **Fix:** connect bound methods `_on_worker_finished`/`_on_worker_error` (read stored
+   `_flash_thread`/`_flash_worker`) so the queued slot lands on the GUI thread. Tests:
+   `test_ecu_window_flash_driver.py::TestWorkerFinishedHandlers`. **→ NEXT: user re-test a dynamic flash; the
+   `setParent`/`endPaint` warnings should be gone.** Diagnostics stay in (cheap, catches any future cross-thread bug).
+3. **Spurious log ERROR** — `WiCANSdFlasher._authenticate_ecu` called `_authenticate()` from `IDLE`, logging
+   "Invalid state transition blocked: idle → authenticating" on every SD flash. Now calls `_connect()` first
+   (borrowed → Tester Present + `IDLE→CONNECTING`), like the read path. Clean log + liveness check. No flash behaviour change.
+
+Suite for touched areas green (flash_manager / wican_sd_flash / window_flash_driver / wican_flash / qt_diagnostics:
+78 passed, 2 pre-existing secure-module skips). black clean. **Not committed** (awaiting user / land-the-plane).
+
+## ✅ OPTION B COMPLETE (Jun 23, 2026 PM) — WiCAN SD flash ENABLED at the UI, verify decoupled, key-cycle UX
+
+**RESOLVED: user ignition-cycled → "ECU rebooted, it seems happy."** Post-cycle full read-back (1024 blocks,
+214s) confirms the restored LFDJEA tune is **byte-perfect**: the only diffs vs the pristine read are (a) the
+ECU flash counter @0xFFB00 (8B, masked) and (b) the 4-byte main checksum @0x0FF73C, which is
+`correct_rom_checksums` itself rewriting factory `53f37de9`→our `f6871842` (ECU runs fine on our value). So
+the flash mechanism AND the verify-compare logic are both proven correct.
+
+**Root cause of the PM "verify failed" — NOT a byte mismatch, a SESSION/timing issue:** after the firmware
+`ECUReset` the NC ECU sits in its **bootloader** (RMBA 0x23 + OBD 0x01 → NRC 0x11) until a **physical ignition
+cycle** boots the app — the host can't trigger that, so an **inline read-back verify is impossible**. The
+J2534 path proves the design: `FlashManager.flash_rom` ALSO does **no inline read-back** — per-block positive
+UDS responses + TransferExit ARE the integrity proof. Both paths end with the **identical** `ECUReset 0x11
+0x01` (J2534 `RESET_HARD`; firmware `fw_ecu_reset {0x11,0x01}`), so the key-cycle requirement is an ECU
+property, adapter-independent (user confirmed: Tactrix flashes need a key cycle too). See memory
+`project_wican_post_flash_bootloader`.
+
+**Phase 6 SHIPPED (host/UI, all unit-tested, suite 1316 passed / 2 known clipboard-env fails):**
+- `WICAN_WRITE_ENABLED = True` — WiCAN `flash`/`dynamic_flash` route to `WiCANSdFlasher` (behind NCFRv5 rev-gate
+  + link/battery + CRC32 digest gates); gate still works as a kill-switch (`test_ecu_window_flash_driver`).
+- `WiCANSdFlasher.flash_rom`/`dynamic_flash`: `verify` now defaults **OFF** — write completes on firmware
+  `NCFWDONE` (J2534 parity). `_verify_readback` kept as an explicit, **post-ignition-cycle** opt-in; its
+  not-readable error now guides the user to cycle the key (bench: `tools/wican_fastread_verify.py`).
+- UI: both adapters now show a "**Flash written & confirmed — cycle the ignition (key OFF ~10s, then ON)**"
+  completion dialog (removed the misleading J2534 "ECU is rebooting"+auto-reconnect; reconnect happens on Done
+  after the user cycles). `_confirm_wican_flash` rewritten to describe the SD-staged flow + post-flash cycle.
+
+**Earlier PM host fixes (still in place):** `_authenticate_ecu` (firmware fastwrite needs a host prog session);
+flash-counter mask in `_verify`/`_verify_readback` (`FLASH_COUNTER_OFFSET/SIZE`); firmware `/upload/sd` path
+buffers `FILE_PATH_MAX`→`160` (long `.part` name overflow). Firmware live: NCFRv5, `NCFW_ALLOW_LIVE=1`.
+
+**Open (optional follow-ups, not blockers):** one-click in-UI "Verify" (read-back + auto-compare after the
+cycle) instead of manual Read-ROM compare; commit/land the host + firmware work (user-gated). **WiCAN device
+note:** it wedges on :35000 after an OBD power-cycle (HTTP :80 stays up, reports `protocol=slcan`); a POST to
+`/system_reboot` clears it cleanly — no physical unplug needed.
+
+## ✅ WiCAN WRITE WORKS (Jun 23, 2026) — Option B live flash SUCCEEDED + ECU recovered over CAN (AM)
+
+**🎉 MILESTONE: WiCAN SD-staged WRITE is PROVEN end-to-end on the live MX-5 NC ECU.** The first live flash
+failed at SBL block 6 (`FWERR st=11 nrc=FF`) and soft-bricked the ECU (recoverable). The firmware fix
+(longer ISO-TP timeouts: FC 250→2000ms, resp 250→5000ms, MAX_PENDING 16→24 + granular FWSUB_* codes) fixed
+it: the **retry flashed to completion** (NCFWDONE, 1022/1022 blocks, ECU reset `0x51 0x01`), and the
+**read-back is byte-for-byte the source except the 7-byte ECU-managed flash counter @0xFFB00** → flash GOOD,
+**ECU RECOVERED** (re-flashed its own checksum-corrected LFDJEA ROM; un-bricked, runs + reads normally).
+Block 6 was a slow-response timing issue (the ECU goes quiet during SBL-completion/erase longer than the old
+250ms window). Tasks #20 + #31 DONE.
+
+**Two production-path bugs found by reasoning through the UI flow + FIXED (host, unit-tested):**
+1. `WiCANSdFlasher` never authenticated the ECU before `fast_write` (my manual flash auth'd separately) →
+   added `_authenticate_ecu()` in `_trigger_firmware_flash` AFTER the rev-gate (no ECU contact on old fw).
+2. `WiCANFlasher._verify` didn't exclude the flash counter → would FAIL a perfect flash on the 0xFFB00 diff.
+   Now masks `FLASH_COUNTER_OFFSET=0xFFB00`/`SIZE=8` (new constants) on both sides, matching the host CRC.
+   Tests: `test_verify_tolerates_flash_counter`. Full suite was 1313; +these.
+
+**REMAINING (needs user OK — auto-classifier blocked an extra flash as beyond "recover"):**
+- End-to-end validation of `WiCANSdFlasher.flash_rom` (the actual UI code path with the 2 fixes) requires ONE
+  more flash (re-flash the same good ROM). The recovery used the manual auth+WL path, NOT the production
+  WiCANSdFlasher path — so the integration (gates→package→upload→auth→fast_write→verify-with-mask) is
+  component-validated + unit-tested but not yet run as a whole on HW.
+- THEN flip `WICAN_WRITE_ENABLED=True` (Phase 6 final) to enable the UI write path (behind NCFRv5 rev-gate +
+  experimental warning + link/battery/digest gates + read-back-ON). Do NOT enable before the e2e flash passes.
+
+**(prior) STATUS: ECU RECOVERED (user reflashed via Tactrix, confirmed working). `/goal` is executing the
+Option B plan with the user's blessing to test write features (they'll inspect the ECU if anything bricks).**
+- **SD upload metered:** ~1 s/MB over WiFi (`tools/wican_upload_meter.py`) → Option B budget ≈ 1 s + ~55 s flash.
+- **Phases 0, 2-host, 3-host: DONE** (host-side, all unit-tested, suite green 1305 passed). See Recent Completed
+  Work below. Make-safe gate (`WICAN_WRITE_ENABLED=False`) + the full host pipeline: `wican_sd_package.py`
+  (staged image + manifest, byte-identical to J2534 prep), `wican_sd_upload.py` (verified multipart upload),
+  `wican_sd_flash.py` (`WiCANSdFlasher` orchestrator, firmware trigger rev-gated to NCFRv5+). Wired behind
+  `_build_flash_driver` (swap WiCANFlasher→WiCANSdFlasher) under the make-safe gate → zero live-flash risk.
+- **⚠️ WiCAN DEVICE WEDGED (blocks all hardware phases).** As of this session the WiCAN @ 192.168.1.169 accepts
+  TCP on :80 and :35000 but BOTH the HTTP config server and the SLCAN server immediately close every connection
+  (persisted across a 12s wait; my very first probe already failed, so it predates this session). Only read-only
+  probes were run. This is the ADAPTER, not the ECU (ECU untouched). HTTP `/system_reboot` is unreachable, so it
+  needs a **physical power cycle** by the user. Until then: Phase 1 OTA+test, Phase 2 firmware/bench, Phase 4
+  dry-run, Phase 5 live flash are all blocked.
+- **Firmware Phases 1 + 2: WRITTEN + BUILD-VERIFIED (HW-test pending, blocked on device).** On branch
+  `feature/option-b-sd-write` in `nc-flash-wican-fw` (UNCOMMITTED working tree):
+  - **Phase 1 teardown fix** (`main/ncflash_fastread.c`): bounded `tx_send()` (2 s, replaces every
+    `portMAX_DELAY` `xQueueSend` — the wedge cause), single `goto cleanup` teardown always resumes
+    `can_rx_task` (via `was_suspended`), drains CAN RX, `twai_read_alerts` to clear alerts, and flushes the
+    TX queue ONLY on `host_gone` (never on success — would truncate a good read). Re-entry guard
+    `s_fastop_busy`. Read happy-path bytes are unchanged. Version marker stays NCFRv4 (read wire identical).
+  - **Phase 2 `/upload/sd/*` endpoint** (`main/config_server.c`): wildcard POST handler → `/sdcard/roms/<name>`,
+    `.part`-temp + atomic rename, filename guard (no `..`/sep/ctrl, require ext), 4 MB cap, returns
+    `{bytes_written, crc32}`. **CRC is a hand-rolled zlib-compatible CRC-32 — VERIFIED byte-for-byte vs
+    Python `zlib.crc32` (incl. chunked) so host upload verification works.** Non-destructive (no CAN/BLE
+    disable, no reboot).
+  - **Both build clean** with ESP-IDF v5.5.3 (`idf.py build` OK, 32% free). **Build env gotcha:** must
+    `$env:IDF_PYTHON_ENV_PATH="C:\Users\dufre\.espressif\python_env\idf5.5_py3.10_env"` then
+    `. C:\esp\esp-idf-v5.5.3\export.ps1` (NOT `C:\esp\esp-idf` — that's a stale v5.1; default py is 3.14 so
+    export mis-derives the venv name).
+- **DEPLOYED + HARDWARE-VALIDATED (device recovered on its own; user approved "rebuild NCFRv4 + OTA now"):**
+  - Built the exact deployed NCFRv4 from source (git-stash the WIP → clean tree @ 84445a2 → build →
+    `ncfrv4-recovery.bin`, confirmed it carries the NCFRv4 marker, unlike the old pre-fast-read
+    `rollback_deployed_wican-pro.bin`) as the recovery image. Restored WIP, rebuilt Phase 1+2.
+  - **OTA-flashed the Phase 1+2 build** (`POST /upload/ota.bin`, 3526352 B, HTTP 303 in 22.6s); device
+    rebooted cleanly into it (HTTP 200, NCFRv4 read marker intact).
+  - **Phase 2 validated:** `/upload/sd/*` works — uploaded the full ~1.03 MB staged LF9VEB image; device
+    CRC `0xE08DBFC3` == host CRC exactly; manifest sidecar uploaded; traversal rejected. Staged ROM now on
+    the SD card at `/sdcard/roms/`.
+  - **Phase 1 validated:** full authenticated fast-read = 214.7s (parity, unchanged); TWO reads byte-for-byte
+    identical → read byte-perfect (the 1 checksum mismatch @0xFF73C is the ECU's real reflashed LFDJEA cal,
+    not a read error). CAN-wedge fix proven: after a host-disconnect-mid-read, a full re-auth on the SAME
+    firmware session (no reboot) succeeded in 0.3s → `can_rx_task` resumes, CAN not wedged. (Test gotcha:
+    polling version_ping during the wait re-feeds the firmware TX socket and confuses timing/tester_present;
+    use a quiet wait + full re-auth as the clean check.)
+- **Phase 4 `ncflash_fastwrite` (dry-run): DONE + HARDWARE-VALIDATED.** New `main/ncflash_fastwrite.c` (+.h,
+  wired into main.c dispatch after fastread, added to CMakeLists). ISO-TP *sender* (FF+CF, honor ECU FC,
+  lock-step `0x76` ACK, NO resend/NO counter), SD reader, manifest parse (cJSON), pre-erase CRC32 digest
+  gate, progress markers via bounded `tx_send` + the same clean-teardown as fastread. **HARD SAFETY GATE
+  `NCFW_ALLOW_LIVE` (=0 in this build): mode 'L' is REFUSED → the deployed firmware is physically incapable
+  of an ECU write.** Command: `W` + mode('D'/'L') + filename + CR; reads `/sdcard/roms/<name>` + `<stem>.json`.
+  Built + OTA'd (NCFRv4 read marker kept — host rev-gate stays closed). **Validated on HW (ECU never
+  touched):** dry-run happy path NCFWSYNC→1022/1022 blocks→NCFWDONE; digest gate hard-blocks a CRC mismatch
+  (FWERR st=5, no progress); live 'L' refused (FWERR st=7); missing file → st=2. The firmware CRC32 matches
+  the host `zlib.crc32` (proven in Phase 2). Recovery image `ncfrv4-recovery.bin` still valid.
+- **⚠️ Phase 5 LIVE FLASH ATTEMPTED — ECU SOFT-BRICKED (re-flashable over CAN), AWAITING USER DIRECTION.**
+  Built NCFRv5 live build (`NCFW_ALLOW_LIVE=1`), OTA'd, re-flashed the ECU's OWN ROM (LFDJEA, checksum-
+  corrected — 4-byte diff). Host auth + `WL` trigger: **RequestDownload accepted (0x74) + 5 SBL blocks ACKed
+  (0x76 each)**, then FAILED on the 6th/final SBL block: `FWERR a=101400 st=11 nrc=FF` (bare recv-timeout —
+  ECU went silent). **This VALIDATES the auth-handoff (host-auth carries to firmware bus ownership) AND the
+  ISO-TP sender (multi-frame RequestDownload + 5 lock-step blocks) — furthest ever (host-driven never passed
+  SBL block 1).** ECU state: no default-session tester_present, BUT re-auth (prog session + security) SUCCEEDS
+  → **soft-bricked but RE-FLASHABLE over CAN** (a completed flash recovers it; flash intact, pre-erase). User
+  DENIED the recovery-options question → HOLDING, no further ECU contact without explicit go.
+- **FIX STAGED (built, NOT OTA'd):** improved `ncflash_fastwrite.c` ISO-TP diagnostics — granular FWSUB_*
+  nrc codes (FF-send/FC-timeout/FC-bad/CF-send/ACK-timeout/ACK-pci/ACK-sid, 0xE1-0xE7) so a retry says exactly
+  WHERE block 6 dies, + realistic timeouts (FC 250→2000ms, resp 250→5000ms, MAX_PENDING 16→24 ≈ host's 60s
+  0x78 budget — my 250ms was way tighter than the host flash's TIMEOUT_RESPONSE_PENDING_MAX=60000). Builds
+  clean. **Hypothesis:** block 6 completes the SBL (0x1800) → ECU jumps to SBL / starts erase → silent longer
+  than my 250ms first-response timeout. The longer timeouts + granular codes will confirm on the next retry.
+- **Phase 6 HOST GLUE: DONE + tested (while holding the ECU).** `WiCANTransport.fast_write(name, mode, progress_cb)`
+  sends `W<mode><name>\r`, resyncs on NCFWSYNC, parses NCFWPROG/NCFWDONE/FWERR (mirror of fast_read's reader:
+  resync-past-CAN, FWERR surfacing via `_fwerr_suffix`, stall + peer-close detection, NO host abort).
+  `WiCANSdFlasher._trigger_firmware_flash` now drives it (mode 'L') → FlashProgress 35→90% band. Tests:
+  `test_ecu_wican_fast_write.py` (socketpair replay, 8) + updated `test_ecu_wican_sd_flash.py`. Full suite
+  **1313 passed**. **`WICAN_WRITE_ENABLED` stays False** — the UI write path is NOT enabled (no live-flash from
+  the app) until a flash is proven. The ONLY remaining Phase 6 step is flipping that flag, AFTER a successful
+  live flash + read-back.
+- **NEXT once user approves ECU recovery:** OTA the staged firmware fix (granular FWSUB_* codes + longer
+  timeouts) → retry the full flash over CAN (restart-from-scratch; ECU stays re-flashable across attempts).
+  If NCFWDONE → mandatory read-back compare → then flip `WICAN_WRITE_ENABLED=True` to finish Phase 6.
+  **Do NOT enable the UI write path until a flash actually completes.**
+- **(superseded) Phase 5 plan:** flip `NCFW_ALLOW_LIVE=1` + bump marker
+  NCFRv5, rebuild+OTA. **Resolve the auth-handoff unknown FIRST** (OPEN DECISION #1: does the host-authenticated
+  programming session carry over when the firmware takes the bus, or is a seed-relay needed? watch the gap vs
+  the ECU S3 ~5s timeout → may need interleaved TesterPresent). Then a real flash: lock-step `0x76` ACKs, FC
+  handling, no-resend abort, NCFWDONE, mandatory read-back compare, interrupted-flash→clean-abort→restart.
+  **RISK:** a partial live flash soft-bricks the ECU (stuck in programming mode; needs the user's Tactrix
+  reflash, NOT a power cycle — memory `project_wican_write_bricks_on_interrupt`). Do on a recoverable ECU
+  with the user present + Tactrix ready. THEN Phase 6 enable (`WICAN_WRITE_ENABLED=True`, host
+  `WiCANTransport.fast_write()` parsing NCFWSYNC/NCFWPROG/NCFWDONE/FWERR → FlashProgress).
+- **Build env:** `$env:IDF_PYTHON_ENV_PATH="C:\Users\dufre\.espressif\python_env\idf5.5_py3.10_env"` then
+  `. C:\esp\esp-idf-v5.5.3\export.ps1` then `idf.py build` (NOT `C:\esp\esp-idf` = stale v5.1).
+- **UNCOMMITTED (no commit without user ok):** firmware branch `feature/option-b-sd-write` (ncflash_fastread.c
+  + config_server.c + ncfrv4-recovery.bin); host repo (5 new modules + tests + CHANGELOG + this file). The
+  deployed firmware is running but its SOURCE is only in the working tree — recommend committing for
+  traceability (hospital-critical) when the user is ready.
+
+**PRIOR HISTORY (Jun 21) — root cause that drove the pivot:** the host-driven, block-by-block WiCAN write
+soft-bricks the ECU on a mid-flash drop (NC ECU FC = BS=0/STmin=0 → unpaced CF burst overruns the gateway;
+interrupted programming session needs a Tactrix reflash, not a power cycle). Block-level `tx_stmin` pacing fix
+exists + is hardware-validated at the block level but is too slow (~8–10 min) and brick-prone for full flash →
+REJECTED as the path. Option B (SD-staged, firmware-driven local-CAN flash) is the answer. See memory
+`project_wican_write_bricks_on_interrupt`, `WICAN_PART_C_FINDINGS.md` §3.
+
+**WHAT HAPPENED THIS SESSION:**
+1. User reported the GUI FULL FLASH over WiCAN failed: auth/security/`RequestDownload` OK, then the first
+   SBL `TransferData` (SID 0x36) timed out at 60 s. READ/RAM/DTC all work over the same link.
+2. **Root cause (HARDWARE-CONFIRMED via `tools/wican_flash_diag.py`):** the NC ECU's ISO-TP Flow Control
+   advertises **BS=0 / STmin=0** ("send all ~146 Consecutive Frames back-to-back"). The unpaced outbound
+   CF burst overruns the WiCAN gateway's TCP→CAN buffer → a frame drops *inside the gateway* → ECU never
+   completes reassembly → no `0x76` → 60 s timeout. (Mirror of the receive-side overflow `rx_stmin` already
+   guards; reads work because the ECU is the *sender* + host has N_Cr fast-fail + idempotent retry. Write
+   has neither — no mid-stream resend by design.) Verified by a 3-agent adversarial workflow (all confirmed).
+3. **Block-level FIX implemented + unit-tested + HARDWARE-VALIDATED (but UNCOMMITTED):** outbound CF pacing
+   floor. With a 3 ms floor, a paced 147-frame SBL block **ACKed in 638 ms** (unpaced failed). Files:
+   - `src/ecu/isotp.py` — `IsoTpSession(tx_stmin=…)`; pacing = `max(peer_stmin, floor)` via
+     `_pace_consecutive_frame` (replaced `_sleep_stmin`). Default `tx_stmin=0` → J2534/reads byte-identical.
+   - `src/ecu/wican_transport.py` — `DEFAULT_TX_STMIN=3`, plumbed into the session.
+   - `tools/wican_flash_diag.py` — NEW instrumented diagnostic (captures the ECU's FC; `--sbl-blocks`,
+     `--tx-stmin`, `--commit`/`--yes` for a real flash). **SAFETY BUG: it leaves the ECU mid-download →
+     this is what soft-bricked the ECU. Before any reuse, add a clean-exit (ecu_reset/transfer_exit) — or
+     do NOT re-run it on the live ECU.**
+   - Tests: `tests/test_ecu_isotp.py::TestOutboundTxStminFloor` (4) + `test_ecu_wican_transport.py` (1 wiring).
+     `tests/test_ecu_isotp.py` + `test_ecu_wican_transport.py` = **98 passed**; flash/protocol = **80 passed**.
+     black clean. CHANGELOG updated (Fixed). **NOT committed** (ECU bricked / WIP / user hasn't said land).
+
+**KEY DECISION — PIVOT WiCAN WRITE TO OPTION B (SD-staged firmware write):**
+Host-driven write (the pacing fix) is a **slow, brick-prone stopgap** — REJECTED as the long-term path:
+  - **Too slow:** 3 ms × ~150k outbound frames ≈ **8–10 min** vs J2534 **~19 KB/s ≈ 55 s** (user's hard req).
+  - **Brick-prone:** any single residual dropped frame over ~150k frames aborts (no resend); and every
+    failed attempt = a Tactrix reflash (not safely interruptible).
+**Option B = the real answer (speed AND brick-safety):** bulk-upload ROM → WiCAN SD over HTTP/FTP (reliable
+TCP, the only WiFi step, verifiable BEFORE touching the ECU), then firmware `ncflash_fastwrite` (mirror of
+the proven `ncflash_fastread`) runs the program sequence locally over CAN at line rate ≈ J2534 speed, no
+WiFi in the flash loop. User maintains the fast-read firmware fork → feasible. Docs: `WICAN_PART_C_FINDINGS.md`
+§3, `WICAN_TRANSPORT.md` §6.
+
+**OPEN QUESTION TO MEASURE TOMORROW (gates Option B's total time):** how long to upload 1 MB to the WiCAN SD?
+**NEVER METERED.** All our throughput numbers (fast-read ~214 s, SLCAN ~1.4 KB/s) are **ECU-limited**, not
+raw WiFi. The docs only cite the SD card's *own* write speed (~10–50 MB/s SDMMC), not an end-to-end WiFi
+upload. ESP32 WiFi TCP is typically a few MB/s → est. 1 MB in ~1–3 s, but UNVERIFIED. Easy to measure: time
+an HTTP multipart POST (or FTP `STOR`) of a 1 MB file to `/sdcard`. (Closest proxy done = OTA firmware
+upload, which was never timed.) Option B total ≈ (this upload) + ~55 s firmware flash.
+
+**TODO NEXT SESSION:** (1) user reflashes ECU. (2) meter the SD upload. (3) decide/scope Option B
+(`ncflash_fastwrite` firmware + host SD-upload + flash-trigger + host-side SHA/CRC integrity). (4) decide
+whether to keep the host-driven pacing fix as a documented emergency fallback or drop it; consider
+DISABLING the host-driven WiCAN flash in the UI until Option B exists (it bricks on failure). (5) commit
+the pacing fix + diag tool only once we've decided + the diag's clean-exit safety bug is fixed.
+Tasks: **#20 in_progress** (WRITE), #24 (shelve fast-read?), #23 (larger read/transfer blocks).
+
+## Recent Completed Work (Jun 23, 2026) - Option B Phases 2-host + 3-host: SD-staged flash pipeline (host)
+- **`src/ecu/wican_sd_package.py`** — `build_flash_package(rom, flash_type, archive_data, rom_id, when)` → a
+  self-checked `FlashPackage(image, manifest)`. Image = `[checksum-corrected ROM (1MB)] ++ [SBL (0x1800)]`.
+  Replicates `FlashManager._flash_rom_inner` host prep EXACTLY (validate→gen→correct+verify-zero-residual→
+  flash_start_index full/dynamic→get_sbl_data→program slice→assemble→SHA256/CRC32), cross-checked in tests vs an
+  independent recompute. Manifest freezes the firmware contract (`MANIFEST_VERSION=1`): download_addr/size,
+  block_size, flash_start_index, sbl_offset/len, program_offset/len, image_len, image_sha256/crc32, rom_sha256,
+  staged_filename `<ROM_ID>_<YYYYMMDD>-<HHMM>.bin`.
+- **`src/ecu/wican_sd_upload.py`** (`WiCANSdUploader`) — stdlib multipart POST to `/upload/sd/<name>`, verifies
+  device `{bytes_written, crc32}` vs host digest, refuses partial/corrupt. `upload_package`/`upload_manifest`.
+- **`src/ecu/wican_sd_flash.py`** (`WiCANSdFlasher`) — package→upload→trigger orchestrator; reuses WiCANFlasher
+  `_gate`/`preflight`/`_verify` by composition (no mixin); read-back verify default ON; firmware trigger
+  REV-GATED via `version_ping` (`FASTWRITE_MIN_FW_REV=5`) — refuses cleanly on the current NCFRv4 (no ECU
+  contact). `WiCANTransport` gained public `.host`/`.port`. Wired into `_build_flash_driver` (WiCANFlasher→
+  WiCANSdFlasher) under the unchanged `WICAN_WRITE_ENABLED=False` make-safe gate.
+- Tests: `test_ecu_wican_sd_package.py` (21+1skip), `test_ecu_wican_sd_upload.py` (19, in-proc HTTP server),
+  `test_ecu_wican_sd_flash.py` (15). Full suite 1305 passed / 12 skipped. black clean. **NOT committed.**
+
+## Recent Completed Work (Jun 23, 2026) - Option B Phase 0: make-safe (host-driven WiCAN write disabled)
+- **Hard-disabled the host-driven WiCAN flash at the UI seam** (it soft-bricks on a mid-flash link drop;
+  superseded by the SD-staged Option B path). Single source of truth: new module-level flag
+  `WICAN_WRITE_ENABLED = False` in `src/ecu/wican_flash.py` (Phase 6 flips it on behind the firmware rev-gate).
+- **Two enforcement points (defense-in-depth):** (1) `_build_flash_driver` (`src/ui/ecu_window.py`) — the
+  single choke point all flash/read routes through — returns `None` for WiCAN `flash`/`dynamic_flash` when the
+  flag is off (the testable backstop). (2) `_confirm_wican_flash` — shows a plain-language "WiCAN flash
+  temporarily disabled, use a J2534 cable" dialog instead of the old experimental-risk prompt.
+- **Unaffected:** WiCAN read / RAM scan / DTC read+clear; J2534 flashing (never gated by the flag).
+- Tests: `tests/test_ecu_window_flash_driver.py` (8) — duck-typed fake `self`, no QApplication needed: WiCAN
+  write blocked by default (no session acquired), WiCAN reads still build a `FlashManager`, J2534 flash never
+  blocked, flag-on rebuilds `WiCANFlasher`. Suite for the area = 42 passed. black clean. CHANGELOG (Changed).
+- **NOT committed** (WIP / user hasn't said land the plane).
+
+## Recent Completed Work (Jun 21, 2026) - WiCAN goal 3: adapter UI + settings (BUILT, suite green)
+
+- **Goal 3 grilled (light) + executed.** `/goal execute .claude/plans/wican-adapter-ui-goal.md`. Adapter is now selectable from the UI.
+- **The seam: `ECUSession` is now adapter-aware** (`src/ecu/session.py`). One positional-back-compat `__init__` (`ECUSession(dll_path)` still works) + new `adapter_config={"kind":"wican"|"j2534", ...}`. Split into `_connect_j2534`/`_connect_wican` and `_teardown_j2534`/`_teardown_wican`. **J2534 path byte-for-byte unchanged** (existing patch targets `src.ecu.j2534.*` untouched → all old session tests pass). WiCAN: switch device→SLCAN **once per session** (guarded by `_slcan_switched`), restore the ORIGINAL protocol only on `disconnect_ecu(restore_protocol=True)`/`cleanup()` — **NOT** on `release(connection_dead=True)** nor the auto-reconnect. `disconnect_ecu` gained a `restore_protocol` param; new `progress` signal for connect-step messages; `adapter_kind`/`transport` properties.
+- **Reboot-storm avoidance (key design):** the post-read auto-reconnect **reuses the same session** (`_auto_reconnect` → `session.connect_ecu()` for WiCAN) so the original protocol is never lost across recreation and the adapter isn't rebooted twice per read. `release(connection_dead=True)` tears down with `restore_protocol=False`.
+- **ECU window routing** (`src/ui/ecu_window.py`): `_build_flash_driver(op)` picks J2534=`FlashManager`+`use_session`, WiCAN read/scan=`FlashManager`+`use_uds`, **WiCAN flash=`WiCANFlasher`** (gate+battery+abort-restart, no mid-stream resend). `abort` is `hasattr`-guarded (WiCANFlasher has none; writes can't abort anyway). `_confirm_wican_flash` gates writes with an *experimental/keep-ignition-ON* dialog. `_build_adapter_config` reads settings.
+- **Settings** (`src/utils/settings.py` + `src/ui/settings_dialog.py`): `get/set_ecu_adapter` (j2534 default), `get/set_wican_host` (192.168.1.169), `_port` (35000), `_auto_config` (True). New **ECU ▸ Adapter** dropdown + **ECU ▸ WiCAN** page (host/port/auto-config/**Test Connection**). Added a `"text"` widget type to the registry-driven dialog (factory+load+apply). `_test_wican_connection` opens the link, runs `check_link_quality`, reports loss/p95, and restores cursor+transport+protocol on every exit path.
+- **`flash_mixin._on_ecu_connect`** also builds adapter_config from settings (secondary connect path).
+- **Tests:** `tests/test_ecu_session_wican.py` (8: switch-once/restore-once/reconnect-keeps-SLCAN/connect-fail-restores/acquire-no-device) + `tests/test_settings_ecu_adapter.py` (12). **Full suite 1233 passed, 11 skipped, black clean.**
+- **Ultracode verification (2 rounds) found + fixed 8 real issues, incl. 2 protocol-loss bugs:** (a) `_on_connect` orphaned a stale WiCAN session without restoring → adapter stranded in SLCAN, original protocol lost; fixed by `cleanup()`-before-reassign + `cleanup()` now restores even from DISCONNECTED-but-switched. (b) bare `switch_to_slcan` never wrote the crash-recovery sidecar → a hard kill mid-session lost the protocol; fixed with `_enter_slcan_durable` (write breadcrumb BEFORE switch, prefer a recorded original) + additive `WiCANConfigurator.write_recovery` (proven `switch_to_slcan`/`restore` left untouched). Also: `processEvents` gated to WiCAN (J2534 byte-for-byte), `disconnect_ecu` refuses while BUSY (brick-safety on the seam), reverted dead-code dup in flash_mixin, progress steps now paint. Re-verified: all 8 confirmed fixed, no new bugs, **full suite 1236 passed**.
+- **KNOWN LIMITATION:** WiCAN connect is **synchronous** — the first SLCAN switch / restore (~6 s reboot) briefly blocks the UI thread (`QApplication.processEvents()` paints the step labels first, but the loop is blocked during the HTTP reboot poll). Threading the connect is a deferred polish. WiCAN flash is wired but **still bench-unvalidated (task #20)**.
+- **Task #23 (NEW):** investigate whether the ECU honours larger read/transfer blocks (probe 0x800/0xFFE on the live ECU; reads idempotent so safe).
+
 ## Recent Completed Work (Jun 21, 2026) - WiCAN goal 2 kickoff: ECU functions (Part A) + reboot/SD investigations
 
 - **Three new `/goal` driver docs** under `.claude/plans/`: goal 1 (`wican-read-speed-goal.md`) marked **fully closed** (Tactrix parity); goal 2 (`wican-ecu-functions-goal.md`) — READ RAM/DTC/CLEAR DTC + **build-only** WRITE logic; goal 3 (`wican-adapter-ui-goal.md`) — adapter UI **stub** (grill-me pending after goal 2). Now executing goal 2.

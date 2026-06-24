@@ -143,6 +143,7 @@ class IsoTpSession:
         honor_peer_fc: bool = True,
         max_wait_frames: int = DEFAULT_MAX_WAIT_FRAMES,
         n_cr_ms: Optional[int] = None,
+        tx_stmin: int = DEFAULT_STMIN,
     ):
         """
         Args:
@@ -174,6 +175,19 @@ class IsoTpSession:
                 stalling the full receive budget. Only ever bounds the gap
                 *between* consecutive frames — never the initial wait for the
                 first frame, and never extends past the overall deadline.
+            tx_stmin: Outbound STmin FLOOR (same encoding as STmin) applied when
+                *we* transmit a multi-frame message: the tool never sends
+                Consecutive Frames closer together than this, even if the peer's
+                Flow Control advertises a smaller (or zero) STmin. ``0`` (default)
+                = honour the peer exactly (unchanged behaviour for J2534 and
+                tests). A non-zero floor paces our outbound CF burst so it cannot
+                overflow a lossy multi-hop link's forwarding buffer (WiCAN
+                SLCAN-over-WiFi: the ECU typically advertises STmin=0 in a
+                programming session, and an unpaced ~146-frame burst overruns the
+                gateway's TCP->CAN path — the mirror of the receive-side overflow
+                ``rx_stmin`` already guards). It ONLY changes inter-frame timing
+                within one message — never the payload, never a resend — so the
+                flash no-mid-stream-resend (anti-brick) invariant is preserved.
 
         Raises:
             ValueError: If neither a transport nor both callables are supplied,
@@ -200,6 +214,9 @@ class IsoTpSession:
         self.honor_peer_fc = honor_peer_fc
         self.max_wait_frames = max_wait_frames
         self.n_cr_ms = n_cr_ms
+        self.tx_stmin = tx_stmin
+        # Precomputed outbound inter-CF separation floor (seconds).
+        self._tx_min_sep_s = decode_stmin(tx_stmin)
 
     # --- framing helpers ---
 
@@ -325,9 +342,13 @@ class IsoTpSession:
                 # Block exhausted — wait for the next Flow Control.
                 block_size, stmin = self._await_flow_control(deadline)
                 frames_in_block = 0
-            elif self.honor_peer_fc and stmin:
-                # Separation time between consecutive frames within a block.
-                self._sleep_stmin(stmin, deadline)
+            else:
+                # Separation between consecutive frames within a block: honour the
+                # peer's requested STmin, but never send faster than our outbound
+                # floor (tx_stmin). The floor is what paces a lossy multi-hop link
+                # (WiCAN) where the peer advertises STmin=0; with the default floor
+                # of 0 this is identical to honouring the peer exactly.
+                self._pace_consecutive_frame(stmin, deadline)
 
     def _await_flow_control(self, deadline: float) -> Tuple[int, int]:
         """Wait for a Flow Control frame and return ``(block_size, stmin)``.
@@ -361,9 +382,21 @@ class IsoTpSession:
                 raise IsoTpError("ISO-TP Flow Control reported buffer overflow")
             raise IsoTpError(f"unknown ISO-TP Flow Control status: 0x{status:X}")
 
-    def _sleep_stmin(self, stmin: int, deadline: float) -> None:
-        """Sleep the STmin separation time, but never past the deadline."""
-        delay = decode_stmin(stmin)
+    def _pace_consecutive_frame(self, peer_stmin: int, deadline: float) -> None:
+        """Sleep the inter-Consecutive-Frame separation, but never past ``deadline``.
+
+        The effective separation is ``max(peer_request, tx_floor)``:
+          * ``peer_request`` = the peer's advertised STmin, honoured only when
+            :attr:`honor_peer_fc` is set (otherwise 0);
+          * ``tx_floor`` = our own outbound :attr:`tx_stmin` floor, applied
+            ALWAYS — it is the host-side pacing that keeps a CF burst from
+            overflowing a lossy multi-hop link even when the peer asks for 0.
+
+        With the default ``tx_stmin=0`` this collapses to the previous behaviour
+        (sleep the peer's STmin, nothing when it is 0).
+        """
+        peer = decode_stmin(peer_stmin) if self.honor_peer_fc else 0.0
+        delay = max(peer, self._tx_min_sep_s)
         if delay <= 0:
             return
         remaining = deadline - time.monotonic()

@@ -254,6 +254,39 @@ class AppSettings:
     def set_j2534_dll_path(self, path: str):
         self.settings.setValue("ecu/j2534_dll_path", path)
 
+    # -- Adapter selection (J2534 wired default; WiCAN opt-in) --
+
+    def get_ecu_adapter(self) -> str:
+        """Get the selected ECU adapter kind: ``"j2534"`` (default) or ``"wican"``."""
+        value = self.settings.value("ecu/adapter", "j2534")
+        return value if value in ("j2534", "wican") else "j2534"
+
+    def set_ecu_adapter(self, kind: str):
+        self.settings.setValue("ecu/adapter", "wican" if kind == "wican" else "j2534")
+
+    # -- WiCAN (SLCAN-over-TCP) settings --
+
+    def get_wican_host(self) -> str:
+        """Get the WiCAN adapter host/IP."""
+        return self.settings.value("ecu/wican_host", "192.168.1.169")
+
+    def set_wican_host(self, host: str):
+        self.settings.setValue("ecu/wican_host", host)
+
+    def get_wican_port(self) -> int:
+        """Get the WiCAN SLCAN TCP port."""
+        return self.settings.value("ecu/wican_port", 35000, type=int)
+
+    def set_wican_port(self, port: int):
+        self.settings.setValue("ecu/wican_port", int(port))
+
+    def get_wican_auto_config(self) -> bool:
+        """Whether to auto-switch the WiCAN to SLCAN on connect and restore after."""
+        return self.settings.value("ecu/wican_auto_config", True, type=bool)
+
+    def set_wican_auto_config(self, enabled: bool):
+        self.settings.setValue("ecu/wican_auto_config", bool(enabled))
+
 
 # Global settings instance
 _settings = None

@@ -154,6 +154,40 @@ class TestScanRamOverTransport:
         assert uds.read_memory_by_address.call_count == 193
         uds.flush.assert_called_once()
 
+    def test_dropped_page_logs_summary_not_per_block_warning(self, caplog):
+        # A recovered drop is routine on a lossy link, not a warning. It must
+        # produce a single INFO summary, not per-block WARNING spam.
+        import logging
+        from src.ecu.exceptions import UDSTimeoutError
+
+        state = {"n": 0}
+
+        def rmba(addr, size, **kw):
+            state["n"] += 1
+            if state["n"] == 1:
+                raise UDSTimeoutError("page dropped")
+            return b"\x5a" * size
+
+        uds = MagicMock()
+        uds.read_memory_by_address.side_effect = rmba
+        fm = FlashManager()
+        fm.use_uds(uds)
+        fm._connect = lambda *a, **k: None
+        fm._authenticate = lambda *a, **k: None
+
+        with caplog.at_level(logging.INFO):
+            fm.scan_ram()
+
+        # No WARNING+ noise about the per-block read for a recovered drop...
+        read_warnings = [
+            r
+            for r in caplog.records
+            if r.levelno >= logging.WARNING and "read" in r.getMessage().lower()
+        ]
+        assert read_warnings == []
+        # ...just one INFO summary recording the recovery.
+        assert "1 page(s) re-requested" in caplog.text
+
 
 # --- Pure helpers in tools/wican_bench_ecu.py -------------------------------
 

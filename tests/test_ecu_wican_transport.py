@@ -985,6 +985,15 @@ class TestTransportTuning:
         # And can be disabled (restores the wait-the-whole-budget behaviour).
         assert WiCANTransport("h", 1, n_cr_ms=None)._session.n_cr_ms is None
 
+    def test_tx_stmin_floor_default_and_override_reach_the_session(self):
+        from src.ecu.wican_transport import DEFAULT_TX_STMIN
+
+        # The outbound CF pacing floor (the write/flash fix) is wired into the
+        # ISO-TP session so our TransferData burst can't overrun the gateway.
+        assert WiCANTransport("h", 1)._session.tx_stmin == DEFAULT_TX_STMIN
+        # And is tunable (0 reproduces the unpaced, drop-prone behaviour).
+        assert WiCANTransport("h", 1, tx_stmin=0)._session.tx_stmin == 0
+
     @staticmethod
     def _hold_open_handler(conn):
         _ack_handshake(conn)  # C / S6 / O

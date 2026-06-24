@@ -21,6 +21,17 @@ class TestReadObdPid:
         result = uds.read_obd_pid(0x0C)
         assert result == bytes([0x12, 0x34])
 
+    def test_passes_quiet_nrcs(self):
+        """read_obd_pid forwards quiet_nrcs={0x22} so a post-reconnect 0x22
+        is demoted to DEBUG instead of two scary WARNINGs (RPM + voltage)."""
+        from src.ecu.constants import NRC_CONDITIONS_NOT_CORRECT
+
+        uds = _make_uds(bytes([0x0C, 0x12, 0x34]))
+        uds.read_obd_pid(0x0C)
+        _args, kwargs = uds.send_request.call_args
+        assert "quiet_nrcs" in kwargs
+        assert NRC_CONDITIONS_NOT_CORRECT in kwargs["quiet_nrcs"]
+
     def test_pid_echo_mismatch_raises(self):
         from src.ecu.exceptions import UDSError
 

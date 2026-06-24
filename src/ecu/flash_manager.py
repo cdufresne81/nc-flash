@@ -74,7 +74,20 @@ logger = logging.getLogger(__name__)
 #: must NEVER resend a block (no block sequence counter; a resend bricks).
 READ_BLOCK_TIMEOUT_MS = 4000
 READ_BLOCK_PENDING_MAX_MS = 4000
-READ_BLOCK_RETRIES = 4
+#: A single dropped Consecutive Frame fails one attempt fast (N_Cr); a *transient*
+#: link stall (WiFi roam, interference burst, a momentarily wedged gateway) drops
+#: several attempts in a row. Hardware 2026-06-23: a 1 MB read aborted at block
+#: ~957/1024 after only 4 back-to-back drops at one offset — ~5 min of work lost to
+#: a sub-second stall. Reads are idempotent, so the cure is more attempts spaced by
+#: a short, growing backoff (below) that lets the stall clear before re-requesting.
+#: A clean J2534/WiCAN block still returns on attempt 1, so this only ever costs
+#: time on a genuinely lossy moment.
+READ_BLOCK_RETRIES = 8
+#: Backoff between read-retry attempts: ``base * attempt`` seconds, capped. Gives a
+#: transient link stall time to recover instead of hammering it with instant
+#: re-requests. Only the (rare) failing block ever waits.
+READ_BLOCK_RETRY_BACKOFF_S = 0.2
+READ_BLOCK_RETRY_BACKOFF_MAX_S = 1.0
 
 #: Largest ReadMemoryByAddress size a single ISO-TP message can carry back: the
 #: 12-bit First Frame length caps the response at 0xFFF bytes, and the response
@@ -183,6 +196,10 @@ class FlashManager:
         self._filter_id = None
         self._uds = None
         self._owns_connection = True  # False when using a borrowed session
+        # Count of blocks that needed a re-request this operation (lossy-link
+        # drops, all recovered). Reset per read_rom/scan_ram; surfaced as one
+        # summary line instead of a per-block warning.
+        self._block_retries = 0
 
     def use_session(self, device, channel_id, filter_id, uds) -> None:
         """
@@ -751,7 +768,8 @@ class FlashManager:
                         f"{size} bytes"
                     )
                 if attempt > 1:
-                    logger.info(
+                    self._block_retries += 1
+                    logger.debug(
                         "memory read recovered block at 0x%06X on attempt %d",
                         offset,
                         attempt,
@@ -760,11 +778,12 @@ class FlashManager:
             except UDSTimeoutError as exc:
                 # Lost/garbled response (transport errors are wrapped as a
                 # timeout at the UDS seam). Re-requestable because reads are
-                # idempotent — flush stale frames and try again.
+                # idempotent — flush stale frames and try again. This is routine
+                # on a lossy WiFi link (DEBUG, not WARNING): a block that never
+                # recovers raises FlashError below, which is the real signal.
                 last_exc = exc
-                logger.warning(
-                    "memory read block at 0x%06X timed out (attempt %d/%d); "
-                    "retrying",
+                logger.debug(
+                    "memory read block at 0x%06X lost (attempt %d/%d); retrying",
                     offset,
                     attempt,
                     READ_BLOCK_RETRIES,
@@ -773,6 +792,17 @@ class FlashManager:
                     self._uds.flush()
                 except Exception as flush_exc:  # pragma: no cover - best-effort
                     logger.debug("Flush before read retry failed: %s", flush_exc)
+                # Space retries with a short, growing backoff: consecutive drops at
+                # one offset mean a transient link stall, and instant re-requests
+                # just hammer it. Only the failing block waits, and never after the
+                # final attempt.
+                if attempt < READ_BLOCK_RETRIES:
+                    time.sleep(
+                        min(
+                            READ_BLOCK_RETRY_BACKOFF_S * attempt,
+                            READ_BLOCK_RETRY_BACKOFF_MAX_S,
+                        )
+                    )
 
         raise FlashError(
             f"memory read failed at 0x{offset:06X} after {READ_BLOCK_RETRIES} "
@@ -818,6 +848,7 @@ class FlashManager:
             block_size = BLOCK_SIZE if not read_block_size else read_block_size
             block_size = max(1, min(block_size, MAX_ISOTP_READ_SIZE))
             offset = 0
+            self._block_retries = 0
             read_start = time.monotonic()
 
             while offset < ROM_SIZE:
@@ -842,10 +873,17 @@ class FlashManager:
                     )
 
             read_elapsed = time.monotonic() - read_start
-            logger.info(
+            read_msg = (
                 f"ROM read complete: {ROM_SIZE} bytes in {read_elapsed:.1f}s "
                 f"({ROM_SIZE / read_elapsed / 1024:.1f} KB/s)"
             )
+            if self._block_retries:
+                read_msg += (
+                    f" — {self._block_retries} block(s) re-requested after a "
+                    "dropped frame on the lossy link, all recovered "
+                    "(ROM is byte-perfect)"
+                )
+            logger.info(read_msg)
 
             # Read ROM ID
             rom_id = self._uds.read_rom_id()
@@ -1010,6 +1048,7 @@ class FlashManager:
             page_size = 0x100
             read_size = page_size
             ram = bytearray(total_pages * page_size)
+            self._block_retries = 0
 
             for i in range(total_pages):
                 if self._check_abort():
@@ -1032,6 +1071,12 @@ class FlashManager:
                     bytes_total=total_pages * page_size,
                 )
 
+            if self._block_retries:
+                logger.info(
+                    "RAM scan complete: %d page(s) re-requested after a dropped "
+                    "frame on the lossy link, all recovered",
+                    self._block_retries,
+                )
             self._set_state(FlashState.COMPLETE)
             return ram
         except FlashAbortedError:

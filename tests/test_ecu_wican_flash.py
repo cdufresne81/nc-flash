@@ -13,7 +13,12 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from src.ecu.constants import ROM_FLASH_START_MIN, ROM_SIZE
+from src.ecu.constants import (
+    FLASH_COUNTER_OFFSET,
+    FLASH_COUNTER_SIZE,
+    ROM_FLASH_START_MIN,
+    ROM_SIZE,
+)
 from src.ecu.exceptions import FlashError, ROMValidationError, TransferError
 from src.ecu.link_quality import LinkQualityResult
 from src.ecu.wican_flash import WiCANFlasher
@@ -170,3 +175,19 @@ def test_verify_mismatch_raises(mocks):
         flasher = WiCANFlasher(MagicMock(), restart_backoff_s=0)
         with pytest.raises(FlashError, match="verify FAILED"):
             flasher.flash_rom(rom, verify=True)
+
+
+def test_verify_tolerates_flash_counter(mocks):
+    # The ECU stamps its own flash-cycle counter (0xFFB00..+8) during programming,
+    # so a read-back that differs ONLY there must still PASS — those bytes are not
+    # part of the written image (hardware-confirmed 2026-06-23).
+    FM, _clq, _UDS = mocks
+    rom = bytes(ROM_SIZE)
+    written = bytearray(ROM_SIZE)
+    for i in range(FLASH_COUNTER_OFFSET, FLASH_COUNTER_OFFSET + FLASH_COUNTER_SIZE):
+        written[i] = 0xAB  # ECU-stamped counter, differs from the source
+    FM.return_value.read_rom.return_value = written
+    with patch("src.ecu.wican_flash.correct_rom_checksums"):
+        flasher = WiCANFlasher(MagicMock(), restart_backoff_s=0)
+        flasher.flash_rom(rom, verify=True)  # must NOT raise
+    FM.return_value.read_rom.assert_called_once()

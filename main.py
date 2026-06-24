@@ -2187,6 +2187,13 @@ def main():
     app.styleHints().setColorScheme(Qt.ColorScheme.Light)
     app.setApplicationName(APP_NAME)
 
+    # Route Qt's own warnings into the session log and capture a Python stack for
+    # the threading/painting warnings that have preceded hard crashes (notably the
+    # WiCAN flash-completion path) — diagnostic only, never changes behaviour.
+    from src.utils.qt_diagnostics import install_qt_diagnostics
+
+    install_qt_diagnostics(fault_file=session_handler.stream)
+
     # Determine if a file was passed on the command line
     args = app.arguments()
     file_arg = None
