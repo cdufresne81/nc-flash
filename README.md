@@ -42,7 +42,7 @@ cd nc-flash
 ### Windows
 Simply double-click `run.bat` or see [Windows Setup Guide](docs/internal/WINDOWS_SETUP.md) for details.
 
-### Linux/macOS
+### Linux
 ```bash
 python3 -m venv venv
 source venv/bin/activate
@@ -148,7 +148,7 @@ python main.py
 - Scaling property editor for table definitions
 - Verbose activity log console
 - Keyboard shortcuts for all major operations
-- Cross-platform: Windows, Linux, and macOS
+- Cross-platform: Windows and Linux
 
 ### AI Assistant Integration (MCP)
 - Built-in MCP server for AI assistants (Claude, ChatGPT, Gemini)
@@ -319,7 +319,7 @@ The project uses pytest for testing. All tests are located in the `tests/` direc
 **Run all tests:**
 ```bash
 # Activate virtual environment first
-source venv/bin/activate  # Linux/macOS
+source venv/bin/activate  # Linux
 # or
 venv\Scripts\activate  # Windows
 
@@ -358,7 +358,7 @@ flake8 src/ tests/
 
 Tests run automatically on GitHub Actions for:
 - Python 3.10, 3.12
-- Ubuntu, Windows, macOS
+- Ubuntu, Windows
 
 ## Development Status
 

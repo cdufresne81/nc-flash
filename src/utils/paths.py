@@ -33,15 +33,12 @@ def get_user_data_dir() -> Path:
     Returns a platform-appropriate location:
     - Windows: %APPDATA%/NCFlash
     - Linux:   ~/.local/share/NCFlash
-    - macOS:   ~/Library/Application Support/NCFlash
 
     Used for user-created content (projects) that must survive
     app updates and uninstalls. Does NOT create the directory.
     """
     if sys.platform == "win32":
         base = Path(os.environ.get("APPDATA", Path.home() / "AppData" / "Roaming"))
-    elif sys.platform == "darwin":
-        base = Path.home() / "Library" / "Application Support"
     else:
         base = Path(os.environ.get("XDG_DATA_HOME", Path.home() / ".local" / "share"))
     return base / "NCFlash"

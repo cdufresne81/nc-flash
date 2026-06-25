@@ -400,3 +400,16 @@ class TestReadRomBlockSize:
         fm.read_rom(read_block_size=0x99999)  # absurd; must clamp
         first = uds.read_memory_by_address.call_args_list[0]
         assert first.args[1] == MAX_ISOTP_READ_SIZE
+
+    def test_zero_elapsed_read_does_not_divide_by_zero(self):
+        """On a fast host the whole mocked read can finish within a single
+        ``time.monotonic`` tick (``read_elapsed == 0``). The completion-speed
+        log line must not raise ZeroDivisionError. Pinning ``monotonic`` to a
+        constant makes that race deterministic (regression for the fast-CI-runner
+        ``ZeroDivisionError`` at flash_manager.py:878)."""
+        fm, uds = self._make_fm()
+        captured = []
+        with patch("src.ecu.flash_manager.time.monotonic", return_value=123.0):
+            # progress_cb exercises the per-block speed line too (also guarded).
+            fm.read_rom(progress_cb=lambda p: captured.append(p))
+        assert captured  # the read actually ran and emitted progress
