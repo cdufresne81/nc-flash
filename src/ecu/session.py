@@ -91,6 +91,7 @@ class ECUSession(QObject):
         self._configurator = None
         self._slcan_prev_protocol = None  # original protocol to restore to
         self._slcan_switched = False  # True once we've switched this session
+        self._coexist_port = False  # True if connected via the no-reboot dedicated port
 
     # --- Public API ---
 
@@ -179,7 +180,15 @@ class ECUSession(QObject):
         logger.info("ECU session established (J2534)")
 
     def _connect_wican(self):
-        """Open the WiCAN SLCAN link (auto-switch protocol once), verify ECU."""
+        """Open the WiCAN link, verify ECU.
+
+        Prefers the **no-reboot dedicated SLCAN port** when the adapter runs
+        coexistence firmware (capability-probed via ``version_ping``): that path
+        skips the ``WiCANConfigurator`` protocol switch entirely (no ~6 s reboot)
+        and leaves the datalogger undisturbed. Against stock/old firmware the
+        probe fails and we fall back to the proven reboot-switch path — strictly
+        non-breaking.
+        """
         from .protocol import UDSConnection
         from .transport import create_ecu_transport
         from .wican_config import WiCANConfigurator
@@ -187,9 +196,24 @@ class ECUSession(QObject):
         if not self._wican_host or not self._wican_port:
             raise ValueError("WiCAN adapter requires a host and port")
 
-        # Switch the adapter into SLCAN mode ONCE per session (a ~6 s reboot).
-        # Already-SLCAN is a cheap no-op; we restore only on a real disconnect.
+        # No-reboot path: coexistence firmware keeps an always-on dedicated SLCAN
+        # port open, so flashing needs neither the protocol-switch reboot nor the
+        # WiCANConfigurator. Probe for it first; ANY failure falls back below.
         if self._wican_auto_config and not self._slcan_switched:
+            coexist = self._try_open_coexist_port()
+            if coexist is not None:
+                self._transport = coexist
+                self._coexist_port = True
+                self._uds = UDSConnection(coexist)
+                self._uds.tester_present()
+                logger.info(
+                    "ECU session established (WiCAN no-reboot port %s:%s)",
+                    self._wican_host,
+                    coexist.port,
+                )
+                return
+            # Not coexistence firmware — switch the adapter into SLCAN mode ONCE
+            # per session (a ~6 s reboot). Restore only on a real disconnect.
             self.progress.emit("Switching adapter to SLCAN (~6 s reboot)…")
             self._configurator = WiCANConfigurator(self._wican_host)
             self._slcan_prev_protocol = self._enter_slcan_durable(self._configurator)
@@ -207,6 +231,64 @@ class ECUSession(QObject):
         logger.info(
             "ECU session established (WiCAN %s:%s)", self._wican_host, self._wican_port
         )
+
+    def _try_open_coexist_port(self):
+        """Probe for no-reboot coexistence firmware; return an OPEN transport on
+        its dedicated SLCAN port, or ``None`` to fall back to the reboot path.
+
+        A coexistence build (firmware rev ``>= COEXIST_MIN_FW_REV``) keeps an
+        always-on dedicated SLCAN TCP port that routes through the
+        protocol-agnostic fast-read/write codecs, so the host can flash without
+        the ~6 s protocol-switch reboot and without the ``WiCANConfigurator``.
+        Detection is a ``version_ping`` over that port with a short connect
+        timeout. ANY failure — old firmware refusing the port, no ``NCFRv``
+        marker, a network hiccup — returns ``None`` so the caller takes the
+        proven legacy path. Strictly non-breaking: the probe never raises.
+        """
+        from .transport import create_ecu_transport
+        from .wican_sd_flash import _parse_fw_rev  # reuse the NCFRv<rev> parser
+        from .constants import (
+            WICAN_DEDICATED_SLCAN_PORT,
+            COEXIST_MIN_FW_REV,
+            COEXIST_PROBE_TIMEOUT_MS,
+        )
+
+        probe = None
+        try:
+            probe = create_ecu_transport(
+                {
+                    "kind": "wican",
+                    "host": self._wican_host,
+                    "port": WICAN_DEDICATED_SLCAN_PORT,
+                    "connect_timeout_ms": COEXIST_PROBE_TIMEOUT_MS,
+                }
+            )
+            probe.open()
+            rev = _parse_fw_rev(probe.version_ping(window_ms=COEXIST_PROBE_TIMEOUT_MS))
+            if rev is not None and rev >= COEXIST_MIN_FW_REV:
+                self.progress.emit("No-reboot coexistence firmware detected…")
+                logger.info(
+                    "WiCAN coexistence firmware NCFRv%s on dedicated port %s",
+                    rev,
+                    WICAN_DEDICATED_SLCAN_PORT,
+                )
+                return probe  # hand the OPEN transport to the caller
+            logger.info(
+                "WiCAN dedicated port answered rev=%s (< NCFRv%s); legacy reboot path",
+                rev,
+                COEXIST_MIN_FW_REV,
+            )
+        except Exception as exc:
+            logger.debug(
+                "WiCAN coexist-port probe failed (%s); legacy reboot path", exc
+            )
+        # Not coexistence (or probe failed): close any half-open probe, fall back.
+        if probe is not None:
+            try:
+                probe.close()
+            except Exception:
+                pass
+        return None
 
     @staticmethod
     def _enter_slcan_durable(configurator) -> str:
@@ -350,6 +432,7 @@ class ECUSession(QObject):
             except Exception:
                 pass
             self._transport = None
+        self._coexist_port = False
 
         if restore_protocol:
             self._restore_wican_protocol()

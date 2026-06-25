@@ -126,8 +126,12 @@ class TestRevGate:
         # NC ECU is in its bootloader post-reset until a physical ignition cycle.
         transport = _FakeTransport(marker=b"NCFRv5")
         flasher = _make_flasher(transport)
-        with patch(
-            "src.ecu.wican_sd_flash.build_flash_package", return_value=_fake_package()
+        with (
+            patch(
+                "src.ecu.wican_sd_flash.build_flash_package",
+                return_value=_fake_package(),
+            ),
+            patch("src.ecu.wican_sd_flash.time.sleep"),
         ):
             flasher.flash_rom(b"\x00" * 16)
         # Auth happened (after the rev-gate), then the firmware flash. No verify.
@@ -140,12 +144,40 @@ class TestRevGate:
         # read-back compare runs after the firmware flash.
         transport = _FakeTransport(marker=b"NCFRv5")
         flasher = _make_flasher(transport)
-        with patch(
-            "src.ecu.wican_sd_flash.build_flash_package", return_value=_fake_package()
+        with (
+            patch(
+                "src.ecu.wican_sd_flash.build_flash_package",
+                return_value=_fake_package(),
+            ),
+            patch("src.ecu.wican_sd_flash.time.sleep"),
         ):
             flasher.flash_rom(b"\x00" * 16, verify=True)
         assert transport.fast_write_calls == [("ID_20260623-1745.bin", "L")]
         flasher._verify_readback.assert_called_once()
+
+    def test_settles_before_authenticating(self):
+        """The host-side pre-session settle (brick-safety margin so an in-flight
+        datalogger poll frame can't corrupt the UDS auth) must run BEFORE the ECU
+        is authenticated / put into the programming session."""
+        from src.ecu.wican_sd_flash import PRE_SESSION_SETTLE_S
+
+        transport = _FakeTransport(marker=b"NCFRv5")
+        flasher = _make_flasher(transport)
+        order = []
+        flasher._authenticate_ecu.side_effect = lambda: order.append("auth")
+        with (
+            patch(
+                "src.ecu.wican_sd_flash.build_flash_package",
+                return_value=_fake_package(),
+            ),
+            patch(
+                "src.ecu.wican_sd_flash.time.sleep",
+                side_effect=lambda s: order.append(("sleep", s)),
+            ),
+        ):
+            flasher.flash_rom(b"\x00" * 16)
+        assert ("sleep", PRE_SESSION_SETTLE_S) in order
+        assert order.index(("sleep", PRE_SESSION_SETTLE_S)) < order.index("auth")
 
 
 class TestDynamicFlash:

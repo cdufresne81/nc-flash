@@ -30,11 +30,13 @@ from .constants import (
     J2534_PROTOCOL_ISO15765,
     DEFAULT_J2534_DLL,
     NRC_CONDITIONS_NOT_CORRECT,
+    RPM_FLASH_GATE,
 )
 from .exceptions import (
     ECUError,
     FlashError,
     FlashAbortedError,
+    EngineRunningError,
     NegativeResponseError,
     ROMValidationError,
     ChecksumError,
@@ -98,6 +100,51 @@ READ_BLOCK_RETRY_BACKOFF_MAX_S = 1.0
 #: honours sizes above 0x400 must be probed on hardware before raising the
 #: default (see tools/wican_bench_read.py --probe).
 MAX_ISOTP_READ_SIZE = 0xFFE
+
+
+def enforce_rpm_gate(
+    uds, *, allow_override: bool = False, threshold: float = RPM_FLASH_GATE
+) -> Optional[float]:
+    """Engine-off safety gate, enforced in code at the flash boundary.
+
+    Reads OBD-II PID 0x0C (engine RPM) ONCE on the open session and refuses
+    (raises :class:`EngineRunningError`) if the engine is definitively running
+    (``rpm >= threshold``), unless ``allow_override`` is set. Returns the RPM
+    read, or ``None`` if it could not be read.
+
+    Call this BEFORE the programming session is entered (before
+    ``session.acquire()`` / ``diagnostic_session(0x85)``). Once a programming
+    session is active the ECU answers OBD Mode-01 with NRC 0x11 and RPM is no
+    longer readable (see ``protocol.py``), so a gate placed after session entry
+    would always read ``None`` and never fire.
+
+    A ``None`` read (PID unsupported / transient failure) does NOT block: it
+    cannot prove the engine is running, and hard-blocking would break ECUs that
+    do not expose PID 0x0C (the dashboard has always allowed flashing in that
+    case). It is logged instead. Transport-agnostic — the same gate guards both
+    the J2534 and WiCAN flash paths.
+    """
+    if uds is None:
+        logger.warning("RPM gate skipped: no open UDS session to read engine RPM")
+        return None
+    try:
+        rpm = uds.read_engine_rpm()
+    except Exception as exc:  # read_engine_rpm already swallows, but be defensive
+        logger.warning("RPM gate: engine RPM read failed (%s); not blocking", exc)
+        return None
+    if rpm is None:
+        logger.warning(
+            "RPM gate: engine RPM unreadable (PID unsupported?); not blocking"
+        )
+        return None
+    if rpm >= threshold and not allow_override:
+        logger.error("RPM gate BLOCKED flash: engine running at %.0f RPM", rpm)
+        raise EngineRunningError(rpm)
+    if rpm >= threshold:
+        logger.warning("RPM gate OVERRIDDEN: flashing with engine at %.0f RPM", rpm)
+    else:
+        logger.info("RPM gate OK: engine off (%.0f RPM)", rpm)
+    return rpm
 
 
 class FlashState(Enum):

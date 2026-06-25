@@ -82,6 +82,14 @@ FASTWRITE_MIN_FW_REV = 5
 #: Default HTTP port for the SD-upload endpoint.
 DEFAULT_HTTP_PORT = 80
 
+#: Brick-safety margin before entering the programming session: let any in-flight
+#: datalogger CAN traffic drain so a stray poll frame cannot corrupt the UDS auth
+#: handshake during the transition. On no-reboot coexistence firmware the
+#: firmware ``FLASH_ACTIVE_BIT`` interlock is the real guarantee that the poll
+#: task is parked; this host-side settle is a belt-and-suspenders margin. Inert
+#: on the legacy reboot-switch path (no datalogger runs in SLCAN mode).
+PRE_SESSION_SETTLE_S = 0.2
+
 
 def _parse_fw_rev(marker: Optional[bytes]) -> Optional[int]:
     """Parse the integer rev out of a ``b"NCFRv<rev>"`` version-ping marker."""
@@ -378,6 +386,12 @@ class WiCANSdFlasher:
                 "card, but the flash was NOT triggered (no ECU contact). Update the "
                 "WiCAN firmware and retry."
             )
+
+        # Let any in-flight datalogger CAN traffic drain before the programming
+        # session so a stray poll frame can't corrupt the UDS auth handshake. The
+        # firmware FLASH_ACTIVE_BIT interlock parks the poll task; this is the
+        # host-side margin across the transition (see PRE_SESSION_SETTLE_S).
+        time.sleep(PRE_SESSION_SETTLE_S)
 
         # Authenticate the ECU (programming session + security) — the firmware
         # fastwrite relies on this host-established session for RequestDownload.

@@ -98,6 +98,23 @@ class ROMValidationError(FlashError):
     pass
 
 
+class EngineRunningError(FlashError):
+    """Raised by the RPM gate when a flash is attempted with the engine running.
+
+    Flashing with the engine running risks a brick (voltage sag, electrical
+    noise, the ECU actively driving actuators), so the gate refuses to enter the
+    programming session unless the operator explicitly overrides it. Carries the
+    measured RPM so callers can surface it.
+    """
+
+    def __init__(self, rpm: float):
+        self.rpm = rpm
+        super().__init__(
+            f"Engine is running ({rpm:.0f} RPM). Turn the engine OFF before "
+            "flashing the ECU."
+        )
+
+
 class VehicleGenerationError(ROMValidationError):
     """Raised when the vehicle generation cannot be determined from ROM data."""
 
