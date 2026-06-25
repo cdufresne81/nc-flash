@@ -699,9 +699,10 @@ class FlashManager:
         )
 
         transfer_elapsed = time.monotonic() - transfer_start
+        transfer_speed = total_program / transfer_elapsed if transfer_elapsed > 0 else 0
         logger.info(
             f"ROM transfer complete: {total_program} bytes in {transfer_elapsed:.1f}s "
-            f"({total_program / transfer_elapsed / 1024:.1f} KB/s)"
+            f"({transfer_speed / 1024:.1f} KB/s)"
         )
 
         # --- Phase 6: Finalize ---
@@ -873,9 +874,10 @@ class FlashManager:
                     )
 
             read_elapsed = time.monotonic() - read_start
+            read_speed = ROM_SIZE / read_elapsed if read_elapsed > 0 else 0
             read_msg = (
                 f"ROM read complete: {ROM_SIZE} bytes in {read_elapsed:.1f}s "
-                f"({ROM_SIZE / read_elapsed / 1024:.1f} KB/s)"
+                f"({read_speed / 1024:.1f} KB/s)"
             )
             if self._block_retries:
                 read_msg += (
