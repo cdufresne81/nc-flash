@@ -933,7 +933,7 @@ class TestChannelPriming:
             # Hold the socket open until the client disconnects (t.close()), so
             # the channel stays alive through receive_message() even on a slow
             # runner. A fixed sleep can expire mid-read and surface as a spurious
-            # "socket closed by peer" (seen on the macOS CI runner).
+            # "socket closed by peer" (seen on a slow CI runner).
             conn.settimeout(10.0)
             try:
                 while conn.recv(4096):

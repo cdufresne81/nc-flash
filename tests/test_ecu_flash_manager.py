@@ -405,8 +405,8 @@ class TestReadRomBlockSize:
         """On a fast host the whole mocked read can finish within a single
         ``time.monotonic`` tick (``read_elapsed == 0``). The completion-speed
         log line must not raise ZeroDivisionError. Pinning ``monotonic`` to a
-        constant makes that race deterministic (regression for the Windows/
-        macOS CI ``ZeroDivisionError`` at flash_manager.py:878)."""
+        constant makes that race deterministic (regression for the fast-CI-runner
+        ``ZeroDivisionError`` at flash_manager.py:878)."""
         fm, uds = self._make_fm()
         captured = []
         with patch("src.ecu.flash_manager.time.monotonic", return_value=123.0):

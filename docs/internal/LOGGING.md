@@ -288,7 +288,7 @@ def load_definition(self, definition_path):
 
 ## Log File Location
 
-- **Linux/macOS**: `~/.nc-flash/nc-flash.log`
+- **Linux**: `~/.nc-flash/nc-flash.log`
 - **Windows**: `C:\Users\<username>\.nc-flash\nc-flash.log`
 
 The log directory is created automatically if it doesn't exist.
