@@ -1,5 +1,19 @@
 # Session Notes
 
+## 🗂️ Housekeeping (Jun 25, 2026)
+
+- **Larger read/transfer blocks** investigation moved to GitHub: **nc-flash#77** (it's a host/ECU-protocol
+  question — the gateway only relays frames; the ECU rejects ReadMemoryByAddress > 0x400 w/ NRC 0x31).
+  Was internal task #23 (deleted).
+- **Firmware fast-read protocol — SHELVED** (was task #24, deleted). Decision: stop chasing the ~60 s
+  firmware optimisation; current ~214 s = Tactrix parity, floor is ECU response-pending. Host `fast_read()`
+  client stays in mainline (experimental/opt-in, documented, requires the firmware fork). Preserved entry
+  point: branch **`shelf/firmware-fast-read`** (@ ce2bbff, pushed). ESP32 firmware remains on the fork's
+  `feature/fast-rom-read` branch.
+- **`.claude/settings.local.json` untracked + gitignored.** Investigated "ignore all of `.claude/`" → bad
+  pattern here: `.claude/` holds shared hooks (the CHANGELOG-guard), commands, plans, and `notes.md` that
+  the workflow needs. Only the machine-local `settings.local.json` should be ignored (standard CC pattern).
+
 ## ⏳ WiCAN Scan progress dialog + Cancel (Jun 25, 2026)
 
 User asked: add "Scanning for device…" with a timer + Cancel; is there a max timeout?
