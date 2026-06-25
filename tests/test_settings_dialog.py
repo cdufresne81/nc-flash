@@ -26,6 +26,7 @@ class TestSettingDescriptor:
             assert desc.widget_type in (
                 "path_dir",
                 "path_file",
+                "text",
                 "spinbox",
                 "combobox",
                 "checkbox",

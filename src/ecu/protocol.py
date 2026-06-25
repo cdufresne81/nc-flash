@@ -41,7 +41,6 @@ from .constants import (
     TIMEOUT_READ,
     TIMEOUT_RESET,
     TIMEOUT_RESPONSE_PENDING_MAX,
-    CAN_REQUEST_ID,
 )
 from .exceptions import (
     J2534Error,
@@ -77,20 +76,31 @@ class UDSConnection:
     All methods validate responses and raise appropriate exceptions.
     """
 
-    def __init__(self, j2534_device, channel_id: int):
+    def __init__(self, transport):
         """
         Args:
-            j2534_device: An open J2534Device instance
-            channel_id: Connected channel ID from j2534_device.connect()
+            transport: An :class:`~src.ecu.transport.EcuTransport` that
+                exchanges complete UDS payloads (SID + data) with the ECU.
+                The transport owns all link framing (ISO-TP, CAN IDs); this
+                connection works purely in UDS bytes.
         """
-        self._device = j2534_device
-        self._channel_id = channel_id
+        self._transport = transport
+
+    def flush(self) -> None:
+        """Discard buffered/in-flight RX data on the transport (read-retry use).
+
+        Delegates to :meth:`EcuTransport.flush` — a no-op on reliable links, a
+        stale-frame drain on lossy ones. Safe to call between idempotent reads.
+        """
+        self._transport.flush()
 
     def send_request(
         self,
         service_id: int,
         data: bytes = b"",
         timeout: int = TIMEOUT_DEFAULT,
+        pending_max: Optional[int] = None,
+        quiet_nrcs: Optional[set[int]] = None,
     ) -> bytes:
         """
         Send a UDS request and return the positive response payload.
@@ -102,6 +112,18 @@ class UDSConnection:
             service_id: UDS service ID (e.g., 0x10, 0x27)
             data: Additional request data after the SID
             timeout: Per-read timeout in milliseconds
+            pending_max: Cumulative budget (ms) across response-pending retries
+                before giving up. Defaults to ``TIMEOUT_RESPONSE_PENDING_MAX``
+                (generous, to ride out a slow flash erase). The idempotent read
+                path passes a much smaller value so a *dropped* block response
+                fails fast and can be retried, instead of stalling the full
+                cumulative budget on every lost block.
+            quiet_nrcs: NRCs the caller expects and handles gracefully. When the
+                ECU returns one of these, the generic ``UDS NRC:`` record is
+                logged at DEBUG instead of WARNING so a benign/expected refusal
+                does not alarm the user (the ``NegativeResponseError`` is still
+                raised so the caller's handling is unchanged). Default ``None``
+                keeps every NRC at WARNING.
 
         Returns:
             Response payload bytes (after the positive response SID)
@@ -111,25 +133,25 @@ class UDSConnection:
             TimeoutError: No response within allowed time
             UDSError: Other protocol errors
         """
-        from .j2534 import build_isotp_msg
-
+        budget = (
+            pending_max if pending_max is not None else TIMEOUT_RESPONSE_PENDING_MAX
+        )
         # Build and send request
         request_data = bytes([service_id]) + data
-        msg = build_isotp_msg(request_data)
 
         logger.debug(
             f"UDS TX: SID=0x{service_id:02X} data={data.hex() if data else '(empty)'}"
         )
-        self._device.write_msgs(self._channel_id, [msg], timeout)
+        self._transport.send_message(request_data, timeout)
 
         # Read response with NRC 0x78 retry loop
         positive_sid = service_id + 0x40
         elapsed = 0
         start = time.monotonic()
 
-        while elapsed < TIMEOUT_RESPONSE_PENDING_MAX:
+        while elapsed < budget:
             try:
-                msgs = self._device.read_msgs(self._channel_id, 1, timeout)
+                resp_data = self._transport.receive_message(timeout)
             except J2534Error:
                 raise  # Bridge/device errors should propagate as-is
             except Exception as e:
@@ -137,22 +159,14 @@ class UDSConnection:
                     f"No response from ECU for SID 0x{service_id:02X}: {e}"
                 )
 
-            if not msgs:
+            # No message / no UDS payload this read — keep waiting until the
+            # cumulative response-pending budget is exhausted.
+            if not resp_data:
                 elapsed = int((time.monotonic() - start) * 1000)
-                if elapsed >= TIMEOUT_RESPONSE_PENDING_MAX:
+                if elapsed >= budget:
                     raise UDSTimeoutError(
                         f"Timed out waiting for response to SID 0x{service_id:02X}"
                     )
-                continue
-
-            resp_msg = msgs[0]
-            # Extract payload (skip 4-byte CAN ID prefix)
-            if resp_msg.DataSize <= 4:
-                continue
-
-            resp_data = bytes(resp_msg.Data[4 : resp_msg.DataSize])
-
-            if not resp_data:
                 continue
 
             # Check for negative response (0x7F)
@@ -176,8 +190,17 @@ class UDSConnection:
                     elapsed = int((time.monotonic() - start) * 1000)
                     continue
                 desc = get_nrc_description(nrc)
-                logger.warning(
-                    f"UDS NRC: SID=0x{service_id:02X} NRC=0x{nrc:02X} ({desc})"
+                # Expected/handled NRCs (per caller's quiet_nrcs) are demoted to
+                # DEBUG so a benign refusal does not raise a scary WARNING in the
+                # user-facing Activity Log; the exception is still raised below.
+                nrc_level = (
+                    logging.DEBUG
+                    if quiet_nrcs is not None and nrc in quiet_nrcs
+                    else logging.WARNING
+                )
+                logger.log(
+                    nrc_level,
+                    f"UDS NRC: SID=0x{service_id:02X} NRC=0x{nrc:02X} ({desc})",
                 )
                 raise NegativeResponseError(nrc, desc)
 
@@ -197,8 +220,7 @@ class UDSConnection:
             elapsed = int((time.monotonic() - start) * 1000)
 
         raise UDSTimeoutError(
-            f"Timed out after {TIMEOUT_RESPONSE_PENDING_MAX}ms "
-            f"waiting for SID 0x{service_id:02X}"
+            f"Timed out after {budget}ms " f"waiting for SID 0x{service_id:02X}"
         )
 
     # --- Diagnostic Services ---
@@ -222,7 +244,14 @@ class UDSConnection:
         """
         from .constants import SID_OBD_CURRENT_DATA
 
-        response = self.send_request(SID_OBD_CURRENT_DATA, bytes([pid]))
+        # On a post-op reconnect the ECU answers OBD reads with NRC 0x22
+        # (conditions not correct). These reads are best-effort (the callers
+        # swallow failures and return None), so quiet that expected NRC.
+        response = self.send_request(
+            SID_OBD_CURRENT_DATA,
+            bytes([pid]),
+            quiet_nrcs={NRC_CONDITIONS_NOT_CORRECT},
+        )
         # Response: [pid_echo, data...] (send_request strips the 0x41 positive SID)
         if not response or response[0] != pid:
             from .exceptions import UDSError
@@ -439,7 +468,13 @@ class UDSConnection:
 
     # --- Memory Read ---
 
-    def read_memory_by_address(self, address: int, size: int) -> bytes:
+    def read_memory_by_address(
+        self,
+        address: int,
+        size: int,
+        timeout: int = TIMEOUT_READ,
+        pending_max: Optional[int] = None,
+    ) -> bytes:
         """
         Read memory from ECU.
 
@@ -450,12 +485,18 @@ class UDSConnection:
         Args:
             address: 4-byte memory address
             size: 2-byte read size (max ~0x400)
+            timeout: Per-read timeout in milliseconds.
+            pending_max: Cumulative response-pending budget (ms). Reads over a
+                lossy link pass a small value so a dropped block fails fast and
+                the caller can retry (see :meth:`send_request`).
 
         Returns:
             Raw memory data
         """
         data = address.to_bytes(4, "big") + size.to_bytes(2, "big")
-        response = self.send_request(SID_READ_MEM_BY_ADDR, data, timeout=TIMEOUT_READ)
+        response = self.send_request(
+            SID_READ_MEM_BY_ADDR, data, timeout=timeout, pending_max=pending_max
+        )
         return response
 
     def read_rom_id(self) -> str:
@@ -486,7 +527,11 @@ class UDSConnection:
             Number of DTCs
         """
         try:
-            response = self.send_request(SID_READ_DTC_COUNT, bytes([0x02, 0x00]))
+            response = self.send_request(
+                SID_READ_DTC_COUNT,
+                bytes([0x02, 0x00]),
+                quiet_nrcs={NRC_CONDITIONS_NOT_CORRECT},
+            )
         except NegativeResponseError as e:
             if e.nrc == NRC_CONDITIONS_NOT_CORRECT:
                 logger.info(
@@ -515,6 +560,7 @@ class UDSConnection:
             response = self.send_request(
                 SID_READ_DTC_STATUS,
                 bytes([0x00, 0xFF, 0x00]),
+                quiet_nrcs={NRC_CONDITIONS_NOT_CORRECT},
             )
         except NegativeResponseError as e:
             if e.nrc == NRC_CONDITIONS_NOT_CORRECT:

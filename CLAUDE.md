@@ -27,6 +27,10 @@ Reference these before modifying related functionality:
 - `docs/internal/ROM_DEFINITION_FORMAT.md` - XML format for ROM definitions
 - `docs/internal/UI_TESTING.md` - GUI test runner, screenshots, and test scripts
 - `docs/internal/CODE_AUDIT.md` - Full codebase audit findings (bugs, dead code, duplication, test gaps)
+- `docs/internal/WICAN_TRANSPORT.md` - Design & build plan for WiCAN PRO wireless (WiFi/SLCAN) ECU transport; reference before touching the ECU transport/session/flash-connect layer
+- `docs/internal/WICAN_MANUAL_TEST.md` - Hardware-in-the-loop checklist for the WiCAN ROM read path (firmware version ping, bench-tool read + byte-compare, UI flow); run after touching the transport, firmware, or adapter-selector UI
+- `docs/internal/WICAN_PART_C_FINDINGS.md` - Investigation findings (CAN-wedge reboot root cause + clean-teardown fix, no-reboot protocol switch, unified read+write SD architecture); reference before implementing the firmware reboot fix or deciding the WiCAN WRITE-over-SD architecture
+- `docs/internal/WICAN_SLCAN_COEXISTENCE_PLAN.md` - Sequencing plan to replace the protocol-switch reboot with an always-on dedicated SLCAN port that coexists with the datalogger (FLASH_ACTIVE_BIT single-CAN interlock, FWD→FWB merge order, RPM-gated datalog/flash); reference before merging the datalogger firmware branch or building the no-reboot SLCAN port
 
 **Rule:** When creating new documentation in `docs/`, add it to this list with a brief description of when to reference it.
 

@@ -32,7 +32,10 @@ ENV/
 # IDE
 .vscode/
 .idea/
+# Machine-local Claude Code config (permission grants, MCP toggles). Shared
+# .claude/ tooling — hooks, commands, plans, notes — stays tracked.
 .claude/settings.json
+.claude/settings.local.json
 *.swp
 *.swo
 *~

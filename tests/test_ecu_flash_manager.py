@@ -254,3 +254,149 @@ class TestBorrowedSessionValidation:
         fm.use_session(mock_j2534_device, 1, 100, uds)
         with pytest.raises(FlashError, match="not responsive"):
             fm._connect()
+
+
+class TestReadBlockRetry:
+    """Per-block read retry over a lossy link (idempotent reads only)."""
+
+    def test_first_attempt_success_is_passthrough(self):
+        """A clean read returns immediately with no retry and no flush."""
+        uds = MagicMock()
+        uds.read_memory_by_address.return_value = b"\xaa" * 0x400
+        fm = FlashManager()
+        fm.use_uds(uds)
+        data = fm._read_block_with_retry(0x1000, 0x400)
+        assert data == b"\xaa" * 0x400
+        assert uds.read_memory_by_address.call_count == 1
+        uds.flush.assert_not_called()
+
+    def test_recovers_after_timeouts_and_flushes_between(self):
+        """A block that times out twice then succeeds is recovered; the
+        transport is flushed before each retry so stale frames can't corrupt
+        the re-requested block."""
+        uds = MagicMock()
+        good = b"\xbb" * 0x400
+        uds.read_memory_by_address.side_effect = [
+            UDSTimeoutError("drop 1"),
+            UDSTimeoutError("drop 2"),
+            good,
+        ]
+        fm = FlashManager()
+        fm.use_uds(uds)
+        with patch("src.ecu.flash_manager.time.sleep") as sleep:
+            data = fm._read_block_with_retry(0x2000, 0x400)
+        assert data == good
+        assert uds.read_memory_by_address.call_count == 3
+        # Flushed once per failed attempt (twice), not after the success.
+        assert uds.flush.call_count == 2
+        # Backed off once per failed-then-retried attempt (twice), not after success.
+        assert sleep.call_count == 2
+
+    def test_backoff_grows_between_retries_and_not_after_last(self):
+        """The retry backoff grows with the attempt (so a transient stall clears)
+        and is never applied after the final, give-up attempt."""
+        from src.ecu.flash_manager import (
+            READ_BLOCK_RETRIES,
+            READ_BLOCK_RETRY_BACKOFF_S,
+            READ_BLOCK_RETRY_BACKOFF_MAX_S,
+        )
+
+        uds = MagicMock()
+        uds.read_memory_by_address.side_effect = UDSTimeoutError("always drops")
+        fm = FlashManager()
+        fm.use_uds(uds)
+        with patch("src.ecu.flash_manager.time.sleep") as sleep:
+            with pytest.raises(FlashError):
+                fm._read_block_with_retry(0x5000, 0x400)
+        # One sleep per gap between attempts — never after the last attempt.
+        waited = [c.args[0] for c in sleep.call_args_list]
+        assert len(waited) == READ_BLOCK_RETRIES - 1
+        expected = [
+            min(READ_BLOCK_RETRY_BACKOFF_S * n, READ_BLOCK_RETRY_BACKOFF_MAX_S)
+            for n in range(1, READ_BLOCK_RETRIES)
+        ]
+        assert waited == expected
+
+    def test_uses_tight_per_block_budget(self):
+        """Reads pass the small per-block timeout/budget so a drop fails fast
+        instead of stalling the full 60 s response-pending budget."""
+        from src.ecu.flash_manager import (
+            READ_BLOCK_TIMEOUT_MS,
+            READ_BLOCK_PENDING_MAX_MS,
+        )
+
+        uds = MagicMock()
+        uds.read_memory_by_address.return_value = b"\x00" * 0x400
+        fm = FlashManager()
+        fm.use_uds(uds)
+        fm._read_block_with_retry(0, 0x400)
+        _args, kwargs = uds.read_memory_by_address.call_args
+        assert kwargs["timeout"] == READ_BLOCK_TIMEOUT_MS
+        assert kwargs["pending_max"] == READ_BLOCK_PENDING_MAX_MS
+
+    def test_exhausting_retries_raises_flasherror(self):
+        """When every attempt fails, the read aborts with FlashError after the
+        configured number of attempts."""
+        from src.ecu.flash_manager import READ_BLOCK_RETRIES
+
+        uds = MagicMock()
+        uds.read_memory_by_address.side_effect = UDSTimeoutError("always drops")
+        fm = FlashManager()
+        fm.use_uds(uds)
+        with patch("src.ecu.flash_manager.time.sleep"):
+            with pytest.raises(FlashError, match="after .* attempts"):
+                fm._read_block_with_retry(0x3000, 0x400)
+        assert uds.read_memory_by_address.call_count == READ_BLOCK_RETRIES
+
+    def test_short_block_raises_flasherror(self):
+        """A block that returns fewer bytes than requested is a hard error."""
+        uds = MagicMock()
+        uds.read_memory_by_address.return_value = b"\x00" * 0x200  # half a block
+        fm = FlashManager()
+        fm.use_uds(uds)
+        with pytest.raises(FlashError, match="Short read"):
+            fm._read_block_with_retry(0x4000, 0x400)
+
+
+class TestReadRomBlockSize:
+    """`read_rom` honours a configurable per-request read size (clamped)."""
+
+    @staticmethod
+    def _make_fm():
+        """A FlashManager whose connect/auth are stubbed and whose UDS returns
+        exactly the requested number of bytes for every block read."""
+        uds = MagicMock()
+        uds.read_memory_by_address.side_effect = (
+            lambda offset, size, **kw: b"\x00" * size
+        )
+        fm = FlashManager()
+        fm.use_uds(uds)
+        fm._connect = lambda *a, **k: None
+        fm._authenticate = lambda *a, **k: None
+        return fm, uds
+
+    def test_default_block_size_is_0x400(self):
+        from src.ecu.constants import ROM_SIZE, BLOCK_SIZE
+
+        fm, uds = self._make_fm()
+        fm.read_rom()
+        first = uds.read_memory_by_address.call_args_list[0]
+        assert first.args[1] == BLOCK_SIZE
+        assert uds.read_memory_by_address.call_count == ROM_SIZE // BLOCK_SIZE
+
+    def test_custom_block_size_is_used(self):
+        from src.ecu.constants import ROM_SIZE
+
+        fm, uds = self._make_fm()
+        fm.read_rom(read_block_size=0x800)
+        first = uds.read_memory_by_address.call_args_list[0]
+        assert first.args[1] == 0x800
+        assert uds.read_memory_by_address.call_count == ROM_SIZE // 0x800
+
+    def test_oversize_block_is_clamped_to_isotp_max(self):
+        from src.ecu.flash_manager import MAX_ISOTP_READ_SIZE
+
+        fm, uds = self._make_fm()
+        fm.read_rom(read_block_size=0x99999)  # absurd; must clamp
+        first = uds.read_memory_by_address.call_args_list[0]
+        assert first.args[1] == MAX_ISOTP_READ_SIZE

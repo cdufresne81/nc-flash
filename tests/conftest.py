@@ -67,7 +67,13 @@ def mock_j2534_device():
 
 @pytest.fixture
 def mock_uds(mock_j2534_device):
-    """Real UDSConnection wired to a mock J2534Device."""
-    from src.ecu.protocol import UDSConnection
+    """Real UDSConnection wired to a mock J2534Device via J2534Transport.
 
-    return UDSConnection(mock_j2534_device, channel_id=1)
+    The J2534Transport delegates send/receive straight to the mock device's
+    ``write_msgs``/``read_msgs``, so tests drive behaviour exactly as before
+    by configuring ``mock_j2534_device.read_msgs``/``write_msgs``.
+    """
+    from src.ecu.protocol import UDSConnection
+    from src.ecu.transport import J2534Transport
+
+    return UDSConnection(J2534Transport(mock_j2534_device, channel_id=1))

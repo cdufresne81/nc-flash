@@ -303,6 +303,23 @@ class TestSignalForwarding:
         assert len(received[0][1]) == 1
         assert list(received[0][1][0]) == list(changes[0])
 
+    def test_toggle_emits_table_object_not_address(self, window_1d):
+        """Regression (DTC toggle switch): _on_toggle_changed must emit the
+        Table object, not table.address. Consumers (_on_table_cell_changed,
+        the modification tracker) call table.address themselves; a str arg
+        raised AttributeError on every DTC-flag toggle."""
+        received = []
+        window_1d.viewer.cell_changed.connect(
+            lambda table, *args: received.append(table)
+        )
+
+        # Drive the real toggle handler (OFF->ON), not a manual emit.
+        window_1d.viewer._on_toggle_changed(True)
+
+        assert len(received) == 1
+        assert received[0] is window_1d.table
+        assert not isinstance(received[0], str)
+
 
 # ---------------------------------------------------------------------------
 # Tests: Window properties

@@ -9,7 +9,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import QObject, Qt, QThread, QTimer, Signal
 from PySide6.QtGui import QShortcut, QKeySequence
 from PySide6.QtWidgets import (
     QApplication,
@@ -22,6 +22,7 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QLineEdit,
+    QProgressDialog,
     QPushButton,
     QScrollArea,
     QSpinBox,
@@ -262,6 +263,25 @@ SETTINGS_REGISTRY = [
         setter="set_mcp_auto_start",
         keywords=["mcp", "ai", "server", "claude", "assistant", "model context"],
     ),
+    # -- ECU > Adapter --
+    SettingDescriptor(
+        key="ecu.adapter.kind",
+        label="ECU Adapter",
+        description=(
+            "Which adapter NC Flash uses to talk to the ECU. J2534 (wired, e.g. "
+            "Tactrix OpenPort) is the default and recommended for flashing. WiCAN "
+            "(wireless WiFi/SLCAN) is opt-in; WiCAN flashing is experimental."
+        ),
+        category="ECU",
+        subcategory="Adapter",
+        widget_type="combobox",
+        getter="get_ecu_adapter",
+        setter="set_ecu_adapter",
+        widget_options={
+            "items": [("J2534 (wired)", "j2534"), ("WiCAN (WiFi)", "wican")]
+        },
+        keywords=["adapter", "j2534", "wican", "wifi", "transport", "connection"],
+    ),
     # -- ECU > J2534 --
     SettingDescriptor(
         key="ecu.j2534.dll_path",
@@ -296,6 +316,68 @@ SETTINGS_REGISTRY = [
         },
         keywords=["test", "connection", "j2534", "device"],
     ),
+    # -- ECU > WiCAN --
+    SettingDescriptor(
+        key="ecu.wican.host",
+        label="WiCAN Host / IP",
+        description="IP address or hostname of the WiCAN adapter (e.g. 192.168.1.169).",
+        category="ECU",
+        subcategory="WiCAN",
+        widget_type="text",
+        getter="get_wican_host",
+        setter="set_wican_host",
+        widget_options={
+            "placeholder": "192.168.1.169",
+            "scan_button": True,
+            "scan_callback": "_scan_wican_devices",
+        },
+        keywords=["wican", "host", "ip", "address", "wifi", "scan", "discover", "mdns"],
+    ),
+    SettingDescriptor(
+        key="ecu.wican.port",
+        label="WiCAN SLCAN Port",
+        description="TCP port of the WiCAN SLCAN socket (the PRO is often 35000).",
+        category="ECU",
+        subcategory="WiCAN",
+        widget_type="spinbox",
+        getter="get_wican_port",
+        setter="set_wican_port",
+        widget_options={"min": 1, "max": 65535},
+        keywords=["wican", "port", "slcan", "tcp"],
+    ),
+    SettingDescriptor(
+        key="ecu.wican.auto_config",
+        label="Auto-configure adapter (SLCAN switch + restore)",
+        description=(
+            "Switch the WiCAN into SLCAN mode on connect (a ~6 s reboot) and "
+            "restore its previous protocol on disconnect. Turn off if you keep "
+            "the device permanently in SLCAN mode."
+        ),
+        category="ECU",
+        subcategory="WiCAN",
+        widget_type="checkbox",
+        getter="get_wican_auto_config",
+        setter="set_wican_auto_config",
+        keywords=["wican", "slcan", "auto", "config", "protocol", "switch"],
+    ),
+    SettingDescriptor(
+        key="ecu.wican.test_connection",
+        label="Test Connection",
+        description=(
+            "Open the WiCAN link and report reachability + link quality "
+            "(packet loss / latency). Honours the auto-configure setting above."
+        ),
+        category="ECU",
+        subcategory="WiCAN",
+        widget_type="button",
+        getter="",
+        setter=None,
+        widget_options={
+            "text": "Test Connection",
+            "callback_name": "_test_wican_connection",
+        },
+        keywords=["wican", "test", "connection", "link", "ping", "quality"],
+    ),
     # -- ECU > Flash Security --
     SettingDescriptor(
         key="ecu.security.status",
@@ -319,6 +401,37 @@ _CATEGORY_ORDER = ["General", "Appearance", "Editor", "Tools", "ECU"]
 # ---------------------------------------------------------------------------
 
 
+class _WiCANScanWorker(QObject):
+    """Runs the blocking mDNS scan off the GUI thread.
+
+    Lives in a :class:`QThread` so the settings dialog stays responsive and can
+    show an elapsed-seconds progress dialog with a working Cancel button. The
+    scan is hard-bounded by ``timeout_s`` (it can never run forever); a set
+    ``cancel_event`` makes it return early. Emits the device list on success or
+    the raised exception object on failure (the slot formats the message so the
+    existing per-cause warnings are preserved).
+    """
+
+    finished = Signal(object)  # list[WiCANDevice]
+    error = Signal(object)  # Exception
+
+    def __init__(self, cancel_event, timeout_s):
+        super().__init__()
+        self._cancel_event = cancel_event
+        self._timeout_s = timeout_s
+
+    def run(self):
+        try:
+            from src.ecu import wican_discovery
+
+            devices = wican_discovery.discover(
+                timeout_s=self._timeout_s, cancel_event=self._cancel_event
+            )
+            self.finished.emit(devices)
+        except Exception as e:  # DiscoveryUnavailable / OSError / anything
+            self.error.emit(e)
+
+
 class SettingsDialog(QDialog):
     """Application settings dialog with tree navigation and search."""
 
@@ -332,6 +445,17 @@ class SettingsDialog(QDialog):
 
         self.settings = get_settings()
         self._widgets = {}  # key -> input widget
+        # Pending WiCAN identity to persist on apply: None = leave as-is, "" =
+        # clear (user typed a manual IP), else a device_id/mac from an mDNS pick.
+        self._pending_wican_device_id = None
+        # In-flight mDNS scan state (None when no scan is running).
+        self._scan_thread = None
+        self._scan_worker = None
+        self._scan_progress = None
+        self._scan_timer = None
+        self._scan_cancel_event = None
+        self._scan_host_edit = None
+        self._scan_cancelled = False
         self._page_indices = {}  # (category, subcategory) -> stack index
         self._tree_sub_items = {}  # (category, subcategory) -> QTreeWidgetItem
         self._ecu_available = False
@@ -557,6 +681,38 @@ class SettingsDialog(QDialog):
             btn.clicked.connect(lambda _=False, e=edit, f=filt: self._browse_file(e, f))
             row.addWidget(btn)
             lo.addLayout(row)
+            self._widgets[desc.key] = edit
+
+        elif wtype == "text":
+            edit = QLineEdit()
+            edit.setPlaceholderText(desc.widget_options.get("placeholder", ""))
+            scan_cb = desc.widget_options.get("scan_callback")
+            if (
+                desc.widget_options.get("scan_button")
+                and scan_cb
+                and hasattr(self, scan_cb)
+            ):
+                # Render an inline "Scan…" affordance next to the field (mirrors
+                # the path_dir/path_file Browse pattern). The handler discovers
+                # adapters over mDNS and fills this edit with the chosen IP.
+                row = QHBoxLayout()
+                row.setContentsMargins(0, 0, 0, 0)
+                row.addWidget(edit)
+                btn = QPushButton("Scan…")
+                btn.setFixedWidth(80)
+                btn.clicked.connect(
+                    lambda _=False, e=edit, cb=scan_cb: getattr(self, cb)(e)
+                )
+                row.addWidget(btn)
+                lo.addLayout(row)
+                # Typing a manual IP detaches the stored mDNS identity so the
+                # connect-time re-resolve won't silently override it. textEdited
+                # fires only on USER edits, not programmatic setText (Scan/load).
+                edit.textEdited.connect(
+                    lambda *_: setattr(self, "_pending_wican_device_id", "")
+                )
+            else:
+                lo.addWidget(edit)
             self._widgets[desc.key] = edit
 
         elif wtype == "spinbox":
@@ -884,6 +1040,328 @@ class SettingsDialog(QDialog):
                 f"Could not connect to J2534 device:\n{e}",
             )
 
+    def _test_wican_connection(self):
+        """Open the WiCAN link from the current field values and grade it."""
+        from PySide6.QtWidgets import QMessageBox
+
+        host_edit = self._widgets.get("ecu.wican.host")
+        port_spin = self._widgets.get("ecu.wican.port")
+        auto_cb = self._widgets.get("ecu.wican.auto_config")
+        host = (host_edit.text().strip() if host_edit else "") or "192.168.1.169"
+        port = port_spin.value() if port_spin else 35000
+        auto_config = auto_cb.isChecked() if auto_cb else True
+
+        try:
+            from src.ecu.transport import create_ecu_transport
+            from src.ecu.protocol import UDSConnection
+            from src.ecu.link_quality import check_link_quality
+            from src.ecu.wican_config import WiCANConfigurator, WiCANConfigError
+            from src.ecu.wican_transport import WiCANError
+        except ImportError as e:
+            QMessageBox.warning(self, "Unavailable", f"WiCAN modules unavailable:\n{e}")
+            return
+
+        QApplication.setOverrideCursor(Qt.WaitCursor)
+        configurator = None
+        prev_protocol = None
+        transport = None
+        try:
+            if auto_config:
+                configurator = WiCANConfigurator(host)
+                prev_protocol = configurator.switch_to_slcan()
+            transport = create_ecu_transport(
+                {"kind": "wican", "host": host, "port": port}
+            )
+            transport.open()
+            uds = UDSConnection(transport)
+            result = check_link_quality(uds)
+            QApplication.restoreOverrideCursor()
+            if result.ok:
+                QMessageBox.information(
+                    self,
+                    "Connection OK",
+                    f"WiCAN reachable at {host}:{port}.\n\n"
+                    f"Link: {result.replies}/{result.pings} replied, "
+                    f"loss {result.loss_pct:.0f}%, p95 {result.p95_ms:.0f} ms.\n"
+                    f"{result.reason}",
+                )
+            else:
+                QMessageBox.warning(
+                    self,
+                    "Link Marginal",
+                    f"WiCAN reachable at {host}:{port}, but the link is not "
+                    f"flash-ready:\n\n{result.reason}\n\n"
+                    "Reads may still work; do not flash over this link.",
+                )
+        except (WiCANError, WiCANConfigError, OSError) as e:
+            QApplication.restoreOverrideCursor()
+            QMessageBox.warning(
+                self, "Connection Failed", f"Could not reach the WiCAN adapter:\n{e}"
+            )
+        finally:
+            if QApplication.overrideCursor() is not None:
+                QApplication.restoreOverrideCursor()
+            if transport is not None:
+                try:
+                    transport.close()
+                except Exception:
+                    pass
+            if configurator is not None and prev_protocol and prev_protocol != "slcan":
+                try:
+                    configurator.restore(prev_protocol)
+                except Exception:
+                    pass
+
+    def _scan_wican_devices(self, host_edit):
+        """Discover WiCAN adapters over mDNS (off-thread) and let the user pick one.
+
+        Runs the bounded mDNS scan in a worker thread while showing an
+        elapsed-seconds progress dialog with a Cancel button, so the settings
+        window never freezes and the user is never left wondering. The scan is
+        hard-bounded by ``wican_discovery.DEFAULT_TIMEOUT_S`` (it can never run
+        forever) and Cancel stops it immediately. On success the picker fills the
+        host field with the chosen adapter's CURRENT IP and stages its stable
+        ``device_id`` for persistence (so connect-time re-resolve can follow the
+        adapter across DHCP changes).
+
+        The SLCAN port field is deliberately left untouched: the mDNS record
+        advertises the device's HTTP port (80), NOT the SLCAN port we connect on
+        (35000) — overwriting the port from discovery would break the link.
+        """
+        from PySide6.QtWidgets import QMessageBox
+
+        try:
+            from src.ecu import wican_discovery
+        except ImportError as e:
+            QMessageBox.warning(
+                self, "Unavailable", f"Discovery module unavailable:\n{e}"
+            )
+            return
+
+        if not wican_discovery.zeroconf_available():
+            QMessageBox.warning(
+                self,
+                "Discovery Unavailable",
+                "mDNS discovery needs the 'zeroconf' package.\n\n"
+                "Install it with:  pip install zeroconf\n\n"
+                "Or enter the WiCAN IP address manually.",
+            )
+            return
+
+        # A WindowModal progress dialog blocks re-clicks, but guard regardless.
+        if self._scan_thread is not None:
+            return
+
+        import threading
+
+        timeout_s = float(wican_discovery.DEFAULT_TIMEOUT_S)
+        cancel_event = threading.Event()
+        total_ticks = max(1, int(timeout_s * 10))  # 100 ms ticker resolution
+
+        progress = QProgressDialog(
+            "Scanning for WiCAN adapters…", "Cancel", 0, total_ticks, self
+        )
+        progress.setWindowTitle("Scan for WiCAN")
+        progress.setWindowModality(Qt.WindowModal)
+        progress.setMinimumDuration(0)
+        # We drive value/close ourselves so the bar never auto-finishes early.
+        progress.setAutoClose(False)
+        progress.setAutoReset(False)
+        progress.setValue(0)
+
+        worker = _WiCANScanWorker(cancel_event, timeout_s)
+        thread = QThread()
+        worker.moveToThread(thread)
+
+        timer = QTimer(self)
+        timer.setInterval(100)
+
+        self._scan_thread = thread
+        self._scan_worker = worker
+        self._scan_progress = progress
+        self._scan_timer = timer
+        self._scan_cancel_event = cancel_event
+        self._scan_host_edit = host_edit
+        self._scan_cancelled = False
+        self._scan_timeout_s = timeout_s
+
+        timer.timeout.connect(self._on_scan_tick)
+        progress.canceled.connect(self._on_scan_cancel)
+        # Bound-method receivers => queued delivery lands on the GUI thread (same
+        # rationale as ECUProgrammingWindow's flash-worker wiring). The result
+        # arrives as a signal argument. The thread/worker are NOT self-disposed
+        # via deleteLater: _teardown_scan owns the lifecycle and quit()+wait()s
+        # the thread before disposing it (mirrors ECUProgrammingWindow). Dropping
+        # the Python refs to a still-running QThread lets PySide6 GC the wrapper
+        # and destroy the C++ thread mid-run ("QThread: Destroyed while running").
+        worker.finished.connect(self._on_scan_finished, Qt.QueuedConnection)
+        worker.error.connect(self._on_scan_error, Qt.QueuedConnection)
+        thread.started.connect(worker.run)
+
+        timer.start()
+        thread.start()
+        progress.show()
+
+    def _on_scan_tick(self):
+        """Advance the elapsed-seconds counter on the scan progress dialog."""
+        # Once cancelled, leave the "Cancelling…" label alone — don't overwrite it
+        # with a fresh elapsed time before teardown closes the dialog.
+        if self._scan_cancelled:
+            return
+        progress = self._scan_progress
+        if progress is None:
+            return
+        # Cap below the maximum so the dialog never auto-closes before the worker
+        # reports back; the worker's finished/error signal does the real close.
+        value = min(progress.value() + 1, progress.maximum() - 1)
+        progress.setValue(value)
+        secs = value / 10.0
+        progress.setLabelText(
+            "Scanning for WiCAN adapters…\n\n"
+            f"{secs:.0f}s  (up to {self._scan_timeout_s:.0f}s)"
+        )
+
+    def _on_scan_cancel(self):
+        """Cancel button — ask the bounded scan to return early."""
+        self._scan_cancelled = True
+        if self._scan_cancel_event is not None:
+            self._scan_cancel_event.set()
+        # Stop the ticker so it can't overwrite the "Cancelling…" label; teardown
+        # (on the worker's finished/error) disposes of it for good.
+        if self._scan_timer is not None:
+            self._scan_timer.stop()
+        if self._scan_progress is not None:
+            self._scan_progress.setLabelText("Cancelling…")
+
+    def _on_scan_finished(self, devices):
+        """Worker `finished` slot (GUI thread): present results unless cancelled."""
+        # Scans are serialized (the re-entrancy guard + modal picker prevent
+        # overlap), so a slot with no active scan is a stale/duplicate delivery
+        # from an already-torn-down worker — drop it.
+        if self._scan_thread is None:
+            return
+        cancelled = self._scan_cancelled
+        host_edit = self._scan_host_edit
+        self._teardown_scan()
+        if cancelled:
+            return
+        self._present_scan_results(devices, host_edit)
+
+    def _on_scan_error(self, exc):
+        """Worker `error` slot (GUI thread): surface the cause unless cancelled."""
+        from PySide6.QtWidgets import QMessageBox
+
+        from src.ecu import wican_discovery
+
+        if self._scan_thread is None:
+            return  # stale/duplicate signal from a torn-down worker
+        cancelled = self._scan_cancelled
+        self._teardown_scan()
+        if cancelled:
+            return
+        if isinstance(exc, wican_discovery.DiscoveryUnavailable):
+            QMessageBox.warning(self, "Discovery Unavailable", str(exc))
+        elif isinstance(exc, OSError):
+            QMessageBox.warning(
+                self,
+                "Scan Failed",
+                f"mDNS scan failed (network/socket error):\n{exc}\n\n"
+                "Common causes: a firewall blocking UDP 5353, no network "
+                "interface up, or the system lacking mDNS support. You can "
+                "enter the WiCAN IP address manually instead.",
+            )
+        else:
+            QMessageBox.warning(
+                self,
+                "Scan Failed",
+                f"Unexpected error during mDNS scan:\n{exc}\n\n"
+                "You can enter the WiCAN IP address manually instead.",
+            )
+
+    def _teardown_scan(self, blocking=False):
+        """Stop the ticker + dialog and dispose of the worker thread.
+
+        Normally the thread quit()+join is scheduled off the current signal
+        handler (``QTimer.singleShot``) so we never block the GUI thread inside a
+        slot. On dialog close (``blocking=True``) it joins synchronously, because
+        the dialog is about to be destroyed and no later event-loop turn is
+        guaranteed to run the deferred cleanup — which would leave a QThread
+        destroyed while still running.
+        """
+        if self._scan_timer is not None:
+            self._scan_timer.stop()
+            self._scan_timer.deleteLater()
+        if self._scan_progress is not None:
+            # close() (not cancel()) so we don't re-fire the canceled signal.
+            self._scan_progress.close()
+            self._scan_progress.deleteLater()
+        thread = self._scan_thread
+        worker = self._scan_worker
+        self._scan_timer = None
+        self._scan_progress = None
+        self._scan_thread = None
+        self._scan_worker = None
+        self._scan_cancel_event = None
+        self._scan_host_edit = None
+        self._scan_cancelled = False
+        if thread is None:
+            return
+        # Hold the refs in the closure/args so the QThread isn't GC'd before it
+        # has been quit() + join()ed.
+        if blocking:
+            self._cleanup_scan_thread(thread, worker)
+        else:
+            QTimer.singleShot(0, lambda: self._cleanup_scan_thread(thread, worker))
+
+    @staticmethod
+    def _cleanup_scan_thread(thread, worker):
+        """Quit, join, and dispose a finished/cancelled scan thread (GUI thread)."""
+        if thread is not None:
+            if thread.isRunning():
+                thread.quit()
+                thread.wait(3000)
+            thread.deleteLater()
+        if worker is not None:
+            worker.deleteLater()
+
+    def _present_scan_results(self, devices, host_edit):
+        """Show the device picker and apply the user's choice (GUI thread).
+
+        Split out from the scan orchestration so it stays synchronous and
+        unit-testable: handles the empty-result case, the picker, and staging
+        the chosen adapter's stable identity for persistence on apply.
+        """
+        from PySide6.QtWidgets import QInputDialog, QMessageBox
+
+        if not devices:
+            QMessageBox.information(
+                self,
+                "No Devices Found",
+                "No WiCAN adapters were found on the network.\n\n"
+                "Check that the adapter is powered, joined to the same Wi-Fi/LAN, "
+                "and that mDNS (UDP 5353) is not blocked by a firewall. You can "
+                "still enter the IP manually.",
+            )
+            return
+
+        labels = [d.label for d in devices]
+        choice, ok = QInputDialog.getItem(
+            self,
+            "Select WiCAN Adapter",
+            f"Found {len(devices)} adapter(s):",
+            labels,
+            0,
+            False,  # not editable
+        )
+        if not ok or not choice:
+            return
+        chosen = devices[labels.index(choice)]
+
+        # setText (not user typing) does NOT fire textEdited, so the identity we
+        # stage below is not immediately cleared by our manual-edit guard.
+        host_edit.setText(chosen.host)
+        self._pending_wican_device_id = chosen.stable_id or ""
+
     # ------------------------------------------------------------------ #
     # Load / Apply settings
     # ------------------------------------------------------------------ #
@@ -902,8 +1380,8 @@ class SettingsDialog(QDialog):
                 continue
             value = getter()
 
-            if desc.widget_type in ("path_dir", "path_file"):
-                widget.setText(value)
+            if desc.widget_type in ("path_dir", "path_file", "text"):
+                widget.setText(str(value))
             elif desc.widget_type == "spinbox":
                 widget.setValue(int(value))
             elif desc.widget_type == "combobox":
@@ -946,7 +1424,7 @@ class SettingsDialog(QDialog):
             if setter is None:
                 continue
 
-            if desc.widget_type in ("path_dir", "path_file"):
+            if desc.widget_type in ("path_dir", "path_file", "text"):
                 val = widget.text().strip()
                 if val:
                     setter(val)
@@ -961,6 +1439,14 @@ class SettingsDialog(QDialog):
                 else:
                     setter(widget.isChecked())
 
+        # Persist any WiCAN identity change from a Scan pick or manual edit
+        # (transactional with the host field above: only written on apply).
+        if self._pending_wican_device_id is not None and hasattr(
+            s, "set_wican_device_id"
+        ):
+            s.set_wican_device_id(self._pending_wican_device_id)
+            self._pending_wican_device_id = None
+
         # Reload colormap in case path changed
         reload_colormap()
 
@@ -970,3 +1456,19 @@ class SettingsDialog(QDialog):
         """OK button — apply and close."""
         self.apply_settings()
         super().accept()
+
+    def done(self, result):
+        """Single close chokepoint (accept/reject/Esc) — stop any in-flight scan.
+
+        Cancelling makes the worker's bounded mDNS wait return promptly; we then
+        join the thread *synchronously* before the dialog tears down, so the
+        QThread is never destroyed while still running, and so a late ``finished``
+        can't pop a device picker after the window has closed (teardown nulls
+        ``_scan_thread``, which the slots treat as a stale-signal drop).
+        """
+        if self._scan_thread is not None:
+            self._scan_cancelled = True
+            if self._scan_cancel_event is not None:
+                self._scan_cancel_event.set()
+            self._teardown_scan(blocking=True)
+        super().done(result)

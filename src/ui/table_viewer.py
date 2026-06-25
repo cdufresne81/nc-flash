@@ -326,9 +326,11 @@ class TableViewer(QWidget):
         finally:
             self._editing_in_progress = False
 
-        # Emit change signal
+        # Emit change signal. Pass the Table object (not its .address) — every
+        # cell_changed consumer (_on_table_cell_changed, the modification
+        # tracker) expects the Table and reads table.address/table.name itself.
         self.cell_changed.emit(
-            self._ctx.current_table.address,
+            self._ctx.current_table,
             0,
             0,
             old_value,

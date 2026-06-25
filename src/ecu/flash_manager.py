@@ -40,6 +40,7 @@ from .exceptions import (
     ChecksumError,
     J2534Error,
     UDSError,
+    UDSTimeoutError,
     SecureModuleNotAvailable,
 )
 from .checksum import correct_rom_checksums
@@ -61,6 +62,42 @@ except ImportError:
     SECURE_MODULE_AVAILABLE = False
 
 logger = logging.getLogger(__name__)
+
+#: Per-block READ resilience over a lossy link (WiCAN/WiFi). Reads are
+#: idempotent — re-requesting a block can never corrupt the ECU — so a block
+#: whose response is lost/garbled is simply re-requested. These bound that:
+#:  * timeout/budget are deliberately SMALL so a dropped block fails in a few
+#:    seconds instead of stalling the full 60 s response-pending budget;
+#:  * retries give a dropped block several fresh attempts before the read aborts.
+#: On a reliable J2534 link a drop never happens, so the retry never fires and
+#: behaviour is unchanged. This applies to READS ONLY — the flash/write path
+#: must NEVER resend a block (no block sequence counter; a resend bricks).
+READ_BLOCK_TIMEOUT_MS = 4000
+READ_BLOCK_PENDING_MAX_MS = 4000
+#: A single dropped Consecutive Frame fails one attempt fast (N_Cr); a *transient*
+#: link stall (WiFi roam, interference burst, a momentarily wedged gateway) drops
+#: several attempts in a row. Hardware 2026-06-23: a 1 MB read aborted at block
+#: ~957/1024 after only 4 back-to-back drops at one offset — ~5 min of work lost to
+#: a sub-second stall. Reads are idempotent, so the cure is more attempts spaced by
+#: a short, growing backoff (below) that lets the stall clear before re-requesting.
+#: A clean J2534/WiCAN block still returns on attempt 1, so this only ever costs
+#: time on a genuinely lossy moment.
+READ_BLOCK_RETRIES = 8
+#: Backoff between read-retry attempts: ``base * attempt`` seconds, capped. Gives a
+#: transient link stall time to recover instead of hammering it with instant
+#: re-requests. Only the (rare) failing block ever waits.
+READ_BLOCK_RETRY_BACKOFF_S = 0.2
+READ_BLOCK_RETRY_BACKOFF_MAX_S = 1.0
+
+#: Largest ReadMemoryByAddress size a single ISO-TP message can carry back: the
+#: 12-bit First Frame length caps the response at 0xFFF bytes, and the response
+#: is SID(1) + data, leaving 0xFFE data bytes. A bigger read block amortises the
+#: per-request round-trip + ECU-service latency over more bytes (it does NOT
+#: change the Consecutive-Frame separation floor — that depends only on STmin and
+#: the total byte count). The ECU may impose its own lower cap; whether it
+#: honours sizes above 0x400 must be probed on hardware before raising the
+#: default (see tools/wican_bench_read.py --probe).
+MAX_ISOTP_READ_SIZE = 0xFFE
 
 
 class FlashState(Enum):
@@ -159,6 +196,10 @@ class FlashManager:
         self._filter_id = None
         self._uds = None
         self._owns_connection = True  # False when using a borrowed session
+        # Count of blocks that needed a re-request this operation (lossy-link
+        # drops, all recovered). Reset per read_rom/scan_ram; surfaced as one
+        # summary line instead of a per-block warning.
+        self._block_retries = 0
 
     def use_session(self, device, channel_id, filter_id, uds) -> None:
         """
@@ -174,6 +215,33 @@ class FlashManager:
         self._device = device
         self._channel_id = channel_id
         self._filter_id = filter_id
+        self._uds = uds
+        self._owns_connection = False
+
+    def use_uds(self, uds) -> None:
+        """
+        Borrow a pre-built :class:`~src.ecu.protocol.UDSConnection` directly.
+
+        Transport-agnostic injection point for non-flash operations (DTC
+        read/clear, VIN/RAM read) that should run over an already-open
+        connection — including a WiCAN-backed ``UDSConnection`` for which
+        there is no J2534 ``device``/``channel_id`` to borrow via
+        :meth:`use_session`.
+
+        Borrowed semantics mirror :meth:`use_session`: ``_owns_connection``
+        is set to False, so :meth:`_connect`'s borrowed branch only issues a
+        Tester Present (it never opens a J2534 device), and :meth:`_cleanup`
+        merely drops the references without closing anything. The caller
+        retains ownership of the transport's lifecycle (open/close).
+
+        Args:
+            uds: An open ``UDSConnection`` (over any ``EcuTransport``).
+        """
+        if uds is None:
+            raise FlashError("Cannot borrow UDS connection: uds must not be None")
+        self._device = None
+        self._channel_id = None
+        self._filter_id = None
         self._uds = uds
         self._owns_connection = False
 
@@ -316,10 +384,11 @@ class FlashManager:
         # Setup flow control filter
         self._filter_id = setup_isotp_flow_control(self._device, self._channel_id)
 
-        # Create UDS connection
+        # Create UDS connection over a J2534 transport
         from .protocol import UDSConnection
+        from .transport import J2534Transport
 
-        self._uds = UDSConnection(self._device, self._channel_id)
+        self._uds = UDSConnection(J2534Transport(self._device, self._channel_id))
 
         self._notify(callback, "Connected to ECU", percent=5.0)
         logger.info("J2534 connection established")
@@ -669,15 +738,94 @@ class FlashManager:
         self._notify(callback, "Flash complete!", percent=100.0)
         logger.info("Flash operation completed successfully")
 
+    def _read_block_with_retry(self, offset: int, size: int) -> bytes:
+        """Read one memory block (ROM or RAM), retrying on a lost/garbled response.
+
+        A read is idempotent (re-requesting an address never changes ECU state),
+        so on a lossy link a block whose response is dropped or corrupted is
+        simply re-requested. Each attempt uses a tight per-block budget so a drop
+        fails in a few seconds rather than stalling the full response-pending
+        budget; between attempts the transport is flushed to discard any stale
+        frames from the failed attempt. On a reliable link the first attempt
+        always succeeds and this is a straight passthrough.
+
+        Raises:
+            FlashError: If every attempt fails (the read cannot continue), or a
+                block comes back the wrong size.
+        """
+        last_exc: Optional[Exception] = None
+        for attempt in range(1, READ_BLOCK_RETRIES + 1):
+            try:
+                data = self._uds.read_memory_by_address(
+                    offset,
+                    size,
+                    timeout=READ_BLOCK_TIMEOUT_MS,
+                    pending_max=READ_BLOCK_PENDING_MAX_MS,
+                )
+                if len(data) != size:
+                    raise FlashError(
+                        f"Short read at 0x{offset:06X}: got {len(data)} of "
+                        f"{size} bytes"
+                    )
+                if attempt > 1:
+                    self._block_retries += 1
+                    logger.debug(
+                        "memory read recovered block at 0x%06X on attempt %d",
+                        offset,
+                        attempt,
+                    )
+                return data
+            except UDSTimeoutError as exc:
+                # Lost/garbled response (transport errors are wrapped as a
+                # timeout at the UDS seam). Re-requestable because reads are
+                # idempotent — flush stale frames and try again. This is routine
+                # on a lossy WiFi link (DEBUG, not WARNING): a block that never
+                # recovers raises FlashError below, which is the real signal.
+                last_exc = exc
+                logger.debug(
+                    "memory read block at 0x%06X lost (attempt %d/%d); retrying",
+                    offset,
+                    attempt,
+                    READ_BLOCK_RETRIES,
+                )
+                try:
+                    self._uds.flush()
+                except Exception as flush_exc:  # pragma: no cover - best-effort
+                    logger.debug("Flush before read retry failed: %s", flush_exc)
+                # Space retries with a short, growing backoff: consecutive drops at
+                # one offset mean a transient link stall, and instant re-requests
+                # just hammer it. Only the failing block waits, and never after the
+                # final attempt.
+                if attempt < READ_BLOCK_RETRIES:
+                    time.sleep(
+                        min(
+                            READ_BLOCK_RETRY_BACKOFF_S * attempt,
+                            READ_BLOCK_RETRY_BACKOFF_MAX_S,
+                        )
+                    )
+
+        raise FlashError(
+            f"memory read failed at 0x{offset:06X} after {READ_BLOCK_RETRIES} "
+            f"attempts: {last_exc}"
+        )
+
     def read_rom(
         self,
         progress_cb: Optional[ProgressCallback] = None,
+        read_block_size: Optional[int] = None,
     ) -> bytearray:
         """
         Read the complete 1MB ROM from the ECU.
 
         Args:
             progress_cb: Optional progress callback
+            read_block_size: Bytes per ReadMemoryByAddress request. ``None``
+                uses :data:`BLOCK_SIZE` (0x400) — the hardware-validated default.
+                A larger value (up to :data:`MAX_ISOTP_READ_SIZE`) issues fewer,
+                bigger requests, amortising per-request latency; only raise it
+                once the ECU is confirmed to honour the larger size (idempotent —
+                probe with ``tools/wican_bench_read.py --probe``). Clamped to
+                ``[1, MAX_ISOTP_READ_SIZE]``.
 
         Returns:
             1MB ROM data as bytearray
@@ -697,8 +845,10 @@ class FlashManager:
             self._notify(progress_cb, "Reading ROM...", percent=20.0)
 
             rom = bytearray(ROM_SIZE)
-            block_size = BLOCK_SIZE
+            block_size = BLOCK_SIZE if not read_block_size else read_block_size
+            block_size = max(1, min(block_size, MAX_ISOTP_READ_SIZE))
             offset = 0
+            self._block_retries = 0
             read_start = time.monotonic()
 
             while offset < ROM_SIZE:
@@ -706,7 +856,7 @@ class FlashManager:
                     raise FlashAbortedError("ROM read aborted by user")
 
                 read_size = min(block_size, ROM_SIZE - offset)
-                data = self._uds.read_memory_by_address(offset, read_size)
+                data = self._read_block_with_retry(offset, read_size)
                 rom[offset : offset + len(data)] = data
                 offset += read_size
 
@@ -723,10 +873,17 @@ class FlashManager:
                     )
 
             read_elapsed = time.monotonic() - read_start
-            logger.info(
+            read_msg = (
                 f"ROM read complete: {ROM_SIZE} bytes in {read_elapsed:.1f}s "
                 f"({ROM_SIZE / read_elapsed / 1024:.1f} KB/s)"
             )
+            if self._block_retries:
+                read_msg += (
+                    f" — {self._block_retries} block(s) re-requested after a "
+                    "dropped frame on the lossy link, all recovered "
+                    "(ROM is byte-perfect)"
+                )
+            logger.info(read_msg)
 
             # Read ROM ID
             rom_id = self._uds.read_rom_id()
@@ -766,6 +923,7 @@ class FlashManager:
             else:
                 from .j2534 import J2534Device, setup_isotp_flow_control
                 from .protocol import UDSConnection
+                from .transport import J2534Transport
                 from .constants import ISO15765_BS, ISO15765_STMIN
 
                 with J2534Device(self._dll_path) as device:
@@ -775,7 +933,7 @@ class FlashManager:
                     device.set_config(channel_id, {ISO15765_BS: 0, ISO15765_STMIN: 0})
                     setup_isotp_flow_control(device, channel_id)
 
-                    uds = UDSConnection(device, channel_id)
+                    uds = UDSConnection(J2534Transport(device, channel_id))
                     uds.tester_present()
                     dtcs = uds.read_dtc_status()
 
@@ -814,6 +972,7 @@ class FlashManager:
             else:
                 from .j2534 import J2534Device, setup_isotp_flow_control
                 from .protocol import UDSConnection
+                from .transport import J2534Transport
                 from .constants import ISO15765_BS, ISO15765_STMIN
 
                 with J2534Device(self._dll_path) as device:
@@ -823,7 +982,7 @@ class FlashManager:
                     device.set_config(channel_id, {ISO15765_BS: 0, ISO15765_STMIN: 0})
                     setup_isotp_flow_control(device, channel_id)
 
-                    uds_conn = UDSConnection(device, channel_id)
+                    uds_conn = UDSConnection(J2534Transport(device, channel_id))
                     uds_conn.tester_present()
                     uds_conn.clear_dtc()
 
@@ -845,6 +1004,7 @@ class FlashManager:
 
             from .j2534 import J2534Device, setup_isotp_flow_control
             from .protocol import UDSConnection
+            from .transport import J2534Transport
             from .constants import ISO15765_BS, ISO15765_STMIN
 
             with J2534Device(self._dll_path) as device:
@@ -852,7 +1012,7 @@ class FlashManager:
                 device.set_config(channel_id, {ISO15765_BS: 0, ISO15765_STMIN: 0})
                 setup_isotp_flow_control(device, channel_id)
 
-                uds_conn = UDSConnection(device, channel_id)
+                uds_conn = UDSConnection(J2534Transport(device, channel_id))
                 uds_conn.tester_present()
                 return uds_conn.read_vin_block()
         except ECUError:
@@ -888,13 +1048,18 @@ class FlashManager:
             page_size = 0x100
             read_size = page_size
             ram = bytearray(total_pages * page_size)
+            self._block_retries = 0
 
             for i in range(total_pages):
                 if self._check_abort():
                     raise FlashAbortedError("RAM scan aborted by user")
 
                 address = base_address + i * page_size
-                data = self._uds.read_memory_by_address(address, read_size)
+                # Idempotent per-page retry, same as read_rom: a lossy WiCAN link
+                # can drop a frame mid-page, and re-requesting a RAM address never
+                # changes ECU state. On a reliable J2534 link this is a straight
+                # passthrough (first attempt always succeeds).
+                data = self._read_block_with_retry(address, read_size)
                 offset = i * page_size
                 ram[offset : offset + page_size] = data[:page_size]
                 pct = ((i + 1) / total_pages) * 100.0
@@ -906,6 +1071,12 @@ class FlashManager:
                     bytes_total=total_pages * page_size,
                 )
 
+            if self._block_retries:
+                logger.info(
+                    "RAM scan complete: %d page(s) re-requested after a dropped "
+                    "frame on the lossy link, all recovered",
+                    self._block_retries,
+                )
             self._set_state(FlashState.COMPLETE)
             return ram
         except FlashAbortedError:

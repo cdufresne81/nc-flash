@@ -345,6 +345,60 @@ class TestUseSession:
 
 
 # ---------------------------------------------------------------------------
+# Use UDS (Borrowed transport-agnostic connection)
+# ---------------------------------------------------------------------------
+
+
+class TestUseUds:
+    """use_uds injects a pre-built UDSConnection (e.g. WiCAN-backed)."""
+
+    def test_use_uds_sets_borrowed_semantics(self):
+        from src.ecu.protocol import UDSConnection
+
+        uds = MagicMock(spec=UDSConnection)
+        fm = FlashManager()
+        fm.use_uds(uds)
+
+        assert fm._uds is uds
+        assert fm._owns_connection is False
+        # No J2534 handles when borrowing a bare UDS connection.
+        assert fm._device is None
+        assert fm._channel_id is None
+        assert fm._filter_id is None
+
+    def test_use_uds_none_raises(self):
+        fm = FlashManager()
+        with pytest.raises(FlashError, match="must not be None"):
+            fm.use_uds(None)
+
+    def test_borrowed_uds_connect_only_tester_present(self):
+        """_connect on a borrowed UDS just pings tester_present, no device open."""
+        from src.ecu.protocol import UDSConnection
+
+        uds = MagicMock(spec=UDSConnection)
+        fm = FlashManager()
+        fm.use_uds(uds)
+
+        fm._connect()
+
+        uds.tester_present.assert_called_once()
+
+    def test_borrowed_uds_cleanup_drops_refs_no_close(self):
+        """_cleanup on a borrowed UDS drops references and closes nothing."""
+        from src.ecu.protocol import UDSConnection
+
+        uds = MagicMock(spec=UDSConnection)
+        fm = FlashManager()
+        fm.use_uds(uds)
+
+        fm._cleanup()
+
+        assert fm._uds is None
+        # Nothing to close — there was no device. Ownership reset for reuse.
+        assert fm._owns_connection is True
+
+
+# ---------------------------------------------------------------------------
 # Checksum Verification (#45)
 # ---------------------------------------------------------------------------
 

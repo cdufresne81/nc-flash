@@ -30,6 +30,44 @@ class LogSignalEmitter(QObject):
     log_message = Signal(str, int)  # message, level
 
 
+class _ConsoleScopeFilter(logging.Filter):
+    """
+    Handler-side filter that restricts which log records reach a LogConsole.
+
+    Applied to the console's QtLogHandler only, so other root handlers
+    (stream console, rotating file, session file) are unaffected — a dropped
+    record still reaches those handlers (e.g. the session log file).
+
+    Args:
+        allowed_prefixes: If set, only records whose logger name starts with
+            one of these dotted prefixes are shown. None = no restriction.
+        drop_qt_logger: If True, records from the "qt" logger (Qt diagnostics)
+            are dropped from the console; they still reach the session file.
+    """
+
+    def __init__(self, allowed_prefixes=None, drop_qt_logger=False):
+        super().__init__()
+        self.drop_qt_logger = drop_qt_logger
+        # filter() runs on every emitted record (a hot path during a flash), so
+        # precompute the (exact, dotted) match pair per prefix once instead of
+        # allocating ``p + "."`` on each call. None = no restriction.
+        self._allowed = (
+            None
+            if allowed_prefixes is None
+            else [(p, p + ".") for p in allowed_prefixes]
+        )
+
+    def filter(self, record):
+        name = record.name
+        if self.drop_qt_logger and (name == "qt" or name.startswith("qt.")):
+            return False
+        if self._allowed is not None and not any(
+            name == exact or name.startswith(dotted) for exact, dotted in self._allowed
+        ):
+            return False
+        return True
+
+
 class QtLogHandler(logging.Handler):
     """
     Custom logging handler that emits Qt signals for thread-safe log display
@@ -51,18 +89,32 @@ class LogConsole(QWidget):
     Console widget for displaying application logs and messages
     """
 
-    def __init__(self, parent=None, auto_register=True):
+    def __init__(
+        self,
+        parent=None,
+        auto_register=True,
+        allowed_logger_prefixes=None,
+        drop_qt_logger=False,
+    ):
         """
         Initialize log console
 
         Args:
             parent: Parent widget
             auto_register: If True, automatically register with root logger
+            allowed_logger_prefixes: Optional list of dotted logger-name
+                prefixes; when set, only records from matching loggers are
+                shown. None (default) shows records from every logger.
+            drop_qt_logger: If True, records from the "qt" logger (Qt
+                diagnostics) are excluded from this console. They still reach
+                the root's session file handler.
         """
         super().__init__(parent)
         self.max_lines = LOG_CONSOLE_MAX_LINES
         self.log_handler = None
         self.min_level = logging.INFO  # Show INFO and above
+        self.allowed_logger_prefixes = allowed_logger_prefixes
+        self.drop_qt_logger = drop_qt_logger
         self.init_ui()
 
         if auto_register:
@@ -128,6 +180,12 @@ class LogConsole(QWidget):
                 "%(asctime)s - %(levelname)s - %(message)s", datefmt="%H:%M:%S"
             )
         )
+        # Scope-restrict this console only (handler-side filter); other root
+        # handlers — incl. the session file handler — are unaffected.
+        if self.allowed_logger_prefixes is not None or self.drop_qt_logger:
+            self.log_handler.addFilter(
+                _ConsoleScopeFilter(self.allowed_logger_prefixes, self.drop_qt_logger)
+            )
         self.log_handler.log_message.connect(self.append_log)
 
         # Add handler to root logger
