@@ -930,7 +930,16 @@ class TestChannelPriming:
             _read_one_command(conn)  # warm-up frame
             # Push a stray frame the client would otherwise keep buffered.
             conn.sendall(encode_data_frame(ECU_ID, bytes([0x02, 0x7E, 0x00])))
-            time.sleep(1.5)
+            # Hold the socket open until the client disconnects (t.close()), so
+            # the channel stays alive through receive_message() even on a slow
+            # runner. A fixed sleep can expire mid-read and surface as a spurious
+            # "socket closed by peer" (seen on the macOS CI runner).
+            conn.settimeout(10.0)
+            try:
+                while conn.recv(4096):
+                    pass
+            except OSError:
+                pass
 
         srv = _RawServer(handler)
         try:
