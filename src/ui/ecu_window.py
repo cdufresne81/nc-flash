@@ -350,11 +350,60 @@ class ECUProgrammingWindow(QMainWindow):
         if s.get_ecu_adapter() == "wican":
             return {
                 "kind": "wican",
-                "host": s.get_wican_host(),
+                "host": self._resolve_wican_host(s),
                 "port": s.get_wican_port(),
                 "auto_config": s.get_wican_auto_config(),
             }
         return {"kind": "j2534", "dll_path": self._get_dll_path()}
+
+    def _resolve_wican_host(self, s) -> str:
+        """Return the WiCAN host, re-resolving its IP over mDNS when possible.
+
+        If the user picked the adapter via "Scan", a stable ``device_id`` is
+        stored. We re-resolve that identity to the adapter's CURRENT IP so the
+        link survives the adapter's DHCP address changing. This is best-effort
+        and fail-safe: no stored identity, discovery unavailable, device
+        offline, or any error all fall back to the stored static host, so a
+        connect is never blocked or broken by discovery. The early-exit browse
+        keeps the online case sub-second; a freshly found IP is written back as
+        the new fallback.
+        """
+        host = s.get_wican_host()
+        try:
+            device_id = s.get_wican_device_id()
+        except Exception:
+            device_id = ""
+        if not device_id:
+            return host
+        try:
+            from src.ecu import wican_discovery
+
+            resolved = wican_discovery.resolve_host_for_device_id(
+                device_id, timeout_s=3.0
+            )
+        except Exception as e:  # never let discovery break a connect
+            logger.debug("WiCAN mDNS re-resolve failed (%s); using stored host", e)
+            return host
+        if not resolved:
+            logger.debug(
+                "WiCAN %s not found via mDNS; using stored host %s", device_id, host
+            )
+            return host
+        if resolved != host:
+            logger.info(
+                "WiCAN %s re-resolved to %s via mDNS (was %s)",
+                device_id,
+                resolved,
+                host,
+            )
+            try:
+                # Cache the fresh IP as the new static fallback. Best-effort:
+                # never fail a connect because a settings write hiccuped — the
+                # next connect simply re-resolves again.
+                s.set_wican_host(resolved)
+            except Exception as e:
+                logger.debug("WiCAN host cache write failed (%s); not fatal", e)
+        return resolved
 
     def _is_wican(self) -> bool:
         return bool(self._session and self._session.adapter_kind == "wican")

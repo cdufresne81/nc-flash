@@ -84,3 +84,14 @@ class TestWiCANSettings:
     def test_auto_config_round_trip(self, app_settings):
         app_settings.set_wican_auto_config(False)
         assert app_settings.get_wican_auto_config() is False
+
+    def test_default_device_id_empty(self, app_settings):
+        assert app_settings.get_wican_device_id() == ""
+
+    def test_device_id_round_trip(self, app_settings):
+        app_settings.set_wican_device_id("dcb4d91511b9")
+        assert app_settings.get_wican_device_id() == "dcb4d91511b9"
+
+    def test_device_id_none_stored_as_empty(self, app_settings):
+        app_settings.set_wican_device_id("")
+        assert app_settings.get_wican_device_id() == ""

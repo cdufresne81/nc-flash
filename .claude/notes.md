@@ -1,5 +1,68 @@
 # Session Notes
 
+## ⏳ WiCAN Scan progress dialog + Cancel (Jun 25, 2026)
+
+User asked: add "Scanning for device…" with a timer + Cancel; is there a max timeout?
+Answer surfaced: **yes — `wican_discovery.DEFAULT_TIMEOUT_S` (4 s) hard-bounds the scan**
+(`done.wait(timeout_s)`); it can never run forever.
+
+- **Settings Scan went off-thread.** New `_WiCANScanWorker(QObject)` runs `discover()` in a
+  `QThread`; a `QProgressDialog` shows **"Scanning for WiCAN adapters… Ns (up to 4s)"** with a
+  100 ms `QTimer` ticker (determinate bar capped at max-1 so it never auto-closes early). Worker
+  self-disposes via `finished/error → deleteLater`; result returns as a signal arg on the GUI thread.
+  Synchronous picker/identity-staging moved to `_present_scan_results` (unchanged logic, unit-testable).
+- **Cancel plumbing (headless, stays stdlib-only):** `discover()/_browse()` gained `cancel_event`;
+  new `_wait_for_browse()` polls early-exit + cancel on a monotonic deadline. **No-cancel path is
+  byte-for-byte `done.wait(timeout_s)`** — connect-time resolve untouched. Cancel returns the worker
+  sub-second.
+- **Adversarial review (Workflow, 4 lenses → verify): 4 real findings fixed, ~20 false positives
+  dismissed** (mostly reviewers misreading Qt cross-thread `deleteLater`; verifiers refuted correctly).
+  Fixes: (A) `done()` marks `_scan_cancelled` on close so a late `finished` can't pop a picker after
+  the dialog is gone; (B) slots drop stale/duplicate signals when no scan is active; (C) `_on_scan_cancel`
+  stops the ticker + `_on_scan_tick` guards on cancelled so it can't overwrite "Cancelling…";
+  (D) orchestration test now asserts full signal wiring.
+- **⚠️ Caught in real use → fixed:** the app aborted with `QThread: Destroyed while thread is still
+  running` right after a scan found the adapter. Root cause: the worker self-disposal design dropped the
+  Python refs to a still-running `QThread` in `_teardown_scan`, so PySide6 GC'd the wrapper mid-run. **Fix:**
+  `_teardown_scan` now *owns* the lifecycle — captures thread/worker, then `quit()`+`wait()`+`deleteLater`
+  via `_cleanup_scan_thread` (deferred `QTimer.singleShot` on the finished path; **synchronous** on dialog
+  close via `done(blocking=True)`) — mirrors `ecu_window`'s proven pattern. **Why the mocked tests missed it:**
+  the orchestration test patched `QThread`, so no real thread ran. Added **real-`QThread` E2E tests**
+  (`TestScanRealThread`) that install a `qInstallMessageHandler` and assert no destroyed-while-running
+  warning; verified they *fail* (process abort, exit 9) on the buggy version. **Lesson: thread-lifecycle
+  needs a real-thread test, not a mock.**
+- **Validation:** full suite **1436 passed / 12 skip**; black + CI flake8 gate clean. **Live E2E** on the
+  deployed adapter: normal scan 4.05 s; pre-set cancel **0.13 s**; mid-scan cancel @0.4 s → **0.45 s**;
+  **full GUI scan flow (real dialog + real QThread + real mDNS) → host filled `192.168.1.169`, 0 Qt
+  warnings.** **Not committed.**
+
+## 📡 WiCAN mDNS auto-discovery — no hardcoded IP (Jun 24, 2026)
+
+User: the WiCAN IP is hardcoded/typed; add auto-discovery. Firmware already advertises
+`_wican._tcp` mDNS (firmware `wc_mdns.c`). **Confirmed live** on the deployed adapter @
+`192.168.1.169` → `WiCAN-WebServer._wican._tcp.local.`, TXT `device_id=dcb4d91511b9`,
+`mac=DC:B4:D9:15:11:B8` (firmware/hardware TXT came back **empty** → treat optional).
+
+- **New module `src/ecu/wican_discovery.py`** — lazy `zeroconf` import (headless modules stay
+  stdlib-only; app runs without zeroconf, degrades to manual IP). `WiCANDevice` dataclass,
+  `discover()` (full browse, dedup by stable_id→host), `resolve_host_for_device_id()` (early-exit
+  via `threading.Event` + `stop_when` snapshot → sub-second when online). mDNS advertises **port 80
+  (HTTP)**, NOT the 35000 SLCAN port — discovery fills the **host IP only**.
+- **Settings**: `get/set_wican_device_id`. **Settings ▸ ECU ▸ WiCAN** "Scan…" button → picker →
+  fills host + stages device_id (persisted on apply; manual edit/`textEdited` clears it).
+- **Connect-time re-resolve** (`ecu_window._resolve_wican_host`): opt-in (only when device_id stored),
+  bounded ≤3 s, fail-safe (any error → stored host), caches fresh IP. Survives DHCP changes.
+- **Adversarial review hardening:** (1) ambiguous identity (same id at >1 IP) → return None / fall back
+  (brick-safety, never guess which ECU); (2) zeroconf shared state lock-guarded + snapshot (no listener
+  race). Kept connect-resolve **synchronous** on purpose (the SLCAN reboot already blocks ~6 s).
+- **Decisions:** synchronous (not QThread) for consistency w/ existing WiCAN connect; 3 s timeout kept
+  (early-exit covers happy path); manual edit always wins over stored identity.
+- **Tests:** `test_ecu_wican_discovery.py` (+ambiguity/dedup/early-exit), `test_ecu_window_wican_resolve.py`
+  (6 connect branches), `test_settings_dialog_wican_scan.py` (scan flow + identity lifecycle),
+  `test_settings_ecu_adapter.py` (device-id). **Full suite 1406 passed / 12 skip; black + CI flake8 gate clean.**
+  **Live E2E**: `discover()` found the device in 4.0 s; connect-resolve early-exit **0.33 s**. New dep
+  `zeroconf` in requirements.txt. **Not committed.**
+
 ## 🏷️ WiCAN staged SD file named after the ROM (Jun 24, 2026)
 
 User: timestamp-only staged names (`<CAL_ID>_<YYYYMMDD>-<HHMM>.bin`) say nothing about the tune →

@@ -273,6 +273,19 @@ class AppSettings:
     def set_wican_host(self, host: str):
         self.settings.setValue("ecu/wican_host", host)
 
+    def get_wican_device_id(self) -> str:
+        """Get the stable WiCAN device identity (mDNS device_id/mac), if any.
+
+        Persisted when the user picks a device via mDNS "Scan". Lets the app
+        re-resolve the adapter's *current* DHCP IP at connect time, so the link
+        survives the adapter's IP changing. Empty string means "no identity
+        stored — use the static host above".
+        """
+        return self.settings.value("ecu/wican_device_id", "")
+
+    def set_wican_device_id(self, device_id: str):
+        self.settings.setValue("ecu/wican_device_id", device_id or "")
+
     def get_wican_port(self) -> int:
         """Get the WiCAN SLCAN TCP port."""
         return self.settings.value("ecu/wican_port", 35000, type=int)

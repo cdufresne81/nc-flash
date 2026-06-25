@@ -1,8 +1,8 @@
 # /goal — WiCAN PRO 1 MB ROM read at J2534 parity (~60 s)
 
-> Self-contained driver for the read-speed work. Software phases are DONE + hardware-validated;
-> the remaining work is the **firmware phase (Phase 3)**. After `/compact`, `/goal` should resume
-> from "ACTIVE PLAN" below. The diagnosis is hardware-measured — do not re-derive it.
+> Self-contained driver for the read-speed work. **All phases DONE + hardware-validated and CLOSED**
+> (software + firmware Phase 3); the read-speed goal is fully resolved (see STATUS below). The
+> diagnosis is hardware-measured — do not re-derive it.
 
 ---
 
@@ -34,9 +34,11 @@
 The ECU answers **`7F 23 78` (response-pending) then the real data ~140 ms later on EVERY block**
 (measured universal: low region 0x0 and high region 0xD8400 both ~211 ms/block). Firmware already
 removed the per-block WiFi round-trip (338 s → 214 s); the remaining ~211 ms/block is the ECU's own
-flash-read + response-pending latency, which any tool over CAN pays. (User believes a Tactrix does
-~20 KB/s / <2 min — that contradicts this floor unless the Tactrix uses a different/faster read
-service; open question.) **214 s meets the ORIGINAL "~3 min" ask; it misses the later 60 s reframe.**
+flash-read + response-pending latency, which any tool over CAN pays. **Confirmed (2026-06-21):** the
+user's own Tactrix measured **215.8 s at 4.7 KB/s** on this same MX-5 NC ECU, while the WiCAN firmware
+fast-read does **~214 s, byte-for-byte identical** to `wican_stmin0_full.bin` — so the Tactrix pays the
+SAME ~211 ms/block response-pending floor and does NOT use a faster read service. The floor is confirmed
+NOT avoidable and not worth chasing. **214 s meets the ORIGINAL "~3 min" ask and matches the Tactrix exactly.**
 
 Three firmware bugs found + fixed to get byte-perfect (all needed):
 1. **Response-pending** — `read_one_block` treated `7F 23 78` as the block → desync. Now loops past
@@ -50,9 +52,12 @@ Three firmware bugs found + fixed to get byte-perfect (all needed):
 Diagnostics added (kept): firmware **version ping** (`X`+`0xFFFFFFFE` → `NCFRvN` marker; `wican_fw_ping.py`)
 and **on-abort `FRERR` line** surfaced by the host. Bench gained `--fast-read-start/-len`.
 
-**Remaining (pre-commit, see notes):** update `TestFastRead` to the sync-preamble protocol; commit the
-firmware to the fork branch; changelog/notes. Open speed question: whether the ECU response-pending is
-avoidable (different session/service/block-size) — uncertain payoff, needs the user's Tactrix method.
+**Landed (post-validation):** `TestFastRead` updated to the sync-preamble protocol (full suite **1173
+passed**); firmware committed to the fork branch `feature/fast-rom-read` (commit `84445a2`) and pushed;
+CHANGELOG and `.claude/notes.md` updated; host changes landed via **PR #76** (branch
+`feature/wican-pro-transport`) to master. **Speed question — RESOLVED:** the ECU response-pending
+(~211 ms/block) is NOT avoidable — the user's own Tactrix measures the same floor (see Objective below),
+so it does not use a faster service and is not worth chasing.
 
 **Objective — MET (Tactrix parity).** Full 1 MB authenticated WiCAN read at **J2534/Tactrix parity**.
 The ~60 s figure was an optimistic guess; on **2026-06-21 the user's own Tactrix measured 215.8 s at
@@ -161,6 +166,6 @@ works as the fallback; add the fast path as an **additive** mode/command.
 
 ## Provenance
 Diagnosis verified by a 4-agent analysis (2026-06-21) and then **confirmed on hardware** the same day
-(live ECU sweep above). Target = J2534/Tactrix parity (~60 s) per the user's ~20 KB/s bench data.
-Software phases complete; firmware (Phase 3) is the remaining work. See `docs/internal/WICAN_TRANSPORT.md`
-§5/§6/§10 for transport design.
+(live ECU sweep above). Target = J2534/Tactrix parity, achieved: WiCAN ~214 s vs the user's Tactrix
+215.8 s on this ECU, byte-for-byte identical. All phases (software + firmware Phase 3) complete and
+CLOSED. See `docs/internal/WICAN_TRANSPORT.md` §5/§6/§10 for transport design.
