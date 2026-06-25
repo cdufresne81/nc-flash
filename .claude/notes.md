@@ -480,7 +480,8 @@ Tasks: **#20 in_progress** (WRITE), #24 (shelve fast-read?), #23 (larger read/tr
 
 - **Imported 4 V2 TCM definitions from NC_TCM into `examples/metadata/`** — LFG1TF000, LFG1TG000, LFACTA000, LFAMTA000 (`*_v02.xml`). Removed the legacy V1 `lfg1tf000.xml`. Added `examples/LFG1TF000.bin` (real dump) and `tests/test_tcm_v2_detection.py`.
 - **No parser change needed** — V2 TCM defs use the SAME RomDrop XML schema as the ECU defs, so `DefinitionParser`/`RomDetector` handle them unchanged. Detection matches via `internalidstring` `SW-LFG1TF000.HEX` at `internalidaddress` 0x10612.
-- **Validation status** — Only LFG1TF000 is hardware-validated (against `examples/LFG1TF000.bin`); LFG1TG000, LFACTA000, and LFAMTA000 await real TCM dumps before they can be trusted.
+- **Validation status** — Only LFG1TF000 is hardware-validated (against `examples/LFG1TF000.bin`); LFG1TG000 awaits a real TCM dump before it can be trusted.
+- **LFACTA000 & LFAMTA000 removed** — Owner confirmed these two imported definitions were incorrect, so `examples/metadata/LFACTA000_v02.xml` and `LFAMTA000_v02.xml` were removed (along with their references in `tests/test_tcm_v2_detection.py`, CHANGELOG, and README). Only LFG1TF000 and LFG1TG000 remain.
 - **Scope: Phase A only** — This is data + test + docs (zero `src/` changes), closing #70. Phase B (TCM flashing) is a separate future R&D effort, NOT in this branch. See `.claude/plans/tcm-v2-import.md`.
 - **Phase A merged** — PR #73 merged to master (admin-merge after CI green; master requires review + CI, see memory `project_master_branch_protection`). Phase B filed as #72.
 

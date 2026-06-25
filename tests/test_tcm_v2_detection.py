@@ -1,7 +1,7 @@
 """
 Tests proving V2 TCM detection works against the real dump.
 
-These cover the migration from the old V1 TCM definition to the four V2
+These cover the migration from the old V1 TCM definition to the two V2
 definitions, including detection against the real LFG1TF000 dump and that
 each V2 definition parses into a usable RomDefinition.
 """
@@ -12,8 +12,6 @@ from src.core.rom_detector import RomDetector
 from src.core.definition_parser import DefinitionParser
 
 V2_DEFINITIONS = [
-    "LFACTA000_v02.xml",
-    "LFAMTA000_v02.xml",
     "LFG1TF000_v02.xml",
     "LFG1TG000_v02.xml",
 ]

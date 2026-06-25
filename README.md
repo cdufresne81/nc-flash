@@ -270,7 +270,7 @@ nc-flash/
 ├── examples/                          # Example ROM files
 │   ├── metadata/                      # ROM metadata XML files
 │   │   ├── lf9veb.xml                 # NC Miata ECU ROM definition (511 tables)
-│   │   └── *_v02.xml                  # V2 TCM definitions (LFG1TF000/TG000, LFACTA000, LFAMTA000)
+│   │   └── *_v02.xml                  # V2 TCM definitions (LFG1TF000, LFG1TG000)
 │   ├── lf9veb.bin                     # Stock NC Miata ECU ROM binary
 │   └── LFG1TF000.bin                  # Example NC TCM ROM dump
 ├── packaging/                         # Build & installer scripts
