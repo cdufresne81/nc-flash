@@ -9,10 +9,17 @@ means the ECU is not running its app (bootloader/unpowered).
 
 import argparse
 import select
+import sys
 import time
 from collections import Counter
+from pathlib import Path
 
-from src.ecu.wican_transport import WiCANTransport
+# Make the repo's `src` package importable when run as `python tools/...`.
+_REPO_ROOT = Path(__file__).resolve().parent.parent
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
+
+from src.ecu.wican_transport import WiCANTransport  # noqa: E402
 
 
 def main() -> None:

@@ -9,10 +9,17 @@ Also fires TesterPresent and tries ROM-ID for extra signal.
 """
 
 import argparse
+import sys
+from pathlib import Path
 
-from src.ecu.protocol import UDSConnection
-from src.ecu.exceptions import NegativeResponseError
-from src.ecu.wican_transport import WiCANTransport
+# Make the repo's `src` package importable when run as `python tools/...`.
+_REPO_ROOT = Path(__file__).resolve().parent.parent
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
+
+from src.ecu.protocol import UDSConnection  # noqa: E402
+from src.ecu.exceptions import NegativeResponseError  # noqa: E402
+from src.ecu.wican_transport import WiCANTransport  # noqa: E402
 
 T = 3000  # ms per request — fail fast
 

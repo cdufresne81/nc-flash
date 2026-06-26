@@ -91,7 +91,6 @@ class ECUSession(QObject):
         self._configurator = None
         self._slcan_prev_protocol = None  # original protocol to restore to
         self._slcan_switched = False  # True once we've switched this session
-        self._coexist_port = False  # True if connected via the no-reboot dedicated port
 
     # --- Public API ---
 
@@ -203,7 +202,6 @@ class ECUSession(QObject):
             coexist = self._try_open_coexist_port()
             if coexist is not None:
                 self._transport = coexist
-                self._coexist_port = True
                 self._uds = UDSConnection(coexist)
                 self._uds.tester_present()
                 logger.info(
@@ -432,7 +430,6 @@ class ECUSession(QObject):
             except Exception:
                 pass
             self._transport = None
-        self._coexist_port = False
 
         if restore_protocol:
             self._restore_wican_protocol()
