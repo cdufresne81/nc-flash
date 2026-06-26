@@ -70,6 +70,34 @@ COEXIST_MIN_FW_REV = 6
 #: proven reboot path quickly instead of stalling the connect.
 COEXIST_PROBE_TIMEOUT_MS = 1500
 
+# --- WiCAN dead-man's-switch / datalog auto-resume (docs/internal/WICAN_DEADMAN_AUTORESUME.md) ---
+# ONE timing contract shared by host + firmware (firmware uses the *_US = *_S * 1e6
+# microsecond forms). These govern the brick-safe auto-resume of the datalogger when
+# NC-Flash vanishes (lid close / crash / Wi-Fi drop) WITHOUT ever resuming during a
+# live ECU write. The firmware reaper is authoritative; these host values just keep
+# the leases renewed while NC-Flash is present.
+#: Advisory datalog-park lease TTL (s). The firmware reaper auto-resumes the logger
+#: this long after the host stops renewing — but ONLY when no flash/claim owns the bus.
+PARK_LEASE_TTL_S = 12.0
+#: Host bus-claim lease TTL (s). MUST exceed the worst-case host-driven auth window
+#: (TIMEOUT_RESPONSE_PENDING_MAX 60s + settle + key-compute + margin) — a 30s TTL is
+#: provably too small. This is only the host-GONE backstop; the firmware
+#: !host_bus_claim_active() gate is a HARD bit that never expires under a present host.
+HOST_CLAIM_LEASE_TTL_S = 75.0
+#: Keepalive POST interval (s). ⅓ of the park TTL (tolerates 2 lost keepalives before a
+#: false expiry) and under DATALOG_TIMEOUT_S so renews never pile up. Renews BOTH leases.
+DATALOG_KEEPALIVE_INTERVAL_S = 4.0
+#: Bus-idle quiesce window (ms): the reaper requires this long with NO tx AND no rx
+#: before resuming (the SD flash drives blocks ~211ms apart, so 300ms proves
+#: "between operations"). Host-side informational; the firmware enforces it.
+BUS_IDLE_QUIESCE_MS = 300
+#: After a host-claim lease expiry the firmware reaper waits this long (ECU drops its
+#: programming session on host silence) before resuming. Host-side informational.
+HOST_SESSION_TEARDOWN_GRACE_MS = 3000
+#: Firmware raises a "power-cycle required" alarm (never auto-clears the brick bit) if
+#: FLASH_ACTIVE_BIT stays set longer than this. Host-side informational.
+STUCK_FLASH_CEILING_MS = 180000
+
 # --- UDS Service IDs ---
 SID_DIAGNOSTIC_SESSION = 0x10
 SID_ECU_RESET = 0x11

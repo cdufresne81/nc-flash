@@ -8,6 +8,9 @@ orchestration tests patch ``build_flash_package`` to stay fast and
 ``_secure``-independent; one end-to-end test exercises the real packager.
 """
 
+import os
+import time
+import urllib.parse
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -66,12 +69,18 @@ def _fake_package(name="ID_20260623-1745.bin", image=b"img-bytes"):
     )
 
 
-def _make_flasher(transport, uploader=None):
-    f = WiCANSdFlasher(transport, uploader=uploader or MagicMock())
-    # Stub the link/battery gate, ECU auth, and read-back so no real I/O happens.
+def _make_flasher(transport, uploader=None, datalog=None):
+    # Inject a mock datalog client by default so the no-reboot /datalog pause/resume
+    # makes no real HTTP from unit tests (it would soft-degrade, but slowly).
+    f = WiCANSdFlasher(
+        transport, uploader=uploader or MagicMock(), datalog=datalog or MagicMock()
+    )
+    # Stub the link/battery gate, ECU auth, read-back, and the best-effort post-abort
+    # UDS teardown so no real I/O happens.
     f._safeguards._gate = MagicMock(name="gate")
     f._verify_readback = MagicMock(name="verify")
     f._authenticate_ecu = MagicMock(name="auth")
+    f._safe_uds_teardown = MagicMock(name="uds_teardown")
     return f
 
 
@@ -178,6 +187,237 @@ class TestRevGate:
             flasher.flash_rom(b"\x00" * 16)
         assert ("sleep", PRE_SESSION_SETTLE_S) in order
         assert order.index(("sleep", PRE_SESSION_SETTLE_S)) < order.index("auth")
+
+
+class TestDatalogCoexistence:
+    """No-reboot coexistence (#36.C): the datalogger is REST-paused before the flash
+    and resumed after — on EVERY exit path — and the flash is never aborted by a
+    /datalog failure."""
+
+    def _spy_flasher(self):
+        transport = _FakeTransport(marker=b"NCFRv5")
+        order = []
+        datalog = MagicMock()
+        datalog.bus_claim.side_effect = lambda: order.append("bus_claim")
+        datalog.pause.side_effect = lambda: order.append("pause")
+        datalog.bus_release.side_effect = lambda: order.append("bus_release")
+        datalog.resume.side_effect = lambda: order.append("resume")
+        flasher = _make_flasher(transport, datalog=datalog)
+        flasher._authenticate_ecu.side_effect = lambda: order.append("auth")
+        transport.fast_write = lambda *a, **k: order.append("flash")
+        return flasher, datalog, order
+
+    def test_pause_before_flash_resume_after(self):
+        flasher, datalog, order = self._spy_flasher()
+        with patch(
+            "src.ecu.wican_sd_flash.build_flash_package", return_value=_fake_package()
+        ):
+            flasher.flash_rom(b"\x00" * 16)
+        datalog.bus_claim.assert_called_once()
+        datalog.pause.assert_called_once()
+        datalog.bus_release.assert_called_once()
+        datalog.resume.assert_called_once()
+        # claim+pause fence the WHOLE window; auth -> flash; then release+resume.
+        assert order == ["bus_claim", "pause", "auth", "flash", "bus_release", "resume"]
+
+    def test_preflight_gate_runs_inside_the_datalog_fence(self):
+        """Regression (HW-9 bench hang): the link/battery preflight gate pings the ECU
+        over the transport, so on the no-reboot coexist port it MUST run with the datalog
+        fence already raised — otherwise the datalogger still owns the single CAN bus and
+        the gate's Tester-Present round-trips never return (the bench flash hung here).
+        Assert bus_claim + pause precede the gate, and release happens after the flash.
+        """
+        flasher, datalog, order = self._spy_flasher()
+        flasher._safeguards._gate.side_effect = lambda: order.append("gate")
+        with patch(
+            "src.ecu.wican_sd_flash.build_flash_package", return_value=_fake_package()
+        ):
+            flasher.flash_rom(b"\x00" * 16)
+        assert order == [
+            "bus_claim",
+            "pause",
+            "gate",
+            "auth",
+            "flash",
+            "bus_release",
+            "resume",
+        ]
+
+    def test_resume_runs_even_when_flash_raises(self):
+        """The datalogger must be restored (claim released + resumed) even if the flash
+        fails mid-transfer."""
+        flasher, datalog, order = self._spy_flasher()
+
+        def boom(*a, **k):
+            order.append("flash")
+            raise WiCANError("FWERR mid-transfer")
+
+        flasher._transport.fast_write = boom
+        with patch(
+            "src.ecu.wican_sd_flash.build_flash_package", return_value=_fake_package()
+        ):
+            with pytest.raises(WiCANError, match="FWERR"):
+                flasher.flash_rom(b"\x00" * 16)
+        datalog.bus_release.assert_called_once()  # finally ran
+        datalog.resume.assert_called_once()
+        # On a FAILED flash the best-effort UDS teardown also fires (mocked here).
+        flasher._safe_uds_teardown.assert_called_once()
+        assert order == ["bus_claim", "pause", "auth", "flash", "bus_release", "resume"]
+
+    def test_datalog_pause_failure_does_not_abort_flash(self):
+        """A /datalog error (port-only build, timeout) must NEVER abort a flash —
+        the client already soft-degrades (returns None), so a real failure surfaces
+        as None here and the flash proceeds."""
+        flasher, datalog, order = self._spy_flasher()
+        datalog.pause.side_effect = lambda: (order.append("pause"), None)[1]
+        with patch(
+            "src.ecu.wican_sd_flash.build_flash_package", return_value=_fake_package()
+        ):
+            flasher.flash_rom(b"\x00" * 16)  # must not raise
+        assert "flash" in order
+
+
+@pytest.fixture
+def _recovery_in_tmp(tmp_path, monkeypatch):
+    """Isolate the datalog crash-recovery breadcrumb in a per-test temp dir."""
+    import src.ecu.wican_config as mod
+
+    monkeypatch.setattr(mod.tempfile, "gettempdir", lambda: str(tmp_path))
+    return tmp_path
+
+
+def _post_ops(server):
+    """Ordered list of /datalog ``op`` values the mock server received over POST."""
+    ops = []
+    for method, path in server.requests:
+        if method != "POST":
+            continue
+        q = urllib.parse.parse_qs(urllib.parse.urlparse(path).query)
+        ops.append(q.get("op", [""])[0])
+    return ops
+
+
+class TestDeadmanUiPathIntegration:
+    """End-to-end UI flash path against a firmware-faithful ``/datalog`` mock.
+
+    The other tests spy on a MagicMock datalog client. These drive the REAL
+    :class:`WiCANDatalogClient` through ``WiCANSdFlasher._trigger_firmware_flash`` against
+    the SAME ``_MockDatalogServer`` the dead-man's-switch FIRMWARE is verified against —
+    proving the UI flash path emits exactly the wire handshake the firmware implements
+    (bus_claim → pause → keepalive(both leases) → bus_release → resume), issues + clears
+    both leases, manages the crash breadcrumb, and tears the keepalive daemon down. This is
+    the host↔firmware contract closing the loop on the UI path.
+    """
+
+    def _real_client(self, server, **kw):
+        from src.ecu.wican_config import WiCANDatalogClient
+
+        kw.setdefault("timeout_s", 2.0)
+        kw.setdefault(
+            "keepalive_interval_s", 0.05
+        )  # ticks during the PRE_SESSION_SETTLE window
+        return WiCANDatalogClient("127.0.0.1", http_port=server.port, **kw)
+
+    def test_flash_drives_full_deadman_handshake(self, _recovery_in_tmp):
+        from tests.test_ecu_wican_config import _MockDatalogServer
+
+        with _MockDatalogServer("ok") as server:
+            client = self._real_client(server)
+            flasher = _make_flasher(
+                _FakeTransport(marker=b"NCFRv5", host="127.0.0.1"), datalog=client
+            )
+            try:
+                with patch(
+                    "src.ecu.wican_sd_flash.build_flash_package",
+                    return_value=_fake_package(),
+                ):
+                    flasher.flash_rom(b"\x00" * 16)
+
+                ops = _post_ops(server)
+                # The brick fence + park bracket the WHOLE window, released after the flash.
+                lifecycle = [
+                    o
+                    for o in ops
+                    if o in ("bus_claim", "pause", "bus_release", "resume")
+                ]
+                assert lifecycle == ["bus_claim", "pause", "bus_release", "resume"]
+                # The keepalive daemon renewed BOTH leases at once while the flash was held.
+                ka_paths = [
+                    p for m, p in server.requests if m == "POST" and "op=keepalive" in p
+                ]
+                assert ka_paths, "keepalive daemon never ticked during the flash window"
+                assert any("park_token=" in p and "claim_token=" in p for p in ka_paths)
+                # Firmware-side: both leases released, neither bit left set.
+                assert server.claimed is False and server.parked is False
+                assert server.claim_token is None and server.park_token is None
+                # Host-side: lease tokens dropped, breadcrumb cleared, daemon stopped.
+                assert client._claim_token is None and client._park_token is None
+                assert not os.path.exists(client.recovery_path)
+                assert client._ka_thread is None
+            finally:
+                client.close()
+
+    def test_flash_failure_still_runs_full_deadman_teardown(self, _recovery_in_tmp):
+        """A flash that raises mid-transfer must STILL release the claim + resume over the
+        real wire (the worker ``finally``), so the firmware never stays fenced/parked.
+        """
+        from tests.test_ecu_wican_config import _MockDatalogServer
+
+        with _MockDatalogServer("ok") as server:
+            client = self._real_client(server)
+            transport = _FakeTransport(marker=b"NCFRv5", host="127.0.0.1")
+
+            def boom(*a, **k):
+                raise WiCANError("FWERR mid-transfer")
+
+            transport.fast_write = boom
+            flasher = _make_flasher(transport, datalog=client)
+            try:
+                with patch(
+                    "src.ecu.wican_sd_flash.build_flash_package",
+                    return_value=_fake_package(),
+                ):
+                    with pytest.raises(WiCANError, match="FWERR"):
+                        flasher.flash_rom(b"\x00" * 16)
+
+                lifecycle = [
+                    o
+                    for o in _post_ops(server)
+                    if o in ("bus_claim", "pause", "bus_release", "resume")
+                ]
+                assert lifecycle == ["bus_claim", "pause", "bus_release", "resume"]
+                # Even on failure the device is fully restored over the real wire.
+                assert server.claimed is False and server.parked is False
+                assert client._ka_thread is None
+            finally:
+                client.close()
+
+    def test_flash_against_port_only_build_soft_degrades(self, _recovery_in_tmp):
+        """A pre-deadman / port-only build (no /datalog → 404) must not abort the flash:
+        every claim/pause/keepalive/resume call returns None and is swallowed."""
+        from tests.test_ecu_wican_config import _MockDatalogServer
+
+        with _MockDatalogServer("404") as server:
+            client = self._real_client(server)
+            flasher = _make_flasher(
+                _FakeTransport(marker=b"NCFRv5", host="127.0.0.1"), datalog=client
+            )
+            try:
+                with patch(
+                    "src.ecu.wican_sd_flash.build_flash_package",
+                    return_value=_fake_package(),
+                ):
+                    flasher.flash_rom(b"\x00" * 16)  # must NOT raise
+                # No tokens were ever issued; nothing to clean up; flash still ran.
+                assert client._claim_token is None and client._park_token is None
+                assert transport_fast_write_ran(flasher)
+            finally:
+                client.close()
+
+
+def transport_fast_write_ran(flasher):
+    """True if the flasher's transport recorded a fast_write (the flash was triggered)."""
+    return bool(getattr(flasher._transport, "fast_write_calls", None))
 
 
 class TestDynamicFlash:

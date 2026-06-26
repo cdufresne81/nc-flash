@@ -47,6 +47,7 @@ from __future__ import annotations
 
 import logging
 import time
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Optional
 
@@ -61,6 +62,7 @@ from .constants import (
 from .exceptions import FlashError
 from .flash_manager import FlashManager, FlashProgress, FlashState, ProgressCallback
 from .rom_utils import find_first_difference
+from .wican_config import WiCANDatalogClient
 from .wican_flash import WiCANFlasher
 from .wican_sd_package import FlashPackage, build_flash_package
 from .wican_sd_upload import WiCANSdUploader
@@ -124,6 +126,7 @@ class WiCANSdFlasher:
         *,
         http_port: int = DEFAULT_HTTP_PORT,
         uploader: Optional[WiCANSdUploader] = None,
+        datalog: Optional[WiCANDatalogClient] = None,
         rom_id: Optional[str] = None,
         source_name: Optional[str] = None,
         min_voltage: float = BATTERY_VOLTAGE_WARNING,
@@ -148,8 +151,8 @@ class WiCANSdFlasher:
         self._http_port = http_port
         self._rom_id = rom_id
         self._source_name = source_name
+        host = getattr(transport, "host", None)
         if uploader is None:
-            host = getattr(transport, "host", None)
             if not host:
                 raise WiCANError(
                     "WiCANSdFlasher needs the device host for the HTTP SD upload "
@@ -157,6 +160,16 @@ class WiCANSdFlasher:
                 )
             uploader = WiCANSdUploader(host, http_port=http_port)
         self._uploader = uploader
+        # No-reboot coexistence (#36.C): advisory REST pause/resume of the WiCAN
+        # datalogger around the flash. Optional + fully soft-degrading — if the
+        # transport exposes no host (injected-uploader test paths) it's a no-op,
+        # and every /datalog failure is swallowed (the firmware FLASH_ACTIVE_BIT
+        # interlock is the real brick guard, this is advisory).
+        self._datalog = (
+            datalog
+            if datalog is not None
+            else (WiCANDatalogClient(host, http_port=http_port) if host else None)
+        )
         # Proven WiCAN safeguards reused by COMPOSITION (not a mixin): link
         # pre-flight gate, battery guard, and the read-back verify all operate on
         # the same transport.
@@ -187,16 +200,23 @@ class WiCANSdFlasher:
         bootloader after the flash reset), which the host cannot trigger — so the
         caller must cycle the ignition before opting in. See the module docstring.
         """
-        self._safeguards._gate()
-        self._stage_and_flash(
-            rom_data,
-            "full",
-            archive_data=None,
-            archive_path=archive_path,
-            progress_cb=progress_cb,
-        )
-        if verify:
-            self._verify_readback(rom_data, progress_cb)
+        # The bus-claim/datalog fence brackets the ENTIRE host-driven window — the
+        # preflight link gate (which pings the ECU) included, not just auth+flash. On
+        # the no-reboot coexist port the datalogger owns the bus until it is parked, so
+        # _gate()'s Tester-Present round-trips only work with the fence already up; and
+        # holding the claim across the whole window is exactly INV-2 (the reaper must
+        # never resume into any host-driven ECU contact). Soft-degrading.
+        with self._datalog_fence():
+            self._safeguards._gate()
+            self._stage_and_flash(
+                rom_data,
+                "full",
+                archive_data=None,
+                archive_path=archive_path,
+                progress_cb=progress_cb,
+            )
+            if verify:
+                self._verify_readback(rom_data, progress_cb)
 
     def dynamic_flash(
         self,
@@ -212,6 +232,14 @@ class WiCANSdFlasher:
         read-back can only run after a post-flash ignition cycle. The write is
         firmware-confirmed (``NCFWDONE``).
         """
+        with self._datalog_fence():
+            self._dynamic_flash_inner(
+                rom_data, archive_path, progress_cb=progress_cb, verify=verify
+            )
+
+    def _dynamic_flash_inner(
+        self, rom_data, archive_path, *, progress_cb, verify
+    ) -> None:
         self._safeguards._gate()
         archive_data = Path(archive_path).read_bytes()
         self._stage_and_flash(
@@ -306,6 +334,57 @@ class WiCANSdFlasher:
         fm._authenticate()
         fm._uds.check_flash_counter()
 
+    def _safe_uds_teardown(self) -> None:
+        """Best-effort: return the ECU to the default session after a FAILED flash.
+
+        Runs only on the non-OK path (see ``_trigger_firmware_flash``'s finally), so a
+        programming session left open by an aborted auth can't be corrupted by a later
+        datalogger poll frame once the bus is released. Swallows EVERYTHING — this is a
+        finally-path cleanup and must never raise or mask the original flash error. The
+        firmware ``HOST_SESSION_TEARDOWN_GRACE`` is the backstop if this can't reach the
+        ECU (e.g. the transport is already down).
+        """
+        try:
+            from .protocol import UDSConnection
+
+            UDSConnection(self._transport).diagnostic_session(0x01)  # default session
+            logger.info("post-abort UDS default-session teardown sent")
+        except Exception as exc:  # noqa: BLE001 — finally cleanup, never propagate
+            logger.debug(
+                "post-abort UDS teardown best-effort failed (ignored): %s", exc
+            )
+
+    @contextmanager
+    def _datalog_fence(self):
+        """Hold the host bus-claim + datalog pause for the WHOLE host-driven flash window.
+
+        No-reboot coexistence dead-man's-switch (#36, docs/internal/WICAN_DEADMAN_AUTORESUME.md):
+        ``bus_claim()`` raises the firmware HOST_BUS_CLAIM_BIT and ``pause()`` parks the
+        datalogger, both BEFORE the preflight link gate — because on the dedicated coexist
+        port the datalogger owns the single CAN bus until it is parked, so the gate's (and
+        auth's) Tester-Present round-trips only succeed with the fence already up; and per
+        INV-2 the claim must bracket EVERY host-driven ECU contact so the firmware reaper can
+        never auto-resume the poller into a live session. Both start a host keepalive that
+        renews the leases so they never false-expire under a present host. Released on EVERY
+        exit (success / FWERR / stall): ``bus_release()`` then ``resume()``. All soft-degrading
+        — a pre-deadman / port-only build (404) makes each call a no-op and the flash proceeds
+        on the FLASH_ACTIVE_BIT interlock alone.
+        """
+        if self._datalog is not None:
+            self._datalog.bus_claim()
+            self._datalog.pause()
+            # Let the firmware actually park the poll task before the FIRST ECU contact
+            # (the preflight gate). The poll loop parks on can_should_park() at its own
+            # cadence; without this settle a poll frame in flight collides with the gate's
+            # first Tester-Present and the zero-loss gate (max_loss_pct=0) refuses the flash.
+            time.sleep(PRE_SESSION_SETTLE_S)
+        try:
+            yield
+        finally:
+            if self._datalog is not None:
+                self._datalog.bus_release()
+                self._datalog.resume()
+
     def _verify_readback(self, rom_data: bytes, progress_cb=None) -> None:
         """Explicit, post-ignition-cycle read-back: re-read the ECU and byte-compare.
 
@@ -387,39 +466,58 @@ class WiCANSdFlasher:
                 "WiCAN firmware and retry."
             )
 
-        # Let any in-flight datalogger CAN traffic drain before the programming
-        # session so a stray poll frame can't corrupt the UDS auth handshake. The
-        # firmware FLASH_ACTIVE_BIT interlock parks the poll task; this is the
-        # host-side margin across the transition (see PRE_SESSION_SETTLE_S).
-        time.sleep(PRE_SESSION_SETTLE_S)
+        # The bus-claim/datalog fence is held by the caller (_datalog_fence in
+        # flash_rom / dynamic_flash) across the WHOLE host-driven window — the preflight
+        # gate, this auth, and the fast_write — so the firmware reaper can never resume the
+        # poller into the live, security-unlocked session the codec's FLASH_ACTIVE_BIT does
+        # not yet cover. Here we only own the abort-path UDS teardown.
+        flash_ok = False
+        try:
+            # Let any in-flight datalogger CAN traffic drain before the programming
+            # session so a stray poll frame can't corrupt the UDS auth handshake. The
+            # firmware interlock parks the poll task; this is the host-side margin
+            # across the transition (see PRE_SESSION_SETTLE_S).
+            time.sleep(PRE_SESSION_SETTLE_S)
 
-        # Authenticate the ECU (programming session + security) — the firmware
-        # fastwrite relies on this host-established session for RequestDownload.
-        self._notify(
-            progress_cb, FlashState.AUTHENTICATING, "Authenticating ECU…", 26.0
-        )
-        self._authenticate_ecu()
+            # Authenticate the ECU (programming session + security) — the firmware
+            # fastwrite relies on this host-established session for RequestDownload.
+            self._notify(
+                progress_cb, FlashState.AUTHENTICATING, "Authenticating ECU…", 26.0
+            )
+            self._authenticate_ecu()
 
-        # Drive the firmware flash over CAN, mapping its streamed block markers
-        # into the existing FlashProgress band (35%→90%, matching the J2534 path).
-        self._notify(
-            progress_cb,
-            FlashState.TRANSFERRING_PROGRAM,
-            "Flashing from SD over CAN…",
-            35.0,
-        )
-
-        def on_block(done: int, total: int) -> None:
-            pct = 35.0 + (done / total) * 55.0 if total else 35.0
+            # Drive the firmware flash over CAN, mapping its streamed block markers
+            # into the existing FlashProgress band (35%→90%, matching the J2534 path).
             self._notify(
                 progress_cb,
                 FlashState.TRANSFERRING_PROGRAM,
-                f"Flashing: {done}/{total} blocks",
-                pct,
+                "Flashing from SD over CAN…",
+                35.0,
             )
 
-        # Raises WiCANError on FWERR / stall / socket close; returns on NCFWDONE.
-        self._transport.fast_write(pkg.staged_filename, mode="L", progress_cb=on_block)
+            def on_block(done: int, total: int) -> None:
+                pct = 35.0 + (done / total) * 55.0 if total else 35.0
+                self._notify(
+                    progress_cb,
+                    FlashState.TRANSFERRING_PROGRAM,
+                    f"Flashing: {done}/{total} blocks",
+                    pct,
+                )
+
+            # Raises WiCANError on FWERR / stall / socket close; returns on NCFWDONE.
+            self._transport.fast_write(
+                pkg.staged_filename, mode="L", progress_cb=on_block
+            )
+            flash_ok = True
+        finally:
+            # If we failed mid-session (auth raised, or fast_write raised BEFORE the
+            # firmware's own terminal ECUReset), drop any live programming session so a
+            # later poll frame can't corrupt it. A clean flash already ended in
+            # ECUReset (ECU now in bootloader), so skip it then. Best-effort; never
+            # raises out of the finally and never masks the original error. The
+            # bus-claim/datalog fence release is owned by the caller's _datalog_fence.
+            if not flash_ok:
+                self._safe_uds_teardown()
         self._notify(
             progress_cb,
             FlashState.FINALIZING,

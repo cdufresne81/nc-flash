@@ -341,6 +341,28 @@ class WiCANTransport(EcuTransport):
             except OSError as exc:  # pragma: no cover - platform-dependent
                 logger.debug("WiCAN SO_RCVBUF not set (ignored): %s", exc)
 
+        # TCP keepalive so the HOST notices a silently-dead WiCAN fast (the firmware's
+        # 35001 listener already keepalives the other way). Mirrors the firmware's
+        # 5s idle / 5s interval / 3 probes so a half-open peer (e.g. laptop lid closed)
+        # surfaces as a socket error in ~20s instead of hanging a read forever. Purely
+        # an availability optimisation — the firmware reaper is the authoritative
+        # dead-man's-switch (docs/internal/WICAN_DEADMAN_AUTORESUME.md). Platform-guarded:
+        # the per-probe knobs differ by OS and a missing one must not fail a good open.
+        try:
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
+        except OSError as exc:  # pragma: no cover - platform-dependent
+            logger.debug("WiCAN SO_KEEPALIVE not set (ignored): %s", exc)
+        else:
+            _ka = (("TCP_KEEPIDLE", 5), ("TCP_KEEPINTVL", 5), ("TCP_KEEPCNT", 3))
+            for _name, _val in _ka:
+                _opt = getattr(socket, _name, None)
+                if _opt is None:  # e.g. Windows lacks per-socket TCP_KEEPIDLE
+                    continue
+                try:
+                    sock.setsockopt(socket.IPPROTO_TCP, _opt, _val)
+                except OSError as exc:  # pragma: no cover - platform-dependent
+                    logger.debug("WiCAN %s not set (ignored): %s", _name, exc)
+
         # Non-blocking I/O so receive can honour per-call timeouts via select.
         sock.setblocking(False)
         self._sock = sock

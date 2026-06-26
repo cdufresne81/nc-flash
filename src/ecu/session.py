@@ -190,10 +190,20 @@ class ECUSession(QObject):
         """
         from .protocol import UDSConnection
         from .transport import create_ecu_transport
-        from .wican_config import WiCANConfigurator
+        from .wican_config import WiCANConfigurator, WiCANDatalogClient
 
         if not self._wican_host or not self._wican_port:
             raise ValueError("WiCAN adapter requires a host and port")
+
+        # No-reboot coexistence (#36.C) crash recovery: if a prior run was hard-killed
+        # mid-flash after pausing the datalogger, resume it now — UNLESS a flash is
+        # currently active (a second NC Flash instance mid-flash; its own resume will
+        # clear it). Cheap + soft-degrading: a no-op unless this host left a breadcrumb,
+        # and any /datalog error is swallowed. MUST run before any flash leans on it.
+        try:
+            WiCANDatalogClient(self._wican_host).reconcile()
+        except Exception as exc:  # never let recovery break a connect
+            logger.debug("datalog reconcile at connect failed (non-fatal): %s", exc)
 
         # No-reboot path: coexistence firmware keeps an always-on dedicated SLCAN
         # port open, so flashing needs neither the protocol-switch reboot nor the
