@@ -13,9 +13,16 @@ bus-off bits. Also report tx error behaviour heuristically.
 
 import argparse
 import select
+import sys
 import time
+from pathlib import Path
 
-from src.ecu.wican_transport import WiCANTransport
+# Make the repo's `src` package importable when run as `python tools/...`.
+_REPO_ROOT = Path(__file__).resolve().parent.parent
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
+
+from src.ecu.wican_transport import WiCANTransport  # noqa: E402
 
 # SLCAN F-command status bits (CANable/LAWICEL convention).
 BITS = {
@@ -27,6 +34,8 @@ BITS = {
     6: "ARBITRATION-LOST",
     7: "BUS-ERROR/BUS-OFF",
 }
+# Bits that mean no node is ACKing our frames (warn / error-passive / bus-off).
+NO_ACK_BITS = (2, 5, 7)
 
 
 def _read_for(sock, seconds):
@@ -76,7 +85,7 @@ def main():
             flags = int(hexpart, 16)
             active = [name for bit, name in BITS.items() if flags & (1 << bit)]
             print(f"status flags = 0x{flags:02X} -> {active or ['(none set)']}")
-            if flags & (1 << 5) or flags & (1 << 7) or flags & (1 << 2):
+            if any(flags & (1 << b) for b in NO_ACK_BITS):
                 print(
                     ">>> ERROR/PASSIVE/BUS-OFF set: NO node is ACKing -> "
                     "ECU appears UNPOWERED (ignition OFF)."

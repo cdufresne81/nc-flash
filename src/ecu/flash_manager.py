@@ -137,10 +137,11 @@ def enforce_rpm_gate(
             "RPM gate: engine RPM unreadable (PID unsupported?); not blocking"
         )
         return None
-    if rpm >= threshold and not allow_override:
+    running = rpm >= threshold
+    if running and not allow_override:
         logger.error("RPM gate BLOCKED flash: engine running at %.0f RPM", rpm)
         raise EngineRunningError(rpm)
-    if rpm >= threshold:
+    if running:
         logger.warning("RPM gate OVERRIDDEN: flashing with engine at %.0f RPM", rpm)
     else:
         logger.info("RPM gate OK: engine off (%.0f RPM)", rpm)
