@@ -1,5 +1,93 @@
 # Session Notes
 
+## ✅ Firmware #35 (read-back PASSED) + ⏳ #36 interlock (Jun 25–26, 2026)
+
+User granted **brick-risk authorization on the bench ECU** (192.168.1.169) + pointed me at the installed
+ESP-IDF. Build recipe in memory `project_wican_firmware_build_env` (export.ps1 picks wrong venv → use
+`idf5.5_py3.10_env`). Firmware repo `../nc-flash-wican-fw`.
+
+**#35 — integrate FWB onto wican-pro (`claude/integrate-fwb-onto-wican-pro` @ `c8bcd54`):** merge had ZERO
+git conflicts but all 5 SEMANTIC landmines verified correct (engine_on_volt, max_uri_handlers=48,
+FAST_LOG/POLL_LOG enum, CMake superset, both main.c dispatch + /upload/sd). Built clean (ESP-IDF v5.5.3,
+esp32s3). **OTA'd to the adapter** (now `v1.0.0`, was `b79549b`) via `curl -F file=@... /upload/ota.bin`
+(A/B-safe; user waived exact-backup rule, rollback_deployed_wican-pro.bin is the fallback). **Live-validated
+on the bench ECU:** NCFRv5 ping, DTC read (10), RAM scan+auth seed/key, full 1 MB ROM read (checksum-Δ0),
+and a **LIVE FULL FLASH 1022/1022 NCFWDONE** (round-trip of the ECU's own ROM via `roundtrip_flash.py`).
+✅ **#35 COMPLETE (Jun 26):** read-back byte-compare **PASS** — full 1 MB read post-power-cycle is
+**byte-for-byte identical** to oracle `wican_roundtrip_source.bin` (`wican_readback_postcycle.bin`; ROM ID
+SW-LFDJEA000.HEX; 29 dropped blocks all recovered; 338.7s @ 3 KB/s). Proof chain closed: NCFWDONE write →
+power cycle → app booted (auth'd RMBA works, real powertrain DTCs) → read-back identical. Task #35 → completed.
+NOTE: `tools/wican_bench_read.py` defaults to port **3333** — pass `--port 35000`.
+**OPERATIONAL GOTCHA (cost ~1h):** after a power-cycle the WiCAN reverts to its default protocol (`poll_log`),
+NOT slcan. Raw bench tools WITHOUT `--auto-config` connect to :35000, ack C/S6/O, but the device doesn't
+bridge CAN → bus looks dead-silent + every UDS times out → *false "ECU bricked"*. ALWAYS pass `--auto-config`
+(or use NCFlash, which switches to slcan) after any reboot. Also: the `slcan_session()` RESTORES poll_log on
+exit, so each flash/read leaves the device non-bridging for the next raw probe. Memory: `project_wican_protocol_revert_gotcha`.
+New diag tools added (untracked): `tools/wican_bus_sniff.py` (raw all-IDs CAN sniff), `tools/wican_state_probe.py`
+(bootloader-vs-app via RMBA NRC 0x11 vs 0x33), `tools/wican_bus_status.py` (SLCAN `F` flags — firmware doesn't impl).
+
+**#36 — coexistence firmware (`claude/coexistence-slcan-port` @ `6bea7e3`, off #35):** ✅ **FLASH_ACTIVE_BIT
+interlock done + builds clean** — the brick-critical core (plan §5): bit+accessors (can.c/.h), poll task
+parks on it (poll_log.c), both fast-op codecs set-before-suspend / clear-last-on-every-exit + unified
+mutual-exclusion guard (ncflash_fastwrite/fastread.c), DEV_SLCAN_PORT enum (types.h).
+⏳ **Remaining:** dedicated-port listener (35001) + `can_tx_task` early-route + `can_rx_task` #476 RX-forward
+fix. **Design fork flagged (plan §6):** the UDS auth handshake (plain slcan) over the dedicated port runs
+BEFORE the fast-op sets FLASH_ACTIVE_BIT → needs park-and-hold arbitration vs the running datalogger. Then
+bump the version marker to NCFRv6 so host #37 detects coexistence. **#36 needs brick-critical hardware
+interlock proof** (zero CSV rows / zero 0x7E0 frames during a flash) = bench session w/ user.
+
+**Uncommitted host bench artifacts** (gitignore candidates): `roundtrip_flash.py`, `wican_roundtrip_source.bin`,
+`roundtrip_read.log`.
+
+## ⏳ Host #37 — RPM gate + WiCAN no-reboot capability detection (Jun 25, 2026)
+
+**UPDATE Jun 25 PM:** pushed + **PR #79 open** (user said push+PR). The "NOT pushed" / "firmware-gated NOT
+started" notes below are superseded — #35 and #36 are both now underway (see the section above).
+
+Branch **`feature/wican-host-rpm-gate-coexist`** (off master `58738a0`). Host half of the WiCAN
+coexistence plan (`docs/internal/WICAN_SLCAN_COEXISTENCE_PLAN.md` §3 host-REQUIRED). All software, fully
+unit-tested — the firmware-coupled happy paths validate once #36 ships. **Full suite green: 1453 passed.**
+
+- **RPM gate enforced in code** (`enforce_rpm_gate()` in `flash_manager.py`; `RPM_FLASH_GATE=1.0`;
+  `EngineRunningError`). Was UI card-colour only (blocked nothing). Now a one-shot PID 0x0C read **before**
+  the programming session (in-session OBD → NRC 0x11, unreadable) refuses to flash when engine running;
+  explicit override **off by default**; unreadable RPM does NOT block (no PID 0x0C ECUs). Wired into
+  `_on_flash_current`/`_on_full_flash` via `_check_rpm_gate`. Guards J2534 too.
+- **No-reboot dedicated-port detection** (`ECUSession._try_open_coexist_port`; `WICAN_DEDICATED_SLCAN_PORT
+  =35001`; `COEXIST_MIN_FW_REV=6`). WiCAN connect first probes the always-on dedicated SLCAN port via
+  `version_ping` (short timeout); new-enough firmware → connect there, **skip WiCANConfigurator + the ~6 s
+  reboot**. Every current build (NCFRv4/5) fails the probe → falls back to the proven reboot path. Strictly
+  non-breaking. Contract is shared with #36 firmware (it must bump the marker to NCFRv6+ AND open 35001).
+- **Pre-session settle** (`PRE_SESSION_SETTLE_S=0.2`) before SD-flash auth — host brick-safety margin so a
+  stray datalogger poll frame can't corrupt the UDS handshake (firmware `FLASH_ACTIVE_BIT` is the real
+  guarantee; inert on the legacy path).
+- Tests: `TestEnforceRpmGate`, `test_ecu_session_coexist.py`, `TestWiCANCoexistConnect`,
+  `test_settles_before_authenticating`. CHANGELOG updated. **Committed to the branch, NOT pushed/merged.**
+- **Still firmware-gated (NOT started):** #35 (FWB→wican-pro merge + re-bench, needs ESP-IDF build +
+  brick-critical hardware flash) and #36 (coexistence firmware PR, brick-critical). #37's hardware
+  done-gate (coexist firmware connects w/o reboot) waits on #36.
+
+## ✅ Drop macOS support + fix master CI ZeroDivisionError (Jun 25, 2026)
+
+**PR #78 merged to master (`58738a0`).** Two commits:
+- **`22ab86b` — the real CI fix.** Master CI red on the #76 merge was **misdiagnosed first as a
+  "macOS teardown abort"** (all-pass-but-exit-1 theory). Actual cause: `ZeroDivisionError` in
+  `FlashManager` completion-speed log lines (`flash_manager.py:704` transfer, `:878` read) — `bytes /
+  elapsed` with no `elapsed == 0` guard; a mocked read finishing inside one `time.monotonic()` tick →
+  `elapsed == 0.0` → crash **after** the work completed. Hit the **Windows** runner (backslash path gave
+  it away), not macOS. Guarded both lines like the per-block lines already were; regression test pins
+  `monotonic`. (Lesson saved to memory `feedback_verify_ci_failure_os`: read the raw failing-job log +
+  confirm the OS before triaging.)
+- **`b2b0418` — dropped macOS support** (no users; flash path is Windows-only J2534). CI matrix →
+  Ubuntu 3.10/3.12 + Windows 3.12; removed the `darwin` branch from `paths.get_user_data_dir()` (falls
+  through to XDG/Linux); macOS mentions out of README / `docs/internal/LOGGING.md` / test comments.
+  **Historical shipped release notes left intact** (user's call).
+
+Housekeeping: local `master` was 8 commits behind origin → ff-synced; merged branch deleted (origin
+auto-deleted on merge). **#34 (FWD→wican-pro) confirmed done** (origin/wican-pro carries `poll_log` via
+firmware PR #6) → task marked complete. Created **`.claude/plans/wican-firmware-integration-goal.md`** —
+execution driver for #35/#36/#37 (still uncommitted).
+
 ## 🗂️ Housekeeping (Jun 25, 2026)
 
 - **Larger read/transfer blocks** investigation moved to GitHub: **nc-flash#77** (it's a host/ECU-protocol

@@ -413,3 +413,78 @@ class TestReadRomBlockSize:
             # progress_cb exercises the per-block speed line too (also guarded).
             fm.read_rom(progress_cb=lambda p: captured.append(p))
         assert captured  # the read actually ran and emitted progress
+
+
+class TestEnforceRpmGate:
+    """enforce_rpm_gate() — the engine-off flash gate, enforced in code."""
+
+    @staticmethod
+    def _uds(rpm):
+        """A minimal uds whose read_engine_rpm returns ``rpm``."""
+        uds = MagicMock()
+        uds.read_engine_rpm.return_value = rpm
+        return uds
+
+    def test_engine_off_passes(self):
+        from src.ecu.flash_manager import enforce_rpm_gate
+
+        assert enforce_rpm_gate(self._uds(0.0)) == 0.0
+
+    def test_just_below_threshold_passes(self):
+        from src.ecu.flash_manager import enforce_rpm_gate
+
+        # default threshold is 1.0 RPM; 0.9 is "off" (sensor noise floor)
+        assert enforce_rpm_gate(self._uds(0.9)) == 0.9
+
+    def test_engine_running_blocks(self):
+        from src.ecu.flash_manager import enforce_rpm_gate
+        from src.ecu.exceptions import EngineRunningError
+
+        with pytest.raises(EngineRunningError) as exc:
+            enforce_rpm_gate(self._uds(820.0))
+        assert exc.value.rpm == 820.0
+        # EngineRunningError is a FlashError so existing flash handlers catch it
+        assert isinstance(exc.value, FlashError)
+
+    def test_threshold_is_inclusive(self):
+        """rpm == threshold blocks (>=), so the gate can't be squeaked past."""
+        from src.ecu.flash_manager import enforce_rpm_gate
+        from src.ecu.exceptions import EngineRunningError
+
+        with pytest.raises(EngineRunningError):
+            enforce_rpm_gate(self._uds(1.0))
+
+    def test_override_allows_running_engine(self):
+        from src.ecu.flash_manager import enforce_rpm_gate
+
+        assert enforce_rpm_gate(self._uds(820.0), allow_override=True) == 820.0
+
+    def test_unreadable_rpm_does_not_block(self):
+        """A None read (PID unsupported) must NOT block — can't prove running."""
+        from src.ecu.flash_manager import enforce_rpm_gate
+
+        assert enforce_rpm_gate(self._uds(None)) is None
+
+    def test_read_exception_does_not_block(self):
+        from src.ecu.flash_manager import enforce_rpm_gate
+
+        uds = MagicMock()
+        uds.read_engine_rpm.side_effect = RuntimeError("boom")
+        assert enforce_rpm_gate(uds) is None
+
+    def test_no_uds_does_not_block(self):
+        from src.ecu.flash_manager import enforce_rpm_gate
+
+        assert enforce_rpm_gate(None) is None
+
+    def test_reads_rpm_before_any_session_entry(self):
+        """The gate's ONLY ECU contact is the OBD RPM read — it must not enter a
+        diagnostic/programming session (which would make RPM unreadable). Proven
+        by asserting no session-entry calls are made on the uds."""
+        from src.ecu.flash_manager import enforce_rpm_gate
+
+        uds = self._uds(0.0)
+        enforce_rpm_gate(uds)
+        uds.read_engine_rpm.assert_called_once()
+        uds.diagnostic_session.assert_not_called()
+        uds.security_access.assert_not_called()

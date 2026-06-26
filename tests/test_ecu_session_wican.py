@@ -29,6 +29,17 @@ def _qapp():
     return QApplication.instance() or QApplication([])
 
 
+@pytest.fixture(autouse=True)
+def _default_no_coexist():
+    """Default every test here to NON-coexistence firmware (the legacy
+    reboot-switch path), matching all current hardware. The coexist-port probe
+    would otherwise fire against the mocked ``create_ecu_transport`` and skew the
+    open/switch assertions. The coexist-path tests below re-patch this to return
+    a transport, which overrides this default for their duration."""
+    with patch.object(ECUSession, "_try_open_coexist_port", return_value=None):
+        yield
+
+
 def _make_session(_qapp, auto_config=True):
     cfg = dict(WICAN_CFG)
     cfg["auto_config"] = auto_config
@@ -115,6 +126,53 @@ class TestWiCANConnect:
             # We switched before the failure, so the protocol must be restored.
             inst.restore.assert_called_once_with("realdash")
             spy.assert_called_once()
+
+
+class TestWiCANCoexistConnect:
+    """No-reboot dedicated-port path: when the probe finds coexistence firmware,
+    connect over that transport WITHOUT the WiCANConfigurator reboot dance."""
+
+    def test_coexist_skips_reboot_and_configurator(self, _qapp):
+        coexist_transport = MagicMock()
+        coexist_transport.port = 35001
+        with (
+            patch("src.ecu.wican_config.WiCANConfigurator") as MockCfg,
+            patch("src.ecu.transport.create_ecu_transport") as mock_create,
+            patch("src.ecu.protocol.UDSConnection") as MockUDS,
+            patch.object(
+                ECUSession, "_try_open_coexist_port", return_value=coexist_transport
+            ),
+        ):
+            session = _make_session(_qapp)
+            session.connect_ecu()
+
+            assert session.state == ECUSessionState.CONNECTED
+            # No protocol switch, no reboot: the configurator is never built.
+            MockCfg.assert_not_called()
+            # The dedicated-port transport is used as-is (no second open()).
+            mock_create.assert_not_called()
+            assert session.transport is coexist_transport
+            MockUDS.return_value.tester_present.assert_called_once()
+
+    def test_coexist_disconnect_does_not_reboot(self, _qapp):
+        coexist_transport = MagicMock()
+        coexist_transport.port = 35001
+        with (
+            patch("src.ecu.wican_config.WiCANConfigurator") as MockCfg,
+            patch("src.ecu.transport.create_ecu_transport"),
+            patch("src.ecu.protocol.UDSConnection"),
+            patch.object(
+                ECUSession, "_try_open_coexist_port", return_value=coexist_transport
+            ),
+        ):
+            session = _make_session(_qapp)
+            session.connect_ecu()
+            session.disconnect_ecu()
+
+            assert session.state == ECUSessionState.DISCONNECTED
+            coexist_transport.close.assert_called_once()
+            # Nothing to restore — we never switched a protocol.
+            MockCfg.return_value.restore.assert_not_called()
 
 
 class TestWiCANDisconnect:

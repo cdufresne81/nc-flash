@@ -792,6 +792,43 @@ class ECUProgrammingWindow(QMainWindow):
             return reply == QMessageBox.Yes
         return True
 
+    def _check_rpm_gate(self) -> bool:
+        """One-shot engine-RPM safety gate at the flash boundary. True = proceed.
+
+        Enforces engine-off in *code* (not just the dashboard card): a fresh
+        PID 0x0C read via :func:`enforce_rpm_gate` BEFORE the programming session
+        — once a programming session is active, OBD RPM is unreadable, so this
+        must run here. If the engine is running the flash is refused, with an
+        explicit, off-by-default override the operator must confirm. A None /
+        unreadable RPM does not block (transport-agnostic: J2534 and WiCAN).
+        """
+        if not self._session or not self._session.uds:
+            return True
+        from src.ecu.flash_manager import enforce_rpm_gate
+        from src.ecu.exceptions import EngineRunningError
+
+        try:
+            enforce_rpm_gate(self._session.uds)
+            return True
+        except EngineRunningError as exc:
+            reply = QMessageBox.warning(
+                self,
+                "Engine Running — Flash Blocked",
+                f"The engine is running ({exc.rpm:.0f} RPM).\n\n"
+                "Flashing with the engine running risks bricking the ECU. Turn "
+                "the engine OFF (ignition ON, engine not started) and try again.\n\n"
+                "Override and flash anyway? (NOT recommended)",
+                QMessageBox.Yes | QMessageBox.No,
+                QMessageBox.No,
+            )
+            if reply == QMessageBox.Yes:
+                logger.warning(
+                    "Operator overrode the engine-running flash gate (%.0f RPM)",
+                    exc.rpm,
+                )
+                return True
+            return False
+
     def _confirm_wican_flash(self) -> bool:
         """Gate the WiCAN (WiFi) flash path before a write starts.
 
@@ -841,6 +878,8 @@ class ECUProgrammingWindow(QMainWindow):
         started = False
         try:
             if not self._check_voltage_warning():
+                return
+            if not self._check_rpm_gate():
                 return
             if not self._confirm_wican_flash():
                 return
@@ -893,6 +932,8 @@ class ECUProgrammingWindow(QMainWindow):
         started = False
         try:
             if not self._check_voltage_warning():
+                return
+            if not self._check_rpm_gate():
                 return
             if not self._confirm_wican_flash():
                 return

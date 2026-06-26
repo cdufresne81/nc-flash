@@ -48,6 +48,27 @@ OBD_PID_CONTROL_MODULE_VOLTAGE = 0x42  # 2 bytes, value/1000 = volts
 
 # --- Safety Thresholds ---
 BATTERY_VOLTAGE_WARNING = 12.0  # volts — block flash below this
+#: RPM at/above which a flash is refused in code (engine running). Read once via
+#: OBD PID 0x0C at the flash boundary, BEFORE the programming session is entered
+#: (in-session OBD Mode-01 returns NRC 0x11). Override is explicit + off by default.
+RPM_FLASH_GATE = 1.0
+
+# --- WiCAN no-reboot coexistence (docs/internal/WICAN_SLCAN_COEXISTENCE_PLAN.md) ---
+#: TCP port of the always-on dedicated SLCAN listener that no-reboot coexistence
+#: firmware keeps open alongside the datalogger. The host flashes over this port
+#: with NO protocol-switch reboot and without disturbing the datalogger. Pinned +
+#: probed via version_ping (never assumed present).
+WICAN_DEDICATED_SLCAN_PORT = 35001
+#: Firmware build (NCFRv<rev>) at/above which the dedicated SLCAN port exists.
+#: Today's fastwrite firmware is NCFRv5 (no dedicated port) → the host falls back
+#: to the legacy reboot-switch. The coexistence firmware (task #36) bumps the
+#: marker to this rev AND opens WICAN_DEDICATED_SLCAN_PORT; both sides share this
+#: one contract.
+COEXIST_MIN_FW_REV = 6
+#: Probe connect timeout (ms) for the coexist-port capability check. Short so a
+#: device WITHOUT the dedicated port (every current build) falls back to the
+#: proven reboot path quickly instead of stalling the connect.
+COEXIST_PROBE_TIMEOUT_MS = 1500
 
 # --- UDS Service IDs ---
 SID_DIAGNOSTIC_SESSION = 0x10
