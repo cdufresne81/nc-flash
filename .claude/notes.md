@@ -1,6 +1,48 @@
 # Session Notes
 
+## ✅ Firmware #35 (read-back PASSED) + ⏳ #36 interlock (Jun 25–26, 2026)
+
+User granted **brick-risk authorization on the bench ECU** (192.168.1.169) + pointed me at the installed
+ESP-IDF. Build recipe in memory `project_wican_firmware_build_env` (export.ps1 picks wrong venv → use
+`idf5.5_py3.10_env`). Firmware repo `../nc-flash-wican-fw`.
+
+**#35 — integrate FWB onto wican-pro (`claude/integrate-fwb-onto-wican-pro` @ `c8bcd54`):** merge had ZERO
+git conflicts but all 5 SEMANTIC landmines verified correct (engine_on_volt, max_uri_handlers=48,
+FAST_LOG/POLL_LOG enum, CMake superset, both main.c dispatch + /upload/sd). Built clean (ESP-IDF v5.5.3,
+esp32s3). **OTA'd to the adapter** (now `v1.0.0`, was `b79549b`) via `curl -F file=@... /upload/ota.bin`
+(A/B-safe; user waived exact-backup rule, rollback_deployed_wican-pro.bin is the fallback). **Live-validated
+on the bench ECU:** NCFRv5 ping, DTC read (10), RAM scan+auth seed/key, full 1 MB ROM read (checksum-Δ0),
+and a **LIVE FULL FLASH 1022/1022 NCFWDONE** (round-trip of the ECU's own ROM via `roundtrip_flash.py`).
+✅ **#35 COMPLETE (Jun 26):** read-back byte-compare **PASS** — full 1 MB read post-power-cycle is
+**byte-for-byte identical** to oracle `wican_roundtrip_source.bin` (`wican_readback_postcycle.bin`; ROM ID
+SW-LFDJEA000.HEX; 29 dropped blocks all recovered; 338.7s @ 3 KB/s). Proof chain closed: NCFWDONE write →
+power cycle → app booted (auth'd RMBA works, real powertrain DTCs) → read-back identical. Task #35 → completed.
+NOTE: `tools/wican_bench_read.py` defaults to port **3333** — pass `--port 35000`.
+**OPERATIONAL GOTCHA (cost ~1h):** after a power-cycle the WiCAN reverts to its default protocol (`poll_log`),
+NOT slcan. Raw bench tools WITHOUT `--auto-config` connect to :35000, ack C/S6/O, but the device doesn't
+bridge CAN → bus looks dead-silent + every UDS times out → *false "ECU bricked"*. ALWAYS pass `--auto-config`
+(or use NCFlash, which switches to slcan) after any reboot. Also: the `slcan_session()` RESTORES poll_log on
+exit, so each flash/read leaves the device non-bridging for the next raw probe. Memory: `project_wican_protocol_revert_gotcha`.
+New diag tools added (untracked): `tools/wican_bus_sniff.py` (raw all-IDs CAN sniff), `tools/wican_state_probe.py`
+(bootloader-vs-app via RMBA NRC 0x11 vs 0x33), `tools/wican_bus_status.py` (SLCAN `F` flags — firmware doesn't impl).
+
+**#36 — coexistence firmware (`claude/coexistence-slcan-port` @ `6bea7e3`, off #35):** ✅ **FLASH_ACTIVE_BIT
+interlock done + builds clean** — the brick-critical core (plan §5): bit+accessors (can.c/.h), poll task
+parks on it (poll_log.c), both fast-op codecs set-before-suspend / clear-last-on-every-exit + unified
+mutual-exclusion guard (ncflash_fastwrite/fastread.c), DEV_SLCAN_PORT enum (types.h).
+⏳ **Remaining:** dedicated-port listener (35001) + `can_tx_task` early-route + `can_rx_task` #476 RX-forward
+fix. **Design fork flagged (plan §6):** the UDS auth handshake (plain slcan) over the dedicated port runs
+BEFORE the fast-op sets FLASH_ACTIVE_BIT → needs park-and-hold arbitration vs the running datalogger. Then
+bump the version marker to NCFRv6 so host #37 detects coexistence. **#36 needs brick-critical hardware
+interlock proof** (zero CSV rows / zero 0x7E0 frames during a flash) = bench session w/ user.
+
+**Uncommitted host bench artifacts** (gitignore candidates): `roundtrip_flash.py`, `wican_roundtrip_source.bin`,
+`roundtrip_read.log`.
+
 ## ⏳ Host #37 — RPM gate + WiCAN no-reboot capability detection (Jun 25, 2026)
+
+**UPDATE Jun 25 PM:** pushed + **PR #79 open** (user said push+PR). The "NOT pushed" / "firmware-gated NOT
+started" notes below are superseded — #35 and #36 are both now underway (see the section above).
 
 Branch **`feature/wican-host-rpm-gate-coexist`** (off master `58738a0`). Host half of the WiCAN
 coexistence plan (`docs/internal/WICAN_SLCAN_COEXISTENCE_PLAN.md` §3 host-REQUIRED). All software, fully
