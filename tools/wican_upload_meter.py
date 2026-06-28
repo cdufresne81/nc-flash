@@ -87,40 +87,74 @@ def _fmt_rate(size: int, seconds: float) -> str:
 
 
 def main(argv=None) -> int:
-    p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("--host", default=DEFAULT_HOST, help="WiCAN HTTP host (default %(default)s)")
-    p.add_argument("--port", type=int, default=DEFAULT_PORT, help="HTTP port (default %(default)s)")
-    p.add_argument("--endpoint", default=SINK_ENDPOINT, help="byte-sink endpoint (default %(default)s)")
+    p = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
+    p.add_argument(
+        "--host", default=DEFAULT_HOST, help="WiCAN HTTP host (default %(default)s)"
+    )
+    p.add_argument(
+        "--port", type=int, default=DEFAULT_PORT, help="HTTP port (default %(default)s)"
+    )
+    p.add_argument(
+        "--endpoint",
+        default=SINK_ENDPOINT,
+        help="byte-sink endpoint (default %(default)s)",
+    )
     p.add_argument(
         "--sizes",
         default="256,512,1024",
         help="comma-separated payload sizes in KB (default %(default)s)",
     )
-    p.add_argument("--repeat", type=int, default=3, help="timed runs per size (default %(default)s)")
-    p.add_argument("--timeout", type=float, default=30.0, help="per-request timeout seconds")
-    p.add_argument("--no-warmup", action="store_true", help="skip the discarded warm-up run")
+    p.add_argument(
+        "--repeat",
+        type=int,
+        default=3,
+        help="timed runs per size (default %(default)s)",
+    )
+    p.add_argument(
+        "--timeout", type=float, default=30.0, help="per-request timeout seconds"
+    )
+    p.add_argument(
+        "--no-warmup", action="store_true", help="skip the discarded warm-up run"
+    )
     args = p.parse_args(argv)
 
     try:
         sizes_kb = [int(s) for s in args.sizes.split(",") if s.strip()]
     except ValueError:
-        print(f"ERROR: --sizes must be comma-separated integers, got {args.sizes!r}", file=sys.stderr)
+        print(
+            f"ERROR: --sizes must be comma-separated integers, got {args.sizes!r}",
+            file=sys.stderr,
+        )
         return 2
     for kb in sizes_kb:
         if kb <= 0 or kb > MAX_PAYLOAD_KB:
-            print(f"ERROR: size {kb} KB out of range (1..{MAX_PAYLOAD_KB})", file=sys.stderr)
+            print(
+                f"ERROR: size {kb} KB out of range (1..{MAX_PAYLOAD_KB})",
+                file=sys.stderr,
+            )
             return 2
 
     print(f"WiCAN upload meter -> http://{args.host}:{args.port}{args.endpoint}")
-    print("  (invalid-JSON byte sink: device drains the body then 400s, nothing written)\n")
+    print(
+        "  (invalid-JSON byte sink: device drains the body then 400s, nothing written)\n"
+    )
 
     # Warm-up: first request pays TCP/WiFi ramp-up; discard it so it doesn't skew medians.
     if not args.no_warmup:
         try:
-            dt, status = _post_sink(args.host, args.port, args.endpoint, 64 * 1024, args.timeout)
-            print(f"  warm-up   64 KB -> HTTP {status} in {dt * 1000:6.0f} ms (discarded)\n")
+            dt, status = _post_sink(
+                args.host, args.port, args.endpoint, 64 * 1024, args.timeout
+            )
+            print(
+                f"  warm-up   64 KB -> HTTP {status} in {dt * 1000:6.0f} ms (discarded)\n"
+            )
         except OSError as e:
-            print(f"ERROR: cannot reach device for warm-up: {type(e).__name__}: {e}", file=sys.stderr)
+            print(
+                f"ERROR: cannot reach device for warm-up: {type(e).__name__}: {e}",
+                file=sys.stderr,
+            )
             return 1
 
     one_mb_projection = None
@@ -130,20 +164,29 @@ def main(argv=None) -> int:
         bad_status = None
         for i in range(args.repeat):
             try:
-                dt, status = _post_sink(args.host, args.port, args.endpoint, size, args.timeout)
+                dt, status = _post_sink(
+                    args.host, args.port, args.endpoint, size, args.timeout
+                )
             except OSError as e:
-                print(f"  {kb:5d} KB run {i + 1}: ERROR {type(e).__name__}: {e}", file=sys.stderr)
+                print(
+                    f"  {kb:5d} KB run {i + 1}: ERROR {type(e).__name__}: {e}",
+                    file=sys.stderr,
+                )
                 return 1
             # 400 == healthy (invalid JSON rejected, nothing written). Anything
             # else means the device may have persisted -- flag it loudly.
             if status != 400:
                 bad_status = status
             times.append(dt)
-            print(f"  {kb:5d} KB run {i + 1}/{args.repeat}: {dt * 1000:7.1f} ms  {_fmt_rate(size, dt)}  [HTTP {status}]")
+            print(
+                f"  {kb:5d} KB run {i + 1}/{args.repeat}: {dt * 1000:7.1f} ms  {_fmt_rate(size, dt)}  [HTTP {status}]"
+            )
 
         med = statistics.median(times)
         best = min(times)
-        print(f"  {kb:5d} KB  median {med * 1000:7.1f} ms -> {_fmt_rate(size, med)}   (best {_fmt_rate(size, best)})")
+        print(
+            f"  {kb:5d} KB  median {med * 1000:7.1f} ms -> {_fmt_rate(size, med)}   (best {_fmt_rate(size, best)})"
+        )
         if bad_status is not None:
             print(
                 f"  !! WARNING: saw HTTP {bad_status} (expected 400). The body may have been "
@@ -153,7 +196,9 @@ def main(argv=None) -> int:
         # Project a 1 MB upload time from this size's median throughput.
         rate = size / med  # bytes/sec
         one_mb_projection = (1024 * 1024) / rate
-        print(f"        -> projected 1 MB upload at this rate: {one_mb_projection:5.2f} s\n")
+        print(
+            f"        -> projected 1 MB upload at this rate: {one_mb_projection:5.2f} s\n"
+        )
 
     if one_mb_projection is not None:
         print(

@@ -137,6 +137,7 @@ class TestWiCANCoexistConnect:
         coexist_transport.port = 35001
         with (
             patch("src.ecu.wican_config.WiCANConfigurator") as MockCfg,
+            patch("src.ecu.wican_config.WiCANDatalogClient"),
             patch("src.ecu.transport.create_ecu_transport") as mock_create,
             patch("src.ecu.protocol.UDSConnection") as MockUDS,
             patch.object(
@@ -159,6 +160,7 @@ class TestWiCANCoexistConnect:
         coexist_transport.port = 35001
         with (
             patch("src.ecu.wican_config.WiCANConfigurator") as MockCfg,
+            patch("src.ecu.wican_config.WiCANDatalogClient"),
             patch("src.ecu.transport.create_ecu_transport"),
             patch("src.ecu.protocol.UDSConnection"),
             patch.object(
@@ -173,6 +175,75 @@ class TestWiCANCoexistConnect:
             coexist_transport.close.assert_called_once()
             # Nothing to restore — we never switched a protocol.
             MockCfg.return_value.restore.assert_not_called()
+
+    def test_coexist_reserves_bus_for_whole_session(self, _qapp):
+        """The coexist path must hold a bus reservation for the LIFE of the session:
+        acquire_bus() BEFORE the first UDS frame (else poll_log eats the reply and
+        Tester-Present times out), and release_bus() on teardown. Regression for the
+        bench connect hang (datalogger stealing the ECU's UDS replies on port 35001)."""
+        coexist_transport = MagicMock()
+        coexist_transport.port = 35001
+        calls = []
+        with (
+            patch("src.ecu.wican_config.WiCANConfigurator"),
+            patch("src.ecu.wican_config.WiCANDatalogClient") as MockDatalog,
+            patch("src.ecu.transport.create_ecu_transport"),
+            patch("src.ecu.protocol.UDSConnection") as MockUDS,
+            patch.object(
+                ECUSession, "_try_open_coexist_port", return_value=coexist_transport
+            ),
+        ):
+            datalog = MockDatalog.return_value
+            datalog.acquire_bus.side_effect = lambda: calls.append("acquire_bus")
+            datalog.release_bus.side_effect = lambda: calls.append("release_bus")
+            MockUDS.return_value.tester_present.side_effect = lambda: calls.append(
+                "tester_present"
+            )
+
+            session = _make_session(_qapp)
+            session.connect_ecu()
+            # Reservation raised BEFORE the first UDS frame, and exposed for the flasher.
+            assert calls == ["acquire_bus", "tester_present"]
+            assert session.wican_datalog is datalog
+
+            session.disconnect_ecu()
+            # Released on teardown; the handle is dropped.
+            assert calls == ["acquire_bus", "tester_present", "release_bus"]
+            assert session.wican_datalog is None
+            datalog.acquire_bus.assert_called_once()
+            datalog.release_bus.assert_called_once()
+
+    def test_coexist_drains_stale_datalog_frames_before_first_uds(self, _qapp):
+        """After claiming the bus, the coexist connect must FLUSH the transport
+        before the first UDS frame: acquire_bus() pauses poll_log, but Mode-01 PID
+        responses already in flight keep arriving and would be mis-parsed against
+        TesterPresent (the benign "unexpected response byte 0x41" warnings). Order
+        must be acquire_bus -> flush -> tester_present. Regression for that noise."""
+        coexist_transport = MagicMock()
+        coexist_transport.port = 35001
+        calls = []
+        with (
+            patch("src.ecu.wican_config.WiCANConfigurator"),
+            patch("src.ecu.wican_config.WiCANDatalogClient") as MockDatalog,
+            patch("src.ecu.transport.create_ecu_transport"),
+            patch("src.ecu.protocol.UDSConnection") as MockUDS,
+            patch.object(
+                ECUSession, "_try_open_coexist_port", return_value=coexist_transport
+            ),
+        ):
+            MockDatalog.return_value.acquire_bus.side_effect = lambda: calls.append(
+                "acquire_bus"
+            )
+            coexist_transport.flush.side_effect = lambda: calls.append("flush")
+            MockUDS.return_value.tester_present.side_effect = lambda: calls.append(
+                "tester_present"
+            )
+
+            session = _make_session(_qapp)
+            session.connect_ecu()
+
+            assert calls == ["acquire_bus", "flush", "tester_present"]
+            coexist_transport.flush.assert_called_once()
 
 
 class TestWiCANDisconnect:

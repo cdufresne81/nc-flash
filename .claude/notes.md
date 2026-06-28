@@ -1,5 +1,163 @@
 # Session Notes
 
+## ✅ #43 DONE: firmware lease_t refactor (dedupe claim/park primitives) — ultracode, built + adversarially verified (Jun 27, 2026)
+
+**What:** Collapsed the two byte-identical dead-man lease families in `../nc-flash-wican-fw/main/can.c` — the host-bus-claim (`s_claim_*`) and datalog-park (`s_park_*`), each {active+token+owner_gen+deadline} with identical arm/renew/release/reap/token logic — into ONE `volatile lease_t` + generic `lease_arm/renew/release/reap/token` + `lease_clear`, with `can_host_bus_claim_*`/`can_park_lease_*` now thin one-line wrappers picking `&s_claim` / `&s_park`. Net **−52 lines** (88 ins / 140 del). Zero public-signature changes (`can.h` git-diff EMPTY). Single shared `s_token_seq` + `s_park_mux` preserved (token global-uniqueness, single-acquisition cross-lease snapshot). Every field kept `volatile` so the lock-free `.active` hot-path reads keep exact single-byte semantics.
+
+**Method (ultracode):** Workflow A (3 agents) = invariant census (13 brick-class invariants) + caller census (all callers rely only on public sigs → internal-only) + design (verdict SOUND). Implemented inline. ESP-IDF 5.5.3 esp32s3 build = **0 errors, no new warnings, 30% free**. Workflow B (6 skeptics, one per invariant) = **ALL PRESERVED**; the volatile/dual-core lens compiled+disassembled both versions and proved **byte-identical Xtensa codegen** (`memw; l8ui; extui`) for every lock-free read + zero `memcpy` of `lease_t`. Only finding: cosmetic comment "already resumed"→"already released" in the shared release helper (no runtime effect).
+
+**State (Jun 28 update):** user **lifted the brick-critical test gate** ("update the wican software and flash the ECU to confirm validity"). #43 is now **HW-VALIDATED + /simplify-clean + committed & pushed**: OTA'd the #43 build to the live WiCAN (192.168.1.169) and ran `wican_deadman_verify.py --reaper` → **ALL PASS** (arm issued tokens 1/2 from the shared seq, renew accepted, release cleared, stale-token resume → 409, and the dead-man **reaper auto-cleared claim+park at t+81 s** = claim-TTL 75 + grace 3 — every refactored primitive exercised on real hardware, zero ECU contact). `/simplify` (4 agents) found the refactor already clean — **no code changes** (one optional redundant-comment finding skipped as locally useful; one pre-existing naming-asymmetry note out of scope). Committed to `claude/coexistence-slcan-port` + pushed. See [[project_wican_slcan_coexistence]], [[project_wican_firmware_build_env]], [[project_wican_hardware_in_loop]].
+
+## ✅ #36 FIX: WiCAN no-reboot connect/DTC/scan hung on SID 0x3E — host never reserved the bus (Jun 27, 2026)
+
+**Symptom (user bench):** connect over the coexist port logged "No-reboot coexistence firmware NCFRv6 detected" then froze ~60 s and died `Timed out waiting for response to SID 0x3E`. I first **mis-diagnosed it as ECU-side** (ignition/CAN); user **falsified** it by reading DTCs fine with a Tactrix on the same ECU/ignition. (Memory `project_wican_coexist_ecu_silent_diag.md` rewritten with the correct root cause so I don't repeat that.)
+
+**Root cause (confirmed in firmware + on live HW):** on the coexist port the device stays in `poll_log`, where the datalogger is the SOLE TWAI consumer. Firmware only forwards the ECU's UDS reply to port 35001 when the host holds a reservation — `can_rx_task` (main.c ~448): `coexist_session = (park || bus_claim) && !flash`. The **flash** path worked because `_datalog_fence` claims+pauses; **connect/DTC/scan never reserved the bus**, so poll_log ate every reply. Proven on the bench: with a manual `bus_claim`+`pause` held, the identical production `tester_present()` + `read_dtc_status()` return instantly over WiFi.
+
+**Fix (host-side; user chose "whole-session reservation"):** `ECUSession` now holds a refcounted bus reservation for the LIFE of a coexist connection. New `WiCANDatalogClient.acquire_bus()/release_bus()/reserved()` (refcounted: real `bus_claim`+`pause`+settle once on 0→1, `bus_release`+`resume` once on 1→0). `_connect_wican` acquires BEFORE the first Tester-Present; `_teardown_wican` releases on every teardown. The flash `_datalog_fence` now nests on the SAME client (session's `wican_datalog` passed to `WiCANSdFlasher`) → exactly ONE bus owner, never a double-claim on the single-owner firmware lease. Dead-man reaper still auto-resumes the logger if the host vanishes. `PRE_SESSION_SETTLE_S` moved to `constants.py`.
+
+**HW-validated (bench 192.168.1.169, NCFRv6):** real `ECUSession.connect_ecu()` over coexist path → no reboot, `parked=True claimed=True` while connected, `read_dtc_status()` returned the 8 DTCs over WiFi, disconnect resumed the logger (`parked=False claimed=False`). Full suite green (1479). Tests added: refcount nesting/exception/no-op (`test_ecu_wican_config.py`), `test_coexist_reserves_bus_for_whole_session` (`test_ecu_session_wican.py`); existing fence tests now drive the real `reserved()`; `test_ecu_window_flash_driver.py` asserts the `datalog=` kwarg.
+
+**Files:** `src/ecu/{constants,wican_config,wican_sd_flash,session}.py`, `src/ui/ecu_window.py` + tests. CHANGELOG updated (Fixed). **NOT committed** (no user land-the-plane yet). Firmware UNCHANGED — pure host fix.
+
+**Follow-on (Jun 27):** the coexist connect logged benign `UDS: unexpected response byte 0x41 for SID 0x3E` WARNINGs — `0x41` = OBD Mode-01 (`0x01+0x40`) responses to the datalogger's polls that were already in-flight when the host took the bus; `pause()` stops new polls but not in-flight replies, so they bled into the first Tester-Present receive (the UDS loop discarded them and connected fine — just noisy). Fix: `_connect_wican` now `coexist.flush()`es after `acquire_bus()` and before the first Tester-Present (drain-until-quiet via the existing `WiCANTransport.flush`). Test `test_coexist_drains_stale_datalog_frames_before_first_uds` asserts order `acquire_bus → flush → tester_present` (fails if flush removed). Confirmed it fails without the line, restored. WiCAN-related suites green (143). **NOT committed.**
+
+## ✅ #36 GAP-2 dead-man's-switch FIRMWARE CORE built + ultracode-verified + DEVICE-VALIDATED (Jun 26, 2026)
+
+Built the firmware core (`../nc-flash-wican-fw` `claude/coexistence-slcan-port`, uncommitted): spinlock park/claim
+lease + 1 Hz reaper (`main/datalog_lease_task.c`), 5-op `/datalog` handler + state JSON (`csv_logger.c`),
+`slcan_port_conn_gen()`. **Ultracoded the core** (user asked): a 6-lens adversarial Workflow found a **brick-class
+TOCTOU** — the reaper snapshotted the lease, dropped the lock, then force-cleared the claim/park UNCONDITIONALLY, so a
+fresh `bus_claim`/`pause` re-armed in the gap was destroyed → un-park into a live auth session → brick. **Fix:** moved
+park+claim ENTIRELY under `s_park_mux` as `{volatile bool flag + token + owner-gen + u64 deadline}` (only
+FLASH_ACTIVE_BIT stays a codec-owned event-group bit, INV-1), and made the reaper a **token+deadline-matched
+compare-and-act** (`can_host_bus_claim_reap` / `can_park_lease_reap` — clears only if the lease is STILL the exact
+sampled `(token,deadline)`; any in-gap arm/renew bumps it → reap aborts). A focused **3-lens re-verify = ALL CLEAN**
+(TOCTOU closure proven, dual-core flag memory-model safe, host-contract+liveness regression clean, 43 contract tests pass).
+
+**Device-validated** (OTA'd the rebuilt bin to 192.168.1.169; new `/datalog` deadman fields confirm the build took):
+`tools/wican_deadman_verify.py --reaper` = ALL PASS — every `/datalog` op + token-matched **409**, and the **reaper
+auto-resume on real HW** (armed claim+park, no keepalive → both auto-cleared at ≈78 s = claim-TTL 75 + grace 3, with
+`bus_idle_ms` climbing as the claim quiesced poll_log). **Zero ECU contact → brick-safe test.** UI-path proven by
+`tests/test_ecu_wican_sd_flash.py::TestDeadmanUiPathIntegration` (real `WiCANDatalogClient` through the flash path vs
+the firmware-faithful `_MockDatalogServer`; success + failure-teardown + port-only soft-degrade).
+
+**✅ HW-1 PASSED on the LIVE ECU (the brick-critical test).** Raised the fence, entered programming session `0x10 0x85`
+over the coexist port (FLASH_ACTIVE_BIT clear = §2 unfenced window), vanished the host mid-auth (no teardown). Fence
+HELD (host_bus_claimed True + poll_log parked, bus_idle 24→76304 ms = **zero 0x7E0 injected**) for 81 s; reaper resumed
+only at ≈81 s (claim-TTL 75 + grace 3); **ECU survived** (ROM-ID SW-LFDJEA000.HEX, not bricked). Atomic-reap fix proven
+on real HW.
+
+**✅ HW-9 PASSED byte-perfect on the LIVE ECU.** Drove the real SD coexist flash (byte-identical LFDJEA reflash from
+`wican_roundtrip_source.bin`) over the coexist port with the fence: 1022/1022 → NCFWDONE in 70 s, fence released, **WiCAN
+did NOT reboot**. User power-cycled → fenced 1 MB read-back (215 s) → **sha256 byte-identical** (`wican_readback_hw9.bin`).
+HW-9 caught a REAL host bug: the preflight link gate pinged the ECU BEFORE the fence was raised, so on the coexist port
+poll_log owned the bus and the gate HUNG. Fixed: `_datalog_fence` contextmanager in `wican_sd_flash.py` brackets the WHOLE
+host-driven window (gate→auth→fast_write) + a settle so poll_log parks before the first ping; regression test
+`test_preflight_gate_runs_inside_the_datalog_fence` locks order [bus_claim,pause,gate,auth,flash,bus_release,resume].
+
+**#36 is now FULLY device-validated** (firmware core ultracode-verified, HW-1 brick-critical + HW-9 byte-perfect on the
+live ECU). **Remaining = commit + push (USER-GATED).** Host tree (wican_sd_flash gate-fence fix + UI-path/regression
+tests + tools/wican_deadman_verify.py + constants/config/transport from the host half + doc/changelog/memory) and the
+firmware tree (`../nc-flash-wican-fw` `claude/coexistence-slcan-port`, currently uncommitted). No push without explicit
+user validation. Mark task #36 done after push.
+
+## 🔧 #36 Stage 1 RX-forward HW-VALIDATED + dead-man's-switch host half BUILT (Jun 26, 2026 — late)
+
+Picked up #36 hardware E2E. Found the committed `1ce134a` coexistence build was **incomplete**: it wired the TX
+half (host→ECU dispatch on 35001) but NOT the RX half, so host-driven UDS over the dedicated port HUNG (bench smoke
+60s, read 320s). Two firmware gaps + the user's dead-man's-switch question, all in `docs/internal/WICAN_DEADMAN_AUTORESUME.md`.
+
+**OTA:** flashed `v1_0_0-5-g6bea7e3` then `-6-g1ce134a` to the bench WiCAN (192.168.1.169) myself via `POST /upload/ota.bin`
+multipart. User **waived the USB-backup precondition** (can't pull a backup over WiFi; dual-partition keeps old build
+in the inactive slot + bench is USB-recoverable).
+
+**GAP 1 — RX-forward: FIXED + HW-VALIDATED.** `main/main.c can_rx_task` (uncommitted on `claude/coexistence-slcan-port`):
+`coexist_session = can_datalog_park_active() && !can_flash_active()`; gate now lets `can_rx_task` take over TWAI when
+the logger is parked; new branch parses ECU frames as SLCAN regardless of `protocol` → routes to
+`xMsg_SlcanPort_Tx_Queue`. Built `v1_0_0-6`, OTA'd. **Bench PASS:** smoke 25/25 0% loss; full 1MB fast-read 214.8s
+(=Tactrix floor) over 35001 with datalog parked, NO reboot; `validate_wican_read` PASS (0 checksum corrections).
+
+**GAP 2 — dead-man's-switch (auto-resume on lid-close/crash, brick-safely).** 13-agent adversarial design workflow
+(`wf_831b2db5-a27`) found the brick trap: host runs the UDS auth session (0x10→0x27) BEFORE the codec sets
+`FLASH_ACTIVE_BIT`, so that window is unfenced — naive auto-resume injects 0x7E0 → brick. Design = host-asserted
+`HOST_BUS_CLAIM_BIT` (BIT3) bracketing the whole window + firmware dead-man reaper. **Host half BUILT + tested
+(host-first, user chose):** `WiCANDatalogClient` bus_claim/bus_release/keepalive-daemon/token-aware pause+resume
+(409=success)/close + token-aware reconcile (skips when flash_active OR host_bus_claimed); `wican_sd_flash` brackets
+`bus_claim→pause→…→teardown-on-abort→bus_release→resume`; `wican_transport.open` SO_KEEPALIVE 5/5/3; `constants.py`
+timing contract. **Full suite 1470 pass** (+6 new incl. real-thread keepalive lifecycle); 2 FAILs are unrelated
+table-viewer clipboard flakes (OleSetClipboard COM error, not my files).
+
+**NEXT:** GAP 2 **firmware core** (BIT3 + spinlock lease state + 1Hz reaper task + 4 REST ops + idle stamps) → build →
+brick-risk OTA → **HW-1 (kill host mid-auth, assert zero 0x7E0)** + HW-2..9 → then commit host tree + push both.
+All host work UNCOMMITTED (no push without user validation). Design/HW-tests: `docs/internal/WICAN_DEADMAN_AUTORESUME.md`.
+
+---
+
+## 🚧 #36 BUILT (Jun 26, 2026) — firmware committed + host client built; HARDWARE E2E + commits pending
+
+Executed the goal plan via ultracode (6-agent adversarial audit workflow `wny47i6kg`, Opus tier — note: a
+named `agentType` like `Explore` overrides the inherited model with its own cheap default; pass `model:'opus'`).
+Built the WHOLE coexistence stack. **Two repos, current state:**
+
+**Firmware (`../nc-flash-wican-fw`, branch `claude/coexistence-slcan-port`) — COMMITTED `1ce134a` (NOT pushed):**
+- **36.A** new `main/slcan_port.c/.h` — dedicated always-on SLCAN listener on **35001** (self-contained, shares
+  no state with comm_server). Tagged `DEV_SLCAN_PORT`, shares RX queue, private TX queue. Early dispatch branch
+  in `can_tx_task` before the `protocol==SLCAN` gate. `NCFRv5→NCFRv6`. Hardened: conn-generation guard + bind retry.
+- **36.C** `POST/GET /datalog?op=pause|resume` (`csv_logger.c` + `config_server.c`). Drives a **separate
+  `DATALOG_PARK_BIT`** (NOT the codec's `FLASH_ACTIVE_BIT` — reusing it was a last-writer-wins brick trap a stray
+  resume could trip). Restores exact pre-pause mode.
+- **Brick-class fixes (audit-confirmed):** AUTO_PID poller parks on `can_should_park()` (was unguarded — #1 brick
+  path; refuse-on-protocol REJECTED since protocol stays auto_pid during a coexist flash); `mqtt.c` can_send guarded;
+  `can_rx_task` parks during a flash; `can_send` documents the single-owner contract.
+- **Builds clean** (ESP-IDF 5.5.3 esp32s3, 0 warn/err, 30% partition free). Skipped a false-positive "stack
+  underalloc" finding (ESP-IDF `StackType_t` is byte-width).
+
+**Host (`nc-rom-editor`, branch `master`) — BUILT + 1466 tests green, UNCOMMITTED working tree:**
+- `WiCANDatalogClient` (`wican_config.py`): `pause/resume/get_state/reconcile`, stdlib-only, **airtight
+  soft-degrade** (404/timeout/non-JSON → None, NEVER aborts a flash). Host-keyed `%TEMP%` crash breadcrumb.
+- Wired into `wican_sd_flash._trigger_firmware_flash` (pause→auth→flash→resume in `try/finally`, resumes on FWERR).
+- `reconcile()` at `session._connect_wican` with **two-instance guard** (`GET /datalog` flash_active).
+- +13 tests (`test_ecu_wican_config.py`, `test_ecu_wican_sd_flash.py::TestDatalogCoexistence`). CHANGELOG updated.
+
+**REMAINING (all USER-gated):** (1) commit the host working tree (user chose "commit firmware, then build host
+client" — host commit not yet authorized); (2) push both branches; (3) **live HARDWARE E2E** on the bench ECU
+(brick-risk; needs deployed-build backup first per `feedback_wican_firmware_backup`): dedicated-port fastread
+no-reboot, zero-CSV/zero-0x7E0 during flash, pause/resume round-trip, AUTO_PID park, WiFi-drop recovery.
+Done-gate + build details in `.claude/plans/wican-firmware-integration-goal.md`.
+
+---
+
+## ✅ SESSION END (Jun 26, 2026) — #35 + #37 LANDED, #36 re-oriented to REST datalog
+
+**Everything this session is committed + pushed + merged. Only #36 remains open.**
+
+- **#37 host (RPM gate + coexist-port detect)** → **MERGED to master** (PR #79, `033c500`). Post-merge
+  `/simplify` cleanup → **PR #80 MERGED** (`7f80209`): dropped dead `_coexist_port`, deduped the rpm-compare,
+  gave the 3 new bench tools the standard `_REPO_ROOT` sys.path bootstrap + `NO_ACK_BITS`. Local master synced.
+- **#35 firmware (FWB SD-flash on wican-pro)** → hardware-validated (read-back byte-perfect, see below) →
+  **MERGED to `wican-pro`** (firmware PR #10, `187604b`). Branch `claude/integrate-fwb-onto-wican-pro` pushed.
+- **#36 firmware (no-reboot coexistence)** → branch `claude/coexistence-slcan-port` (`6bea7e3`) PUSHED;
+  only the `FLASH_ACTIVE_BIT` interlock core is done. **RE-ORIENTED (user, Jun 26):** no-reboot coexistence is
+  now **host-driven REST `pause/resume` datalog, LAYERED ON the dedicated SLCAN port** (REST can't replace the
+  port — flash codecs are trapped behind `if(protocol==SLCAN)`). Full design + build plan rewritten in
+  `.claude/plans/wican-firmware-integration-goal.md`; investigated via ultracode workflow. Key conclusions:
+  - **New endpoint needed:** `POST /datalog?op=pause|resume` driving `csv_logger_set_manual_override()` +
+    `can_flash_active_set/clear()`. (`/csv_logger?op=stop` only stops SD persistence, NOT the CAN poller.)
+  - **Dedicated SLCAN port (35001 listener + early `DEV_SLCAN_PORT` dispatch + protocol-independent RX-forward)
+    is the load-bearing prerequisite — NOT built yet** (enum only). Build it FIRST.
+  - 🔴 **MUST-FIX before any live flash (brick-class):** AUTO_PID poller does **NOT** honor `FLASH_ACTIVE_BIT`
+    (zero refs in `autopid.c`) → park it on the bit OR refuse flash when `protocol==AUTO_PID`. Plus: host resume
+    must be a **standalone path** (NOT folded into `_restore_wican_protocol`, which no-ops on the coexist path);
+    **two-instance sidecar guard** (a 2nd NC Flash can resume datalog mid-flash); "HTTP 200 ≠ parked".
+- **Next session:** run the goal skill on `.claude/plans/wican-firmware-integration-goal.md` → build #36
+  (dedicated port first, then `/datalog`, AUTO_PID gate before any live flash). Bench ECU @ 192.168.1.169,
+  brick-authorized. Memory `project_wican_slcan_coexistence` + `project_wican_protocol_revert_gotcha` carry this.
+- **Untracked bench scratch left in working tree (intentional):** `roundtrip_flash.py` (writes to ECU),
+  `wican_*.bin` (gitignored). Pre-existing non-mine: `examples/metadata/lf9veb.xml`, `tools/validate_autoblip_defs.py`.
+
+---
+
 ## ✅ Firmware #35 (read-back PASSED) + ⏳ #36 interlock (Jun 25–26, 2026)
 
 User granted **brick-risk authorization on the bench ECU** (192.168.1.169) + pointed me at the installed

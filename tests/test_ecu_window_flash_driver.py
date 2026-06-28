@@ -53,7 +53,13 @@ class TestWiCANWriteRouting:
         with patch("src.ecu.wican_sd_flash.WiCANSdFlasher") as MockFlasher:
             driver = _build(fake, operation)
         assert driver is MockFlasher.return_value
-        MockFlasher.assert_called_once_with(fake._session.transport, source_name=None)
+        # The session's coexist datalog client is passed so the flash fence nests on
+        # the ONE whole-session bus reservation (no double-claim).
+        MockFlasher.assert_called_once_with(
+            fake._session.transport,
+            source_name=None,
+            datalog=fake._session.wican_datalog,
+        )
 
     @pytest.mark.parametrize("operation", ["flash", "dynamic_flash"])
     def test_source_name_forwarded_to_sd_flasher(self, operation):
@@ -63,7 +69,9 @@ class TestWiCANWriteRouting:
         with patch("src.ecu.wican_sd_flash.WiCANSdFlasher") as MockFlasher:
             _build(fake, operation, source_name="My Tune éà.bin")
         MockFlasher.assert_called_once_with(
-            fake._session.transport, source_name="My Tune éà.bin"
+            fake._session.transport,
+            source_name="My Tune éà.bin",
+            datalog=fake._session.wican_datalog,
         )
 
     @pytest.mark.parametrize("operation", ["flash", "dynamic_flash"])

@@ -38,7 +38,7 @@ the best-effort REST layer.
 |---|---|---|
 | `wican-pro` | integration target | Carries FWD (datalogger: `poll_log`, `csv_logger`, `fast_log`). |
 | `claude/integrate-fwb-onto-wican-pro` (**#35**) | FWB (SD flash) merged onto wican-pro | @ `c8bcd54`. **OTA'd + HARDWARE-VALIDATED (see #35 below). ✅** |
-| `claude/coexistence-slcan-port` (**#36**) | no-reboot coexistence (off #35) | @ `6bea7e3`. `FLASH_ACTIVE_BIT` interlock core done + builds clean. Dedicated port + REST endpoint **not yet built.** |
+| `claude/coexistence-slcan-port` (**#36**) | no-reboot coexistence (off #35) | @ `6bea7e3` + **uncommitted working tree**: 36.A dedicated port, 36.C `/datalog`, AUTO_PID/mqtt/can_rx_task brick-fixes all **BUILT + COMPILE CLEAN** (ESP-IDF 5.5.3 esp32s3, 0 warn/err, 30% partition free). **Pending: commit + HARDWARE validation.** |
 
 **Host repo** `nc-rom-editor`: WiCAN transport, fast-read, host-side fast-write
 glue, discovery, and the `WiCANConfigurator` reboot-switch stopgap are all
@@ -122,19 +122,24 @@ port** so the host can flash while `poll_log` firmware is loaded with **no reboo
 parks the poller, and (c) keep the **`FLASH_ACTIVE_BIT` interlock** as the
 single-CAN-owner guarantee.
 
-### 36.A — Dedicated SLCAN port (load-bearing prerequisite — plan §3 + PART_C §2b)
-Status: enum only; **dispatch NOT built.** Without this, `/datalog?op=pause` quiesces
-logging but the flash codecs still can't dispatch — a quiesced bus and a flash that
-never starts.
+### 36.A — Dedicated SLCAN port (load-bearing prerequisite — plan §3 + PART_C §2b)  ✅ BUILT (compiles clean; HW-pending)
 1. `types.h` — `DEV_SLCAN_PORT` in `dev_channel_t` ✅ (already on branch).
-2. `comm_server.c` — **2nd TCP listener on port 35001**; tag frames
-   `dev_channel = DEV_SLCAN_PORT`; queue to `xMsg_Rx_Queue`.
-3. `main.c can_tx_task` (~:287/291) — early dispatch branch **before** the
-   `protocol==SLCAN` gate: `DEV_SLCAN_PORT` → fastread/fastwrite/`slcan_parse_str`
-   regardless of persisted protocol.
-4. `main.c can_rx_task` (~:435) — **RX reply forwarding independent of `protocol`**
-   (today gated `if(protocol==SLCAN)`). ⚠️ **The #476 "opens clean but no frames
-   flow" trap — the single most-missed detail.**
+2. **NEW `main/slcan_port.c` + `.h`** ✅ — dedicated always-on listener on **35001**
+   (NOT in comm_server.c: that's a single-conn singleton; a self-contained server shares
+   zero state with the proven datalogger path). Tags `DEV_SLCAN_PORT`, shares
+   `xMsg_Rx_Queue`, drains a **private** `xMsg_SlcanPort_Tx_Queue` to its own socket.
+   Hardened per audit: **connection-generation guard** (reconnect TOCTOU) + **bind retry**
+   (boot netif self-heal). Added to `main/CMakeLists.txt`.
+3. `main.c can_tx_task` ✅ — early `DEV_SLCAN_PORT` branch **before** the `protocol==SLCAN`
+   gate → fastread/fastwrite/`slcan_parse_str` to the private queue, `continue`. Inline on
+   can_tx_task (this serializes REALDASH/SAVVYCAN/SLCAN/ELM327 out of the flash window).
+4. **Plain-slcan async reply (the #476 trap)**: DEFERRED on purpose. The flash path uses
+   only **self-contained** codecs (version-ping/fastread/fastwrite drain their own TWAII),
+   which is exactly the done-gate. Un-gating `can_rx_task` for plain-slcan reply-forward in
+   poll_log = TWO TWAI consumers stealing each other's ISO-TP frames = brick. Defer to a
+   future FLASH_ACTIVE-guarded request/response codec.
+5. `ncflash_fastread.h` ✅ — `NCFRv5 → NCFRv6` (host `COEXIST_MIN_FW_REV=6` detect). Marker
+   means ONLY "dedicated port exists"; `/datalog` is a SEPARATE soft-probed capability.
 
 ### 36.B — `FLASH_ACTIVE_BIT` interlock (brick-critical — plan §5)  ✅ core done on branch
 - `can.c` — `FLASH_ACTIVE_BIT=BIT1` + NULL-safe `can_flash_active_set/clear/active()` ✅
@@ -143,33 +148,37 @@ never starts.
   clean-teardown on **every** exit path; unified `s_fwbusy`/`s_fastop_busy` exclusion ✅
 - **Invariant:** at most one TX producer owns the bus at any instant, every exit path.
 
-### 36.C — New REST endpoint `POST /datalog?op=pause|resume` (the user's coordination layer)
-- `csv_logger.c` — add `datalog_control_handler` (model on `csv_control_handler:938`):
-  - `pause` → `csv_logger_set_manual_override(false)` then `can_flash_active_set()`.
-  - `resume` → `can_flash_active_clear()` then `csv_logger_set_manual_override(true)`.
-  - Echo `{ok, flash_active, manual_mode}`; 400 on bad op; idempotent.
-- `config_server.c` — register `/datalog` URI. **Verify `max_uri_handlers` headroom on
-  the *merged* branch before adding (+1).**
-- **Add `GET /datalog` state** (live `flash_active` + `manual_mode`) — promoted from
-  nice-to-have to **required** so the host can *verify* quiesce/resume, not assume
-  (see must-fixes).
+### 36.C — New REST endpoint `POST/GET /datalog?op=pause|resume`  ✅ BUILT (compiles clean; HW-pending)
+- `csv_logger.c` ✅ — `datalog_control_handler` + `datalog_status_handler` (modelled on
+  `csv_control_handler`). **CHANGED from the original plan per the audit:** drives a
+  **separate `DATALOG_PARK_BIT`**, NOT `can_flash_active_set/clear`. Reusing the codec-owned
+  `FLASH_ACTIVE_BIT` from REST was a last-writer-wins **brick trap** (a stray/duplicate
+  `resume` could un-park a LIVE flash). Now: `pause` → `set_manual_override(false)` then
+  `can_datalog_park_set()`; `resume` → `can_datalog_park_clear()` then **restore the exact
+  pre-pause mode** (snapshotted on first pause; AUTO/ON/OFF — won't flip an AUTO device to
+  force-on). Idempotent. Echo `{ok, flash_active, datalog_parked, manual_mode}`.
+- `can.c/.h` ✅ — `DATALOG_PARK_BIT (BIT2)` + `can_datalog_park_set/clear/active()` +
+  `can_should_park()` (FLASH_ACTIVE_BIT | DATALOG_PARK_BIT). poll_log + autopid park on
+  `can_should_park()`; `FLASH_ACTIVE_BIT` alone stays the brick-safety guarantee.
+- `config_server.c` ✅ — registered both URIs. `max_uri_handlers=48`, ~41 live → fits (+2).
+- `GET /datalog` ✅ — live `{flash_active, datalog_parked, manual_mode}` so the host can
+  *verify* quiesce/resume (audit: "HTTP 200 ≠ parked" — the codec's synchronous set is the
+  real guard; REST pause is advisory).
 
-### 🔴 MUST-FIX before any flash leans on this (from adversarial critique — brick-class)
-- [ ] **AUTO_PID coverage.** `FLASH_ACTIVE_BIT` has **zero occurrences in `autopid.c`** —
-      if the device boots in `AUTO_PID` (a real datalog mode, `main.c:962/1047`), the
-      poller is **NOT silenced** by either `/datalog?op=pause` *or* the codec's own
-      `set` → unguarded stray-frame brick path. **Fix:** make autopid park on the bit
-      like `poll_log.c:424`, **OR** firmware **refuses** fastwrite/fastread while
-      `protocol==AUTO_PID`. Not optional.
-- [ ] **Other `can_send` TX producers** (realdash `main.c:332`, elm327/ws passthrough)
-      are unguarded during a flash — the interlock only covers the poll task, not
-      `can_send` itself. Audit every `can_send` reachable while a flash is active.
-- [ ] **"HTTP 200 ≠ parked."** `/datalog?op=pause` returns the instant the bit flips;
-      the poll is honored at the **next loop top**, so an in-flight poll can still hit
-      the wire after the 200. Treat REST `pause` as **advisory**; the codec's
-      synchronous `set` is the real guard. Host must either confirm via `GET /datalog`
-      or document the codec-set as sole guarantor (fixed `PRE_SESSION_SETTLE_S` sleep
-      is **not** a proof of quiescence).
+### 🔴 MUST-FIX (from adversarial critique — brick-class)  ✅ ALL DONE (compiles clean; HW-pending)
+- [x] **AUTO_PID coverage.** ✅ `autopid_task` now parks on `can_should_park()` at loop-top
+      (`autopid.c`, mirrors poll_log). **Option B (refuse on `protocol==AUTO_PID`) REJECTED**
+      by the audit: the host flashes over 35001 with NO protocol switch, so `protocol` STAYS
+      `AUTO_PID` during a coexist flash → a refusal would break the exact flow #36 enables.
+      Verifier note: on WICAN_PRO autopid drives a *separate STN CAN controller*, so the bit
+      is the firmware's only lever — refusal wouldn't even stop its TX.
+- [x] **Other `can_send` TX producers.** ✅ `mqtt.c:302` (out-of-band event-loop task) now
+      guarded with `can_flash_active()`. REALDASH/SAVVYCAN/SLCAN/ELM327 are serialized by the
+      inline can_tx_task dispatch (documented). `can_send` itself carries a contract comment
+      listing every producer + its guard. `can_rx_task` now parks on `can_flash_active()` too
+      (stops it stealing the codec's reply frames in auto_pid/realdash).
+- [x] **"HTTP 200 ≠ parked."** ✅ Documented in the handler + `GET /datalog` added so the host
+      confirms rather than assumes; the codec's synchronous `FLASH_ACTIVE_BIT` is the guarantor.
 
 **Done-gate (plan §7 "Step 4"), hardware-required:**
 - [ ] Dedicated port forwards ECU replies **while in `poll_log` mode** (no #476 trap):
@@ -199,35 +208,30 @@ shipped; the **datalog-quiesce wiring is re-scoped** to the REST `/datalog` endp
    override off by default; unreadable RPM doesn't block. ✅ (1453 tests green)
 3. `wican_sd_flash.py::_trigger_firmware_flash` — `PRE_SESSION_SETTLE_S` settle. ✅
 
-**New for the REST model (build on top of PR #79):**
-- [ ] `wican_config.py` — add `pause_datalog()`/`resume_datalog()` (POST `/datalog`),
-      mirroring `_post_config` (stdlib urllib + `WiCANConfigError` + timeout); parse the
-      JSON echo. Add a `GET /datalog` state read.
-- [ ] **🔴 Standalone resume path.** Do **NOT** fold resume into `_restore_wican_protocol`
-      — it no-ops unless `_slcan_switched && _configurator`, **both false on the coexist
-      path** (`session.py:206-214, 448`). Resume would *never* fire on the no-reboot path
-      this targets. Build a datalog client keyed on `self._wican_host`, independent of
-      `_configurator`, fired on real disconnect/cleanup but **not** on BUSY (`:324`) or
-      auto-reconnect (`restore_protocol=False`, `:360`).
-- [ ] **Quiesce at the flash boundary, not every connect.** Fire `pause` in
-      `wican_sd_flash._trigger_firmware_flash` (+ confirm via `GET /datalog`), not on
-      plain read/DTC connects (keeps logging on for non-flash sessions).
-- [ ] **Crash-safety sidecar.** Extend the `%TEMP%` host-keyed recovery file
-      (`wican_config.py:154`) with `datalog_stopped`: write before `pause`, clear after
-      confirmed `resume`, **reconcile-and-resume at the top of `_connect_wican`**.
-- [ ] **🔴 Two-instance guard.** The host-keyed sidecar lets a 2nd NC Flash instance's
-      reconcile-first **resume the datalogger mid-flash** for the 1st. Gate reconcile on
-      a host-visible flash-active check (`GET /datalog`) or a session lock token — do
-      **not** reuse the protocol sidecar "verbatim" (it never had an active-flash-resume
-      hazard).
-- [ ] **🔴 Decouple `/datalog` capability from the dedicated-port rev gate.** Don't
-      assume `COEXIST_MIN_FW_REV` implies `/datalog` exists. A `POST /datalog` to a
-      port-only build must degrade to "rely on codec interlock only" (handle 404), never
-      raise and abort the flash. Either gate on a distinct capability or ship both in the
-      same rev and document the contract.
-- [ ] Optional: wire resume into `MainWindow.closeEvent` — `ECUProgrammingWindow.closeEvent`
-      does **not** fire on parent close (only cleans the legacy `_ecu_session`), so the
-      next-connect sidecar reconciliation is **load-bearing**, not optional.
+**New for the REST model — ✅ BUILT + UNIT-TESTED (uncommitted host working tree):**
+- [x] `wican_config.py` — **`WiCANDatalogClient`** (stdlib-only): `pause()`/`resume()`
+      (POST `/datalog`) + `get_state()` (GET). Returns the parsed JSON echo or `None`. ✅
+- [x] **🔴 Standalone resume path.** ✅ Resume lives in `WiCANSdFlasher._trigger_firmware_flash`'s
+      `try/finally` (runs on success AND on a mid-transfer `FWERR`), keyed on the transport
+      host — NOT folded into `_restore_wican_protocol` (which no-ops on the coexist path).
+- [x] **Quiesce at the flash boundary, not every connect.** ✅ `pause()` fires in
+      `_trigger_firmware_flash` only; plain read/DTC connects never pause logging.
+- [x] **Crash-safety sidecar.** ✅ `%TEMP%/wican_datalog_<host>.json` breadcrumb written
+      BEFORE `pause`, cleared after a confirmed `resume`; `reconcile()` runs at the top of
+      `_connect_wican` on every WiCAN connect.
+- [x] **🔴 Two-instance guard.** ✅ `reconcile()` checks `GET /datalog` `flash_active` and
+      **skips resume while a flash is active** (the owning instance clears the breadcrumb);
+      a separate datalog sidecar file (not the protocol one) avoids the active-flash hazard.
+- [x] **🔴 Decouple `/datalog` from the rev gate.** ✅ Every `/datalog` call soft-degrades to
+      `None` on 404/timeout/unreachable/non-JSON — a port-only `NCFRv6` build NEVER aborts a
+      flash; the firmware `FLASH_ACTIVE_BIT` interlock remains the guard.
+- [ ] Optional (not done): wire resume into `MainWindow.closeEvent`. The next-connect
+      `reconcile()` is load-bearing and covers the crash/close path, so this stays optional.
+
+Tests: `tests/test_ecu_wican_config.py` (+10: round-trips, 404/500/garbage/unreachable
+soft-degrade, breadcrumb-before-request, reconcile resume-when-idle / skip-when-flash-active),
+`tests/test_ecu_wican_sd_flash.py::TestDatalogCoexistence` (+3: pause→auth→flash→resume order,
+resume-runs-on-FWERR, pause-failure-never-aborts). black + flake8(E9,F63,F7,F82) clean.
 
 **Done-gate:**
 - [ ] Against coexist firmware: connect → dedicated-port path, **no reboot**; against old
@@ -255,11 +259,14 @@ shipped; the **datalog-quiesce wiring is re-scoped** to the REST `/datalog` endp
    🔴 AUTO_PID coverage (brick-class)
 ```
 
-**Build order (workflow `build_steps`):** 36.A dedicated port + bench-prove no-reboot
-dispatch **first** (the REST design is inert without it) → 36.C `/datalog` endpoint →
-re-prove interlock on merged base (zero CSV rows / zero `0x7E0`) → host client + sidecar
-+ two-instance guard → RPM gate already in PR #79 → live bench E2E (`pause`→flash→`resume`,
-byte-compare, WiFi-drop recovery). **Resolve AUTO_PID as a hard gate before any live flash.**
+**Build order (workflow `build_steps`):** ~~36.A dedicated port~~ ✅ → ~~36.C `/datalog`~~ ✅
+→ ~~AUTO_PID/mqtt/can_rx_task brick-fixes~~ ✅ → **all BUILT + compile clean (2026-06-26).**
+Remaining: **(1) commit** the `claude/coexistence-slcan-port` working tree → **(2) live bench
+E2E** (user-gated, brick-risk, needs deployed-build backup first): dedicated-port fastread in
+poll_log w/ no reboot; flash w/ poll_log enabled → zero CSV rows / zero `0x7E0`; `/datalog`
+pause/resume round-trip; AUTO_PID flash parks the poller; WiFi-drop recovery → **(3) host REST
+datalog client** (#37 follow-ups: `pause/resume_datalog`, standalone resume path, sidecar,
+two-instance guard, `/datalog` 404 soft-degrade).
 
 ---
 
