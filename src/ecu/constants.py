@@ -69,6 +69,13 @@ COEXIST_MIN_FW_REV = 6
 #: device WITHOUT the dedicated port (every current build) falls back to the
 #: proven reboot path quickly instead of stalling the connect.
 COEXIST_PROBE_TIMEOUT_MS = 1500
+#: Settle (s) after a bus-claim+pause before the FIRST host-driven ECU contact.
+#: On the coexist port the datalogger owns the single CAN bus until it parks; the
+#: poll task parks on can_should_park() at its own cadence, so a poll frame in
+#: flight can otherwise collide with the first Tester-Present / auth handshake.
+#: Used by the refcounted bus reservation (WiCANDatalogClient.acquire_bus) so it
+#: runs once on the 0->1 transition, BEFORE connect's Tester-Present and the flash.
+PRE_SESSION_SETTLE_S = 0.2
 
 # --- WiCAN dead-man's-switch / datalog auto-resume (docs/internal/WICAN_DEADMAN_AUTORESUME.md) ---
 # ONE timing contract shared by host + firmware (firmware uses the *_US = *_S * 1e6

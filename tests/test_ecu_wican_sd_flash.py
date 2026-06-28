@@ -195,13 +195,17 @@ class TestDatalogCoexistence:
     /datalog failure."""
 
     def _spy_flasher(self):
+        from src.ecu.wican_config import WiCANDatalogClient
+
         transport = _FakeTransport(marker=b"NCFRv5")
         order = []
-        datalog = MagicMock()
-        datalog.bus_claim.side_effect = lambda: order.append("bus_claim")
-        datalog.pause.side_effect = lambda: order.append("pause")
-        datalog.bus_release.side_effect = lambda: order.append("bus_release")
-        datalog.resume.side_effect = lambda: order.append("resume")
+        # A REAL client so the fence exercises the real refcounted reserved()/
+        # acquire_bus()/release_bus(); only the four lease ops are spied for order.
+        datalog = WiCANDatalogClient("127.0.0.1")
+        datalog.bus_claim = lambda: order.append("bus_claim")
+        datalog.pause = lambda: order.append("pause")
+        datalog.bus_release = lambda: order.append("bus_release")
+        datalog.resume = lambda: order.append("resume")
         flasher = _make_flasher(transport, datalog=datalog)
         flasher._authenticate_ecu.side_effect = lambda: order.append("auth")
         transport.fast_write = lambda *a, **k: order.append("flash")
@@ -213,11 +217,8 @@ class TestDatalogCoexistence:
             "src.ecu.wican_sd_flash.build_flash_package", return_value=_fake_package()
         ):
             flasher.flash_rom(b"\x00" * 16)
-        datalog.bus_claim.assert_called_once()
-        datalog.pause.assert_called_once()
-        datalog.bus_release.assert_called_once()
-        datalog.resume.assert_called_once()
         # claim+pause fence the WHOLE window; auth -> flash; then release+resume.
+        # The single ordered appearance of each op proves it ran exactly once.
         assert order == ["bus_claim", "pause", "auth", "flash", "bus_release", "resume"]
 
     def test_preflight_gate_runs_inside_the_datalog_fence(self):
@@ -258,10 +259,9 @@ class TestDatalogCoexistence:
         ):
             with pytest.raises(WiCANError, match="FWERR"):
                 flasher.flash_rom(b"\x00" * 16)
-        datalog.bus_release.assert_called_once()  # finally ran
-        datalog.resume.assert_called_once()
         # On a FAILED flash the best-effort UDS teardown also fires (mocked here).
         flasher._safe_uds_teardown.assert_called_once()
+        # bus_release + resume still ran (the reservation's finally) even on failure.
         assert order == ["bus_claim", "pause", "auth", "flash", "bus_release", "resume"]
 
     def test_datalog_pause_failure_does_not_abort_flash(self):
@@ -269,7 +269,9 @@ class TestDatalogCoexistence:
         the client already soft-degrades (returns None), so a real failure surfaces
         as None here and the flash proceeds."""
         flasher, datalog, order = self._spy_flasher()
-        datalog.pause.side_effect = lambda: (order.append("pause"), None)[1]
+        datalog.pause = lambda: (order.append("pause"), None)[
+            1
+        ]  # soft-degrades to None
         with patch(
             "src.ecu.wican_sd_flash.build_flash_package", return_value=_fake_package()
         ):

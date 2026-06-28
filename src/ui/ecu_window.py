@@ -1041,7 +1041,15 @@ class ECUProgrammingWindow(QMainWindow):
                 # WICAN_WRITE_ENABLED is flipped on (the make-safe gate above).
                 from src.ecu.wican_sd_flash import WiCANSdFlasher
 
-                return WiCANSdFlasher(transport, source_name=source_name)
+                # Reuse the session's coexist datalog client so the flash fence nests
+                # on the SAME whole-session bus reservation (one bus owner, never a
+                # double-claim). None on the legacy reboot path -> the flasher makes
+                # its own and self-claims, exactly as before.
+                return WiCANSdFlasher(
+                    transport,
+                    source_name=source_name,
+                    datalog=self._session.wican_datalog,
+                )
             if uds is None:
                 logger.error("WiCAN %s requested with no open connection", operation)
                 return None

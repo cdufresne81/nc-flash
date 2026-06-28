@@ -48,6 +48,7 @@ from typing import Optional
 
 from .constants import (
     DATALOG_KEEPALIVE_INTERVAL_S,
+    PRE_SESSION_SETTLE_S,
 )
 from .exceptions import ECUError
 
@@ -507,6 +508,15 @@ class WiCANDatalogClient:
         self._ka_thread: Optional[threading.Thread] = None
         self._ka_stop: Optional[threading.Event] = None
         self._atexit_registered = False
+        # Refcounted bus reservation (claim + pause). The whole-session reservation
+        # (held connect->disconnect) and the flash fence share ONE owner: the real
+        # bus_claim()+pause() fire once on the 0->1 transition, bus_release()+resume()
+        # once on the 1->0, so nesting can never double-claim the single-owner lease.
+        # RLock: the transition work runs under the lock and must be atomic w.r.t.
+        # another thread's acquire/release (connect on the UI thread vs the flash
+        # worker thread).
+        self._reserve_lock = threading.RLock()
+        self._reserve_depth = 0
 
     def _url(self, path: str) -> str:
         return f"http://{self.host}:{self.http_port}{path}"
@@ -690,6 +700,56 @@ class WiCANDatalogClient:
         if status in (200, 409):  # resumed, or reaper already did -> breadcrumb done
             self.clear_stopped()  # a 404/500/timeout leaves it for the next reconcile
         return state
+
+    # -- Refcounted whole-session bus reservation -------------------------------
+
+    @contextlib.contextmanager
+    def reserved(self):
+        """Hold a refcounted bus reservation (claim + pause) for the ``with`` block.
+
+        Reference-counted so the whole-session reservation (held from connect to
+        disconnect) and the flash ``_datalog_fence`` can NEST without a double-claim:
+        the real :meth:`bus_claim` + :meth:`pause` (and the poll-task settle) fire once
+        on the 0->1 transition, and :meth:`bus_release` + :meth:`resume` once on the
+        1->0. Soft-degrading — on a device with no ``/datalog`` the underlying ops are
+        no-ops and only the depth counter moves.
+        """
+        self.acquire_bus()
+        try:
+            yield
+        finally:
+            self.release_bus()
+
+    def acquire_bus(self) -> None:
+        """Raise (or re-enter) the host bus reservation; see :meth:`reserved`.
+
+        Only the FIRST acquire claims the bus, parks the datalogger, and settles long
+        enough for the firmware poll task to actually park before the first ECU
+        contact. Deeper acquires just bump the refcount — the bus is already ours.
+        """
+        with self._reserve_lock:
+            self._reserve_depth += 1
+            if self._reserve_depth == 1:
+                self.bus_claim()
+                self.pause()
+                # Let the firmware poll task observe the park and stop driving the bus
+                # before the caller's first Tester-Present / auth handshake.
+                time.sleep(PRE_SESSION_SETTLE_S)
+
+    def release_bus(self) -> None:
+        """Drop one bus-reservation ref; the LAST release frees the bus.
+
+        Mirrors :meth:`bus_claim`/:meth:`pause` ordering on the way out
+        (``bus_release`` then ``resume``) so the keepalive daemon stops only once both
+        leases are dropped. A release with no outstanding acquire is a no-op.
+        """
+        with self._reserve_lock:
+            if self._reserve_depth == 0:
+                return
+            self._reserve_depth -= 1
+            if self._reserve_depth == 0:
+                self.bus_release()
+                self.resume()
 
     def get_state(self) -> Optional[dict]:
         """``GET /datalog`` -> live coexistence state dict (or ``None``).

@@ -56,6 +56,7 @@ from .constants import (
     BATTERY_VOLTAGE_WARNING,
     FLASH_COUNTER_OFFSET,
     FLASH_COUNTER_SIZE,
+    PRE_SESSION_SETTLE_S,
     ROM_FLASH_START_MIN,
     ROM_SIZE,
 )
@@ -84,13 +85,8 @@ FASTWRITE_MIN_FW_REV = 5
 #: Default HTTP port for the SD-upload endpoint.
 DEFAULT_HTTP_PORT = 80
 
-#: Brick-safety margin before entering the programming session: let any in-flight
-#: datalogger CAN traffic drain so a stray poll frame cannot corrupt the UDS auth
-#: handshake during the transition. On no-reboot coexistence firmware the
-#: firmware ``FLASH_ACTIVE_BIT`` interlock is the real guarantee that the poll
-#: task is parked; this host-side settle is a belt-and-suspenders margin. Inert
-#: on the legacy reboot-switch path (no datalogger runs in SLCAN mode).
-PRE_SESSION_SETTLE_S = 0.2
+#: (``PRE_SESSION_SETTLE_S`` is defined in constants.py — shared with the
+#: refcounted bus reservation in WiCANDatalogClient — and imported above.)
 
 
 def _parse_fw_rev(marker: Optional[bytes]) -> Optional[int]:
@@ -359,31 +355,28 @@ class WiCANSdFlasher:
         """Hold the host bus-claim + datalog pause for the WHOLE host-driven flash window.
 
         No-reboot coexistence dead-man's-switch (#36, docs/internal/WICAN_DEADMAN_AUTORESUME.md):
-        ``bus_claim()`` raises the firmware HOST_BUS_CLAIM_BIT and ``pause()`` parks the
-        datalogger, both BEFORE the preflight link gate — because on the dedicated coexist
-        port the datalogger owns the single CAN bus until it is parked, so the gate's (and
-        auth's) Tester-Present round-trips only succeed with the fence already up; and per
-        INV-2 the claim must bracket EVERY host-driven ECU contact so the firmware reaper can
-        never auto-resume the poller into a live session. Both start a host keepalive that
-        renews the leases so they never false-expire under a present host. Released on EVERY
-        exit (success / FWERR / stall): ``bus_release()`` then ``resume()``. All soft-degrading
-        — a pre-deadman / port-only build (404) makes each call a no-op and the flash proceeds
-        on the FLASH_ACTIVE_BIT interlock alone.
+        the reservation raises the firmware HOST_BUS_CLAIM_BIT and parks the datalogger,
+        both BEFORE the preflight link gate — because on the dedicated coexist port the
+        datalogger owns the single CAN bus until it is parked, so the gate's (and auth's)
+        Tester-Present round-trips only succeed with the fence already up; and per INV-2 the
+        claim must bracket EVERY host-driven ECU contact so the firmware reaper can never
+        auto-resume the poller into a live session.
+
+        Delegates to the REFCOUNTED :meth:`WiCANDatalogClient.reserved` so this fence nests
+        safely inside the whole-session reservation the ECUSession holds from connect to
+        disconnect (one bus owner, never a double-claim). When this fence opens the FIRST
+        reservation (e.g. a standalone flash with no live session) it claims, parks, and
+        settles exactly as before; when the session already holds it, this is a no-op
+        depth bump and the claim/park stay continuously held. The keepalive renews the
+        leases so they never false-expire under a present host. All soft-degrading — a
+        pre-deadman / port-only build (404) makes each lease op a no-op and the flash
+        proceeds on the FLASH_ACTIVE_BIT interlock alone.
         """
         if self._datalog is not None:
-            self._datalog.bus_claim()
-            self._datalog.pause()
-            # Let the firmware actually park the poll task before the FIRST ECU contact
-            # (the preflight gate). The poll loop parks on can_should_park() at its own
-            # cadence; without this settle a poll frame in flight collides with the gate's
-            # first Tester-Present and the zero-loss gate (max_loss_pct=0) refuses the flash.
-            time.sleep(PRE_SESSION_SETTLE_S)
-        try:
+            with self._datalog.reserved():
+                yield
+        else:
             yield
-        finally:
-            if self._datalog is not None:
-                self._datalog.bus_release()
-                self._datalog.resume()
 
     def _verify_readback(self, rom_data: bytes, progress_cb=None) -> None:
         """Explicit, post-ignition-cycle read-back: re-read the ECU and byte-compare.

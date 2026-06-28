@@ -656,6 +656,65 @@ def test_datalog_get_state(_recovery_in_tmp):
         assert ("GET", "/datalog") in server.requests
 
 
+def _count_ops(server):
+    """Counter of /datalog ``op`` values seen over POST."""
+    import urllib.parse
+    from collections import Counter
+
+    ops = Counter()
+    for method, path in server.requests:
+        if method == "POST":
+            q = urllib.parse.parse_qs(urllib.parse.urlparse(path).query)
+            ops[q.get("op", [""])[0]] += 1
+    return ops
+
+
+def test_reserved_refcounts_so_nesting_never_double_claims(_recovery_in_tmp):
+    """The whole-session reservation and the flash fence share ONE client, so
+    reserved() MUST claim/pause exactly once (0->1) and release/resume exactly once
+    (1->0). A second bus_claim on the single-owner firmware lease would brick a flash
+    by stranding the reaper on a stale token, so this is a brick-safety invariant."""
+    with _MockDatalogServer("ok") as server:
+        client = _datalog_client(server)
+        try:
+            with client.reserved():  # outer == the whole-session reservation
+                with client.reserved():  # inner == the flash _datalog_fence
+                    assert server.claimed is True and server.parked is True
+                # Inner exit must NOT release — the outer still holds it.
+                assert server.claimed is True and server.parked is True
+            # Outer exit releases the single reservation.
+            assert server.claimed is False and server.parked is False
+        finally:
+            client.close()
+        ops = _count_ops(server)
+        assert ops["bus_claim"] == 1 and ops["pause"] == 1
+        assert ops["bus_release"] == 1 and ops["resume"] == 1
+
+
+def test_reserved_releases_on_exception(_recovery_in_tmp):
+    """An exception inside the reservation still releases the bus (the reaper must
+    never be left fenced on a host error)."""
+    with _MockDatalogServer("ok") as server:
+        client = _datalog_client(server)
+        try:
+            with pytest.raises(ValueError):
+                with client.reserved():
+                    assert server.claimed is True and server.parked is True
+                    raise ValueError("boom")
+            assert server.claimed is False and server.parked is False
+        finally:
+            client.close()
+
+
+def test_release_bus_without_acquire_is_a_noop(_recovery_in_tmp):
+    """A stray release (depth already 0) must not underflow or hit the wire."""
+    with _MockDatalogServer("ok") as server:
+        client = _datalog_client(server)
+        client.release_bus()  # never acquired
+        assert server.requests == []
+        assert client._reserve_depth == 0
+
+
 def test_datalog_404_soft_degrades_to_none_and_never_raises(_recovery_in_tmp):
     """A port-only NCFRv6 build (no /datalog) must degrade, not abort a flash."""
     with _MockDatalogServer("404") as server:

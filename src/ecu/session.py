@@ -91,6 +91,13 @@ class ECUSession(QObject):
         self._configurator = None
         self._slcan_prev_protocol = None  # original protocol to restore to
         self._slcan_switched = False  # True once we've switched this session
+        # No-reboot coexistence (#36): the WHOLE-session bus reservation. On the
+        # dedicated coexist port the datalogger owns the single CAN bus and eats the
+        # ECU's UDS replies until the host reserves it, so we hold a refcounted
+        # bus-claim+pause for the life of the session (acquired in _connect_wican,
+        # released in _teardown_wican). The flash fence nests on this SAME client, so
+        # there is exactly one bus owner. None unless connected via the coexist port.
+        self._wican_datalog = None
 
     # --- Public API ---
 
@@ -127,6 +134,13 @@ class ECUSession(QObject):
     def transport(self):
         """The open ``EcuTransport`` (WiCAN sessions only; ``None`` for J2534)."""
         return self._transport
+
+    @property
+    def wican_datalog(self):
+        """The session's coexist datalog client holding the whole-session bus
+        reservation, or ``None`` (J2534, legacy reboot path, or disconnected). The
+        flash driver reuses THIS instance so its fence nests on the one bus owner."""
+        return self._wican_datalog
 
     def connect_ecu(self):
         """
@@ -212,6 +226,20 @@ class ECUSession(QObject):
             coexist = self._try_open_coexist_port()
             if coexist is not None:
                 self._transport = coexist
+                # Reserve the bus for the WHOLE session BEFORE the first UDS frame.
+                # Without this the datalogger (poll_log) is the sole TWAI consumer and
+                # swallows the ECU's reply, so Tester-Present — and every later DTC /
+                # RAM-scan / flash op — would time out. Refcounted + soft-degrading; the
+                # firmware dead-man reaper auto-resumes the logger if this host vanishes.
+                self._wican_datalog = WiCANDatalogClient(self._wican_host)
+                self._wican_datalog.acquire_bus()
+                # Drain datalogger frames still in-flight when we took the bus.
+                # acquire_bus() pauses poll_log, but Mode-01 PID responses already
+                # on the wire keep arriving for a beat; without this they bleed into
+                # the first TesterPresent receive and are mis-parsed (the benign but
+                # noisy "unexpected response byte 0x41 for SID 0x3E" warnings). Flush
+                # until the bus is quiet so the first UDS exchange starts clean.
+                coexist.flush()
                 self._uds = UDSConnection(coexist)
                 self._uds.tester_present()
                 logger.info(
@@ -434,6 +462,18 @@ class ECUSession(QObject):
         ``restore_protocol`` is ``False`` on the internal auto-reconnect (keep
         the adapter in SLCAN) and ``True`` on a user disconnect / app exit.
         """
+        # Release the whole-session bus reservation FIRST (resume the datalogger)
+        # while the transport is still up. Best-effort: a failed release just leaves
+        # the firmware dead-man reaper to auto-resume the logger. The flash fence's
+        # own ref is already dropped by the time any teardown runs (its context
+        # manager is fully contained in flash_rom), so this is the last ref.
+        if self._wican_datalog is not None:
+            try:
+                self._wican_datalog.release_bus()
+            except Exception:
+                pass
+            self._wican_datalog = None
+
         if self._transport is not None:
             try:
                 self._transport.close()

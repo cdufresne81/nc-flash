@@ -203,8 +203,10 @@ def fast_read_full(
     if not hasattr(transport, "fast_read"):
         raise WiCANError("transport does not support fast_read")
 
-    print(f"\n[FASTREAD] firmware autonomous read of {length} bytes "
-          f"from 0x{start:06X} ...")
+    print(
+        f"\n[FASTREAD] firmware autonomous read of {length} bytes "
+        f"from 0x{start:06X} ..."
+    )
     last = [0.0]
 
     def cb(done, total):
@@ -233,8 +235,10 @@ def diff_reference(rom: bytes, reference_path: Path, start: int = 0) -> bool:
     ROM.
     """
     ref = reference_path.read_bytes()[start : start + len(rom)]
-    print(f"\n[GATE] Comparing read vs reference {reference_path} "
-          f"(slice 0x{start:06X}..0x{start + len(rom):06X}) ...")
+    print(
+        f"\n[GATE] Comparing read vs reference {reference_path} "
+        f"(slice 0x{start:06X}..0x{start + len(rom):06X}) ..."
+    )
     if len(ref) != len(rom):
         print(
             f"[GATE] RESULT: FAIL — size mismatch: read={len(rom)} "
@@ -766,9 +770,7 @@ def _run_link(args: argparse.Namespace) -> int:
             if args.reference:
                 return (
                     0
-                    if diff_reference(
-                        bytes(rom), args.reference, args.fast_read_start
-                    )
+                    if diff_reference(bytes(rom), args.reference, args.fast_read_start)
                     else 5
                 )
             print(
