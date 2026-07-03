@@ -1,5 +1,161 @@
 # Session Notes
 
+## ✅ MOBILE HAMBURGER DRAWER + CONTENT-FIT — deployed & hardware-verified (Jul 3, 2026)
+
+**What:** Replaced the phone-only horizontal-scroll tab strip with an off-canvas **hamburger drawer**
+(fixed top bar `☰` + "NC Flash", slide-in sidebar over a dimmed backdrop, closes on tab select; desktop
+untouched via `display:none >=641px`), and fixed **all horizontal page overflow** across the modern phone
+width range. Shipped as **PR #17 → merged into `wican-pro`** (merge `44113ed`), 3 commits: `a84a6db`
+(drawer + form-input box-sizing), `75d03ff` (form-table `td` border-box), `b3fe618` (`.content` border-box
++ scrollable Files table). CI green (build 3m28s). **Deployed to bench WiCAN** `v1.2.0-30-gb3fe618` via 3 OTA
+cycles (boot_count 19→22, clean version-stamp provenance each time).
+
+**Verification method (reusable):** OS window-resize is a no-op on the maximized automation window, so I test
+responsive layout by injecting a **same-origin 390px `<iframe src="/">`** — an iframe establishes its own
+viewport, so `@media(max-width:640px)` fires exactly like a phone, and same-origin lets me measure
+`scrollWidth-clientWidth` per tab + drive the drawer. NOTE: **CSS transitions are frozen** in that background
+iframe (compositor not ticking) — verify settled geometry with `*{transition:none!important}` and trust the
+target state; the slide animates fine on a real foregrounded phone (proved with a control element).
+
+**Live-device sweep (final, v1.2.0-30, real files + sleep banner visible):** 0 horizontal page overflow at
+**320 / 360 / 375 / 390 / 412** px (full modern iPhone+Android range + legacy). Drawer opens to translateX(0)
++ backdrop; `#mobile_topbar` (z:200) topmost so ☰ is always tappable; the pink "You must agree" banner is the
+transient `#notification` toast (z:1000, display:none normally). **Two overflow bugs were caught ONLY by
+testing real hardware** (empty local render was clean): the sleep-mode agreement `td` (banner shown only when
+sleep disabled) and the populated Files table — static checks/local server could never have surfaced them.
+
+## ✅ WiCAN HARDWARE VALIDATION — deployed firmware GREEN across the board (Jul 2, 2026)
+
+Ran a non-destructive hardware suite against the live bench WiCAN (192.168.1.169) + MX-5 NC ECU.
+Device runs the **deployed base** `v1.2.0-21-g55c81b9` (= the P0 base; my uncommitted UI/mark changes are
+NOT flashed, so this validates the wireless stack the changes build on, not the new UI itself).
+
+- **Reachability/HTTP:** ping 3ms; `/check_status`, `/csv_status`, `/datalog`, `/event_log/ram` all healthy.
+  fw_version 1.02, protocol `poll_log`, csv_log enable, SD mounted, logger running.
+- **Coexistence verify (`wican_coexist_verify.py`): ALL PASS** — port-35001 SLCAN ping `NCFRv6`; `/datalog`
+  park→resume REST cycle drives `datalog_parked` with clean `park_token` lifecycle (no protocol switch).
+- **Dead-man verify (`wican_deadman_verify.py --reaper`): ALL PASS** — full lease round-trip
+  (bus_claim/pause/keepalive/release/resume + stale-token→409); **reaper auto-resumed at t+81s** with host
+  "vanished" (the brick-safety guarantee, on real hardware).
+- **ECU UDS path:** `--read-dtc` via `--auto-config` returned 8 DTCs cleanly (C0121/C0155 + P0118/P0328/P0108
+  = powered bench ECU, sensors open, engine off → explains `ecu_status:offline` while UDS works).
+- **Full 1MB read fidelity:** two back-to-back `--fast-read` reads, **215.2s / 214.7s** (Tactrix parity),
+  smoke 25/25 0% loss, **byte-identical to each other (1048576/1048576)** and to the newest historical read
+  `wican_readback_hw9.bin` outside 15 known-adaptive bytes. The tool's "FAIL vs `wican_stmin0_full.bin`" is a
+  **stale oracle** (Jun21, pre-reflash+drift), NOT a transport fault. See memory `project_wican_read_oracle_stale`.
+
+**✅ OTA DEPLOYED (Jul 2, 2026):** flashed the feature build `wican-fw_obd_pro_v1_2_0-21-g55c81b9.bin` (embeds all
+UI/mark changes — verified by content-grep of the binary) to the bench WiCAN via `curl -F file=@... /upload/ota.bin`
+(HTTP 303, 2.8MB/18.9s). Device rebooted clean: boot_count 18→19, unexpected_resets=0, poll_log preserved, OBD Ready.
+**Served UI now live:** `/` has "Datalogger (poll_log)"/"Mark Event"/"Event Log"; `/main.js` has consoleMarkClick/
+consoleLoadEvents/MODE_NAMES/filesSortKey. **New C code works:** `POST /csv_logger?op=mark` (no session) → HTTP 409.
+Coexist/datalog state machine healthy post-OTA. **Rollback secured** first: `rollback_current_55c81b9_clean.bin`
+(clean same-commit baseline, sha256 cc5e7618, verified to LACK the UI markers = matches prior deployed build).
+NOTE: auto app-rollback is OFF in this fw — a bad OTA won't self-revert; recovery = recovery-AP/safe-mode manual reflash.
+
+**✅ COMMIT SPLIT + MERGE DONE (Jul 2, 2026):** ran `/simplify` on the diff first (4 behavior-preserving cleanups
+applied: dead `cell` var + `.style.cssText` no-ops, dead `log_storage` "internal" branch, event-log DOM-rebuild skip,
+chip-label alignment; JS-only, node/lint green). Then split: **P0-A `a65d7f0` + P0-B `486c34d` + P0-C `63658ce`
+(lint_web.py) → PR #15**, admin-merged into `wican-pro` (merge `030dfee`). **UI features (Items 1-4,7) → `ca7df0f`
+on stacked branch `feature/ui-field-console-v2` → PR #16**, retargeted to wican-pro, admin-merged (merge `9c98a01`).
+Both CI firmware builds green (esp32s3, ~3.5min). Feature branches deleted. main.js hunk-split done via verified
+patch files (byte-content-identical reconstruction confirmed before committing).
+**⚠️ Device vs tip:** the bench WiCAN (192.168.1.169) still runs the pre-simplify OTA build — functionally identical
+to wican-pro tip (the 4 cleanups are behavior-preserving) but ~4 JS cleanups behind. Rebuild+OTA only if exact parity
+wanted. On-device human eyeball / phone-responsive pass still optional (browse http://192.168.1.169).
+
+## ✅ UI-IMPROVEMENTS GOAL DOC EXECUTED — all 7 items implemented, firmware build green (Jul 2, 2026)
+
+**What:** Executed `.claude/plans/wican-ui-improvements-goal.md` end-to-end in `../nc-flash-wican-fw` on
+`feature/datalogger-trim` (@55c81b9). All edits done in the prescribed merge order; **NOT committed** (user-gated).
+Full `idf.py build` (ESP-IDF v5.5.3) **green, exit 0** — every change compiles, incl. the csv_logger.c C changes.
+After each item: `python tools/build_web.py` + `node --check main.js` + `tools/lint_web.py` all green.
+
+- **P0-A** Files tab: re-added `var filesCwd/filesSortKey/filesSortDir` before `filesFmtSize` (main.js).
+- **P0-B** Submit persistence: restored the `Load()` population block (recovered from `d372fc9` removed hunk,
+  mqtt_* excluded), re-added `obj["ap_auto_disable"]` in postConfig, added `loadedLogPeriod` var + `obj["log_period"]`
+  re-send, csv_grid_mode "fixed" coercion. `log_filesystem`/`log_storage` confirmed single-option (never clobbered).
+- **P0-C** `tools/lint_web.py` (new, no-deps): checks getElementById literals resolve, inline on*= handlers are defined,
+  and build_web --check. Green against the whole tree (316 getElementById refs OK).
+- **Item 3** Mode chip: `MODE_NAMES` friendly map at `consoleLoadChips` (raw value in title); dropdown LABELS renamed
+  datalogger-first (values byte-identical — persistence strcmps the strings).
+- **Items 4+1** (one logical commit): un-brick banner removed from Console → `.guard-note` under System→Firmware
+  Update + About "Docs/Releases" row; Event Log card (`/event_log/ram`, newest-first cap 15, severity pills, unsynced→
+  uptime, textContent XSS-safe), refresh piggybacks the 1.5s csv_status poll (5s-throttled, tab-visibility-gated).
+- **Item 2** Mark Event: csv_logger.c `csv_mark_pending` volatile int8 (writer-consumed), `,mark` header + `,X`/`,` row
+  column (bounded-append), clear at session-open, `op=mark` in csv_control_handler (409 when no session) + `EVL_INFO`
+  timeline emit; UI amber "Mark Event" button gated on `session_active` + `consoleMarkClick()`.
+- **Item 7** Responsive: viewport→device-width + range-syntax queries normalized (atomic pair); ≤640px tier (sidebar→
+  scroll strip, logo hidden, files Type-col hidden, touch targets ≥44px, 16px inputs); files-table inline styles→
+  `#files_table` CSS rules (`cell=''` in filesRender); openTab scrollIntoView. Grep gates: no `width=1024`, no `width<=`.
+
+**Change surface (uncommitted):** csv_logger.c (+59), csv_logger.h (comment), homepage_full.html (+247), src/main.js
+(+174), src/homepage.html (regenerated), tools/lint_web.py (new). **Commit split still to do per goal doc** (P0 →
+`feature/datalogger-trim`/PR#15; features → new branch). **Hardware bench test still pending** (device-gated; P0 first).
+
+## 📋 UI-IMPROVEMENTS GOAL DOC AUTHORED + 2 TRIM REGRESSIONS FOUND (Jul 2, 2026 — ultracode, 11 agents)
+
+**What:** User requested a goal document for 7 web-UI items (event-log card, Mark-event CSV column, Mode chip,
+un-brick note relocation, Files-tab bug, Submit-changes verification, phone-responsive UI). Ran an ultracode
+workflow (5 investigators + 5 adversarial verifiers + completeness critic) over `../nc-flash-wican-fw` @
+`feature/datalogger-trim` (55c81b9). Deliverables (NOT committed):
+- **`.claude/plans/wican-ui-improvements-goal.md`** — goal driver (settled decisions, merge order, test plan, rollout)
+- **`.claude/plans/wican-ui-improvements-specs.md`** — the 5 full anchor-verified specs + adversarial verdicts
+
+**🔴 CRITICAL findings — both are regressions inside open PR #15 (gate its merge; fix on the trim branch first):**
+1. **Files tab renders empty** — commit `d372fc9` (MQTT cut) swallowed `var filesCwd/filesSortKey/filesSortDir`;
+   `filesRender` throws ReferenceError after clearing the tbody. Backend healthy (live-probed). Fix = re-add 3 decls.
+2. **Submit silently clobbers ~18 settings** — same commit also cut the `Load()` population block +
+   `ap_auto_disable` send: every Submit persists stock HTML defaults (`csv_log→disable`, `ap_pass→"Testpass"`,
+   `port→3333`, sleep/IMU/CSV-grid → defaults); BLE-enabled configs can't submit at all. Bench device verified
+   UNAFFECTED so far (`/check_status` 2026-07-02: csv_log=enable, port=35000).
+3. **New hard fence:** REFACTOR_PLAN Phase 3 item 4 (trim protocol dropdown) must NEVER run as written — removing
+   poll_log ends in a boot-time `config_error` **full factory reset** (store accepts "", boot validation wipes config).
+   Also: 5 protocol modes remain live (user's "single mode" premise false) → keep Mode chip, label-only renames.
+
+**Also this session:** deleted 3 stale untracked files (roundtrip_flash.py, full_suite_deadman.txt, full_suite_hw9.txt)
+via subagent per user ask. **Round-trip flash on the trim build (PR #15 belt-and-braces) NOT run** — the permission
+classifier blocked spawning it from a tentative user remark; needs an explicit user go (source `wican_roundtrip_source.bin`
+1 MiB verified present; script deleted with the cleanup — trivially recreatable, see git history of this session's notes).
+
+## 🚀 #5 DATALOGGER TRIM COMPLETE — firmware PR #15 open (Jul 1-2, 2026)
+
+**Goal executed end-to-end (user /goal, full autonomy):** `../nc-flash-wican-fw` branch `feature/datalogger-trim`
+(rebased onto wican-pro tip via merge `711451a`) now carries the ENTIRE REFACTOR_PLAN.md trim: WiCAN collapsed to the
+two-mode datalogger/flasher. **16 atomic commits, build green at each; PR #15 → wican-pro OPEN, NOT merged** (awaiting
+user review; merge is user-gated per repo ruleset).
+
+- **Phase 0:** web pipeline OWNED — `homepage_full.html` was BEHIND the shipped minified UI (Files tab/CSV settings only
+  in src/); reconciled readable source regenerated FROM the live page (parse5+js-beautify), `tools/build_web.py`
+  (pinned html-minifier-terser, --check mode) is now the only way to touch the embedded UI. `docs/TRIM_REGRESSION_RUNBOOK.md` added.
+- **Cut:** ha_webhooks, vpn_manager+esp_wireguard, ftp, obd_logger+sqlite+Dashboard, realdash+gvret, debug_logs,
+  orphan ws_router, autopid cloud destinations (MQTT/HTTP/ABRP + publish task + send-to plumbing), mqtt.c gateway
+  (+canflt), https_client_mgr (+internet asset fallback), cert_manager, ws_server (+CAN Monitor/Terminal tabs),
+  Vehicle-Specific + Destinations UI. **KEPT:** battery-alert MQTT in sleep_mode (own esp-mqtt client, batt_* keys),
+  twai timing table, event-bit positions (MQTT/VPN bits defined-but-dead — FLASH_ACTIVE_BIT unmoved).
+- **Added:** Field Console landing tab (one-tap Start/Stop Trip on POST /csv_logger, live rec state, SD/WiFi/proto/FW
+  chips, Recent Trips w/ downloads, un-brick footer); /csv_list now mtime + NEWEST-first.
+- **HW-validated on the bench (192.168.1.169 + live ECU):** size 3.61→2.81 MB (−22%); trips record real ECU data
+  (213/844-row CSVs, 19-22 ch, download+parse OK); 35001 NCFRv6 ping; wican_coexist_verify ALL PASS; **production
+  ECUSession.connect_ecu() coexist connect no-reboot + 8 DTCs + clean lease teardown on the trimmed fw**; OTA rollback
+  drill old→new both ways. NC-Flash contract + un-brick guardrails **zero-diff** vs 711451a (2 comment lines only).
+- **Gotchas hit:** (1) a non-v* git tag (`pre-trim-baseline`) broke `git describe`-derived fw_version (0.00) + binary
+  naming → tag DELETED, baseline = merge commit 711451a + local `rollback_trim_baseline.bin`; version stamping needs
+  `idf.py reconfigure` to pick up tag changes. (2) `.gitignore` now excludes `*.bin`/build logs (a git add -A briefly
+  swept 10 MB of bench binaries into a commit — caught + amended before push).
+- **Next session:** review/merge PR #15 (user), then optional: run a belt-and-braces SD coexist flash on the trim build,
+  release tag, and the deferred §7 branches (cloud-upload-on-sleep, UDP telemetry).
+
+## 🚀 RELEASED: host v2.9.0 + firmware v1.1.0 — #36 coexistence fully landed (Jun 28, 2026)
+
+**What:** User validated the no-reboot coexistence via the NC-Flash UI ("working well") and authorized the merges. Both PRs admin-merged, version-tagged, and GitHub-released:
+- **Host** `cdufresne81/nc-flash`: PR #81 → `master` (merge `4388dcc`); CHANGELOG `[Unreleased]`→`[v2.9.0]` (`dd96ace`); **tag `v2.9.0`** + release published. Bundles the whole-session bus reservation + 0x41-drain fix + the full accumulated WiCAN stack since v2.8.0.
+- **Firmware** `cdufresne81/nc-flash-wican-fw`: PR #11 (`claude/coexistence-slcan-port`) → `wican-pro` (merge `d17733d`, incl. `283bb23` #43 lease dedup); **tag `v1.1.0`** + release published (no CHANGELOG in that repo — notes written by hand).
+
+**Gotcha (recorded in memory):** host `master` is governed by a repo **ruleset** ("changes must be made through a pull request"), not classic branch protection (`branches/master/protection` → 404). `gh pr merge --admin` + direct `git push` to master both succeed via **admin bypass** (warns but the ref updates). This is why PRs show `reviewDecision: REVIEW_REQUIRED`.
+
+**Notes:** OTA-from-fork-releases isn't wired yet (#8), so the firmware release tag does NOT auto-push to devices — flash via `/upload/ota.bin`. Device 192.168.1.169 already runs the released build. Optional confirmation left: a GUI coexist connect end-to-end + one more real SD coexist flash on v1.1.0. New backlog: firmware issue **#12** (event_log flash-operation visibility). See [[project_wican_slcan_coexistence]].
+
 ## ✅ #43 DONE: firmware lease_t refactor (dedupe claim/park primitives) — ultracode, built + adversarially verified (Jun 27, 2026)
 
 **What:** Collapsed the two byte-identical dead-man lease families in `../nc-flash-wican-fw/main/can.c` — the host-bus-claim (`s_claim_*`) and datalog-park (`s_park_*`), each {active+token+owner_gen+deadline} with identical arm/renew/release/reap/token logic — into ONE `volatile lease_t` + generic `lease_arm/renew/release/reap/token` + `lease_clear`, with `can_host_bus_claim_*`/`can_park_lease_*` now thin one-line wrappers picking `&s_claim` / `&s_park`. Net **−52 lines** (88 ins / 140 del). Zero public-signature changes (`can.h` git-diff EMPTY). Single shared `s_token_seq` + `s_park_mux` preserved (token global-uniqueness, single-acquisition cross-lease snapshot). Every field kept `volatile` so the lock-free `.active` hot-path reads keep exact single-byte semantics.

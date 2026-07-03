@@ -4,6 +4,9 @@ All notable changes to NC Flash are documented here.
 
 ## [Unreleased]
 
+### Changed
+- **Stop tracking `.claude/plans/` planning docs** — the per-feature goal/spec driver docs are now gitignored instead of committed. They're AI working notes that drift out of date, while the shipped `CHANGELOG.md` and the code are the durable record; the six previously-tracked docs are removed from version control (local copies kept, now ignored). Older released changelog entries keep their `See .claude/plans/…` pointers as historical references. `.claude/notes.md`, the custom commands, and the CHANGELOG-guard hook stay tracked — the session workflow still depends on those. (Refines the v2.9.0 decision that had kept plan docs tracked.)
+
 ## [v2.9.0] - 2026-06-28
 
 ### Added
