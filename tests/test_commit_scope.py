@@ -7,10 +7,12 @@ own edits could be omitted from the snapshot). The fix scopes both the save and
 the pending set to the project ROM only.
 """
 
+import os
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
+import pytest
 from PySide6.QtWidgets import QApplication, QDialog
 
 from src.ui.project_mixin import ProjectMixin
@@ -59,9 +61,15 @@ def test_clear_pending_for_rom_leaves_other_rom_intact():
     assert tracker.has_pending_changes() is True  # foreign edits survive
 
 
+@pytest.mark.skipif(
+    os.name != "nt",
+    reason="Windows-only: pathlib unifies backslash and forward-slash forms only on nt; "
+    "on POSIX a backslash is a literal filename character.",
+)
 def test_per_rom_filter_normalizes_path_separators():
     tracker = _seed_two_roms()
     # Forward-slash form of the same path (QFileDialog vs Path) must still match.
+    # This unification is a Windows path semantic (the app's deployment target).
     assert tracker.get_pending_changes_for_rom("C:/proj/working.bin")
 
 
