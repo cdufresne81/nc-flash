@@ -27,16 +27,40 @@ class TestTrySendToRunningInstance:
 
         assert _try_send_to_running_instance("C:\\fake\\path.bin", ipc_name) is False
 
-    def test_connects_to_running_server(self, ipc_name):
+    def test_returns_false_when_server_accepts_but_never_acks(self, ipc_name):
+        """A hung instance accepts the OS-level connection but its event loop
+        never ACKs — the sender must NOT exit on connect alone (B11)."""
         from main import _try_send_to_running_instance
 
         server = QLocalServer()
         assert server.listen(ipc_name)
-
+        # The server's newConnection slot never runs (no event loop spin here),
+        # exactly like a deadlocked GUI thread.
         result = _try_send_to_running_instance("C:\\some\\file.bin", ipc_name)
-        assert result is True
+        assert result is False
 
         server.close()
+
+    def test_returns_true_when_instance_acks(self):
+        from main import _IPC_ACK, _try_send_to_running_instance
+
+        socket = MagicMock()
+        socket.waitForConnected.return_value = True
+        socket.waitForReadyRead.return_value = True
+        socket.readAll.return_value.data.return_value = bytes(_IPC_ACK)
+        with patch("main.QLocalSocket", return_value=socket):
+            assert _try_send_to_running_instance("C:\\some\\file.bin") is True
+        socket.write.assert_called_once()
+
+    def test_returns_false_on_wrong_ack_payload(self):
+        from main import _try_send_to_running_instance
+
+        socket = MagicMock()
+        socket.waitForConnected.return_value = True
+        socket.waitForReadyRead.return_value = True
+        socket.readAll.return_value.data.return_value = b"garbage"
+        with patch("main.QLocalSocket", return_value=socket):
+            assert _try_send_to_running_instance("C:\\some\\file.bin") is False
 
 
 class _IpcTestWidget(QWidget):
@@ -57,19 +81,24 @@ class _IpcTestWidget(QWidget):
             raise RuntimeError(self._ipc_server.errorString())
 
     def _on_ipc_connection(self):
+        from main import _IPC_ACK
+
         conn = self._ipc_server.nextPendingConnection()
         if not conn:
             return
         conn.waitForReadyRead(1000)
         data = conn.readAll().data().decode("utf-8").strip()
+        # ACK so the sender knows this event loop is alive (B11).
+        conn.write(_IPC_ACK)
+        conn.flush()
+        conn.waitForBytesWritten(500)
         conn.disconnectFromServer()
         if data and os.path.isfile(data):
             self._open_rom_file(data)
-            self.setWindowState(
-                self.windowState() & ~Qt.WindowMinimized | Qt.WindowActive
-            )
-            self.raise_()
-            self.activateWindow()
+        # A second launch always surfaces this window (B11).
+        self.setWindowState(self.windowState() & ~Qt.WindowMinimized | Qt.WindowActive)
+        self.raise_()
+        self.activateWindow()
 
 
 class TestIpcServer:
@@ -155,3 +184,53 @@ class TestIpcServer:
     # (separate processes) was verified manually and works correctly.
     # Individual pieces are covered by TestTrySendToRunningInstance and
     # TestIpcServer above.
+
+
+class TestOnIpcConnectionRealMethod:
+    """Exercise the REAL MainWindow._on_ipc_connection logic via a fake conn (B11)."""
+
+    @staticmethod
+    def _fake_self(data):
+        from types import SimpleNamespace
+
+        conn = MagicMock()
+        conn.readAll.return_value.data.return_value.decode.return_value = data
+        server = MagicMock()
+        server.nextPendingConnection.return_value = conn
+        return SimpleNamespace(
+            _ipc_server=server,
+            _open_rom_file=MagicMock(),
+            setWindowState=MagicMock(),
+            windowState=MagicMock(return_value=Qt.WindowNoState),
+            raise_=MagicMock(),
+            activateWindow=MagicMock(),
+        )
+
+    def test_focus_token_surfaces_window_without_opening_a_file(self):
+        from main import MainWindow, _IPC_FOCUS_TOKEN
+
+        fake = self._fake_self(_IPC_FOCUS_TOKEN)
+        MainWindow._on_ipc_connection(fake)
+
+        fake._open_rom_file.assert_not_called()
+        fake.raise_.assert_called_once()
+        fake.activateWindow.assert_called_once()
+
+    def test_connection_is_acknowledged(self):
+        """The handler must ACK so the sender knows the event loop is alive (B11)."""
+        from main import MainWindow, _IPC_ACK, _IPC_FOCUS_TOKEN
+
+        fake = self._fake_self(_IPC_FOCUS_TOKEN)
+        MainWindow._on_ipc_connection(fake)
+
+        conn = fake._ipc_server.nextPendingConnection.return_value
+        conn.write.assert_called_once_with(_IPC_ACK)
+
+    def test_file_path_opens_and_surfaces_window(self, sample_rom_path):
+        from main import MainWindow
+
+        fake = self._fake_self(str(sample_rom_path))
+        MainWindow._on_ipc_connection(fake)
+
+        fake._open_rom_file.assert_called_once_with(str(sample_rom_path))
+        fake.activateWindow.assert_called_once()

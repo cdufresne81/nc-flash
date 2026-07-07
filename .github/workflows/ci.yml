@@ -21,6 +21,10 @@ jobs:
             python-version: '3.12'
           - os: windows-latest
             python-version: '3.12'
+          # Dev happens on Windows + Python 3.14; test that exact interpreter so
+          # dev-vs-CI drift is caught (H2).
+          - os: windows-latest
+            python-version: '3.14'
 
     steps:
     - uses: actions/checkout@v5

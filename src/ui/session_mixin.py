@@ -22,7 +22,8 @@ from src.utils.logging_config import get_logger
 from src.utils.constants import APP_NAME, APP_VERSION_STRING, APP_DESCRIPTION
 from src.core.rom_detector import RomDetector
 from src.core.project_manager import ProjectManager
-from src.core.exceptions import DetectionError, RomEditorError
+from src.core.exceptions import DetectionError, RomEditorError, RomFileError
+from src.ui.error_helpers import handle_rom_operation_error
 from src.ui.settings_dialog import SettingsDialog
 
 logger = get_logger(__name__)
@@ -46,7 +47,7 @@ class SessionMixin:
                     # Explicit project tab
                     project_path = entry[len("project:") :]
                     if Path(project_path).exists():
-                        self.open_project_path(project_path)
+                        self.open_project_path(project_path, prompt_on_switch=False)
                     else:
                         logger.warning(
                             f"Session project folder no longer exists: {project_path}"
@@ -62,7 +63,7 @@ class SessionMixin:
                         logger.info(
                             f"Session ROM is inside project folder, restoring as project: {parent}"
                         )
-                        self.open_project_path(str(parent))
+                        self.open_project_path(str(parent), prompt_on_switch=False)
                     else:
                         self._open_rom_file(entry)
             except RomEditorError as e:
@@ -95,7 +96,15 @@ class SessionMixin:
                     event.ignore()
                     return
                 elif response == QMessageBox.Save:
-                    document.save()
+                    # A failed save must not escape closeEvent (crash under
+                    # PySide6) and silently discard the user's edits — cancel
+                    # the close and surface the error instead (B5).
+                    try:
+                        document.save()
+                    except RomFileError as e:
+                        handle_rom_operation_error(self, "save ROM file", e)
+                        event.ignore()
+                        return
 
         # Collect paths of all open ROM documents
         # For project tabs, save as "project:<path>" so restore reopens the project

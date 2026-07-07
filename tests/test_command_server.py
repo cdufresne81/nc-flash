@@ -180,6 +180,35 @@ class TestCommandServer:
         finally:
             server.stop()
 
+    def test_non_dict_json_returns_400(self):
+        """A valid-JSON but non-object body (list/number) must 400, not drop (B14)."""
+        server = self._make_server()
+        assert server.start()
+        try:
+            error_holder = [None]
+
+            def do_post():
+                try:
+                    req = urllib.request.Request(
+                        f"http://127.0.0.1:{self.TEST_PORT}/api/read-table",
+                        data=json.dumps([1, 2, 3]).encode("utf-8"),
+                        headers={"Content-Type": "application/json"},
+                        method="POST",
+                    )
+                    urllib.request.urlopen(req, timeout=5)
+                except urllib.error.HTTPError as e:
+                    error_holder[0] = e
+
+            t = threading.Thread(target=do_post)
+            t.start()
+            self._process_events(0.5)
+            t.join(timeout=5)
+
+            assert error_holder[0] is not None
+            assert error_holder[0].code == 400
+        finally:
+            server.stop()
+
     def test_callback_exception_returns_error(self):
         def bad_callback(req):
             raise ValueError("Something went wrong")

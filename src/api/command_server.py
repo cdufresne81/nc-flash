@@ -57,6 +57,14 @@ class _RequestHandler(BaseHTTPRequestHandler):
             self._send_json(400, {"success": False, "error": f"Invalid JSON: {e}"})
             return
 
+        # A non-object body (list/str/number) would make payload["endpoint"]=...
+        # raise TypeError and drop the connection instead of a clean 400 (B14).
+        if not isinstance(payload, dict):
+            self._send_json(
+                400, {"success": False, "error": "Request body must be a JSON object"}
+            )
+            return
+
         payload["endpoint"] = self.path
 
         # Place request on queue and wait for Qt main thread to process it

@@ -42,7 +42,9 @@ from src.ecu.flash_manager import (
 )
 from src.ecu.exceptions import ECUError, FlashAbortedError, ROMValidationError
 from src.ecu.rom_utils import get_cal_id
+from src.ecu.dtc import dedup_dtcs
 from src.ui.log_console import LogConsole
+from src.ui import theme
 
 logger = logging.getLogger(__name__)
 
@@ -428,14 +430,6 @@ class ECUProgrammingWindow(QMainWindow):
             self._session.cleanup()
             self._session = None
 
-        # Disconnect main window session if active
-        if (
-            hasattr(self._main_window, "_ecu_session")
-            and self._main_window._ecu_session
-        ):
-            if self._main_window._ecu_session.is_connected:
-                self._main_window._ecu_session.disconnect_ecu()
-
         adapter = self._build_adapter_config()
         if adapter["kind"] == "wican":
             connecting_msg = "Connecting to WiCAN (may reboot to SLCAN, ~6s)..."
@@ -464,6 +458,7 @@ class ECUProgrammingWindow(QMainWindow):
 
     def _on_session_state(self, state: str):
         if state == ECUSessionState.CONNECTED.value:
+            self._disconnect_reason = None  # clear any stale loss reason
             self._conn_label.setText("Connected")
             self._conn_label.setStyleSheet(
                 "font-weight: bold; font-size: 13px; color: #44aa44; border: none;"
@@ -472,7 +467,12 @@ class ECUProgrammingWindow(QMainWindow):
             self._btn_disconnect.setEnabled(True)
             self._read_conditions_async()
         elif state == ECUSessionState.DISCONNECTED.value:
-            self._conn_label.setText("Disconnected")
+            # Surface why the link dropped, if a connection_lost reason was
+            # captured, instead of a bare "Disconnected" (G7).
+            reason = getattr(self, "_disconnect_reason", None)
+            self._conn_label.setText(
+                f"Disconnected — {reason}" if reason else "Disconnected"
+            )
             self._conn_label.setStyleSheet(
                 "font-weight: bold; font-size: 13px; color: gray; border: none;"
             )
@@ -490,8 +490,17 @@ class ECUProgrammingWindow(QMainWindow):
 
     def _on_connection_lost(self, reason: str):
         logger.warning("Connection lost: %s", reason)
+        # Remember the reason so the DISCONNECTED state can render it too,
+        # regardless of which signal arrives first (G7).
+        self._disconnect_reason = reason
         self._poll_timer.stop()
         self._reset_cards()
+        if reason:
+            self._conn_label.setText(f"Disconnected — {reason}")
+            self._conn_label.setStyleSheet(
+                "font-weight: bold; font-size: 13px; "
+                f"color: {theme.WARNING_AMBER}; border: none;"
+            )
         self._update_action_states()
 
     # --- Condition Reading ---
@@ -523,8 +532,7 @@ class ECUProgrammingWindow(QMainWindow):
             data["rom_id"] = "N/A"
         try:
             dtcs = uds.read_dtc_status()
-            seen = set()
-            unique = [d for d in dtcs if d.code not in seen and not seen.add(d.code)]
+            unique = dedup_dtcs(dtcs)
             data["dtc_count"] = len(unique)
             data["dtcs"] = unique
         except Exception:
@@ -919,8 +927,14 @@ class ECUProgrammingWindow(QMainWindow):
                     source_name=source_name,
                 )
             started = True
-        except Exception:
-            pass
+        except Exception as e:
+            # A flash that fails to start must not look like a no-op (B7).
+            logger.exception(f"Failed to start flash: {type(e).__name__}: {e}")
+            QMessageBox.critical(
+                self,
+                "Flash Error",
+                f"Could not start the flash:\n{type(e).__name__}: {e}",
+            )
         finally:
             if not started:
                 self._ecu_busy = False
@@ -959,8 +973,14 @@ class ECUProgrammingWindow(QMainWindow):
                 source_name=rom_path.name,
             )
             started = True
-        except Exception:
-            pass
+        except Exception as e:
+            # A flash that fails to start must not look like a no-op (B7).
+            logger.exception(f"Failed to start flash: {type(e).__name__}: {e}")
+            QMessageBox.critical(
+                self,
+                "Flash Error",
+                f"Could not start the flash:\n{type(e).__name__}: {e}",
+            )
         finally:
             if not started:
                 self._ecu_busy = False
@@ -995,8 +1015,9 @@ class ECUProgrammingWindow(QMainWindow):
 
           * J2534: a ``FlashManager`` borrowing the open J2534 session.
           * WiCAN read/scan: a ``FlashManager`` borrowing the WiCAN ``uds``.
-          * WiCAN flash: a ``WiCANFlasher`` (pre-flight link gate + battery guard
-            + abort-and-restart, no mid-stream resend) over the WiCAN transport.
+          * WiCAN flash: a ``WiCANSdFlasher`` (SD-staged, firmware-driven; the
+            old host-driven ``WiCANFlasher`` survives only as its pre-flight
+            link + battery gate) over the WiCAN transport.
 
         Sets ``self._session_acquired``. Returns ``None`` if a WiCAN operation
         has no open connection (the caller aborts the op).
@@ -1116,8 +1137,8 @@ class ECUProgrammingWindow(QMainWindow):
             self._btn_abort.clicked.disconnect()
         except RuntimeError:
             pass  # No previous connections
-        # Only read-only FlashManager ops expose abort; WiCANFlasher (write) does
-        # not, and abort is disabled for writes anyway (aborting risks a brick).
+        # Only read-only FlashManager ops expose abort; WiCANSdFlasher (write)
+        # does not, and abort is disabled for writes anyway (aborting risks a brick).
         if hasattr(manager, "abort"):
             self._btn_abort.clicked.connect(manager.abort)
 
@@ -1349,9 +1370,7 @@ class ECUProgrammingWindow(QMainWindow):
         try:
             manager = FlashManager(self._get_dll_path())
             dtcs = manager.read_dtcs(uds=self._session.uds)
-
-            seen = set()
-            unique = [d for d in dtcs if d.code not in seen and not seen.add(d.code)]
+            unique = dedup_dtcs(dtcs)
             self._dtcs = unique
 
             if not unique:
@@ -1428,7 +1447,8 @@ class ECUProgrammingWindow(QMainWindow):
                 event.ignore()
                 return
             # Force-stop the running operation (read-only FlashManager ops only;
-            # WiCANFlasher writes have no abort — they restart-from-scratch).
+            # WiCANSdFlasher writes have no abort — once staged, the firmware
+            # drives the flash to completion on its own).
             if self._current_manager and hasattr(self._current_manager, "abort"):
                 self._current_manager.abort()
             if self._flash_thread and self._flash_thread.isRunning():

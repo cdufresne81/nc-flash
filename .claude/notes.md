@@ -1,5 +1,266 @@
 # Session Notes
 
+## ⏳ PENDING VALIDATION & FOLLOW-UPS (from user manual test, Jul 6, 2026)
+
+- **[RETEST-ON-BINARY] B2 + B5 not yet verified** — user has the installed binary running, can't
+  test the working-tree branch for these. **Re-test once a new binary is built + installed on this PC:**
+  B2 = edit → Save → Undo → close must prompt to save; B5 = make ROM read-only, edit, close+save → error
+  dialog + close cancelled (no crash).
+- **[B15 — FIXED Jul 6, 2026] Project tab now shows `*` when modified** (was: only standalone ROMs did).
+  Fix: (1) `open_project_path` connects `rom_document.modified_changed` → `_update_tab_title`; (2) RomDocument
+  carries a `tab_base_title` (`file_name` for standalone, `"[P] {name}"` for projects, kept in sync across
+  Save As); (3) `_update_tab_title` prefixes `*` onto `tab_base_title` → a modified project reads `*[P] name`.
+  Cosmetic only (close prompt was already gated on `is_modified()`). Tests: `test_tab_title_modified_marker.py`
+  (5). **[RETEST-ON-BINARY]** confirm visually once a new binary is installed.
+- **B12 confirmed working; compare window is SLOW** (user: not a regression, feels identical to before).
+  This is already tracked as **E3** (Phase 5) — compare window computes all diffs synchronously in its
+  constructor. No new action; validates the E3 finding.
+- **B7, G7 accepted blindly** (hard to test without bench). User priority: **do not break current flashing**.
+  Note: Phase 0-2 made NO changes to the flash/transport core (`src/ecu/` driver/session/transport);
+  B7/G7 only touch `src/ui/ecu_window.py` (error dialog on flash-*start* failure + status-label text) —
+  the flash sequence itself is byte-for-byte unchanged.
+
+## 🔍 FABLE 5 DEEP REVIEW of arch-hardening branch — ALL fixes applied (Jul 7, 2026)
+
+**Driver:** user asked to review Opus's uncommitted branch work and fix issues. Multi-agent
+adversarial-review workflow (`wf_c66a169c-c33`, salvaged via resume after a session-limit
+interruption — 34 agents, 22 confirmed / 5 refuted findings across 7 dimensions) + my own
+verification. Baseline 1558/12 before fixes; **final suite 1583 passed / 12 skipped** (+25 tests,
+0 regressions), black clean. NOT committed (user-gated).
+
+**Fixes beyond the first batch below (all verified findings addressed):**
+- **B8 COMPLETION (medium):** bulk handlers + compare-copy/MCP external-edit pipeline now
+  write-then-notify with best-effort rollback of partially-landed bulk writes; MCP returns
+  success:false on a failed write (was success:true). +11 tests in test_edit_write_commit.py.
+- **B11 hardening (medium):** single-instance handoff now requires an event-loop ACK from the
+  running instance; hung instance → new window opens (was: silent exit 0, Task Manager recovery).
+- **B4 hardening (medium):** failed project open (missing definition/load error after bind)
+  unbinds the tabless project so it can't invisibly block all later opens; session-restore
+  project skip now surfaces in the status bar. +3 tests.
+- **Guardrail-test gaps (medium):** architecture walker now sees `from src import ui`/`from .. import ui`
+  back-edges; flash-prep equivalence gained a static composition ratchet (both flash modules call
+  prepare_flash_image, neither touches correct_rom_checksums/get_sbl_data) — the byte tests alone
+  were circular post-refactor.
+- **Low fixes:** B10 axis-child failure now drops the crippled parent table (+2 tests); B9 temp-file
+  cleanup on failed os.replace; #cc6600 → theme.WARNING_AMBER + main.py added to theme ratchet
+  (budget 4, ecu_window 40→39); test_runner bulk emits fixed (1-arg vs Signal(object,list) TypeError,
+  pre-existing); validate_autoblip_defs exits non-zero on failure + argc guard; wican_flash_diag
+  --commit help/usage no longer advertises a real flash; WICAN_TRANSPORT.md §6 rewritten for the
+  SD-staged path; ARCHITECTURE.md pointers/theme-builder/tense fixed.
+- **DEFERRED (deliberate):** B2 spurious dirty flag after undo-back-to-saved-state (safe-side —
+  extra save prompt, never data loss; a correct fix needs per-document clean-state tracking across
+  per-table undo stacks). Auto-Blip XML left untouched (user's separate stream) but now documented
+  in CHANGELOG [Unreleased] Added with a "reads garbage on stock ROM" note.
+
+- **✅ FIXED (HIGH): project revert targeted the ACTIVE TAB, not the project ROM** —
+  `_on_revert_version` used `get_current_document()`: with a foreign tab active it reloaded the
+  wrong document (discarding its unsaved edits) while the project doc kept stale pre-revert bytes
+  (a later save silently undid the revert). Also cleared pending changes GLOBALLY and left undo
+  stacks recorded against pre-revert bytes (replaying one would corrupt the reverted ROM). Now
+  mirrors B3 commit scoping: resolve by `working_rom_path`, close that ROM's table windows,
+  drop its undo stacks, `clear_pending_for_rom`, `set_modified(False)`, re-baseline edit state.
+  Tests: `tests/test_revert_scope.py` (5).
+- **✅ FIXED: `src/mcp` was missing from the architecture ratchet** — `tests/test_architecture.py`
+  FORBIDDEN now includes `mcp` in the no-`ui`-import set (ARCHITECTURE.md already claimed it was
+  enforced; src/mcp is clean). CLAUDE.md rule line aligned.
+- **✅ FIXED: residual-checksum `ChecksumError` lost its diagnostic** — `prepare_flash_image` now
+  folds the applied-corrections count + residual regions into the error message (the corrections
+  list only reached the caller's log on success). Message-only, pre-ECU-contact, brick-safe.
+- **✅ FIXED: 3 stale `ecu_window.py` docstrings/comments** still described the retired host-driven
+  `WiCANFlasher` abort-and-restart flash (now name `WiCANSdFlasher` SD-staged path).
+- **CHANGELOG:** D1 entry now documents the failure-path deviations honestly (pre-connect SBL →
+  typed `FlashError` instead of raw `ValueError`; `build_flash_package` identical-ROM check ordering);
+  new Fixed entry for the revert scoping bug.
+- **Verified sound (no action):** flash-prep unification byte-equivalent (independently recomputed +
+  empirical byte-compare on lf9veb.bin full+dynamic); Phase 3 edit-state ownership (late-bound
+  rom_path lambdas are Save-As safe; no stale signal consumers); clamp_ratio/format helpers exact
+  behavioral matches; B1-B15 fixes as claimed.
+- **⚠️ FLAG for user:** `examples/metadata/lf9veb.xml` Auto-Blip tables (+37 lines, 0xfcac0-0xfcafc)
+  + `tools/validate_autoblip_defs.py` look like a SEPARATE work stream riding on this branch.
+
+## 🚀 ARCH HARDENING — /goal: execute ALL remaining phases (Jul 6, 2026 — session 3, IN PROGRESS)
+
+**Driver:** user `/goal` = execute every remaining phase of `.claude/plans/architecture-goal.md`,
+then `/simplify`, then Fable review, then produce an end-to-end test checklist. Branch
+`feature/architecture-hardening`. NOT committed (user-gated). Ultracode on — using workflows for
+map/design + adversarial verify, implementing coupled edits inline.
+
+- **✅ Phase 3 CORE DONE (C1/C2/C3/C5)** — single-owner edit state.
+  - New `src/core/table_edit_state.py` `TableEditState` (pure: borders + capture-once originals).
+    `RomDocument` owns `document.edit_state` + tint (`get_color()/set_color()`). Viewer takes
+    `edit_owner` and delegates all border storage (no dict across boundaries).
+  - `TableViewerWindow` re-emits `cell_edited/bulk_edited/axis_edited/axis_bulk_edited` with rom_path
+    bound; `_get_sender_rom_context` + silent active-tab fallback DELETED → `_resolve_edit_target`
+    fails loud. Handlers gained a rom_path first arg.
+  - Color allocator/swatch/picker/compare/close/Save-As all go through the document; MainWindow keeps
+    only the palette-cycle allocator.
+  - C3 minimal: commit re-baselines borders + re-captures originals (`_reset_document_edit_baseline`).
+  - **5-lens adversarial verify (workflow phase3-verify): NO behavior regression.** Full suite
+    **1549 passed / 12 skipped**. Tests: `test_table_edit_state.py` (8), `test_phase3_edit_ownership.py` (12).
+  - 3f (C4 McpMixin→collaborator) DEFERRED (optional). **[RETEST-ON-BINARY]** manual 2-ROM cross-edit smoke.
+- **✅ Phase 4 DONE** — D1 (brick-critical): NEW `src/ecu/flash_prep.py::prepare_flash_image` shared by J2534
+  `_flash_rom_inner` + SD `build_flash_package` + byte-equality gate `test_flash_prep_equivalence.py`. D2 deleted
+  `flash_setup_dialog.py`. D4 (user-approved) retired Option-A WiCANFlasher flash methods → gate-only. D3-step1 +
+  D7/D8/D9 dedups (clamp_ratio/value_to_color, shared format helpers, dedup_dtcs, hoisted ISO15765 imports).
+  **DEFERRED:** D5 (_http_request — heterogeneous connectivity code, conservative), D3-step2 (shared cell-renderer),
+  D8-part2 (conditions→read_dtcs seam), D6 (bench).
+- **✅ Phase 5** — E2 lazy matplotlib (measured **~1.15 s** off cold start; ratchet `test_lazy_matplotlib.py`).
+  E1 DEFERRED (hardware-gated ECU threading), E3/E4/E5 DEFERRED (QThread/optional).
+- **✅ Phase 6a** — NEW `src/ui/theme.py` + `get_toolbar_stylesheet` (F2: 3 toolbars migrated); shrink-only
+  color-literal ratchet `test_theme_ratchet.py` (baseline 104). **6b ROM sidebar DEFERRED** — needs a focused
+  session + user screenshot sign-off; B1 (its correctness driver) already fixed.
+- **✅ Phase 7** — G5/G6 pure-logging (0x41 WARNING→DEBUG; log swallowed RPM/voltage exception). G1-G4 + G5-cap
+  DEFERRED (wire-adjacent, bench-gated).
+- **✅ Phase 8** — H1 (README WiCAN), H2 (CI win/3.14 leg), H5 (log prune 30), H7 (git rm debug artifact),
+  H8 (`__test__=False`), H10 (rom_detector multi-match warn). H3/H4/H6/H9/H11 DEFERRED.
+- **✅ Finalize** — simplify workflow (5 safe cleanups applied: redundant is_modified guard, dead return,
+  display axis-gradient→clamp_ratio ×3, unused J2534Error/UDSError imports, read_dtcs→dedup_dtcs). Fable review
+  (above) caught + fixed the axis-refresh bug. **Full suite 1557 passed / 12 skipped** (only the 2 env clipboard
+  COM flakes fail). NOT committed — awaiting user validation. See goal doc for the full deferred-items handoff.
+- **✅ Fable review pass (Jul 6)** — fixed the flagged pre-existing asymmetry: `_apply_external_axis_edits`
+  now refreshes an already-open table window (mirrors `_apply_external_cell_edits`; compare-copy axis
+  values no longer stale on screen). Tests: `tests/test_external_edit_refresh.py` (3). Also freshened two
+  stale docstrings in `src/ecu/wican_sd_flash.py` (comment-only). CHANGELOG Fixed entry added.
+  Review verdict: flash-prep unification byte-equivalent (dynamic diff uses raw rom_data in both old+new
+  code → same flash_start_index); Phase 3 ownership, B-fixes, theme, lazy-matplotlib all clean.
+
+## 🔶 ARCH HARDENING — Phase 3 STARTED (single-owner state) (Jul 6, 2026 — session 2)
+
+**Branch:** `feature/architecture-hardening`. **/goal driver:** `.claude/plans/architecture-goal.md`
+— Phase 3 partially done: the 3 self-contained cleanups landed; the coupled C1/C2/C3 core remains.
+
+- **B15** (from prior manual test) — project tab now shows `*` when modified. RomDocument gains
+  `tab_base_title` (`file_name` standalone / `[P] {name}` project, synced on Save As); `open_project_path`
+  connects `modified_changed`; `_update_tab_title` prefixes `*` onto `tab_base_title`. Test:
+  `test_tab_title_modified_marker.py` (5). **[RETEST-ON-BINARY]** confirm visually on next installed build.
+- **3d (C6)** — deleted FlashMixin's dead ECU-session half (`_ecu_session` was always None) + the false
+  `_main_window._ecu_session` read in ecu_window + the no-op `_cleanup_ecu_session()` closeEvent call.
+  Kept `_on_patch_rom`. Behavior-preserving (dead code never ran). ECUProgrammingWindow = sole session owner.
+- **3e (C7)** — MCP `/api/modified` routes through `ChangeTracker.get_pending_changes_for_rom(doc canonical path)`
+  instead of reading `_pending` with a divergent path normalization. Test: `test_mcp_list_modified_scope.py` (3).
+- **C8** — TableKey hints/docstrings fixed (`_pending`, `_stacks`, `get_or_create_stack`, `set_active_stack`,
+  module docstrings); dead `\0` fallbacks dropped from `extract_table_address`/`extract_rom_path` (live
+  bare-address path kept + documented); removed unused `Union` import.
+
+**Gates:** black clean; enforced flake8 (E9,F63,F7,F82) clean for my changes (2 pre-existing F821 forward-ref
+strings on main.py unchanged — identical on HEAD, CI's pyflakes tolerates them); full suite **1529 passed / 12
+skipped** (1 warning = pre-existing H8). **NOT committed — awaiting user validation.**
+
+**⏭️ NEXT (Phase 3 core — the risky coupled unit, do as ONE focused session):**
+- **3a (C1)** move `modified_cells` + `original_table_values` (+ rom color) onto RomDocument; TableViewer +
+  MainWindow go through document methods; NO dict handed across object boundaries (main.py:~1520 wiring,
+  table_viewer.py mutations at ~704/721/807/841, main.py mutations ~1852/1902/1955).
+- **3b (C2+C5)** signals carry rom_path; DELETE `_get_sender_rom_context()` + its silent active-tab fallback
+  (main.py:~1799-1821). Window re-exposes viewer edit signals (kills the Law-of-Demeter break C5).
+- **3c (C3)** QUndoStack (+ original snapshot) = the ONE "modified" owner; dirty derives from `isClean()`;
+  reset pending baseline + borders on commit. Real-QUndoStack tests (not mocked).
+- **3f (C4, optional)** extract McpMixin → owned `McpServerController`.
+- **Smoke gate:** 2 ROMs + detached table windows, edits land on the RIGHT ROM.
+
+## ✅ ARCH HARDENING — Phase 2 (robustness batch) LANDED (Jul 6, 2026)
+
+**Branch:** `feature/architecture-hardening`. **/goal driver:** `.claude/plans/architecture-goal.md`
+— Phase 2 ticked ✅. Nine robustness/correctness items, all host-side (no ECU wire behaviour change).
+
+- **B6** excepthooks → `main._install_exception_hooks` (sys + threading, log CRITICAL then chain).
+- **B7** flash-start `except Exception: pass` → log + "Flash Error" dialog (ecu_window, both handlers).
+- **B9** metadata_writer atomic write (tmp+fsync+os.replace) + XPath variable (apostrophe-safe).
+- **B10** definition_parser guards numeric parse → skips malformed table, rest of file loads.
+- **B11** unconditional single-instance; bare re-launch focuses running instance (`_IPC_FOCUS_TOKEN`).
+- **B12** compare_window closeEvent nulls whichever parent ref (`compare_window`/`_compare_window`) is self.
+- **B13** test_runner table_browser screenshot target → `get_current_document()`.
+- **B14** command_server rejects non-dict JSON body with 400.
+- **G7** ECU status label shows "Disconnected — <reason>" (amber on loss), UI-only.
+
+**Tests:** test_exception_hooks, test_metadata_writer, test_definition_parser, test_single_instance,
+test_command_server, test_compare_window (+ B13 in test_runner path). **Gates:** black clean; full suite
+**1521 passed / 12 skipped** (1 warning = pre-existing H8). **NOT committed — awaiting user validation.**
+
+**Next:** Phase 3 — single-owner state (C1 root-cause structural refactor: move per-ROM edit state onto
+RomDocument, delete `_get_sender_rom_context` sender-walk, QUndoStack dirty authority, delete FlashMixin
+dead ECU half, MCP public accessor). **L, 2-3 sessions — recommend validating/committing Phases 0-2 first**
+before layering the structural refactor. Still open for user: D4 (Phase 4), H2 (Phase 8).
+
+## ✅ ARCH HARDENING — Phase 1 (critical data-integrity) LANDED (Jul 6, 2026)
+
+**Branch:** `feature/architecture-hardening`. **/goal driver:** `.claude/plans/architecture-goal.md`
+— Phase 1 ticked ✅. All six data-integrity bugs fixed with tests.
+
+- **B1** tab-drag wrong-ROM desync → `MainWindow.on_tab_moved` reorders `rom_stack` in lockstep
+  with the `tabMoved` signal (`tests/test_tab_reorder.py`).
+- **B2** undo-after-save silent discard → `set_modified(True)` after successful write in both undo
+  appliers (`tests/test_undo_dirty_flag.py`). Full QUndoStack-authority is Phase 3.
+- **B3** commit folded in foreign ROMs + snapshotted active tab → commit now resolves the project
+  doc via `working_rom_path`, saves/commits/clears only it. New `ChangeTracker.get_pending_changes_for_rom`
+  + `clear_pending_for_rom` (`tests/test_commit_scope.py`).
+- **B4** 2nd project rebound the singleton → `_ensure_single_project` guard (interactive prompt+close;
+  restore skips via `prompt_on_switch=False`). Updated 3 session-test call asserts (`tests/test_project_switch_guard.py`).
+- **B5** unguarded save-on-close → guarded in `_handle_close` + `close_tab`, cancel close on `RomFileError`
+  (`tests/test_close_save_guard.py`).
+- **B8** UI asserted un-written values → write-then-notify for single cell/axis edits;
+  `_write_to_rom_and_mark_modified` returns success, revert viewer + surface error on failure.
+  **Deviation (noted in goal doc):** scoped to single-edit handlers; bulk/external → Phase 3 (`tests/test_edit_write_commit.py`).
+
+**Gates:** `black` clean; full suite **1507 passed / 13 skipped** (1 warning = pre-existing H8;
+1 skip = flaky command_server 404 race, unrelated). **NOT committed — awaiting user validation.**
+
+**Next:** Phase 2 (robustness batch: B6 excepthooks, B7 flash-start handlers, B9 metadata atomic write,
+B10 definition parse guard, B11 single-instance, B12-B14, G7). Still open for user: D4, H2.
+
+## ✅ ARCH HARDENING — Phase 0 (LLM-first guardrails) LANDED (Jul 6, 2026)
+
+**Branch:** `feature/architecture-hardening` (created for the whole refactor). **/goal driver:**
+`.claude/plans/architecture-goal.md` — Phase 0 ticked ✅, no deviations.
+
+**What shipped (dev-facing, zero runtime change):**
+- `CLAUDE.md` → new `## Architecture Rules` section (12 lines, imperative: layering, single-owner
+  state, no-mixin, one-pipeline-copy, signals-carry-context, theme source of truth, ecu brick-critical).
+- `tests/test_architecture.py` → AST import-ratchet enforcing the two layering directions (no ui from
+  core/ecu/utils/api; no ecu from core/utils). Resolves absolute + relative + lazy imports; has a
+  vacuous-pass guard (scanned>20). **Passes today** — layering below src/ui is already clean.
+- `docs/internal/ARCHITECTURE.md` → one-page layer map, each rule tied to its audit incident
+  (C1/C4/D1/C2/F1); added to CLAUDE.md Key Documentation.
+- `CHANGELOG.md` → `### Added` entry under Unreleased.
+
+**Gates:** `black` clean, full suite **1482 passed / 12 skipped** (lone warning = pre-existing H8
+TestRunner collection notice). **NOT committed — awaiting user validation before any push.**
+
+**Next:** Phase 1 (critical data-integrity: B1 tab-drag desync, B2 undo-after-save dirty, B3 commit
+scope, B4 one-project guard, B5 save-on-close guard, B8 write-then-notify). Still open for user:
+D4 (retire Option-A WiCANFlasher — recommend yes), H2 (add 3.14 CI leg — recommend yes).
+
+## 📋 ARCHITECTURE AUDIT + HARDENING GOAL AUTHORED (Jul 6, 2026 — ultracode, 25 agents)
+
+**What:** Full senior-architect audit of the host app (user request: find what will bite long-term;
+maintainability + clean patterns, no over-engineering; bonus perf + UI). 8 Opus dimension auditors +
+April-audit status check + adversarial verifier per critical/high finding + completeness critic
+(~1.7M tokens, master @ fbaf144). Two dimensions (ecu, test) + critic re-run as direct agents after
+StructuredOutput retry-cap failures; top 2 unverified findings re-verified by the orchestrator.
+
+**Deliverables (NOT committed — .claude/plans is gitignored):**
+- **`.claude/plans/architecture-goal.md`** — goal driver, 9 phases (P0 LLM-first guardrails → P8 hygiene),
+  each independently landable via /goal. Settled decisions + binding "Not doing" fence inside.
+- **`.claude/plans/architecture-audit-findings.md`** — full evidence base (file:line anchors, post-verification
+  severities, verified-healthy list).
+
+**Headline findings:** 🔴 B1 tab-drag desyncs tab_bar↔rom_stack → edits/saves/FLASH hit the wrong ROM
+(main.py:343, setMovable(True), no tabMoved handler); B2 undo-after-save never sets dirty → silent discard on
+close; B3 commit writes EVERY open ROM's pending edits + snapshots the ACTIVE tab (project_mixin.py:173);
+B4 second project rebinds singleton ProjectManager (A's tab commits into B's history); B5 save-on-close
+unguarded (RomWriteError escapes closeEvent); D1 brick-critical flash-prep pipeline duplicated verbatim in
+wican_sd_package (rule-3, no equivalence test). ECU layer verdict: NO critical/high active brick bugs —
+defense-in-depth items only (cleanup() bypasses BUSY guard; 30s idle window can false-fail a slow flash).
+Healthy: layering below src/ui clean, atomic saves, MCP→Qt marshalling correct, 20/24 April items fixed,
+packaging/CI solid.
+
+**User decisions settled:** host-only scope; ECU conservative; UI = theming + ROM sidebar + perceived perf
+(NOT settings dialog); guidelines LLM-first (rules in CLAUDE.md + tests/test_architecture.py ratchet, rationale
+in docs/internal/ARCHITECTURE.md — repo is ~99% LLM-developed, memory `feedback_llm_first_guidelines`).
+**Still open for user:** D4 retire Option-A WiCANFlasher? (recommend yes); H2 CI python leg (recommend add 3.14).
+
+**Next session:** run /goal on `.claude/plans/architecture-goal.md` — Phase 0 (guardrails, ~1h) then Phase 1
+(critical data-integrity fixes). Nothing committed this session (analysis + plans only).
+
 ## ✅ MOBILE HAMBURGER DRAWER + CONTENT-FIT — deployed & hardware-verified (Jul 3, 2026)
 
 **What:** Replaced the phone-only horizontal-scroll tab strip with an off-canvas **hamburger drawer**

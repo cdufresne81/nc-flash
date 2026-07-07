@@ -13,8 +13,13 @@ from PySide6.QtGui import QColor, QBrush
 
 from ...core.rom_definition import Table, TableType, AxisType
 from ...utils.settings import get_settings
-from ...utils.colormap import get_colormap
-from ...utils.formatting import printf_to_python_format, format_value, get_scaling_range
+from ...utils.colormap import get_colormap, clamp_ratio
+from ...utils.formatting import (
+    format_value,
+    get_scaling_range,
+    get_scaling_format,
+    get_axis_format as _shared_axis_format,
+)
 from .context import (
     TableViewerContext,
     save_header_resize_modes,
@@ -223,12 +228,13 @@ class TableDisplayHelper:
                         self.format_value(display_y_axis[i], y_fmt)
                     )
                     # Apply gradient based on Y axis values
-                    if y_max != y_min:
-                        ratio = (display_y_axis[i] - y_min) / (y_max - y_min)
-                        ratio = max(0.0, min(1.0, ratio))
-                    else:
-                        ratio = 0.5
-                    y_item.setBackground(QBrush(self.ratio_to_color(ratio)))
+                    y_item.setBackground(
+                        QBrush(
+                            self.ratio_to_color(
+                                clamp_ratio(display_y_axis[i], y_min, y_max)
+                            )
+                        )
+                    )
                     # Store axis identification: ('y_axis', data_index)
                     # Account for flip when storing the actual data index
                     data_idx = (num_values - 1 - i) if flipy else i
@@ -354,12 +360,13 @@ class TableDisplayHelper:
                     x_item = QTableWidgetItem(
                         self.format_value(display_x_axis[col], x_fmt)
                     )
-                    if x_max != x_min:
-                        ratio = (display_x_axis[col] - x_min) / (x_max - x_min)
-                        ratio = max(0.0, min(1.0, ratio))
-                    else:
-                        ratio = 0.5
-                    x_item.setBackground(QBrush(self.ratio_to_color(ratio)))
+                    x_item.setBackground(
+                        QBrush(
+                            self.ratio_to_color(
+                                clamp_ratio(display_x_axis[col], x_min, x_max)
+                            )
+                        )
+                    )
                     data_idx = (cols - 1 - col) if flipx else col
                     x_item.setData(Qt.UserRole, ("x_axis", data_idx))
                     x_item.setData(
@@ -396,12 +403,13 @@ class TableDisplayHelper:
                     y_val_item = QTableWidgetItem(
                         self.format_value(display_y_axis[row], y_fmt)
                     )
-                    if y_max != y_min:
-                        ratio = (display_y_axis[row] - y_min) / (y_max - y_min)
-                        ratio = max(0.0, min(1.0, ratio))
-                    else:
-                        ratio = 0.5
-                    y_val_item.setBackground(QBrush(self.ratio_to_color(ratio)))
+                    y_val_item.setBackground(
+                        QBrush(
+                            self.ratio_to_color(
+                                clamp_ratio(display_y_axis[row], y_min, y_max)
+                            )
+                        )
+                    )
                     data_idx = (rows - 1 - row) if flipy else row
                     y_val_item.setData(Qt.UserRole, ("y_axis", data_idx))
                     y_val_item.setData(
@@ -499,39 +507,18 @@ class TableDisplayHelper:
             return f"{name} ({unit})"
         return name
 
-    def _printf_to_python_format(self, printf_format: str) -> str:
-        """Convert printf-style format to Python format spec."""
-        return printf_to_python_format(printf_format)
-
     def get_value_format(self) -> str:
         """Get the Python format spec for the current table's values."""
-        if not self.ctx.current_table or not self.ctx.rom_definition:
-            return ".2f"
-
-        scaling_name = self.ctx.current_table.scaling
-        if not scaling_name:
-            return ".2f"
-
-        scaling = self.ctx.rom_definition.get_scaling(scaling_name)
-        if not scaling or not scaling.format:
-            return ".2f"
-
-        return self._printf_to_python_format(scaling.format)
+        table = self.ctx.current_table
+        scaling_name = table.scaling if table else None
+        return get_scaling_format(self.ctx.rom_definition, scaling_name)
 
     def _get_axis_format(self, axis_type: AxisType) -> str:
         """Get the Python format spec for an axis."""
-        if not self.ctx.current_table or not self.ctx.rom_definition:
+        table = self.ctx.current_table
+        if not table:
             return ".2f"
-
-        axis_table = self.ctx.current_table.get_axis(axis_type)
-        if not axis_table or not axis_table.scaling:
-            return ".2f"
-
-        scaling = self.ctx.rom_definition.get_scaling(axis_table.scaling)
-        if not scaling or not scaling.format:
-            return ".2f"
-
-        return self._printf_to_python_format(scaling.format)
+        return _shared_axis_format(self.ctx.rom_definition, table, axis_type)
 
     def format_value(self, value: float, format_spec: str) -> str:
         """Format a value using the given format spec with error handling."""
@@ -575,11 +562,7 @@ class TableDisplayHelper:
                     min_val = float(np.min(values))
                     max_val = float(np.max(values))
 
-            if max_val == min_val:
-                ratio = 0.5
-            else:
-                ratio = (value - min_val) / (max_val - min_val)
-                ratio = max(0.0, min(1.0, ratio))
+            ratio = clamp_ratio(value, min_val, max_val)
 
         return self.ratio_to_color(ratio)
 
@@ -608,11 +591,7 @@ class TableDisplayHelper:
             min_val = float(np.min(axis_values))
             max_val = float(np.max(axis_values))
 
-        if max_val == min_val:
-            ratio = 0.5
-        else:
-            ratio = (value - min_val) / (max_val - min_val)
-            ratio = max(0.0, min(1.0, ratio))
+        ratio = clamp_ratio(value, min_val, max_val)
 
         return self.ratio_to_color(ratio)
 

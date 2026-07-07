@@ -33,6 +33,7 @@ from PySide6.QtGui import (
 
 from ..utils.constants import APP_NAME
 from .icons import make_icon
+from .theme import get_toolbar_stylesheet
 
 logger = logging.getLogger(__name__)
 from ..core.table_undo_manager import make_table_key
@@ -59,6 +60,19 @@ class TableViewerWindow(QMainWindow):
     # Args: TableKey namedtuple
     window_focused = Signal(object)
 
+    # Edit signals re-emitted from the inner TableViewer with this window's
+    # rom_path bound (finding C2/C5): MainWindow connects to THESE, so the
+    # handler always knows which ROM the edit belongs to — no sender()/parent()
+    # walk and no silent active-tab fallback.
+    # Args: rom_path, Table, row, col, old_value, new_value, old_raw, new_raw
+    cell_edited = Signal(object, object, int, int, float, float, float, float)
+    # Args: rom_path, Table, list of (row, col, ov, nv, oraw, nraw)
+    bulk_edited = Signal(object, object, list)
+    # Args: rom_path, Table, axis_type, index, old_value, new_value, old_raw, new_raw
+    axis_edited = Signal(object, object, str, int, float, float, float, float)
+    # Args: rom_path, Table, list of (axis_type, index, ov, nv, oraw, nraw)
+    axis_bulk_edited = Signal(object, object, list)
+
     def __init__(
         self,
         table: Table,
@@ -66,8 +80,7 @@ class TableViewerWindow(QMainWindow):
         rom_definition: RomDefinition,
         rom_path: str = None,
         parent=None,
-        modified_cells_dict: dict = None,
-        original_values_dict: dict = None,
+        document=None,
         diff_mode: bool = False,
         diff_base_data: dict = None,
         bg_color: QColor = None,
@@ -81,8 +94,10 @@ class TableViewerWindow(QMainWindow):
             rom_definition: ROM definition containing scalings
             rom_path: Path to ROM file (for identifying duplicates)
             parent: Parent widget (optional)
-            modified_cells_dict: Shared dict for tracking modified cells (persists across window instances)
-            original_values_dict: Shared dict with original table values (for smart border removal)
+            document: Owning RomDocument. The viewer shares the document's
+                TableEditState (modified-cell borders + capture-once originals)
+                by method — persists across window close/reopen. None for a
+                standalone window (tests), which gets a throwaway edit state.
             diff_mode: If True, show diff highlighting (read-only viewing)
             diff_base_data: Base version data to compare against in diff mode
             bg_color: Background tint color for this ROM (None = default gray)
@@ -135,11 +150,12 @@ class TableViewerWindow(QMainWindow):
         self.splitter.setHandleWidth(3)
         layout.addWidget(self.splitter)
 
-        # Create table viewer widget with shared tracking dicts
+        # Create table viewer widget sharing the document's edit state (borders +
+        # originals persist across window close/reopen because they live on the
+        # document, not this window).
         self.viewer = TableViewer(
             rom_definition,
-            modified_cells_dict=modified_cells_dict,
-            original_values_dict=original_values_dict,
+            edit_owner=document.edit_state if document is not None else None,
             diff_mode=diff_mode,
             diff_base_data=diff_base_data,
         )
@@ -165,6 +181,25 @@ class TableViewerWindow(QMainWindow):
         self.viewer.bulk_changes.connect(lambda *_: self._schedule_graph_refresh())
         self.viewer.axis_changed.connect(lambda *_: self._schedule_graph_refresh())
         self.viewer.axis_bulk_changes.connect(lambda *_: self._schedule_graph_refresh())
+
+        # Re-emit the viewer's edit signals with this window's rom_path bound so
+        # MainWindow's handlers know which ROM was edited (finding C2/C5).
+        self.viewer.cell_changed.connect(
+            lambda t, r, c, ov, nv, oraw, nraw: self.cell_edited.emit(
+                self.rom_path, t, r, c, ov, nv, oraw, nraw
+            )
+        )
+        self.viewer.bulk_changes.connect(
+            lambda t, changes: self.bulk_edited.emit(self.rom_path, t, changes)
+        )
+        self.viewer.axis_changed.connect(
+            lambda t, ax, idx, ov, nv, oraw, nraw: self.axis_edited.emit(
+                self.rom_path, t, ax, idx, ov, nv, oraw, nraw
+            )
+        )
+        self.viewer.axis_bulk_changes.connect(
+            lambda t, changes: self.axis_bulk_edited.emit(self.rom_path, t, changes)
+        )
 
         # Connect selection changed to update graph
         self.viewer.table_widget.itemSelectionChanged.connect(
@@ -327,29 +362,7 @@ class TableViewerWindow(QMainWindow):
         tb.setMovable(False)
         tb.setFloatable(False)
         tb.setIconSize(QSize(20, 20))
-        tb.setStyleSheet("""
-            QToolBar {
-                spacing: 1px;
-                padding: 1px 4px;
-                border: none;
-            }
-            QToolButton {
-                padding: 3px;
-                border: 1px solid transparent;
-                border-radius: 3px;
-            }
-            QToolButton:hover {
-                background: rgba(128, 128, 128, 0.15);
-                border: 1px solid rgba(128, 128, 128, 0.25);
-            }
-            QToolButton:pressed {
-                background: rgba(128, 128, 128, 0.3);
-            }
-            QToolButton:checked {
-                background: rgba(0, 120, 215, 0.15);
-                border: 1px solid rgba(0, 120, 215, 0.4);
-            }
-        """)
+        tb.setStyleSheet(get_toolbar_stylesheet(checked=True))
         self._toolbar = tb
 
         # --- File actions ---

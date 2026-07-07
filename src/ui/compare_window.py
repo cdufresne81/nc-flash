@@ -41,7 +41,8 @@ from PySide6.QtGui import (
 
 from ..core.rom_definition import Table, TableType, AxisType, RomDefinition
 from ..core.rom_reader import RomReader
-from ..utils.colormap import get_colormap
+from ..utils.colormap import value_to_color
+from .theme import get_toolbar_stylesheet
 from ..utils.formatting import (
     all_nan as _all_nan,
     format_value as _format_value,
@@ -378,25 +379,7 @@ class CompareWindow(QMainWindow):
         tb.setMovable(False)
         tb.setFloatable(False)
         tb.setIconSize(QSize(20, 20))
-        tb.setStyleSheet("""
-            QToolBar {
-                spacing: 1px;
-                padding: 1px 4px;
-                border: none;
-            }
-            QToolButton {
-                padding: 3px;
-                border: 1px solid transparent;
-                border-radius: 3px;
-            }
-            QToolButton:hover {
-                background: rgba(128, 128, 128, 0.15);
-                border: 1px solid rgba(128, 128, 128, 0.25);
-            }
-            QToolButton:pressed {
-                background: rgba(128, 128, 128, 0.3);
-            }
-        """)
+        tb.setStyleSheet(get_toolbar_stylesheet())
 
         # ROM labels with color swatches
         rom_label_a = self._make_rom_label(self._name_a, self._color_a)
@@ -1521,12 +1504,7 @@ class CompareWindow(QMainWindow):
 
     def _gradient_color(self, value: float, min_val: float, max_val: float) -> QColor:
         """Get thermal gradient color for a value within a range."""
-        if max_val == min_val:
-            ratio = 0.5
-        else:
-            ratio = (value - min_val) / (max_val - min_val)
-            ratio = max(0.0, min(1.0, ratio))
-        return get_colormap().ratio_to_color(ratio)
+        return value_to_color(value, min_val, max_val)
 
     def _get_cell_color(
         self,
@@ -1597,8 +1575,14 @@ class CompareWindow(QMainWindow):
         """Save geometry and clean up on close."""
         settings = QSettings()
         settings.setValue("ui/compare_window_geometry", self.saveGeometry())
+        # Clear the parent's reference to us so the window can be reopened. The
+        # main window stores it as `compare_window`, the history dialog as
+        # `_compare_window`; null whichever actually points at this window
+        # (B12 — the `_compare_window` case was never cleaned before).
         parent = self.parent()
-        if parent and hasattr(parent, "compare_window"):
-            parent.compare_window = None
+        if parent is not None:
+            for attr in ("compare_window", "_compare_window"):
+                if getattr(parent, attr, None) is self:
+                    setattr(parent, attr, None)
         event.accept()
         self.deleteLater()

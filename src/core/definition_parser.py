@@ -238,14 +238,28 @@ class DefinitionParser:
         except ValueError:
             layout = TableLayout.CONTIGUOUS
 
-        # Parse basic attributes
+        # Parse basic attributes. A malformed numeric attribute must skip only
+        # this table (logged with context), not abort the whole definition
+        # parse with an opaque ValueError (B10). Scalings are guarded the same way.
+        name = table_elem.get("name", "Unnamed")
+        address = table_elem.get("address", "0")
+        try:
+            elements = int(table_elem.get("elements", "0"))
+            level = int(table_elem.get("level", "1"))
+        except (ValueError, TypeError) as e:
+            logger.warning(
+                f"Skipping table '{name}' (address {address}) in "
+                f"{self.xml_path}: invalid numeric attribute — {e}"
+            )
+            return None
+
         table = Table(
-            name=table_elem.get("name", "Unnamed"),
-            address=table_elem.get("address", "0"),
-            elements=int(table_elem.get("elements", "0")),
+            name=name,
+            address=address,
+            elements=elements,
             scaling=table_elem.get("scaling", ""),
             type=table_type,
-            level=int(table_elem.get("level", "1")),
+            level=level,
             category=table_elem.get("category", ""),
             swapxy=table_elem.get("swapxy", "false").lower() == "true",
             flipx=table_elem.get("flipx", "false").lower() == "true",
@@ -259,6 +273,16 @@ class DefinitionParser:
             child_table = self._parse_table(child_elem)
             if child_table:
                 table.children.append(child_table)
+            elif child_elem.get("type") in ("X Axis", "Y Axis"):
+                # A 2D/3D table whose axis failed to parse would survive as a
+                # crippled flat list (values without breakpoints). Honor B10's
+                # "skip just that table" contract by dropping the parent too.
+                logger.warning(
+                    f"Skipping table '{name}' (address {address}) in "
+                    f"{self.xml_path}: its {child_elem.get('type')} child "
+                    "failed to parse"
+                )
+                return None
 
         return table
 

@@ -172,7 +172,11 @@ class RomDetector:
 
         logger.debug(f"ROM file size: {len(rom_data)} bytes")
 
-        # Try each definition
+        # Collect ALL matching definitions so an ambiguous ROM (two definitions
+        # with the same internalidstring) is flagged rather than silently
+        # resolving to whichever the glob happened to load first (H10). The first
+        # match still wins, preserving prior behaviour.
+        matches = []
         for rom_info in self.rom_definitions:
             try:
                 address = rom_info.internal_id_address_int
@@ -191,8 +195,7 @@ class RomDetector:
 
                 # Check if it matches
                 if actual_id == expected_id:
-                    logger.info(f"ROM ID match found: {actual_id} ({rom_info.xmlid})")
-                    return (actual_id, str(rom_info.xml_path))
+                    matches.append((actual_id, rom_info))
             except AddressConversionError as e:
                 logger.warning(f"Skipping {rom_info.xmlid}: {e}")
                 continue
@@ -201,6 +204,18 @@ class RomDetector:
                     f"Error checking {rom_info.xmlid}: {type(e).__name__}: {e}"
                 )
                 continue
+
+        if matches:
+            actual_id, rom_info = matches[0]
+            if len(matches) > 1:
+                others = ", ".join(m[1].xmlid for m in matches)
+                logger.warning(
+                    f"Multiple ROM definitions matched {rom_file.name} ({others}); "
+                    f"using the first ({rom_info.xmlid}). Definitions sharing an "
+                    "internalidstring are ambiguous — the winner is glob-order dependent."
+                )
+            logger.info(f"ROM ID match found: {actual_id} ({rom_info.xmlid})")
+            return (actual_id, str(rom_info.xml_path))
 
         logger.warning(f"No matching ROM definition found for {rom_file.name}")
         return (None, None)

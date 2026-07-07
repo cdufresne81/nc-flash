@@ -28,6 +28,7 @@ from PySide6.QtCore import Qt, Signal, QSize
 from PySide6.QtGui import QColor, QKeySequence, QShortcut, QPainter, QFontMetrics
 
 from ..core.rom_definition import Table, TableType, RomDefinition
+from ..core.table_edit_state import TableEditState
 from ..utils.settings import get_settings
 from .widgets.toggle_switch import ToggleSwitch
 from .table_viewer_helpers import (
@@ -106,8 +107,7 @@ class TableViewer(QWidget):
         self,
         rom_definition: RomDefinition = None,
         parent=None,
-        modified_cells_dict: dict = None,
-        original_values_dict: dict = None,
+        edit_owner: TableEditState = None,
         diff_mode: bool = False,
         diff_base_data: dict = None,
     ):
@@ -115,14 +115,10 @@ class TableViewer(QWidget):
         self.rom_definition = rom_definition
         self._editing_in_progress = False
         self._read_only = False
-        # Use shared dict from main window (persists across window close/reopen)
-        # If not provided, create local dict (for testing/standalone usage)
-        self._modified_cells = (
-            modified_cells_dict if modified_cells_dict is not None else {}
-        )
-        self._original_values = (
-            original_values_dict if original_values_dict is not None else {}
-        )
+        # Border/original state is owned by this ROM's RomDocument and shared by
+        # method (finding C1); no raw dict crosses the boundary. A standalone
+        # viewer (tests) makes its own throwaway TableEditState.
+        self._edit_state = edit_owner if edit_owner is not None else TableEditState()
         # Diff mode for viewing historical changes
         self._diff_mode = diff_mode
         self._diff_base_data = (
@@ -421,6 +417,15 @@ class TableViewer(QWidget):
         self._show_diff_highlights = not self._show_diff_highlights
         self.table_widget.viewport().update()
 
+    def refresh_borders(self):
+        """Repaint modified-cell borders from the current edit state.
+
+        The border delegate reads the edit state per paint, so a viewport
+        update reflects any external change to it (e.g. baseline reset after a
+        commit clears the borders).
+        """
+        self.table_widget.viewport().update()
+
     def show_diff_highlights(self) -> bool:
         """Check if diff highlights should be shown"""
         return self._diff_mode and self._show_diff_highlights
@@ -676,21 +681,15 @@ class TableViewer(QWidget):
         if isinstance(data_indices[0], str):
             # Axis cells: ('x_axis', index) or ('y_axis', index)
             axis_type, data_idx = data_indices
-            axis_key = f"{self.current_table.address}:{axis_type}"
-            return (
-                axis_key in self._modified_cells
-                and data_idx in self._modified_cells[axis_key]
+            return self._edit_state.is_axis_modified(
+                self.current_table.address, axis_type, data_idx
             )
 
         # Data cell: (data_row, data_col)
         data_row, data_col = data_indices
-        table_address = self.current_table.address
-
-        # Check if this cell is in the modified set
-        if table_address in self._modified_cells:
-            return (data_row, data_col) in self._modified_cells[table_address]
-
-        return False
+        return self._edit_state.is_cell_modified(
+            self.current_table.address, data_row, data_col
+        )
 
     def mark_cell_modified(self, table_address: str, data_row: int, data_col: int):
         """
@@ -701,10 +700,7 @@ class TableViewer(QWidget):
             data_row: Data row index
             data_col: Data column index
         """
-        if table_address not in self._modified_cells:
-            self._modified_cells[table_address] = set()
-
-        self._modified_cells[table_address].add((data_row, data_col))
+        self._edit_state.mark_cell_modified(table_address, data_row, data_col)
 
     def mark_axis_cell_modified(
         self, table_address: str, axis_type: str, data_idx: int
@@ -717,11 +713,7 @@ class TableViewer(QWidget):
             axis_type: 'x_axis' or 'y_axis'
             data_idx: Index in the axis array
         """
-        axis_key = f"{table_address}:{axis_type}"
-        if axis_key not in self._modified_cells:
-            self._modified_cells[axis_key] = set()
-
-        self._modified_cells[axis_key].add(data_idx)
+        self._edit_state.mark_axis_modified(table_address, axis_type, data_idx)
 
     def _on_cell_changed_track_modifications(
         self,
@@ -775,10 +767,10 @@ class TableViewer(QWidget):
             data_col: Data column index
             current_value: Current cell value
         """
-        if table_address not in self._original_values:
+        original_data = self._edit_state.get_original(table_address)
+        if original_data is None:
             return
 
-        original_data = self._original_values[table_address]
         original_values = original_data.get("values")
         if original_values is None:
             return
@@ -804,8 +796,7 @@ class TableViewer(QWidget):
             self.mark_cell_modified(table_address, data_row, data_col)
         else:
             # Value matches original - ensure border is removed
-            if table_address in self._modified_cells:
-                self._modified_cells[table_address].discard((data_row, data_col))
+            self._edit_state.unmark_cell(table_address, data_row, data_col)
 
     def _check_and_remove_axis_border_if_original(
         self, table_address: str, axis_type: str, data_idx: int, current_value: float
@@ -819,10 +810,10 @@ class TableViewer(QWidget):
             data_idx: Index in the axis array
             current_value: Current axis cell value
         """
-        if table_address not in self._original_values:
+        original_data = self._edit_state.get_original(table_address)
+        if original_data is None:
             return
 
-        original_data = self._original_values[table_address]
         original_axis = original_data.get(axis_type)
         if original_axis is None or data_idx >= len(original_axis):
             return
@@ -837,6 +828,4 @@ class TableViewer(QWidget):
             self.mark_axis_cell_modified(table_address, axis_type, data_idx)
         else:
             # Value matches original - ensure border is removed
-            axis_key = f"{table_address}:{axis_type}"
-            if axis_key in self._modified_cells:
-                self._modified_cells[axis_key].discard(data_idx)
+            self._edit_state.unmark_axis(table_address, axis_type, data_idx)

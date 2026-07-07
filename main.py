@@ -8,6 +8,7 @@ An open-source ROM editor for NC Miata ECUs
 import json
 import os
 import sys
+import threading
 import logging
 from pathlib import Path
 from datetime import datetime
@@ -30,6 +31,7 @@ from PySide6.QtCore import Qt, QTimer, QSize
 from PySide6.QtNetwork import QLocalServer, QLocalSocket
 from PySide6.QtGui import QBrush, QColor, QFont, QIcon, QPainter, QPen, QPixmap
 from src.ui.icons import make_icon
+from src.ui.theme import get_toolbar_stylesheet
 
 from src.utils.logging_config import setup_logging, get_logger
 from src.utils.paths import get_app_root, get_workspace_path
@@ -145,13 +147,9 @@ class MainWindow(
         # Get application settings
         self.settings = get_settings()
 
-        # Track modified cells across all ROMs (persists when tables are closed/reopened)
-        # Structure: {rom_path: {table_name: {(data_row, data_col), ...}, "table_name:x_axis": {idx, ...}}}
-        self.modified_cells = {}
-
-        # Store original table values when first loaded (for smart border removal on undo)
-        # Structure: {rom_path: {table_name: {"values": np.array, "x_axis": np.array, "y_axis": np.array}}}
-        self.original_table_values = {}
+        # Per-ROM edit state (modified-cell borders + capture-once originals) now
+        # lives on each RomDocument (RomDocument.edit_state) — the single owner
+        # (finding C1). MainWindow no longer holds path-keyed dicts for it.
 
         # Project management
         self.project_manager = ProjectManager()
@@ -169,9 +167,10 @@ class MainWindow(
             end_bulk_update=self._end_bulk_update,
         )
 
-        # Per-ROM background colors: {rom_path: QColor or None}
-        # First ROM gets None (default gray), subsequent ROMs get auto-assigned tints
-        self.rom_colors = {}
+        # Per-ROM tint is stored on each RomDocument (document.get_color()); the
+        # ALLOCATOR (palette cycle + running index) stays here because it is
+        # cross-document assignment state. First open ROM = default gray (None),
+        # later ROMs get an auto-assigned palette tint.
         self._color_palette = [
             QColor(180, 210, 240),  # soft blue
             QColor(210, 240, 180),  # soft green
@@ -224,7 +223,6 @@ class MainWindow(
         Mixin methods named closeEvent are shadowed by QWidget's C++ slot in the MRO,
         so this explicit override is required.
         """
-        self._cleanup_ecu_session()
         self._handle_close(event)
 
     def _deferred_init(self):
@@ -347,6 +345,10 @@ class MainWindow(
         self.tab_bar.setDrawBase(False)
         self.tab_bar.tabCloseRequested.connect(self.close_tab)
         self.tab_bar.currentChanged.connect(self.on_tab_changed)
+        # setMovable(True) lets the user drag tabs to reorder them, but QTabBar
+        # reorders only itself — the parallel rom_stack must be moved in lockstep
+        # or every index-based lookup targets the wrong ROM (see on_tab_moved).
+        self.tab_bar.tabMoved.connect(self.on_tab_moved)
         layout.addWidget(self.tab_bar)
 
         # Main splitter (ROM content on left, activity log on right)
@@ -484,25 +486,7 @@ class MainWindow(
         tb.setMovable(False)
         tb.setFloatable(False)
         tb.setIconSize(QSize(20, 20))
-        tb.setStyleSheet("""
-            QToolBar {
-                spacing: 1px;
-                padding: 1px 4px;
-                border: none;
-            }
-            QToolButton {
-                padding: 3px;
-                border: 1px solid transparent;
-                border-radius: 3px;
-            }
-            QToolButton:hover {
-                background: rgba(128, 128, 128, 0.15);
-                border: 1px solid rgba(128, 128, 128, 0.25);
-            }
-            QToolButton:pressed {
-                background: rgba(128, 128, 128, 0.3);
-            }
-        """)
+        tb.setStyleSheet(get_toolbar_stylesheet())
 
         act = tb.addAction(make_icon(self, "open"), "")
         act.setToolTip("Open  (Ctrl+O)")
@@ -609,6 +593,33 @@ class MainWindow(
         logger.warning(f"No document found for rom_path={rom_path}")
         return None
 
+    def _reset_document_edit_baseline(self, document):
+        """Re-baseline a ROM's edit state after its bytes become the new truth.
+
+        Called on commit: the committed values ARE the new baseline, so drop the
+        modified-cell borders and re-capture originals for any open windows
+        (future edits then diff from the committed bytes), and repaint so the
+        borders visibly clear. Undo stacks are intentionally left intact so a
+        committed change can still be undone (C3, verifier-approved minimal form).
+        """
+        if document is None:
+            return
+        document.edit_state.reset_baseline()
+        rom_path = document.rom_reader.rom_path
+        for window in self.open_table_windows:
+            if window.rom_path == rom_path:
+                try:
+                    data = document.rom_reader.read_table_data(window.table)
+                    if data:
+                        document.edit_state.capture_originals(
+                            window.table.address, data
+                        )
+                    window.viewer.refresh_borders()
+                except Exception as e:
+                    logger.debug(
+                        f"Could not re-baseline open window for {window.table.address}: {e}"
+                    )
+
     def _find_open_tab(self, *, rom_path=None, project_path=None):
         """Find an already-open tab by ROM file path or project path.
 
@@ -651,7 +662,13 @@ class MainWindow(
             if response == QMessageBox.Cancel:
                 return
             elif response == QMessageBox.Save:
-                document.save()
+                # A failed save must not lose the user's edits: keep the tab
+                # open and surface the error instead of tearing it down (B5).
+                try:
+                    document.save()
+                except RomFileError as e:
+                    handle_rom_operation_error(self, "save ROM file", e)
+                    return
 
         # Clean up all state tied to this ROM before removing the tab
         if document:
@@ -685,11 +702,8 @@ class MainWindow(
             # Clear pending changes for this ROM's tables
             self.change_tracker.clear_pending_for_keys(table_keys)
 
-            # Clear per-ROM tracking dicts
-            if rom_path:
-                self.modified_cells.pop(rom_path, None)
-                self.original_table_values.pop(rom_path, None)
-                self.rom_colors.pop(rom_path, None)
+            # Per-ROM edit state (borders/originals/color) lives on the document
+            # and dies with document.deleteLater() below — nothing to pop here.
 
         # Remove the tab and schedule widget cleanup
         self.tab_bar.removeTab(index)
@@ -708,6 +722,23 @@ class MainWindow(
         if current_index >= 0:
             self.close_tab(current_index)
 
+    def on_tab_moved(self, from_index: int, to_index: int):
+        """Keep rom_stack in lockstep with the tab bar after a tab is dragged.
+
+        The tab bar and rom_stack are kept positionally paired (tab i owns
+        rom_stack.widget(i)). QTabBar.setMovable lets the user drag a tab to a
+        new position but reorders only the tab bar, so without this the pairing
+        breaks and get_current_document / close_tab / _update_tab_title all
+        target the wrong ROM. Reorder the stack the same way, then re-sync the
+        visible page with the current tab.
+        """
+        widget = self.rom_stack.widget(from_index)
+        if widget is None:
+            return
+        self.rom_stack.removeWidget(widget)
+        self.rom_stack.insertWidget(to_index, widget)
+        self.rom_stack.setCurrentIndex(self.tab_bar.currentIndex())
+
     def on_tab_changed(self, index: int):
         """Handle tab change"""
         self.rom_stack.setCurrentIndex(index)
@@ -720,28 +751,38 @@ class MainWindow(
             self.update_window_title()
         self._update_compare_action()
 
-    def _assign_rom_color(self, rom_path):
-        """Assign a background color for a newly opened ROM.
-        First ROM gets None (default gray), subsequent ROMs get palette colors."""
-        if not self.rom_colors:
-            # First ROM — keep default gray
-            self.rom_colors[rom_path] = None
+    def _assign_rom_color(self, document):
+        """Assign a background color for a newly opened ROM document.
+
+        The first currently-open ROM keeps the default gray (None); each
+        additional ROM gets the next palette tint. "First" means no OTHER
+        document is open (siblings test), so after closing every ROM the next
+        one is gray again — while the palette index keeps advancing so tints
+        don't repeat within a session. Stores the color on the document.
+        """
+        siblings = [
+            self.rom_stack.widget(i)
+            for i in range(self.rom_stack.count())
+            if self.rom_stack.widget(i) is not document
+        ]
+        if not siblings:
+            # First open ROM — keep default gray
+            document.set_color(None)
         else:
             color = self._color_palette[
                 self._next_color_index % len(self._color_palette)
             ]
-            self.rom_colors[rom_path] = color
+            document.set_color(color)
             self._next_color_index += 1
-        return self.rom_colors[rom_path]
 
-    def _create_tab_color_button(self, rom_path, tab_index):
+    def _create_tab_color_button(self, document, tab_index):
         """Create a small color swatch button on the left side of a tab."""
-        color = self.rom_colors.get(rom_path)
+        color = document.get_color()
         btn = QToolButton()
         btn.setFixedSize(16, 16)
         btn.setAutoRaise(True)
         self._style_color_button(btn, color)
-        btn.clicked.connect(lambda: self._pick_rom_color(rom_path))
+        btn.clicked.connect(lambda: self._pick_rom_color(document))
         self.tab_bar.setTabButton(tab_index, QTabBar.ButtonPosition.LeftSide, btn)
 
     def _style_color_button(self, btn, color):
@@ -758,30 +799,24 @@ class MainWindow(
                 "QToolButton:hover { border: 1px solid #444; }"
             )
 
-    def _pick_rom_color(self, rom_path):
-        """Open color picker for a ROM and apply the chosen color."""
-        current = self.rom_colors.get(rom_path)
+    def _pick_rom_color(self, document):
+        """Open color picker for a ROM document and apply the chosen color."""
+        current = document.get_color()
         initial = current if current else self.palette().window().color()
         color = QColorDialog.getColor(initial, self, "Choose ROM color")
         if not color.isValid():
             return
-        self.rom_colors[rom_path] = color
+        document.set_color(color)
 
         # Update the tab color button
-        for i in range(self.rom_stack.count()):
-            doc = self.rom_stack.widget(i)
-            if (
-                doc
-                and hasattr(doc, "rom_reader")
-                and doc.rom_reader
-                and doc.rom_reader.rom_path == rom_path
-            ):
-                btn = self.tab_bar.tabButton(i, QTabBar.ButtonPosition.LeftSide)
-                if btn:
-                    self._style_color_button(btn, color)
-                break
+        tab_index = self.rom_stack.indexOf(document)
+        if tab_index >= 0:
+            btn = self.tab_bar.tabButton(tab_index, QTabBar.ButtonPosition.LeftSide)
+            if btn:
+                self._style_color_button(btn, color)
 
         # Update all open table viewer windows for this ROM
+        rom_path = document.rom_reader.rom_path
         for window in self.open_table_windows:
             if window.rom_path == rom_path:
                 window.set_rom_color(color)
@@ -790,7 +825,9 @@ class MainWindow(
         """Update tab title to show modified state"""
         tab_index = self.rom_stack.indexOf(document)
         if tab_index >= 0:
-            title = document.file_name
+            # tab_base_title is "[P] {name}" for project tabs and the file name
+            # for standalone ROMs, so the dirty marker applies to either (B15).
+            title = getattr(document, "tab_base_title", None) or document.file_name
             if document.is_modified():
                 title = f"*{title}"
             self.tab_bar.setTabText(tab_index, title)
@@ -1045,15 +1082,14 @@ class MainWindow(
             )
 
             # Assign a color for this ROM (first ROM = default gray)
-            rom_path = rom_reader.rom_path
-            self._assign_rom_color(rom_path)
+            self._assign_rom_color(rom_document)
 
             # Add as new tab with color swatch
             file_name = Path(file_path).name
             tab_index = self.tab_bar.addTab(file_name)
             self.rom_stack.addWidget(rom_document)
             self.tab_bar.setTabToolTip(tab_index, file_path)
-            self._create_tab_color_button(rom_path, tab_index)
+            self._create_tab_color_button(rom_document, tab_index)
             self.tab_bar.setCurrentIndex(tab_index)
 
             # Add to recent files list
@@ -1162,17 +1198,11 @@ class MainWindow(
                 document.save(file_path)
                 document.set_modified(False)
 
-                # Migrate tracking dicts from old path to new path
+                # Edit state (borders/originals/color) lives on this same
+                # document object, so it follows the ROM to its new path with no
+                # migration. Only path-keyed structures need re-keying below.
                 new_rom_path = document.rom_reader.rom_path
                 if old_rom_path != new_rom_path:
-                    for d in (
-                        self.modified_cells,
-                        self.original_table_values,
-                        self.rom_colors,
-                    ):
-                        if old_rom_path in d:
-                            d[new_rom_path] = d.pop(old_rom_path)
-
                     # Update rom_path on any open table viewer windows
                     for window in self.open_table_windows:
                         if window.rom_path == old_rom_path:
@@ -1254,7 +1284,7 @@ class MainWindow(
 
         # Capture originals before any writes
         old_data = dst_reader.read_table_data(dst_table)
-        self._capture_table_originals(rom_path, dst_table.address, old_data)
+        document.edit_state.capture_originals(dst_table.address, old_data)
 
         # --- Compute cell changes ---
         old_vals = old_data["values"]
@@ -1314,7 +1344,7 @@ class MainWindow(
                         )
 
         # Apply cell edits through shared pipeline
-        self._apply_external_cell_edits(
+        copy_ok = self._apply_external_cell_edits(
             document,
             dst_table,
             cell_changes,
@@ -1360,14 +1390,24 @@ class MainWindow(
                         )
                     )
 
-            self._apply_external_axis_edits(
-                document,
-                dst_table,
-                axis_changes,
-                f"Compare Copy Axis: {dst_table.name}",
-                rom_path=rom_path,
+            copy_ok = (
+                self._apply_external_axis_edits(
+                    document,
+                    dst_table,
+                    axis_changes,
+                    f"Compare Copy Axis: {dst_table.name}",
+                    rom_path=rom_path,
+                )
+                and copy_ok
             )
 
+        if not copy_ok:
+            QMessageBox.critical(
+                self,
+                "Copy Not Applied",
+                f"Could not write the copied values to '{dst_table.name}'.\n\n"
+                "The failed changes were rolled back.",
+            )
         self._update_tab_title(document)
 
     def _on_compare_roms(self):
@@ -1417,8 +1457,8 @@ class MainWindow(
             doc_b = self.rom_stack.widget(idx_b)
 
         # Get ROM colors
-        color_a = self.rom_colors.get(doc_a.rom_reader.rom_path)
-        color_b = self.rom_colors.get(doc_b.rom_reader.rom_path)
+        color_a = doc_a.get_color()
+        color_b = doc_b.get_color()
 
         cross_def = doc_a.rom_definition.romid.xmlid != doc_b.rom_definition.romid.xmlid
         self.statusBar().showMessage("Computing ROM differences...")
@@ -1503,32 +1543,37 @@ class MainWindow(
             data = rom_reader.read_table_data(table)
 
             if data:
-                # Store original table values if this is the first time loading this table
-                self._capture_table_originals(rom_path, table.address, data)
+                # Resolve the owning document — it owns this ROM's edit state.
+                document = self._find_document_by_rom_path(rom_path)
+                if document is None:
+                    logger.error(
+                        f"No document owns rom_path={rom_path}; cannot open table"
+                    )
+                    return
 
-                # Initialize modified cells tracking for this ROM if needed
-                if rom_path not in self.modified_cells:
-                    self.modified_cells[rom_path] = {}
+                # Store original table values if this is the first time loading
+                # this table (capture-once, on the document's edit state).
+                document.edit_state.capture_originals(table.address, data)
 
-                # Create and show new table viewer window
+                # Create and show new table viewer window. The window shares the
+                # document's edit state (borders/originals persist across
+                # close/reopen) and gets its tint from the document.
                 viewer_window = TableViewerWindow(
                     table,
                     data,
                     rom_reader.definition,
                     rom_path=rom_path,
                     parent=self,
-                    modified_cells_dict=self.modified_cells[rom_path],
-                    original_values_dict=self.original_table_values[rom_path],
-                    bg_color=self.rom_colors.get(rom_path),
+                    document=document,
+                    bg_color=document.get_color(),
                 )
 
-                # Connect viewer signals directly to change handlers (no forwarding hop)
-                viewer_window.viewer.cell_changed.connect(self._on_table_cell_changed)
-                viewer_window.viewer.bulk_changes.connect(self._on_table_bulk_changes)
-                viewer_window.viewer.axis_changed.connect(self._on_table_axis_changed)
-                viewer_window.viewer.axis_bulk_changes.connect(
-                    self._on_table_axis_bulk_changes
-                )
+                # Connect the window's rom_path-bound edit signals to the change
+                # handlers — the handler always knows which ROM was edited (C2/C5).
+                viewer_window.cell_edited.connect(self._on_table_cell_changed)
+                viewer_window.bulk_edited.connect(self._on_table_bulk_changes)
+                viewer_window.axis_edited.connect(self._on_table_axis_changed)
+                viewer_window.axis_bulk_edited.connect(self._on_table_axis_bulk_changes)
 
                 # Connect window focus signal to highlight table in tree and activate undo stack
                 viewer_window.window_focused.connect(self._on_table_window_focused)
@@ -1638,6 +1683,11 @@ class MainWindow(
                     document.rom_reader.write_cell_value(
                         window.table, change.row, change.col, change.new_raw
                     )
+                    # Undo/redo mutates ROM bytes even after a save/commit
+                    # cleared the flag; mark dirty so close/save prompts fire
+                    # instead of silently discarding the change (B2). The
+                    # QUndoStack becomes the single dirty authority in Phase 3.
+                    document.set_modified(True)
                 except RomWriteError as e:
                     logger.error(f"Failed to write cell value during undo/redo: {e}")
                 except Exception as e:
@@ -1670,6 +1720,8 @@ class MainWindow(
                     document.rom_reader.write_axis_value(
                         window.table, change.axis_type, change.index, change.new_raw
                     )
+                    # See B2 note in _apply_cell_change_from_undo.
+                    document.set_modified(True)
                 except RomWriteError as e:
                     logger.error(f"Failed to write axis value during undo/redo: {e}")
                 except Exception as e:
@@ -1796,71 +1848,137 @@ class MainWindow(
 
     # ========== Cell/Axis Change Handlers ==========
 
-    def _get_sender_rom_context(self):
-        """Get ROM path and document from the signal sender.
+    def _resolve_edit_target(self, rom_path):
+        """Resolve the document for an edit signal, or None (logged) if unknown.
 
-        Common setup for all cell/axis change handlers. The sender is the
-        TableViewer widget, nested inside a QSplitter inside the
-        TableViewerWindow. Walk up the parent chain to find rom_path.
-
-        Returns (rom_path, document) where rom_path may be None if not set,
-        and document may be None if not found.
+        Edit signals carry their rom_path (bound by TableViewerWindow), so the
+        target ROM is explicit — there is NO silent fallback to the active tab
+        (finding C2). A None return means the handler must skip: never write to
+        an arbitrary ROM.
         """
-        sender = self.sender()
-        rom_path = None
-        # Walk up the widget parent chain to find rom_path (on TableViewerWindow)
-        widget = sender
-        while widget is not None and rom_path is None:
-            rom_path = getattr(widget, "rom_path", None)
-            widget = widget.parent() if hasattr(widget, "parent") else None
-        document = (
-            self._find_document_by_rom_path(rom_path)
-            if rom_path
-            else self.get_current_document()
-        )
-        return rom_path, document
+        document = self._find_document_by_rom_path(rom_path)
+        if document is None:
+            logger.error(
+                f"Edit for unknown rom_path={rom_path} ignored (no owning document)"
+            )
+        return document
 
-    def _write_to_rom_and_mark_modified(self, document, write_fn, description: str):
+    def _write_to_rom_and_mark_modified(
+        self, document, write_fn, description: str
+    ) -> bool:
         """Execute a ROM write operation with standard error handling.
+
+        The ROM write is the commit point: callers treat a False return as
+        "the bytes did not land" and must not advance undo/pending/viewer
+        state on it (B8).
 
         Args:
             document: RomDocument to write to (may be None — no-ops safely)
             write_fn: Callable that performs the actual rom_reader write(s)
             description: Human-readable description for error messages
+
+        Returns:
+            True if the write committed (or there was nothing to write),
+            False if it failed.
         """
         if not document:
-            return
+            return True
         try:
             write_fn()
-            if not document.is_modified():
-                document.set_modified(True)
+            # set_modified self-guards (no-op + no signal when already dirty).
+            document.set_modified(True)
+            return True
         except RomWriteError as e:
             logger.error(f"Failed to write {description}: {e}")
+            return False
         except Exception as e:
             logger.exception(
                 f"Unexpected error writing {description}: {type(e).__name__}: {e}"
             )
+            return False
 
-    def _capture_table_originals(self, rom_path, table_address, data):
-        """Capture original table values for smart border removal on undo.
+    def _revert_failed_cell_edit(self, rom_path, table, row, col, old_value):
+        """Restore a viewer cell to its prior value after a failed ROM write (B8)."""
+        window = self._find_table_window(make_table_key(rom_path, table.address))
+        if window:
+            window.viewer.update_cell_value(row, col, old_value)
+        QMessageBox.critical(
+            self,
+            "Edit Not Applied",
+            f"Could not write the change to '{table.name}'.\n\n"
+            "The value has been reverted.",
+        )
 
-        Only captures once per (rom_path, table_address) — subsequent calls
-        are no-ops, preserving the true original values from disk.
+    def _revert_failed_axis_edit(self, rom_path, table, axis_type, index, old_value):
+        """Restore a viewer axis cell to its prior value after a failed write (B8)."""
+        window = self._find_table_window(make_table_key(rom_path, table.address))
+        if window:
+            window.viewer.update_axis_cell_value(axis_type, index, old_value)
+        QMessageBox.critical(
+            self,
+            "Edit Not Applied",
+            f"Could not write the change to '{table.name}'.\n\n"
+            "The value has been reverted.",
+        )
+
+    def _rollback_failed_cell_writes(self, document, table, changes):
+        """Best-effort ROM rollback after a mid-loop bulk cell write failure (B8).
+
+        A bulk write is per-cell, so a failure can leave a partial subset in the
+        ROM. Re-write each cell's prior raw value; a cell whose forward write
+        failed fails identically here — it never changed, so that is harmless.
         """
-        import numpy as np
+        for row, col, _ov, _nv, old_raw, _nr in changes:
+            try:
+                document.rom_reader.write_cell_value(table, row, col, old_raw)
+            except Exception:
+                pass
 
-        if rom_path not in self.original_table_values:
-            self.original_table_values[rom_path] = {}
-        if table_address not in self.original_table_values[rom_path]:
-            self.original_table_values[rom_path][table_address] = {
-                "values": np.copy(data["values"]),
-                "x_axis": (
-                    np.copy(data["x_axis"]) if data.get("x_axis") is not None else None
-                ),
-                "y_axis": (
-                    np.copy(data["y_axis"]) if data.get("y_axis") is not None else None
-                ),
-            }
+    def _rollback_failed_axis_writes(self, document, table, changes):
+        """Axis twin of :meth:`_rollback_failed_cell_writes` (B8)."""
+        for axis_type, index, _ov, _nv, old_raw, _nr in changes:
+            try:
+                document.rom_reader.write_axis_value(table, axis_type, index, old_raw)
+            except Exception:
+                pass
+
+    def _revert_failed_bulk_cells(self, document, rom_path, table, changes):
+        """Roll back a failed bulk cell write and restore the viewer (B8)."""
+        self._rollback_failed_cell_writes(document, table, changes)
+        window = self._find_table_window(make_table_key(rom_path, table.address))
+        if window:
+            viewer = window.viewer
+            viewer.begin_bulk_update()
+            try:
+                for row, col, old_value, *_ in changes:
+                    viewer.update_cell_value(row, col, old_value)
+            finally:
+                viewer.end_bulk_update()
+        QMessageBox.critical(
+            self,
+            "Edit Not Applied",
+            f"Could not write the bulk change to '{table.name}'.\n\n"
+            "The values have been reverted.",
+        )
+
+    def _revert_failed_bulk_axes(self, document, rom_path, table, changes):
+        """Roll back a failed bulk axis write and restore the viewer (B8)."""
+        self._rollback_failed_axis_writes(document, table, changes)
+        window = self._find_table_window(make_table_key(rom_path, table.address))
+        if window:
+            viewer = window.viewer
+            viewer.begin_bulk_update()
+            try:
+                for axis_type, index, old_value, *_ in changes:
+                    viewer.update_axis_cell_value(axis_type, index, old_value)
+            finally:
+                viewer.end_bulk_update()
+        QMessageBox.critical(
+            self,
+            "Edit Not Applied",
+            f"Could not write the bulk change to '{table.name}'.\n\n"
+            "The values have been reverted.",
+        )
 
     def _apply_external_cell_edits(
         self, document, table, cell_changes, description, rom_path=None
@@ -1877,12 +1995,28 @@ class MainWindow(
             cell_changes: List of (row, col, old_val, new_val, old_raw, new_raw)
             description: Undo description (e.g. "Compare Copy: Table Name")
             rom_path: ROM path for multi-ROM isolation (default: document.rom_reader.rom_path)
+
+        Returns:
+            True if the write committed (undo/pending/borders/viewer advanced),
+            False if it failed (partial writes rolled back, nothing recorded —
+            the caller surfaces the error).
         """
         if not cell_changes:
-            return
+            return True
 
         if rom_path is None:
             rom_path = document.rom_reader.rom_path
+
+        # Write to ROM FIRST (B8): the write is the commit point. Undo, pending,
+        # borders, and the viewer only advance after the bytes land; a mid-loop
+        # failure rolls back the cells that did land.
+        def write_cells():
+            for row, col, _ov, _nv, _or, new_raw in cell_changes:
+                document.rom_reader.write_cell_value(table, row, col, new_raw)
+
+        if not self._write_to_rom_and_mark_modified(document, write_cells, description):
+            self._rollback_failed_cell_writes(document, table, cell_changes)
+            return False
 
         # Record undo + pending changes
         self.table_undo_manager.record_bulk_cell_changes(
@@ -1892,20 +2026,10 @@ class MainWindow(
             table, cell_changes, rom_path=rom_path
         )
 
-        # Write to ROM
-        def write_cells():
-            for row, col, _ov, _nv, _or, new_raw in cell_changes:
-                document.rom_reader.write_cell_value(table, row, col, new_raw)
-
-        self._write_to_rom_and_mark_modified(document, write_cells, description)
-
-        # Update modified_cells for border highlighting
-        if rom_path not in self.modified_cells:
-            self.modified_cells[rom_path] = {}
-        if table.address not in self.modified_cells[rom_path]:
-            self.modified_cells[rom_path][table.address] = set()
-        for row, col, _ov, _nv, _or, _nr in cell_changes:
-            self.modified_cells[rom_path][table.address].add((row, col))
+        # Mark borders on the document's edit state (single owner)
+        document.edit_state.mark_cells_modified(
+            table.address, [(row, col) for row, col, *_ in cell_changes]
+        )
 
         # Refresh open table viewer window
         table_key = make_table_key(rom_path, table.address)
@@ -1918,6 +2042,7 @@ class MainWindow(
                     viewer.update_cell_value(row, col, new_val)
             finally:
                 viewer.end_bulk_update()
+        return True
 
     def _apply_external_axis_edits(
         self, document, table, axis_changes, description, rom_path=None
@@ -1930,12 +2055,25 @@ class MainWindow(
             axis_changes: List of (axis_type, index, old_val, new_val, old_raw, new_raw)
             description: Undo description
             rom_path: ROM path for multi-ROM isolation
+
+        Returns:
+            True if the write committed, False if it failed (rolled back,
+            nothing recorded — the caller surfaces the error).
         """
         if not axis_changes:
-            return
+            return True
 
         if rom_path is None:
             rom_path = document.rom_reader.rom_path
+
+        # Write to ROM FIRST (B8) — see _apply_external_cell_edits.
+        def write_axes():
+            for ax_type, idx, _ov, _nv, _or, new_raw in axis_changes:
+                document.rom_reader.write_axis_value(table, ax_type, idx, new_raw)
+
+        if not self._write_to_rom_and_mark_modified(document, write_axes, description):
+            self._rollback_failed_axis_writes(document, table, axis_changes)
+            return False
 
         # Record undo + pending changes
         self.table_undo_manager.record_axis_bulk_changes(
@@ -1945,24 +2083,27 @@ class MainWindow(
             table, axis_changes, rom_path=rom_path
         )
 
-        # Write to ROM
-        def write_axes():
-            for ax_type, idx, _ov, _nv, _or, new_raw in axis_changes:
-                document.rom_reader.write_axis_value(table, ax_type, idx, new_raw)
-
-        self._write_to_rom_and_mark_modified(document, write_axes, description)
-
-        # Update modified_cells for axis border highlighting
-        if rom_path not in self.modified_cells:
-            self.modified_cells[rom_path] = {}
+        # Mark axis borders on the document's edit state (single owner)
         for ax_type, idx, _ov, _nv, _or, _nr in axis_changes:
-            ak = f"{table.address}:{ax_type}"
-            if ak not in self.modified_cells[rom_path]:
-                self.modified_cells[rom_path][ak] = set()
-            self.modified_cells[rom_path][ak].add(idx)
+            document.edit_state.mark_axis_modified(table.address, ax_type, idx)
+
+        # Refresh open table viewer window (mirrors _apply_external_cell_edits —
+        # without this an already-open window kept showing stale axis values)
+        table_key = make_table_key(rom_path, table.address)
+        window = self._find_table_window(table_key)
+        if window:
+            viewer = window.viewer
+            viewer.begin_bulk_update()
+            try:
+                for ax_type, idx, _ov, new_val, _or, _nr in axis_changes:
+                    viewer.update_axis_cell_value(ax_type, idx, new_val)
+            finally:
+                viewer.end_bulk_update()
+        return True
 
     def _on_table_cell_changed(
         self,
+        rom_path,
         table,
         row: int,
         col: int,
@@ -1972,7 +2113,21 @@ class MainWindow(
         new_raw: float,
     ):
         """Handle cell change from table viewer window"""
-        rom_path, document = self._get_sender_rom_context()
+        document = self._resolve_edit_target(rom_path)
+        if document is None:
+            return
+
+        # Write-then-notify: the ROM write is the commit point. Only record
+        # undo/pending after the bytes land, so a rejected write can't leave the
+        # UI asserting a value the ROM never took. On failure revert the viewer
+        # cell and surface the error (B8).
+        if not self._write_to_rom_and_mark_modified(
+            document,
+            lambda: document.rom_reader.write_cell_value(table, row, col, new_raw),
+            f"cell value in {table.name}",
+        ):
+            self._revert_failed_cell_edit(rom_path, table, row, col, old_value)
+            return
 
         self.table_undo_manager.record_cell_change(
             table, row, col, old_value, new_value, old_raw, new_raw, rom_path=rom_path
@@ -1980,20 +2135,31 @@ class MainWindow(
         self.change_tracker.record_pending_change(
             table, row, col, old_value, new_value, old_raw, new_raw, rom_path=rom_path
         )
-        self._write_to_rom_and_mark_modified(
-            document,
-            lambda: document.rom_reader.write_cell_value(table, row, col, new_raw),
-            f"cell value in {table.name}",
-        )
 
     def _on_table_bulk_changes(
-        self, table, changes: list, description: str = "Bulk Operation"
+        self, rom_path, table, changes: list, description: str = "Bulk Operation"
     ):
         """Handle bulk changes from table viewer window (data manipulation operations)"""
         if not changes:
             return
 
-        rom_path, document = self._get_sender_rom_context()
+        document = self._resolve_edit_target(rom_path)
+        if document is None:
+            return
+
+        def write_bulk():
+            for row, col, old_value, new_value, old_raw, new_raw in changes:
+                document.rom_reader.write_cell_value(table, row, col, new_raw)
+            logger.debug(f"Applied bulk changes: {len(changes)} cells in {table.name}")
+
+        # Write-then-notify (B8): only record undo/pending after the bytes land.
+        # The viewer already shows the new values (it emitted this signal), so a
+        # failure rolls back any cells that did land and reverts the display.
+        if not self._write_to_rom_and_mark_modified(
+            document, write_bulk, f"bulk changes in {table.name}"
+        ):
+            self._revert_failed_bulk_cells(document, rom_path, table, changes)
+            return
 
         self.table_undo_manager.record_bulk_cell_changes(
             table, changes, description, rom_path=rom_path
@@ -2002,17 +2168,9 @@ class MainWindow(
             table, changes, rom_path=rom_path
         )
 
-        def write_bulk():
-            for row, col, old_value, new_value, old_raw, new_raw in changes:
-                document.rom_reader.write_cell_value(table, row, col, new_raw)
-            logger.debug(f"Applied bulk changes: {len(changes)} cells in {table.name}")
-
-        self._write_to_rom_and_mark_modified(
-            document, write_bulk, f"bulk changes in {table.name}"
-        )
-
     def _on_table_axis_changed(
         self,
+        rom_path,
         table,
         axis_type: str,
         index: int,
@@ -2022,7 +2180,20 @@ class MainWindow(
         new_raw: float,
     ):
         """Handle axis change from table viewer window"""
-        rom_path, document = self._get_sender_rom_context()
+        document = self._resolve_edit_target(rom_path)
+        if document is None:
+            return
+
+        # Write-then-notify — see _on_table_cell_changed (B8).
+        if not self._write_to_rom_and_mark_modified(
+            document,
+            lambda: document.rom_reader.write_axis_value(
+                table, axis_type, index, new_raw
+            ),
+            f"axis value in {table.name}",
+        ):
+            self._revert_failed_axis_edit(rom_path, table, axis_type, index, old_value)
+            return
 
         self.table_undo_manager.record_axis_change(
             table,
@@ -2044,29 +2215,17 @@ class MainWindow(
             new_raw,
             rom_path=rom_path,
         )
-        self._write_to_rom_and_mark_modified(
-            document,
-            lambda: document.rom_reader.write_axis_value(
-                table, axis_type, index, new_raw
-            ),
-            f"axis value in {table.name}",
-        )
 
     def _on_table_axis_bulk_changes(
-        self, table, changes: list, description: str = "Axis Bulk Operation"
+        self, rom_path, table, changes: list, description: str = "Axis Bulk Operation"
     ):
         """Handle axis bulk changes from table viewer window (interpolation, etc.)"""
         if not changes:
             return
 
-        rom_path, document = self._get_sender_rom_context()
-
-        self.table_undo_manager.record_axis_bulk_changes(
-            table, changes, description, rom_path=rom_path
-        )
-        self.change_tracker.record_pending_axis_bulk_changes(
-            table, changes, rom_path=rom_path
-        )
+        document = self._resolve_edit_target(rom_path)
+        if document is None:
+            return
 
         def write_bulk():
             for axis_type, index, old_value, new_value, old_raw, new_raw in changes:
@@ -2075,8 +2234,18 @@ class MainWindow(
                 f"Applied axis bulk changes: {len(changes)} cells in {table.name}"
             )
 
-        self._write_to_rom_and_mark_modified(
+        # Write-then-notify (B8) — see _on_table_bulk_changes.
+        if not self._write_to_rom_and_mark_modified(
             document, write_bulk, f"axis bulk changes in {table.name}"
+        ):
+            self._revert_failed_bulk_axes(document, rom_path, table, changes)
+            return
+
+        self.table_undo_manager.record_axis_bulk_changes(
+            table, changes, description, rom_path=rom_path
+        )
+        self.change_tracker.record_pending_axis_bulk_changes(
+            table, changes, rom_path=rom_path
         )
 
     def _on_table_window_focused(self, table_key):
@@ -2117,33 +2286,92 @@ class MainWindow(
             return
         conn.waitForReadyRead(1000)
         data = conn.readAll().data().decode("utf-8").strip()
+        # ACK the handoff: the sender only exits once it knows this event loop
+        # is alive. The OS accepts its connection even when this GUI thread is
+        # hung, so without an ACK the sender would exit(0) with nothing on
+        # screen and no recovery short of Task Manager (B11).
+        conn.write(_IPC_ACK)
+        conn.flush()
+        conn.waitForBytesWritten(500)
         conn.disconnectFromServer()
         if data and os.path.isfile(data):
             logger.info(f"IPC: opening file from another instance: {data}")
             self._open_rom_file(data)
-            # Bring window to front
-            self.setWindowState(
-                self.windowState() & ~Qt.WindowMinimized | Qt.WindowActive
-            )
-            self.raise_()
-            self.activateWindow()
+        else:
+            # Bare re-launch (focus token / no file): just surface this window.
+            logger.info("IPC: focus request from another instance")
+        # A second launch always means "surface this window".
+        self.setWindowState(self.windowState() & ~Qt.WindowMinimized | Qt.WindowActive)
+        self.raise_()
+        self.activateWindow()
+
+
+# Sentinel payload for a bare re-launch: not a valid file path, so the running
+# instance treats it as "focus me" rather than "open a file" (B11).
+_IPC_FOCUS_TOKEN = "__ncflash_focus__"
+
+# Acknowledgement the running instance sends back once its event loop has
+# actually processed the handoff (see _try_send_to_running_instance).
+_IPC_ACK = b"__ncflash_ack__"
 
 
 def _try_send_to_running_instance(file_path: str, server_name=None) -> bool:
     """Try to send a file path to an already-running NC Flash instance.
 
-    Returns True if the message was sent (caller should exit),
-    False if no running instance was found.
+    Returns True only if the running instance ACKNOWLEDGED the handoff
+    (caller should exit), False if no running instance was found or the
+    instance did not respond. Connecting alone is not proof of life: the OS
+    accepts a QLocalServer connection even when the peer's GUI thread is hung,
+    and exiting on connect would leave the user with nothing on screen (B11).
     """
     socket = QLocalSocket()
     socket.connectToServer(server_name or APP_NAME)
-    if socket.waitForConnected(500):
-        socket.write(file_path.encode("utf-8"))
-        socket.flush()
-        socket.waitForBytesWritten(1000)
+    if not socket.waitForConnected(500):
+        return False
+    socket.write(file_path.encode("utf-8"))
+    socket.flush()
+    socket.waitForBytesWritten(1000)
+    if socket.waitForReadyRead(2000) and bytes(socket.readAll().data()) == _IPC_ACK:
         socket.disconnectFromServer()
         return True
+    logger.warning(
+        "A running NC Flash instance accepted the connection but did not "
+        "acknowledge the handoff (hung?); starting a new window"
+    )
     return False
+
+
+def _install_exception_hooks():
+    """Route uncaught exceptions (main thread + worker threads) into the log.
+
+    Slot exceptions and worker-thread failures otherwise bypass the session-log
+    diagnostics (qt_diagnostics only covers Qt C++ messages + native faults). We
+    log CRITICAL with a traceback, then chain to the previous hook so existing
+    behaviour is preserved (B6).
+    """
+    prev_excepthook = sys.excepthook
+
+    def _excepthook(exc_type, exc_value, exc_tb):
+        if not issubclass(exc_type, KeyboardInterrupt):
+            logger.critical(
+                "Uncaught exception", exc_info=(exc_type, exc_value, exc_tb)
+            )
+        prev_excepthook(exc_type, exc_value, exc_tb)
+
+    sys.excepthook = _excepthook
+
+    prev_threadhook = threading.excepthook
+
+    def _threadhook(args):
+        if not issubclass(args.exc_type, KeyboardInterrupt):
+            thread_name = args.thread.name if args.thread else "?"
+            logger.critical(
+                f"Uncaught exception in thread {thread_name}",
+                exc_info=(args.exc_type, args.exc_value, args.exc_traceback),
+            )
+        prev_threadhook(args)
+
+    threading.excepthook = _threadhook
 
 
 def main():
@@ -2169,6 +2397,21 @@ def main():
 
     session_log_dir = Path.home() / ".nc-flash" / "logs"
     session_log_dir.mkdir(exist_ok=True)
+    # One session log is written per launch; keep only the newest 30 so the
+    # directory doesn't grow without bound (H5). Best-effort — never fatal.
+    try:
+        _old_logs = sorted(
+            session_log_dir.glob("*.log"),
+            key=lambda p: p.stat().st_mtime,
+            reverse=True,
+        )
+        for _old in _old_logs[30:]:
+            try:
+                _old.unlink()
+            except OSError:
+                pass
+    except OSError:
+        pass
     session_log_name = datetime.now().strftime("%Y-%m-%d_%H%M%S") + ".log"
     session_handler = logging.FileHandler(
         session_log_dir / session_log_name, encoding="utf-8"
@@ -2178,6 +2421,9 @@ def main():
         logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
     )
     logging.getLogger().addHandler(session_handler)
+
+    # Capture otherwise-uncaught exceptions (slots, worker threads) in the log.
+    _install_exception_hooks()
 
     logger.info("=" * 60)
     logger.info(f"{APP_NAME} {APP_VERSION_STRING} starting")
@@ -2200,10 +2446,14 @@ def main():
     if len(args) > 1 and os.path.isfile(args[-1]):
         file_arg = os.path.abspath(args[-1])
 
-    # Single-instance check: if another instance is running, hand off the
-    # file path and exit instead of opening a second window.
-    if file_arg and _try_send_to_running_instance(file_arg):
-        logger.info(f"Handed off file to running instance: {file_arg}")
+    # Single-instance check: if another instance is running, hand off any file
+    # path (or just focus it on a bare launch) and exit — a second window would
+    # edit the same project and steal the IPC socket (B11).
+    if _try_send_to_running_instance(file_arg or _IPC_FOCUS_TOKEN):
+        if file_arg:
+            logger.info(f"Handed off file to running instance: {file_arg}")
+        else:
+            logger.info("Another instance is already running; focused it and exiting")
         sys.exit(0)
 
     # Ensure workspace directories exist and run one-time migrations

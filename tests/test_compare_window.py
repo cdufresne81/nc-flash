@@ -563,3 +563,50 @@ class TestUpdateSidebarLabels:
         item = QTreeWidgetItem(["old text"])
         self._update_labels([entry], {0: item})
         assert "5 cells" in item.text(0)
+
+
+class TestCloseEventClearsParentRef:
+    """B12 — closeEvent nulls whichever parent ref points at THIS window."""
+
+    @staticmethod
+    def _close(parent):
+        from types import SimpleNamespace
+        from unittest.mock import MagicMock, patch
+        from src.ui.compare_window import CompareWindow
+
+        fake = SimpleNamespace(
+            saveGeometry=MagicMock(return_value=b""),
+            deleteLater=MagicMock(),
+        )
+        fake.parent = lambda: parent
+        # Point the parent's ref at this window (the common case).
+        for attr in ("compare_window", "_compare_window"):
+            if hasattr(parent, attr) and getattr(parent, attr) == "SELF":
+                setattr(parent, attr, fake)
+        event = MagicMock()
+        with patch("src.ui.compare_window.QSettings"):
+            CompareWindow.closeEvent(fake, event)
+        event.accept.assert_called_once()
+        return fake
+
+    def test_nulls_main_window_ref(self):
+        from types import SimpleNamespace
+
+        parent = SimpleNamespace(compare_window="SELF")
+        self._close(parent)
+        assert parent.compare_window is None
+
+    def test_nulls_history_dialog_underscore_ref(self):
+        from types import SimpleNamespace
+
+        parent = SimpleNamespace(_compare_window="SELF")
+        self._close(parent)
+        assert parent._compare_window is None
+
+    def test_leaves_ref_pointing_at_a_different_window(self):
+        from types import SimpleNamespace
+
+        other = object()
+        parent = SimpleNamespace(compare_window=other)  # not this window
+        self._close(parent)
+        assert parent.compare_window is other

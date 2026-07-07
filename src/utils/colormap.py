@@ -187,6 +187,23 @@ def get_colormap() -> ColorMap:
     return _current_colormap
 
 
+def clamp_ratio(value: float, min_val: float, max_val: float) -> float:
+    """Normalize ``value`` into [0, 1] within ``[min_val, max_val]``.
+
+    Returns 0.5 for a degenerate (zero-width) range. This is the one copy of the
+    value→ratio math the table display and the compare window both feed into
+    :meth:`ColorMap.ratio_to_color`.
+    """
+    if max_val == min_val:
+        return 0.5
+    return max(0.0, min(1.0, (value - min_val) / (max_val - min_val)))
+
+
+def value_to_color(value: float, min_val: float, max_val: float) -> QColor:
+    """Map ``value`` within ``[min_val, max_val]`` to the active colormap color."""
+    return get_colormap().ratio_to_color(clamp_ratio(value, min_val, max_val))
+
+
 def set_colormap(map_path: str = None):
     """
     Set the global color map

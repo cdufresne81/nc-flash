@@ -40,7 +40,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Optional
 
-from .checksum import correct_rom_checksums, crc32
+from .checksum import crc32
 from .constants import (
     BLOCK_SIZE,
     DOWNLOAD_ADDR,
@@ -50,27 +50,21 @@ from .constants import (
     SBL_SIZE,
 )
 from .exceptions import (
-    ChecksumError,
     FlashError,
     ROMValidationError,
     SecureModuleNotAvailable,
 )
 from .rom_utils import (
     calculate_flash_start_index,
-    detect_vehicle_generation,
     find_first_difference,
     get_cal_id,
     validate_rom_size,
 )
 
-try:  # SBL prep is host-only IP; packaging is impossible without it.
-    from ._secure import get_sbl_data
-
-    SECURE_MODULE_AVAILABLE = True
-except ImportError:  # pragma: no cover - exercised on machines without _secure
-    from ._secure_stub import get_sbl_data
-
-    SECURE_MODULE_AVAILABLE = False
+# The generation/checksum/SBL prep is shared with the J2534 flash path via
+# flash_prep (the ONE copy). SECURE_MODULE_AVAILABLE reflects whether the
+# host-only SBL/checksum IP is installed.
+from .flash_prep import prepare_flash_image, SECURE_MODULE_AVAILABLE
 
 #: Wire-contract version for the manifest. Bump only on a breaking change to the
 #: field set / layout; the firmware refuses a manifest it does not understand.
@@ -237,22 +231,10 @@ def build_flash_package(
             f"Invalid flash_type {flash_type!r} (expected 'full' or 'dynamic')"
         )
 
-    # --- Validate + generation (BEFORE any compute) ---
+    # --- Validate the new ROM early (the dynamic diff needs a valid ROM) ---
     if not validate_rom_size(rom_data):
         raise ROMValidationError(
             f"ROM must be exactly {ROM_SIZE} bytes, got {len(rom_data)}"
-        )
-
-    generation = detect_vehicle_generation(rom_data)
-
-    # --- Checksum-correct on a copy, then verify zero residual (defense-in-depth) ---
-    rom_buf = bytearray(rom_data)
-    correct_rom_checksums(rom_buf)
-    residual = correct_rom_checksums(bytearray(rom_buf))
-    if residual:
-        raise ChecksumError(
-            f"Checksum verification failed: {len(residual)} checksum(s) still "
-            "incorrect after correction"
         )
 
     # --- Decide the flash start index (full vs dynamic) ---
@@ -271,21 +253,12 @@ def build_flash_package(
             raise ROMValidationError("ROMs are identical — nothing to flash")
         flash_start_index = calculate_flash_start_index(diff_offset)
 
-    if not (0 < flash_start_index < len(rom_buf)):
-        raise FlashError(
-            f"flash_start_index out of bounds: 0x{flash_start_index:06X} "
-            f"(ROM size: 0x{len(rom_buf):06X})"
-        )
-
-    # --- SBL (host-only IP). get_sbl_data rejects an unsupported start index. ---
-    try:
-        sbl_data = get_sbl_data(flash_start_index, generation)
-    except ValueError as e:
-        raise FlashError(
-            f"Cannot build SBL for flash_start_index 0x{flash_start_index:06X}: {e}"
-        )
-    if len(sbl_data) != SBL_SIZE:
-        raise FlashError(f"SBL size mismatch: expected {SBL_SIZE}, got {len(sbl_data)}")
+    # --- Shared host-side prep: generation + checksum-correct(+verify) + bounds +
+    # SBL, via the ONE prep pipeline the J2534 flash also uses. Identical bytes
+    # out of both paths — they cannot drift and brick an ECU. ---
+    corrected_rom, sbl_data, generation, _corrections = prepare_flash_image(
+        rom_data, flash_start_index
+    )
 
     # --- Program slice (what TransferData streams after the SBL) ---
     program_offset = flash_start_index
@@ -295,7 +268,6 @@ def build_flash_package(
             f"Empty program slice at flash_start_index 0x{flash_start_index:06X}"
         )
 
-    corrected_rom = bytes(rom_buf)
     image = corrected_rom + sbl_data
 
     # --- Self-checks: the assembled image must be exactly what the manifest claims ---

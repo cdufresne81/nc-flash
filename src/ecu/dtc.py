@@ -259,3 +259,13 @@ def get_dtc_description(code: int) -> str:
 def get_nrc_description(nrc: int) -> str:
     """Get description for a UDS Negative Response Code."""
     return NRC_TABLE.get(nrc, f"Unknown NRC (0x{nrc:02X})")
+
+
+def dedup_dtcs(dtcs):
+    """Return DTCs with duplicate codes removed, preserving first-seen order.
+
+    A scan can report the same code more than once (e.g. pending + confirmed);
+    the UI shows each code once.
+    """
+    seen = set()
+    return [d for d in dtcs if d.code not in seen and not seen.add(d.code)]

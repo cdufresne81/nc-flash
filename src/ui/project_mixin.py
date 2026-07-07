@@ -9,8 +9,11 @@ This is a mixin class — it has no __init__ and relies on MainWindow providing:
 - self.change_tracker (ChangeTracker instance)
 - self.rom_detector (RomDetector instance, may be None)
 - self.get_current_document() method
+- self._find_document_by_rom_path(path) method
+- self._reset_document_edit_baseline(document) method
 - self._open_rom_file(path) method
 - self._update_project_ui() method
+- self.table_undo_manager (TableUndoManager instance)
 - self.open_table_windows (list)
 - self.tab_bar (QTabBar)
 - self.rom_stack (QStackedWidget)
@@ -28,6 +31,7 @@ from src.core.definition_parser import load_definition
 from src.core.rom_reader import RomReader
 from src.core.exceptions import RomEditorError
 from src.core.project_manager import ProjectManager
+from src.core.table_undo_manager import make_table_key
 from src.ui.rom_document import RomDocument
 from src.ui.project_wizard import ProjectWizard
 from src.ui.commit_dialog import CommitDialog
@@ -77,17 +81,80 @@ class ProjectMixin:
                     f"Unexpected error creating project:\n{type(e).__name__}: {e}",
                 )
 
-    def open_project_path(self, project_path: str):
-        """Open a project from a given path (used by open_file, session restore, recent files)"""
+    def _ensure_single_project(self, new_project_path, *, prompt: bool) -> bool:
+        """Enforce one-project-at-a-time before opening new_project_path.
+
+        The ProjectManager is a singleton (one current_project), so a second
+        project would rebind it and let the first project's tab commit into the
+        second's history. Returns True to proceed, False to abort. (B4)
+        """
+        if not self.project_manager.is_project_open():
+            return True
+        current = self.project_manager.current_project
+        if current is None or Path(current.project_path) == Path(new_project_path):
+            return True  # no other project open (same-project handled by caller)
+
+        if not prompt:
+            # Session restore / programmatic: keep the already-open project.
+            # Surface the skip (status bar, no modal at startup) — otherwise the
+            # entry silently vanishes from the session file on the next close.
+            logger.warning(
+                "A project is already open; skipping additional project "
+                f"(one project at a time): {new_project_path}"
+            )
+            self.statusBar().showMessage(
+                "Only one project can be open at a time — skipped "
+                f"{Path(new_project_path).name} (reopen it via File > Recent)",
+                10000,
+            )
+            return False
+
+        reply = QMessageBox.question(
+            self,
+            "Close Current Project?",
+            "Only one project can be open at a time.\n\n"
+            f"Opening this project will close the current project "
+            f"'{current.name}'. Continue?",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No,
+        )
+        if reply != QMessageBox.Yes:
+            return False
+
+        # Close the current project's tab (handles its unsaved-changes prompt
+        # and per-ROM state cleanup). If the user cancels that prompt, the tab
+        # stays open — abort the switch so we never rebind the manager.
+        idx = self._find_open_tab(project_path=current.project_path)
+        if idx >= 0:
+            self.close_tab(idx)
+            if self._find_open_tab(project_path=current.project_path) >= 0:
+                return False
+        self.project_manager.close_project()
+        return True
+
+    def open_project_path(self, project_path: str, *, prompt_on_switch: bool = True):
+        """Open a project from a given path (used by open_file, session restore, recent files).
+
+        prompt_on_switch: when True (interactive open), opening a *different*
+        project prompts to close the currently-open one first — only one project
+        is open at a time so a stale tab can't commit into another project's
+        history (B4). Session restore passes False: a second, different project
+        is skipped rather than prompting mid-startup.
+        """
         # Prevent opening the same project twice
         existing = self._find_open_tab(project_path=project_path)
         if existing >= 0:
             self.tab_bar.setCurrentIndex(existing)
-            QMessageBox.information(
-                self,
-                "Already Open",
-                f"This project is already open.\n\n{Path(project_path).name}",
-            )
+            if prompt_on_switch:
+                QMessageBox.information(
+                    self,
+                    "Already Open",
+                    f"This project is already open.\n\n{Path(project_path).name}",
+                )
+            return
+
+        # One project at a time (B4).
+        if not self._ensure_single_project(project_path, prompt=prompt_on_switch):
             return
 
         try:
@@ -110,16 +177,21 @@ class ProjectMixin:
                 )
                 rom_document.project_path = project.project_path
                 rom_document.table_selected.connect(self.on_table_selected)
+                # Show the "*" dirty marker on the project tab when it is edited,
+                # matching standalone ROM tabs (B15).
+                rom_document.modified_changed.connect(
+                    lambda modified, doc=rom_document: self._update_tab_title(doc)
+                )
 
                 # Assign color and add as new tab with swatch
-                rom_path = rom_reader.rom_path
-                self._assign_rom_color(rom_path)
+                self._assign_rom_color(rom_document)
 
                 tab_title = f"[P] {project.name}"
+                rom_document.tab_base_title = tab_title
                 tab_index = self.tab_bar.addTab(tab_title)
                 self.rom_stack.addWidget(rom_document)
                 self.tab_bar.setTabToolTip(tab_index, project.project_path)
-                self._create_tab_color_button(rom_path, tab_index)
+                self._create_tab_color_button(rom_document, tab_index)
                 self.tab_bar.setCurrentIndex(tab_index)
 
                 # Add to recent files
@@ -151,6 +223,23 @@ class ProjectMixin:
                 "Error",
                 f"Unexpected error opening project:\n{type(e).__name__}: {e}",
             )
+        finally:
+            # A failure AFTER open_project() bound the manager (missing
+            # definition XML, load_definition/RomReader error) must not leave it
+            # bound with no tab: the B4 one-project guard gates on the manager,
+            # so a phantom binding would silently block every subsequent project
+            # open (and session restore) against a project the user can't see.
+            current = self.project_manager.current_project
+            if (
+                current is not None
+                and Path(current.project_path) == Path(project_path)
+                and self._find_open_tab(project_path=current.project_path) < 0
+            ):
+                logger.warning(
+                    f"Project bound without a tab after failed open; unbinding: "
+                    f"{project_path}"
+                )
+                self.project_manager.close_project()
 
     def commit_changes(self):
         """Commit pending changes to the project"""
@@ -163,14 +252,28 @@ class ProjectMixin:
             )
             return
 
-        if not self.change_tracker.has_pending_changes():
+        # A commit is scoped to the PROJECT's own ROM. Other ROMs open in
+        # parallel tabs (e.g. for Compare) have independent pending edits in the
+        # global ChangeTracker that must NOT be folded into this project's
+        # history or working file (B3). Resolve the project document and filter
+        # to its changes rather than trusting the active tab.
+        project_rom_path = self.project_manager.current_project.working_rom_path
+        document = self._find_document_by_rom_path(project_rom_path)
+        if document is None:
+            QMessageBox.warning(
+                self,
+                "Project ROM Not Open",
+                "The project's ROM tab is not open, so there is nothing to commit.",
+            )
+            return
+
+        rom_path = document.rom_reader.rom_path  # canonical Path for filtering
+        pending = self.change_tracker.get_pending_changes_for_rom(rom_path)
+        if not pending:
             QMessageBox.information(
                 self, "No Changes", "There are no pending changes to commit."
             )
             return
-
-        # Get pending changes
-        pending = self.change_tracker.get_pending_changes()
 
         # Get version info for dialog
         next_version = self.project_manager.get_next_version()
@@ -188,10 +291,10 @@ class ProjectMixin:
                 message = dialog.get_commit_message()
                 version_name = dialog.get_version_name()
 
-                # Save changes to working ROM file first
-                document = self.get_current_document()
-                if document:
-                    document.rom_reader.save_rom()
+                # Flush the PROJECT ROM's edits to its working file (not the
+                # active tab, which may be a different ROM) so the snapshot
+                # captures exactly this project's changes (B3).
+                document.rom_reader.save_rom()
 
                 # Create commit with version numbering (always creates snapshot)
                 commit = self.project_manager.commit_changes(
@@ -200,10 +303,16 @@ class ProjectMixin:
                     version_name=version_name,
                 )
 
-                # Clear pending changes and modified flag
-                self.change_tracker.clear_pending_changes()
-                if document:
-                    document.set_modified(False)
+                # Clear only THIS ROM's pending changes + dirty flag; foreign
+                # tabs keep their uncommitted edits (B3).
+                self.change_tracker.clear_pending_for_rom(rom_path)
+                document.set_modified(False)
+
+                # The committed values are the new baseline: drop this ROM's
+                # modified-cell borders and re-snapshot originals so future edits
+                # diff from the committed bytes (C3). Previously borders lingered
+                # until the tab was closed or Save-As'd.
+                self._reset_document_edit_baseline(document)
 
                 # Update UI
                 self._update_project_ui()
@@ -371,13 +480,44 @@ class ProjectMixin:
             try:
                 restored = self.project_manager.revert_to_version(version)
 
-                # Reload the ROM in the editor from the overwritten working file
-                document = self.get_current_document()
+                # A revert is scoped to the PROJECT's own ROM — the active tab
+                # may be a different ROM open for Compare. Resolving via
+                # get_current_document() used to reload the WRONG document
+                # (discarding its unsaved edits) while the project document
+                # kept stale pre-revert bytes in memory that a later save
+                # would silently write back (B3-style scoping, as commit does).
+                project_rom_path = self.project_manager.current_project.working_rom_path
+                document = self._find_document_by_rom_path(project_rom_path)
                 if document:
+                    rom_path = document.rom_reader.rom_path
+
+                    # Open table windows show pre-revert values and have no
+                    # reload path — close them rather than display stale data.
+                    for window in [
+                        w for w in self.open_table_windows if w.rom_path == rom_path
+                    ]:
+                        window.close()
+
+                    # Reload the reverted bytes from the overwritten working file
                     document.rom_reader._load_rom()
 
-                # Clear pending changes (working ROM now matches the snapshot)
-                self.change_tracker.clear_pending_changes()
+                    # Undo stacks recorded against pre-revert bytes would write
+                    # pre-revert values into the reverted ROM if replayed —
+                    # drop them (mirrors tab close).
+                    definition = document.rom_reader.definition
+                    if definition:
+                        table_keys = {
+                            make_table_key(rom_path, table.address)
+                            for table in definition.tables
+                        }
+                        self.table_undo_manager.remove_stacks_for_keys(table_keys)
+
+                    # Clear only THIS ROM's pending changes, dirty flag, and
+                    # modified-cell borders; foreign tabs keep their edits.
+                    self.change_tracker.clear_pending_for_rom(rom_path)
+                    document.set_modified(False)
+                    self._reset_document_edit_baseline(document)
+
                 self._update_project_ui()
 
                 self.statusBar().showMessage(f"Reverted to {restored}")

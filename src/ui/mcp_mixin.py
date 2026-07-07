@@ -13,9 +13,7 @@ This is a mixin class — it has no __init__ and relies on MainWindow providing:
 - self.settings (AppSettings instance)
 - self.change_tracker (ChangeTracker instance)
 - self.table_undo_manager (TableUndoManager instance)
-- self.original_table_values (dict)
-- self.modified_cells (dict)
-- self._find_document_by_rom_path(path) method
+- self._find_document_by_rom_path(path) method  (edit state is on document.edit_state)
 - self._find_table_window(key) method
 - self._write_to_rom_and_mark_modified(doc, fn, desc) method
 - self._update_tab_title(doc) method
@@ -291,22 +289,16 @@ class McpMixin:
         if not document:
             return {"success": False, "error": f"ROM not open in app: {rom_path}"}
 
-        from src.core.table_undo_manager import extract_rom_path
-
-        rom_path_str = str(Path(rom_path))
-        tables = []
-        for key, pending in self.change_tracker._pending.items():
-            if not pending.has_changes():
-                continue
-            key_rom = extract_rom_path(key)
-            if key_rom == rom_path_str or key_rom == str(Path(rom_path).resolve()):
-                tables.append(
-                    {
-                        "name": pending.table_name,
-                        "changed_cells": len(pending.changes),
-                    }
-                )
-
+        # Route through the tracker's public per-ROM accessor (C7) rather than
+        # reaching into change_tracker._pending with a private, divergent path
+        # normalization. Filter by the document's canonical rom_path so the key
+        # comparison matches how the keys were created (mirrors the B3 commit fix).
+        tables = [
+            {"name": tc.table_name, "changed_cells": len(tc.cell_changes)}
+            for tc in self.change_tracker.get_pending_changes_for_rom(
+                document.rom_reader.rom_path
+            )
+        ]
         return {"success": True, "tables": tables}
 
     def _api_read_table(self, request: dict) -> dict:
@@ -504,12 +496,18 @@ class McpMixin:
 
         # Capture originals and apply through shared pipeline
         rom_path_key = document.rom_reader.rom_path
-        self._capture_table_originals(rom_path_key, table.address, old_data)
+        document.edit_state.capture_originals(table.address, old_data)
 
         desc = f"AI: edit {len(changes)} cell(s) in {table_name}"
-        self._apply_external_cell_edits(
+        if not self._apply_external_cell_edits(
             document, table, changes, desc, rom_path=rom_path_key
-        )
+        ):
+            # The ROM write failed and was rolled back (B8) — report the truth
+            # instead of a success the ROM never took.
+            return {
+                "success": False,
+                "error": f"ROM write failed for '{table_name}'; changes rolled back",
+            }
 
         # Activate undo stack so Ctrl+Z works immediately
         table_key = make_table_key(rom_path_key, table.address)

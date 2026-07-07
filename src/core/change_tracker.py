@@ -6,17 +6,18 @@ Tracks pending (uncommitted) changes for the commit/save workflow.
 Note: Undo/redo functionality has been moved to TableUndoManager (table_undo_manager.py)
 which uses Qt's QUndoGroup pattern for per-table undo/redo.
 
-Keys are composite (rom_path\0table_address) to isolate tracking
+Keys are TableKey namedtuples (rom_path, table_address) to isolate tracking
 when multiple ROMs share the same table addresses.
 """
 
 from typing import List, Dict, Callable
 from dataclasses import dataclass, field
+from pathlib import Path
 import logging
 
 from .version_models import CellChange, AxisChange, TableChanges
 from .rom_definition import Table
-from .table_undo_manager import make_table_key, extract_rom_path
+from .table_undo_manager import make_table_key, extract_rom_path, TableKey
 
 logger = logging.getLogger(__name__)
 
@@ -86,14 +87,14 @@ class ChangeTracker:
     - Pending changes that need to be saved/committed
     - Change notifications for UI updates
 
-    Keys are composite (rom_path\0table_address) to isolate per-ROM state.
+    Keys are TableKey namedtuples (rom_path, table_address) to isolate per-ROM state.
 
     Note: Undo/redo functionality is handled by TableUndoManager.
     """
 
     def __init__(self):
-        # Pending changes by composite key (rom_path\0table_address)
-        self._pending: Dict[str, PendingChanges] = {}
+        # Pending changes keyed by TableKey (rom_path, table_address)
+        self._pending: Dict[TableKey, PendingChanges] = {}
 
         # Callbacks for UI updates
         self._change_callbacks: List[Callable] = []
@@ -370,6 +371,23 @@ class ChangeTracker:
         """Get all pending changes grouped by table"""
         return [p.to_table_changes() for p in self._pending.values() if p.has_changes()]
 
+    def get_pending_changes_for_rom(self, rom_path) -> List[TableChanges]:
+        """Get pending changes for a single ROM only, grouped by table.
+
+        The tracker is global across all open ROMs, so commit must scope to
+        the project ROM's changes and never fold in a foreign tab's edits (B3).
+        Path comparison normalizes slash differences (QFileDialog vs Path).
+        """
+        target = Path(rom_path)
+        result = []
+        for key, pending in self._pending.items():
+            if not pending.has_changes():
+                continue
+            key_rom = extract_rom_path(key)
+            if key_rom is not None and Path(key_rom) == target:
+                result.append(pending.to_table_changes())
+        return result
+
     def get_modified_table_addresses(self) -> List[str]:
         """Get list of raw table addresses with pending changes (all ROMs combined)."""
         return [p.table_address for p in self._pending.values() if p.has_changes()]
@@ -401,6 +419,27 @@ class ChangeTracker:
         self._pending.clear()
         self._notify_change()
         logger.debug("Cleared pending changes")
+
+    def clear_pending_for_rom(self, rom_path):
+        """Clear pending changes for a single ROM, leaving other ROMs intact.
+
+        Counterpart to get_pending_changes_for_rom — a commit clears only the
+        project ROM's pending changes so foreign tabs keep their edits (B3).
+        """
+        target = Path(rom_path)
+        keys_to_clear = [
+            key
+            for key in self._pending
+            if extract_rom_path(key) is not None
+            and Path(extract_rom_path(key)) == target
+        ]
+        for key in keys_to_clear:
+            del self._pending[key]
+        if keys_to_clear:
+            self._notify_change()
+            logger.debug(
+                f"Cleared pending changes for {len(keys_to_clear)} tables (ROM {rom_path})"
+            )
 
     def rename_key(self, old_key: str, new_key: str):
         """Rename a pending-changes key (e.g., after Save As changes the ROM path)."""

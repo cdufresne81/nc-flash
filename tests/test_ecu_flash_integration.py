@@ -112,7 +112,8 @@ _SECURE_PATCHES = {
     "src.ecu.flash_manager.compute_security_key": MagicMock(
         return_value=b"\x44\x70\xe8"
     ),
-    "src.ecu.flash_manager.get_sbl_data": MagicMock(return_value=b"\x00" * SBL_SIZE),
+    # get_sbl_data now lives in flash_prep (D1: the ONE flash-prep pipeline).
+    "src.ecu.flash_prep.get_sbl_data": MagicMock(return_value=b"\x00" * SBL_SIZE),
     "src.ecu.flash_manager.SECURE_MODULE_AVAILABLE": True,
 }
 
@@ -407,7 +408,7 @@ class TestChecksumVerification:
     """Verify that checksum correction is validated before flash."""
 
     @_apply_secure_patches
-    @patch("src.ecu.flash_manager.correct_rom_checksums")
+    @patch("src.ecu.flash_prep.correct_rom_checksums")
     @patch("src.ecu.j2534.J2534Device")
     @patch("src.ecu.j2534.setup_isotp_flow_control", return_value=100)
     def test_checksum_verification_failure_raises(
@@ -428,7 +429,7 @@ class TestChecksumVerification:
         MockDevice.return_value.open.assert_not_called()
 
     @_apply_secure_patches
-    @patch("src.ecu.flash_manager.correct_rom_checksums")
+    @patch("src.ecu.flash_prep.correct_rom_checksums")
     @patch("src.ecu.j2534.J2534Device")
     @patch("src.ecu.j2534.setup_isotp_flow_control", return_value=100)
     def test_checksum_verification_passes(
