@@ -3707,5 +3707,42 @@
             name="Spark Final - Max Advance Rate" address="cfc60" elements="13" scaling="851040">
             <table name="RPM_6DD8" address="cfc2c" elements="13" scaling="850988" type="Y Axis" />
         </table>
+        <!-- Auto-Blip on Downshift: custom patch in free space (calibration at 0xFCAC0).
+             Only present in autoblip-patched ROMs; reads as 0xFF/garbage on stock or
+             plain-Romdrop ROMs. Generator: nc-flash-re/tools/autoblip_patch.py -->
+        <scaling name="autoblip_enable" units="" toexpr="x" frexpr="x" format="%0.0f" min="0"
+            max="1" inc="1" storagetype="uint8" endian="big" />
+        <scaling name="autoblip_pct" units="%" toexpr="x" frexpr="x" format="%0.1f" min="0"
+            max="100" inc="0.1" storagetype="float" endian="big" />
+        <scaling name="autoblip_spd" units="km/h" toexpr="x" frexpr="x" format="%0.1f" min="0"
+            max="300" inc="0.1" storagetype="float" endian="big" />
+        <scaling name="autoblip_rpm" units="RPM" toexpr="x" frexpr="x" format="%0.0f" min="0"
+            max="10000" inc="10" storagetype="float" endian="big" />
+        <scaling name="autoblip_factor" units="" toexpr="x" frexpr="x" format="%0.3f" min="0"
+            max="1" inc="0.001" storagetype="float" endian="big" />
+        <scaling name="autoblip_cycles" units="cycles" toexpr="x" frexpr="x" format="%0.0f"
+            min="0" max="255" inc="1" storagetype="uint8" endian="big" />
+        <scaling name="autoblip_tp" units="%" toexpr="x" frexpr="x" format="%0.1f" min="0"
+            max="100" inc="0.1" storagetype="float" endian="big" />
+        <scaling name="autoblip_rpm_delta" units="RPM" toexpr="x" frexpr="x" format="%0.0f"
+            min="0" max="5000" inc="10" storagetype="float" endian="big" />
+        <table level="1" type="1D" category="Auto-Blip" swapxy="true"
+            name="Auto-Blip - Enable" address="fcac0" elements="1" scaling="autoblip_enable" />
+        <table level="1" type="1D" category="Auto-Blip" swapxy="true"
+            name="Auto-Blip - APP Threshold" address="fcac4" elements="1" scaling="autoblip_pct" />
+        <table level="1" type="1D" category="Auto-Blip" swapxy="true"
+            name="Auto-Blip - Min VSS" address="fcac8" elements="1" scaling="autoblip_spd" />
+        <table level="1" type="1D" category="Auto-Blip" swapxy="true"
+            name="Auto-Blip - Min RPM" address="fcacc" elements="1" scaling="autoblip_rpm" />
+        <table level="1" type="1D" category="Auto-Blip" swapxy="true"
+            name="Auto-Blip - Max RPM Target" address="fcad0" elements="1" scaling="autoblip_rpm" />
+        <table level="1" type="1D" category="Auto-Blip" swapxy="true"
+            name="Auto-Blip - Decay Factor" address="fcad4" elements="1" scaling="autoblip_factor" />
+        <table level="1" type="1D" category="Auto-Blip" swapxy="true"
+            name="Auto-Blip - Max Duration" address="fcad8" elements="1" scaling="autoblip_cycles" />
+        <table level="1" type="2D" category="Auto-Blip" swapxy="true"
+            name="Auto-Blip - RPM Delta to TP Offset" address="fcafc" elements="8" scaling="autoblip_tp">
+            <table name="RPM Delta" address="fcadc" elements="8" scaling="autoblip_rpm_delta" type="Y Axis" />
+        </table>
     </rom>
 </roms>
