@@ -481,6 +481,73 @@ class RomReader:
         )
         return result
 
+    def _interleaved_dims(self, table: Table, error_cls=RomReadError) -> tuple:
+        """
+        Read and validate the [M][N] dimension header of an interleaved table.
+
+        Interleaved tables are self-describing: rom_data[address] holds the
+        column count (M) and rom_data[address+1] the row count (N). The
+        definition independently declares the expected dimensions through its
+        axis children's element counts. If the ROM header disagrees, the
+        address does not point at a [M][N] header — typically a definition
+        ported from another firmware without re-basing addresses — and every
+        byte read through it would be garbage. Refuse loudly rather than
+        render a wrong grid (LF9KT incident: a stale address made a 5x3
+        table render as 80x64).
+
+        Args:
+            table: Interleaved table definition
+            error_cls: Exception class to raise (RomReadError for read
+                paths, RomWriteError for write paths)
+
+        Returns:
+            (m, n): Validated column and row counts from the ROM header
+        """
+        base = table.address_int
+        if base + 1 >= len(self.rom_data):
+            raise error_cls(
+                f"Table '{table.name}' base address {hex(base)} exceeds ROM size"
+            )
+
+        m = self.rom_data[base]  # X axis count
+        n = self.rom_data[base + 1]  # Y axis count (row count)
+
+        if m == 0 or n == 0:
+            raise error_cls(
+                f"Invalid interleaved dimensions for '{table.name}': "
+                f"M={m}, N={n} at {hex(base)} (both must be > 0)"
+            )
+
+        if table.swapxy:
+            raise error_cls(
+                f"Interleaved table '{table.name}': swapxy is not supported "
+                f"for interleaved layout (read and write would disagree on "
+                f"orientation and scramble the grid)"
+            )
+
+        # elements=0 means the attribute is absent — such an axis child only
+        # supplies scaling, and the table stays self-describing (no check).
+        x_axis = table.x_axis
+        y_axis = table.y_axis
+        expected_m = x_axis.elements if x_axis and x_axis.elements else None
+        expected_n = y_axis.elements if y_axis and y_axis.elements else None
+        if (expected_m is not None and m != expected_m) or (
+            expected_n is not None and n != expected_n
+        ):
+            declared = (
+                f"{expected_m if expected_m is not None else '?'}"
+                f"x{expected_n if expected_n is not None else '?'}"
+            )
+            raise error_cls(
+                f"Interleaved table '{table.name}': ROM dimension header at "
+                f"{hex(base)} reads {m}x{n}, but the definition declares "
+                f"{declared}. The table address does not point "
+                f"at the [M][N] header — the definition address is likely "
+                f"stale (e.g. copied from another firmware without re-basing)."
+            )
+
+        return m, n
+
     def _read_interleaved_3d(self, table: Table, scaling: Scaling) -> dict:
         """
         Read a 3D table with interleaved Y-axis + data layout.
@@ -489,19 +556,7 @@ class RomReader:
         Each row is (M+1) bytes: 1 Y-axis byte followed by M data bytes.
         """
         base = table.address_int
-        if base + 1 >= len(self.rom_data):
-            raise RomReadError(
-                f"Table '{table.name}' base address {hex(base)} exceeds ROM size"
-            )
-
-        m = self.rom_data[base]  # X axis count
-        n = self.rom_data[base + 1]  # Y axis count (row count)
-
-        if m == 0 or n == 0:
-            raise RomReadError(
-                f"Invalid interleaved dimensions for '{table.name}': "
-                f"M={m}, N={n} at {hex(base)} (both must be > 0)"
-            )
+        m, n = self._interleaved_dims(table)
 
         x_start = base + 2
         row_start = x_start + m
@@ -634,8 +689,7 @@ class RomReader:
         # Handle interleaved write (scatter data back into interleaved rows)
         if table.layout == TableLayout.INTERLEAVED and table.type == TableType.THREE_D:
             base = table.address_int
-            m = self.rom_data[base]
-            n = self.rom_data[base + 1]
+            m, n = self._interleaved_dims(table, RomWriteError)
             row_start = base + 2 + m
             stride = m + 1
             bytes_per_elem = scaling.bytes_per_element
@@ -754,8 +808,7 @@ class RomReader:
         if table.layout == TableLayout.INTERLEAVED and table.type.value == "3D":
             # Interleaved: [M][N][X_axis][Y0 D0..DM-1][Y1 D0..DM-1]...
             base = table.address_int
-            m = self.rom_data[base]
-            n = self.rom_data[base + 1]
+            m, n = self._interleaved_dims(table, RomWriteError)
             max_cols, max_rows = m, n
         elif table.type.value == "3D":
             x_axis = table.x_axis
@@ -862,8 +915,7 @@ class RomReader:
         bytes_per_elem = scaling.bytes_per_element
         if table.layout == TableLayout.INTERLEAVED:
             base = table.address_int
-            m = self.rom_data[base]
-            n = self.rom_data[base + 1]
+            m, n = self._interleaved_dims(table, RomWriteError)
             max_index = n if axis_type == "y_axis" else m
         else:
             max_index = axis_table.elements
@@ -880,6 +932,13 @@ class RomReader:
             row_start = base + 2 + m
             stride = m + 1
             address = row_start + index * stride
+        elif table.layout == TableLayout.INTERLEAVED and axis_type == "x_axis":
+            # X axis lives inside the interleaved struct right after [M][N].
+            # Derive it from the validated table address like every other
+            # interleaved access — child axis addresses are ignored (they are
+            # often stale in ported definitions, and writing through one
+            # would silently corrupt a Y value or data cell).
+            address = base + 2 + index * bytes_per_elem
         else:
             address = axis_table.address_int + (index * bytes_per_elem)
         endian_char = ">" if scaling.endian == "big" else "<"

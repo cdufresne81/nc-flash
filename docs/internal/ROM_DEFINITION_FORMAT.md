@@ -161,6 +161,39 @@ Tables define calibration maps/data in the ROM.
 - 2D tables have 1 child: Y Axis (the independent variable)
 - 3D tables have 2 children: X Axis and Y Axis
 
+### Interleaved 3D Tables (`layout="interleaved"`)
+
+TCM-style self-describing tables where the axes and data share one in-ROM
+structure instead of living at separate addresses:
+
+```
+[M][N][X axis: M bytes][Row 0: Y0 D0..DM-1][Row 1: Y1 D0..DM-1]...
+```
+
+- `M` (1 byte) = column count, `N` (1 byte) = row count
+- Each row is `M+1` bytes: 1 Y-axis byte followed by M data bytes
+
+```xml
+<table type="3D" layout="interleaved" name="Protect_Ch4_Output_5x3"
+       address="705c3" elements="15" scaling="raw_u8">
+  <table name="Axis X" address="705c5" elements="5" scaling="raw_u8" type="X Axis"/>
+  <table name="Axis Y" address="705ca" elements="3" scaling="raw_u8" type="Y Axis"/>
+</table>
+```
+
+**Rules:**
+- `address` MUST point at the `[M][N]` dimension header — not at the X axis,
+  not at the first data byte.
+- The child axis addresses are ignored for interleaved tables (everything is
+  derived from the table address); the children supply the **scaling** and the
+  **expected element counts**.
+- The reader validates the ROM's `[M][N]` header against the children's
+  `elements` and refuses to load the table on mismatch. A mismatch almost
+  always means the `address` is stale — e.g. a definition copied from another
+  firmware whose data regions shifted (LF9KT vs LFG1T shifted the same tables
+  by -4/+72/+216 bytes). Without this check, a stale address renders a
+  garbage grid whose dimensions come from arbitrary data bytes.
+
 ## Address Format
 
 All addresses are in **hexadecimal** without `0x` prefix (e.g., `d01dc`).

@@ -1,5 +1,48 @@
 # Session Notes
 
+## ✅ INTERLEAVED-TABLE "hundreds of cells" USER REPORT — root-caused + hardened (Jul 9, 2026)
+
+**User report (external, LF9KT0001.bin + LF9KT001.xml at repo root):** some 3D interleaved tables
+(e.g. `Protect_Ch4_Output_5x3`) rendered hundreds of cells instead of 5×3; sibling
+`Protect_Ch4_Level_5x5` was fine.
+
+**Root cause (verified byte-level, both ROMs):** the LF9KT001.xml is a port of the shipped
+LFG1TF000_v02.xml defs, and most addresses were never re-based for the LF9KT firmware, whose data
+blocks shifted vs LFG1T: **Protect −4 (100% byte-aligned), ShiftAdapt +72, TCC +216**. The
+interleaved reader trusted `rom[addr]`/`rom[addr+1]` as the `[M][N]` header → at the stale address
+the X-axis bytes 0x40/0x50 became "64×80" → 5120 cells. The 5×5 sibling worked only because its
+base WAS re-based (0x7058c→0x70588). **Worse, quiet variant:** all 17 Protect 2D tables in that xml
+read values 4 bytes off — right cell count, wrong data (verified: corrected−4 values == LFG1T
+values at the original addresses). RateGrid_4x38 defs are structurally bogus even in LFG1T
+(three 196-byte structs can't sit 9 bytes apart).
+
+**Fix landed (uncommitted):** `RomReader._interleaved_dims()` — single validated `[M][N]`-header
+read (bounds + nonzero + swapxy-reject + cross-check vs the def's axis element counts; elements=0
+treated as not-declared), wired into all 4 interleaved paths (read / bulk write / cell write /
+axis write); mismatch raises descriptive RomReadError/RomWriteError (UI already dialogs these).
+ALSO fixed (adversarial-review HIGH): interleaved **X-axis writes** now derive the address from
+the table base (base+2+i), not the child axis address — a stale child (present on the reporter's
+one "working" table, Level_5x5) silently redirected X-breakpoint edits into the row-0 Y byte.
+`layout="interleaved"` documented in ROM_DEFINITION_FORMAT.md (was undocumented). +15 tests
+(`TestInterleavedHeaderMismatch`, incl. M-only/N-only mismatch — a drop-one-arm mutant survived
+the both-wrong fixture — rom-unmutated write asserts, stale-child X-write regression). Verified:
+reporter's pair → 18 stale defs fail loud, 19 read fine; shipped LFG1TF000 pair → 100/100 load.
+5-agent adversarial workflow (wf_c53d6d5a-df2) CONFIRMED diagnosis, refuted reader-bug alternates
+(convention fits 100/100 working defs; swapped/off-by-one fit 0/66). CHANGELOG updated.
+
+**Deliverables for the reporter (repo root, gitignored — NOT ours to publish):**
+`LF9KT001_corrected.xml` (283+ re-based entries, 267/270 tables load correctly; works with OLD
+NC-Flash releases too — the fix only adds validation, conventions unchanged) +
+`LF9KT001_correction_audit.md` (what changed, evidence class per entry, RateGrid root cause:
+those are 9-byte contiguous 4-pt records misdeclared as 4x38 interleaved, real data at
+0x71203/0c/15 (+201), need re-shape not re-base; region-only-confidence list; shift map).
+
+**Follow-ups:** (1) shift between firmwares accumulates (0→−4→+72→+200/201→+207→+216→+229/234→
++1069..+6703) — def porting must re-base per table; (2) possible future guard: axis-monotonicity
+heuristic could catch stale CONTIGUOUS defs too (the quiet 2D corruption — right cell count,
+wrong values — has no header to validate; 17 Protect 2D tables were silently 4-off); (3) LFG1TG
+defs are verbatim TF copies and untestable (no TG bin in repo).
+
 ## ⏳ PENDING VALIDATION & FOLLOW-UPS (from user manual test, Jul 6, 2026)
 
 - **[RETEST-ON-BINARY] B2 + B5 not yet verified** — user has the installed binary running, can't
