@@ -32,7 +32,12 @@ reporter's pair → 18 stale defs fail loud, 19 read fine; shipped LFG1TF000 pai
 
 **Deliverables for the reporter (repo root, gitignored — NOT ours to publish):**
 `LF9KT001_corrected.xml` (283+ re-based entries, 267/270 tables load correctly; works with OLD
-NC-Flash releases too — the fix only adds validation, conventions unchanged) +
+NC-Flash releases too — the fix only adds validation, conventions unchanged; **romid block also
+fixed Jul 9**: original declared id `LF9KT0001` @ addr 0 = vector table → auto-detect never
+matched ("No matching ROM definition found" on drag-drop); real id `SW-LF9KT0001.HEX` @ 0x10612,
+same addr as LFG1TF000 — verified via RomDetector. User's metadata copy at
+C:\Projets\MiataNC\romdrop_rev_21053000\metadata\LF9KT001.xml still has the old romid — user must
+re-copy the corrected xml there; if the friend already received a pre-fix copy, resend) +
 `LF9KT001_correction_audit.md` (what changed, evidence class per entry, RateGrid root cause:
 those are 9-byte contiguous 4-pt records misdeclared as 4x38 interleaved, real data at
 0x71203/0c/15 (+201), need re-shape not re-base; region-only-confidence list; shift map).
@@ -42,6 +47,38 @@ those are 9-byte contiguous 4-pt records misdeclared as 4x38 interleaved, real d
 heuristic could catch stale CONTIGUOUS defs too (the quiet 2D corruption — right cell count,
 wrong values — has no header to validate; 17 Protect 2D tables were silently 4-off); (3) LFG1TG
 defs are verbatim TF copies and untestable (no TG bin in repo).
+
+## Recent Completed Work (Jul 9, 2026) - ECU read naming + flash-complete message + romdrop-defs issue
+
+Three small user-requested tasks (uncommitted, working tree on `feature/architecture-hardening`):
+1. **Auto-saved ECU reads named by cal ID, ALL CAPS** — `_auto_save_rom` now derives the filename stem
+   from the ROM bytes' own calibration ID (`get_cal_id`, e.g. `LF9VEB_<ts>.bin`) instead of falling back
+   to `ecu_read_<ts>` when the ECU status card is still `N/A`/`—` (the common fresh-read case). New static
+   `ECUProgrammingWindow._cal_id_from_rom` (returns caps); `_auto_save_to_reads_dir` gained a
+   `name_override` param (override → card → generic) and uppercases any real ROM_ID (generic `ecu_read`
+   fallback stays lower). RAM dumps carry no cal ID → reuse the card's ROM_ID as `<ROM_ID>_RAM_<ts>.bin`
+   (label `RAM`, also caps). Tests: `tests/test_ecu_read_naming.py` (6).
+2. **Flash-complete message corrected** — user: the ECU reboots on its own after a valid flash; the
+   ignition cycle is NOT mandatory and the ~10 s wait isn't required. Reworded the post-flash dialog
+   (title `Flash Complete`, "you do not need to cycle the ignition — but it is recommended"), its progress line, and
+   the pre-flash WiCAN confirm bullet (dropped the "you MUST cycle / stays in bootloader until you do /
+   ~10 s"). Message/wording only — flash sequence unchanged. ⚠️ Note tension with memory
+   `project_wican_post_flash_bootloader` (prior HW finding said the ECU sits in bootloader until an
+   ignition cycle, which is why inline read-back is deferred); the `wican_sd_flash` read-back logic was
+   left as-is. User plans the quick validate (flash → immediate READ/Clear DTCs).
+3. **GitHub issue #86** (enhancement) — bundle the full romdrop XML definition set into the packaged
+   build so users don't hunt for defs (land in `examples/metadata/`, the dir `RomDetector` scans and
+   `NCFlash.spec` bundles). Only 3 defs ship today. Open questions captured: source repo, fetch-vs-vendor,
+   naming/collision, licensing.
+
+**Follow-up polish (Jul 9, same session):** (a) removed the "verify the flash byte-for-byte, use Read
+ROM…" line from the `Flash Complete` dialog (inline read-back isn't possible post-flash); (b) relabeled
+the ECU actions **"Scan RAM" button → "Read RAM"** (label only; op unchanged, `_btn_scan_ram`/`_on_scan_ram`/
+`scan_ram` internals untouched); (c) ROM_ID now spelled ALL CAPS in both ROM and RAM filenames, and RAM
+files land as `<ROM_ID>_RAM_<ts>.bin` (see task 1 above).
+
+black clean, `tests/test_ecu_read_naming.py` green (6). Not committed — awaiting user direction on
+whether these ride PR #85's branch or get their own.
 
 ## ⏳ PENDING VALIDATION & FOLLOW-UPS (from user manual test, Jul 6, 2026)
 

@@ -289,7 +289,7 @@ class ECUProgrammingWindow(QMainWindow):
         self._btn_clear_dtcs.clicked.connect(self._on_clear_dtcs)
         row.addWidget(self._btn_clear_dtcs)
 
-        self._btn_scan_ram = QPushButton("Scan RAM")
+        self._btn_scan_ram = QPushButton("Read RAM")
         self._btn_scan_ram.setMinimumHeight(36)
         self._btn_scan_ram.clicked.connect(self._on_scan_ram)
         row.addWidget(self._btn_scan_ram)
@@ -870,9 +870,9 @@ class ECUProgrammingWindow(QMainWindow):
             "loop, so a dropped WiFi link cannot interrupt the programming session.\n\n"
             "• The link is checked first — a flash is refused on a lossy link.\n"
             "• Keep the ignition ON and stay near the adapter during upload + flash.\n"
-            "• AFTER the flash completes you MUST cycle the ignition (key OFF ~10 s, "
-            "then ON) to boot the new calibration — the ECU stays in its bootloader "
-            "until you do.\n\n"
+            "• The ECU reboots on its own once the flash is confirmed — you do not "
+            "need to cycle the ignition, but cycling it (OFF, then ON) afterward is "
+            "recommended to confirm the new calibration booted.\n\n"
             "Proceed?",
             QMessageBox.Yes | QMessageBox.No,
             QMessageBox.No,
@@ -1239,30 +1239,26 @@ class ECUProgrammingWindow(QMainWindow):
                 QTimer.singleShot(500, self._auto_reconnect)
             elif self._current_operation in ("flash", "dynamic_flash"):
                 # Both adapters finish the flash with an IDENTICAL UDS ECUReset
-                # (0x11 0x01) after RequestTransferExit. The NC ECU then sits in its
-                # programming bootloader until a PHYSICAL ignition cycle boots the new
-                # calibration — the standard documented Mazda NC final step, required
-                # for J2534 and WiCAN alike (the ECU can't tell the adapters apart).
-                # The host cannot do it, so make it an explicit, unmissable
-                # instruction rather than silently "reconnecting" to a bootloader.
+                # (0x11 0x01) after RequestTransferExit, which reboots the ECU and
+                # brings up the freshly written calibration on its own — no ignition
+                # cycle is required to finish. Cycling the key afterward is the
+                # recommended (not mandatory) way to be certain the new cal is live,
+                # so frame it as a recommendation rather than a blocking "you MUST".
                 self._progress_detail.setText(
-                    "Flash written & confirmed. Cycle the ignition to finish."
+                    "Flash written & confirmed. The ECU reboots on its own."
                 )
                 QTimer.singleShot(
                     300,
                     lambda: QMessageBox.information(
                         self,
-                        "Flash Complete — Cycle the Ignition",
+                        "Flash Complete",
                         "The ROM was written and every block was confirmed by the "
                         "ECU.\n\n"
-                        "To boot the new calibration you MUST now cycle the "
-                        "ignition:\n"
-                        "  1. Turn the key OFF and wait ~10 seconds.\n"
-                        "  2. Turn the key back ON (or start the engine).\n\n"
-                        "The ECU stays in its programming bootloader until you do "
-                        "this — it is the normal final step, not an error.\n\n"
-                        "Then click Done to reconnect. To verify the flash "
-                        "byte-for-byte, use Read ROM and compare against your tune.",
+                        "The ECU reboots on its own after a valid flash, so you do "
+                        "not need to cycle the ignition — but it is recommended: turn "
+                        "the key OFF, then back ON to be sure the new calibration "
+                        "boots cleanly.\n\n"
+                        "Click Done to reconnect.",
                     ),
                 )
         else:
@@ -1311,7 +1307,7 @@ class ECUProgrammingWindow(QMainWindow):
         QTimer.singleShot(500, self._on_connect)
 
     def _auto_save_to_reads_dir(
-        self, data: bytes | bytearray, label: str = ""
+        self, data: bytes | bytearray, label: str = "", name_override: str | None = None
     ) -> Path | None:
         """Auto-save data to ~/.nc-flash/reads/ with timestamped filename.
 
@@ -1319,16 +1315,25 @@ class ECUProgrammingWindow(QMainWindow):
             data: Raw bytes to save.
             label: Optional label inserted before timestamp
                    (e.g., "RAM" -> "{id}_RAM_{ts}.bin").
+            name_override: Preferred filename stem (e.g. the ROM's own
+                   calibration ID). Falls back to the ECU status card, then a
+                   generic "ecu_read" when neither is available.
 
         Returns:
             Path to saved file, or None on failure.
         """
         from datetime import datetime
 
-        rom_id = self._card_ecu.get_value().strip()
+        rom_id = (name_override or "").strip()
+        if not rom_id:
+            rom_id = self._card_ecu.get_value().strip()
         if not rom_id or rom_id == "—":
             rom_id = "ecu_read"
-        if rom_id.upper().endswith(".HEX"):
+        else:
+            # ROM_ID is spelled in all caps in the filename (e.g. LF9VEB_...,
+            # LF9VEB_RAM_...); only the generic "ecu_read" fallback stays lower.
+            rom_id = rom_id.upper()
+        if rom_id.endswith(".HEX"):
             rom_id = rom_id[:-4]
 
         from src.utils.settings import get_settings
@@ -1353,8 +1358,34 @@ class ECUProgrammingWindow(QMainWindow):
             return None
 
     def _auto_save_rom(self, rom_data: bytearray) -> Path | None:
-        """Auto-save ROM read to ~/.nc-flash/reads/."""
-        return self._auto_save_to_reads_dir(rom_data)
+        """Auto-save ROM read to ~/.nc-flash/reads/, named by calibration ID."""
+        return self._auto_save_to_reads_dir(
+            rom_data, name_override=self._cal_id_from_rom(rom_data)
+        )
+
+    @staticmethod
+    def _cal_id_from_rom(rom_data: bytes) -> str | None:
+        """Best-effort calibration ID (e.g. 'LF9VEB') read from the ROM bytes.
+
+        The bytes we just read are the authoritative name for the ROM; the ECU
+        status card is only a fallback (it reads 'N/A' before a full read, which
+        is why fresh reads landed as the generic 'ecu_read_<ts>'). Returned in
+        all caps to match the on-disk filename convention. Returns None if the
+        bytes are not a full ROM or carry no valid cal ID (e.g. a RAM dump), so
+        the caller falls back to the card/generic name.
+        """
+        try:
+            cal = (
+                get_cal_id(rom_data)
+                .decode("ascii", errors="replace")
+                .rstrip("\x00")
+                .strip()
+                .upper()
+            )
+            return cal or None
+        except Exception:
+            # Best-effort naming only — never let a bad/partial ROM abort the save.
+            return None
 
     def _auto_save_ram_dump(self, ram_data: bytearray) -> Path | None:
         """Auto-save RAM dump to ~/.nc-flash/reads/."""
