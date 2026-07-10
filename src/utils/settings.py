@@ -97,6 +97,13 @@ class AppSettings:
     def set_reads_directory(self, path: str):
         self._set_path("paths/reads_directory", path)
 
+    def get_logs_directory(self) -> str:
+        """Get the WiCAN trip-log directory (defaults to {workspace}/logs)."""
+        return self._get_workspace_path("paths/logs_directory", "logs")
+
+    def set_logs_directory(self, path: str):
+        self._set_path("paths/logs_directory", path)
+
     # ------------------------------------------------------------------ #
     # Window state
     # ------------------------------------------------------------------ #
@@ -264,6 +271,14 @@ class AppSettings:
     def set_ecu_adapter(self, kind: str):
         self.settings.setValue("ecu/adapter", "wican" if kind == "wican" else "j2534")
 
+    def is_wican_adapter(self) -> bool:
+        """True when the WiCAN adapter is selected.
+
+        The single predicate for WiCAN-only affordances (trip-log sync, its
+        Download Logs button) — callers never compare the raw adapter string.
+        """
+        return self.get_ecu_adapter() == "wican"
+
     # -- WiCAN (SLCAN-over-TCP) settings --
 
     def get_wican_host(self) -> str:
@@ -299,6 +314,14 @@ class AppSettings:
 
     def set_wican_auto_config(self, enabled: bool):
         self.settings.setValue("ecu/wican_auto_config", bool(enabled))
+
+    def get_wican_auto_download_logs(self) -> bool:
+        """Whether to auto-download new SD trip logs at launch (no-op when no
+        WiCAN host/identity is configured)."""
+        return self.settings.value("ecu/wican_auto_download_logs", True, type=bool)
+
+    def set_wican_auto_download_logs(self, enabled: bool):
+        self.settings.setValue("ecu/wican_auto_download_logs", bool(enabled))
 
 
 # Global settings instance

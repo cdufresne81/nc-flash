@@ -32,6 +32,7 @@ class TestSettingDescriptor:
                 "checkbox",
                 "button",
                 "readonly",
+                "section",
             ), f"Invalid widget_type on {desc.key}: {desc.widget_type}"
 
     def test_registry_keys_are_unique(self):
@@ -49,6 +50,21 @@ class TestSearchScoring:
 
     def _score(self, desc, query):
         return SettingsDialog._match_score(None, desc, query)
+
+    def test_section_headers_never_match(self):
+        # Sections are page layout, not settings — a search hit would render a
+        # do-nothing header row in the results.
+        desc = SettingDescriptor(
+            key="ecu.wican.section_trip_logs",
+            label="Trip Logs",
+            description="",
+            category="ECU",
+            subcategory="WiCAN",
+            widget_type="section",
+            getter="",
+        )
+        assert self._score(desc, "trip") == 0
+        assert self._score(desc, "wican") == 0
 
     def test_exact_label_match_scores_high(self):
         desc = SettingDescriptor(

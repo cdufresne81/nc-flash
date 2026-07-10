@@ -103,6 +103,7 @@ python main.py
 - Dedicated ECU Programming window (Tools > ECU Programming)
 - Native J2534/UDS flash — read and write ECU ROMs directly via Tactrix OpenPort 2.0
 - **WiCAN PRO wireless flashing (Wi-Fi)** — read and flash the ECU over a WiCAN PRO adapter with no cable. Flash is SD-staged and firmware-driven (the adapter runs the program sequence locally over CAN) for brick-safety, and can coexist with the on-device datalogger. Select the adapter in Settings > ECU > Adapter; auto-discovers the adapter on the LAN via mDNS.
+- **WiCAN trip-log download** — while the WiCAN adapter is selected, new datalog CSVs on its SD card are pulled into a local `logs/` folder automatically at app launch (toggle in Settings > ECU > WiCAN) and on demand via the Download Logs button. Incremental, atomic, never deletes from the device; needs no ECU connection.
 - Flash ROM to ECU with progress tracking and abort support (`Ctrl+Shift+F`)
 - Read ROM from ECU — dump the current calibration
 - Scan RAM — dump ECU RAM for diagnostics

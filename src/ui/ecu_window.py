@@ -184,6 +184,11 @@ class ECUProgrammingWindow(QMainWindow):
         self.resize(750, 580)
 
         self._build_ui()
+
+        # Re-gate the Download Logs button as the main-window-owned sync
+        # starts/stops (Qt auto-disconnects when this window is destroyed).
+        main_window.wican_log_sync.running_changed.connect(self._update_action_states)
+
         self._update_action_states()
 
         # Auto-connect on open
@@ -294,6 +299,18 @@ class ECUProgrammingWindow(QMainWindow):
         self._btn_scan_ram.clicked.connect(self._on_scan_ram)
         row.addWidget(self._btn_scan_ram)
 
+        # WiCAN device utility, NOT an ECU operation: pure HTTP to the WiCAN's
+        # port-80 log endpoints — needs no ECU connection and works whichever
+        # adapter is selected. The sync itself is owned by the main window's
+        # WiCANLogSync collaborator (shared with the launch-time auto-download).
+        self._btn_download_logs = QPushButton("Download Logs")
+        self._btn_download_logs.setMinimumHeight(36)
+        self._btn_download_logs.setToolTip(
+            "Download new WiCAN trip logs (no ECU connection needed)"
+        )
+        self._btn_download_logs.clicked.connect(self._on_download_logs)
+        row.addWidget(self._btn_download_logs)
+
         actions_layout.addLayout(row)
         self._stack.addWidget(actions_page)
 
@@ -335,7 +352,12 @@ class ECUProgrammingWindow(QMainWindow):
         # user mid-flash. Qt records still reach the session log file.
         self._log = LogConsole(
             auto_register=True,
-            allowed_logger_prefixes=["src.ecu", "src.ui.ecu_window", "__main__"],
+            allowed_logger_prefixes=[
+                "src.ecu",
+                "src.ui.ecu_window",
+                "src.ui.wican_log_sync",
+                "__main__",
+            ],
             drop_qt_logger=True,
         )
         self._log.setMinimumHeight(150)
@@ -370,27 +392,14 @@ class ECUProgrammingWindow(QMainWindow):
         keeps the online case sub-second; a freshly found IP is written back as
         the new fallback.
         """
+        from src.ecu import wican_discovery
+
         host = s.get_wican_host()
         try:
             device_id = s.get_wican_device_id()
         except Exception:
             device_id = ""
-        if not device_id:
-            return host
-        try:
-            from src.ecu import wican_discovery
-
-            resolved = wican_discovery.resolve_host_for_device_id(
-                device_id, timeout_s=3.0
-            )
-        except Exception as e:  # never let discovery break a connect
-            logger.debug("WiCAN mDNS re-resolve failed (%s); using stored host", e)
-            return host
-        if not resolved:
-            logger.debug(
-                "WiCAN %s not found via mDNS; using stored host %s", device_id, host
-            )
-            return host
+        resolved = wican_discovery.resolve_host_with_fallback(device_id, host)
         if resolved != host:
             logger.info(
                 "WiCAN %s re-resolved to %s via mDNS (was %s)",
@@ -661,6 +670,19 @@ class ECUProgrammingWindow(QMainWindow):
         has_rom = self._get_current_rom_data() is not None
         # Voltage is a warning only — never a hard block (bench PSU may read differently)
         safe_conditions = bool(connected and engine_off)
+
+        # Download Logs is a WiCAN device utility (pure HTTP, no ECU session):
+        # shown only when the WiCAN adapter is selected (with Tactrix/J2534 the
+        # SD card is a manual operation, so the button is hidden entirely).
+        # Available without a connection, but held off while an ECU operation
+        # runs (don't contend with a flash for the device's SD/CPU) or while a
+        # sync is already in flight.
+        is_wican_adapter = self._main_window.settings.is_wican_adapter()
+        log_sync = self._main_window.wican_log_sync
+        self._btn_download_logs.setVisible(is_wican_adapter)
+        self._btn_download_logs.setEnabled(
+            is_wican_adapter and not log_sync.is_running and not busy
+        )
 
         # Nothing works while an operation is in progress
         if busy:
@@ -1004,6 +1026,15 @@ class ECUProgrammingWindow(QMainWindow):
             return
         self._start_flash("scan_ram")
 
+    def _on_download_logs(self):
+        """Kick the main-window-owned WiCAN trip-log sync (device utility).
+
+        Runs entirely over HTTP on a worker thread — no ECU session, no
+        progress page; per-file results land in the Activity Log below. Button
+        state refresh rides the sync's ``running_changed`` signal.
+        """
+        self._main_window.wican_log_sync.start()
+
     def _build_flash_driver(self, operation: str, source_name: str | None = None):
         """Select and prepare the flash/read driver for the current adapter.
 
@@ -1090,6 +1121,16 @@ class ECUProgrammingWindow(QMainWindow):
         ``source_name`` (kept out of ``**kwargs`` so it is not forwarded to the
         worker) names the staged SD image for the WiCAN write path.
         """
+        # A background trip-log download shares the WiCAN's SD/CPU/WiFi with
+        # every ECU operation routed through the device — stop it first (fast
+        # abort between chunks; completed files remain, the rest re-fetch on
+        # the next sync). J2534 ops don't touch the WiCAN, so they leave a
+        # running sync alone.
+        log_sync = self._main_window.wican_log_sync
+        if self._is_wican() and log_sync.is_running:
+            logger.info("Stopping WiCAN trip-log sync for the ECU operation")
+            log_sync.shutdown()
+
         self._poll_timer.stop()
         self._update_action_states()  # Disable all buttons
         self._stack.setCurrentIndex(1)  # Show progress page

@@ -1,5 +1,72 @@
 # Session Notes
 
+## ✅ #83 WiCAN TRIP-LOG SYNC — BUILT + HARDWARE-VALIDATED + SHIPPED v2.11.0 (Jul 10, 2026)
+
+Branch `feature/wican-log-sync` (off master @ v2.10.0), goal doc
+`.claude/plans/wican-log-sync-goal.md`. Committed (e51aaca), PR #87, issue #83
+closed. **Post-review /simplify pass (4 parallel agents: reuse/simplification/
+efficiency/altitude) applied before release:**
+- `settings.is_wican_adapter()` = THE adapter predicate (ecu_window gate +
+  `WiCANLogSync.start()` both use it; no more raw `== "wican"` compares in the
+  new code — `_build_adapter_config`'s pre-existing compare left as-is).
+- `wican_discovery.resolve_host_with_fallback()` = THE mDNS re-resolve fallback
+  policy (worker + `_resolve_wican_host` both call it; window keeps the
+  write-back; `test_ecu_window_wican_resolve.py` still green — patches the
+  underlying `resolve_host_for_device_id`).
+- `WiCANLogSync.schedule_auto_start()` owns launch policy (toggle + 3 s defer);
+  `main.py` just calls it. `http_port` is constructor-injected (test seam; the
+  `_HTTP_PORT` ui module global is gone).
+- Dead code dropped: unreachable non-200 guards in `wican_http` (urlopen raises
+  HTTPError for non-2xx), the `WiCANHttpError→WiCANLogsError` rewrap in
+  `download_new` (transport errors now raise the base; size-lie test retargeted),
+  the 4× `getattr(main_window, "wican_log_sync", None)` probes (main.py sets it
+  unconditionally), and `_on_download_logs`'s redundant refresh (rides
+  `running_changed`).
+- Skipped (deliberate): `section` widget_type stays as-is (structurally safe —
+  sections never enter `_widgets`); sanitize `..` double-guard (distinct error
+  messages); `wican_http` as separate module (that's the #84 plan).
+- **P1** `src/ecu/wican_http.py` (SHARED transport for #83+future #84: `get_json`,
+  atomic `.part`+size-verify `download_to_file` w/ abort_cb, `sanitize_basename`,
+  `WiCANHttpError(ECUError)`) + `src/ecu/wican_logs.py` (`WiCANLogClient`:
+  list/status/download_new — incremental by (name,size), skip-active via
+  /csv_status, clockless `-2` collision suffix, abort_cb between files+chunks) +
+  workspace `logs` subdir + settings `get_logs_directory` /
+  `get_wican_auto_download_logs` (default ON).
+- **P2** ECU window "Download Logs" quick-action (device utility: enabled w/o ECU
+  connection, disabled while busy/sync-running; console prefix
+  `src.ui.wican_log_sync` added to LogConsole filter). **User follow-up (same
+  day): WHOLE feature gated on adapter == wican** — button hidden for Tactrix
+  (SD is manual there) AND `WiCANLogSync.start()` no-ops unless the WiCAN
+  adapter is selected (single gate covers button + launch auto-sync); +
+  `_start_flash` now stops a running sync before any WiCAN ECU op (SD/CPU/WiFi
+  contention guard). Tests: `tests/test_ecu_window_download_logs.py` (4) +
+  adapter-gate test in `test_wican_log_sync.py` (now 6). README bullet added.
+- **P3** `src/ui/wican_log_sync.py` `WiCANLogSync` collaborator — SINGLE owner of
+  sync state, owned by MainWindow (`self.wican_log_sync`), shared by button +
+  launch auto-download (`QTimer.singleShot(3000, …)` in `_deferred_init`, gated on
+  the setting); worker does its own mDNS re-resolve (no settings write-back);
+  `shutdown()` in MainWindow.closeEvent (interruption-flag abort, no
+  destroyed-while-running).
+- **P4** Settings > ECU > WiCAN: auto-download checkbox + Trip Logs Directory row.
+  **Follow-up:** new `section` widget_type in the settings registry (HLine rule +
+  bold header, no hex literals — theme ratchet safe; `_match_score` returns 0 so
+  search never surfaces headers); WiCAN page now = connection group (host/port/
+  auto-config/Test Connection, button MOVED UP) → "Trip Logs" section → toggle +
+  dir row. Screenshot: docs/screenshots/settings_wican_trip_logs_section.png.
+- **Tests** `tests/test_ecu_wican_logs.py` (40, fake HTTP device) +
+  `tests/test_wican_log_sync.py` (5, REAL QThread + qInstallMessageHandler guard).
+  Full suite 1647 passed / 12 skipped, black clean.
+- **P6 bench (live WiCAN @ .169):** 12 real logs / 7.8 MB synced in 12.3 s
+  (623 KiB/s), all sizes match /csv_list, 3 files (incl. 4 MB) byte-identical vs
+  curl, re-run 0 downloaded / 12 skipped, no .part residue.
+- **🔴 FIRMWARE-CONTRACT FIX:** issue #83's body is WRONG about the download
+  endpoint — it's `GET /download_csv?file=` (csv_logger.c:1300), NOT
+  `/csv_download` (404s on hardware). Client + tests + goal doc use the real URI.
+- NOT yet validated: the real app-launch auto-download (app was running during the
+  session; fires on next launch — expect 12 CSVs in %APPDATA%/NCFlash/logs).
+  No session-log collision: app logs = `~/.nc-flash/logs`, trip logs =
+  `{workspace}/logs`.
+
 ## ✅ INTERLEAVED-TABLE "hundreds of cells" USER REPORT — root-caused + hardened (Jul 9, 2026)
 
 **User report (external, LF9KT0001.bin + LF9KT001.xml at repo root):** some 3D interleaved tables
