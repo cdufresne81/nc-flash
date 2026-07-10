@@ -280,3 +280,27 @@ class TestEdgeCases:
 
         attrs = get_scaling_attributes(temp_xml_file, "TestScaling")
         assert attrs["newattr"] == "newvalue"
+
+
+class TestAtomicWriteAndQuotedNames:
+    """B9 — atomic write (no temp lingers) + XPath-variable lookup (quote-safe)."""
+
+    def test_scaling_name_with_apostrophe_is_updatable(self, tmp_path):
+        xml = tmp_path / "def.xml"
+        xml.write_text(
+            '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n'
+            "<rom>\n"
+            '  <scaling name="Injector O\'Ring" units="%" min="0" max="10"/>\n'
+            "</rom>\n",
+            encoding="utf-8",
+        )
+        # Previously an apostrophe in the name raised XPathEvalError -> False.
+        assert update_scaling(xml, "Injector O'Ring", {"max": "20"}) is True
+        assert get_scaling_attributes(xml, "Injector O'Ring")["max"] == "20"
+
+    def test_update_leaves_no_temp_file_and_stays_valid(self, temp_xml_file):
+        assert update_scaling(temp_xml_file, "TestScaling", {"min": "5"}) is True
+        assert not Path(f"{temp_xml_file}.tmp").exists()
+        assert get_scaling_attributes(temp_xml_file, "TestScaling")["min"] == "5"
+        # Reparse to confirm the file is well-formed after the atomic replace.
+        etree.parse(str(temp_xml_file))

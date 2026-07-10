@@ -144,7 +144,9 @@ class TestRestoreSession:
         host = _SessionHost(session_files=[f"project:{proj_dir}"])
         host._restore_session()
 
-        host.open_project_path.assert_called_once_with(str(proj_dir))
+        host.open_project_path.assert_called_once_with(
+            str(proj_dir), prompt_on_switch=False
+        )
         host._open_rom_file.assert_not_called()
 
     def test_standalone_rom_calls_open_rom_file(self, tmp_path):
@@ -170,7 +172,9 @@ class TestRestoreSession:
         host = _SessionHost(session_files=[str(rom_file)])
         host._restore_session()
 
-        host.open_project_path.assert_called_once_with(str(proj_dir))
+        host.open_project_path.assert_called_once_with(
+            str(proj_dir), prompt_on_switch=False
+        )
         host._open_rom_file.assert_not_called()
 
     def test_missing_project_folder_skipped(self, tmp_path):
@@ -219,7 +223,7 @@ class TestRestoreSession:
         host._restore_session()
 
         assert host.open_project_path.call_count == 2
-        host.open_project_path.assert_any_call(str(proj_dir))
+        host.open_project_path.assert_any_call(str(proj_dir), prompt_on_switch=False)
         host._open_rom_file.assert_called_once_with(str(standalone))
 
     def test_error_in_one_entry_does_not_block_others(self, tmp_path):

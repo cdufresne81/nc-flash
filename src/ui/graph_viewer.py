@@ -11,9 +11,6 @@ import numpy as np
 from PySide6.QtWidgets import QVBoxLayout, QWidget, QSizePolicy
 from PySide6.QtCore import Qt, QTimer
 
-from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
-from matplotlib.figure import Figure
-
 from ..core.rom_definition import Table, TableType, RomDefinition, AxisType
 from ..utils.colormap import get_colormap
 from ..utils.formatting import get_scaling_range
@@ -447,10 +444,16 @@ class GraphWidget(_GraphPlotMixin, QWidget):
         self.ax_3d = None
         self._first_plot = True
 
-        # Create matplotlib figure and canvas
-        # No layout engine — constrained_layout is broken for 3D axes (collapses
-        # to zero and adds ~200ms overhead per draw). Subplot params are set
-        # manually in _plot_3d to provide stable sizing.
+        # Create matplotlib figure and canvas. matplotlib is imported HERE, not at
+        # module level, so it stays out of the startup import graph (main.py →
+        # table_viewer_window → graph_viewer): loading it eagerly cost ~1.6-1.8 s
+        # of cold start even though a GraphWidget is only built when a 2D/3D table
+        # is opened (E2). No layout engine — constrained_layout is broken for 3D
+        # axes (collapses to zero and adds ~200ms overhead per draw); subplot
+        # params are set manually in _plot_3d for stable sizing.
+        from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
+        from matplotlib.figure import Figure
+
         self.figure = Figure(figsize=(8, 6))
         self.canvas = FigureCanvas(self.figure)
 

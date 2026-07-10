@@ -39,6 +39,10 @@ class TestRunner:
     Provides programmatic control over the application for testing purposes.
     """
 
+    # Not a pytest test class (it has an __init__); stops pytest from trying to
+    # collect it and emitting a PytestCollectionWarning every run (H8).
+    __test__ = False
+
     def __init__(self, definitions_dir: str = None, quiet: bool = False):
         """
         Initialize the test runner
@@ -598,9 +602,9 @@ class TestRunner:
                 operation_fn, f"Set to {value}"
             )
             if data_changes:
-                viewer.bulk_changes.emit(data_changes)
+                viewer.bulk_changes.emit(viewer.current_table, data_changes)
             if axis_changes:
-                viewer.axis_bulk_changes.emit(axis_changes)
+                viewer.axis_bulk_changes.emit(viewer.current_table, axis_changes)
             self._process_events()
             self._log(f"Set selection to {value}")
             return True
@@ -629,9 +633,9 @@ class TestRunner:
                 operation_fn, f"Multiply by {factor}"
             )
             if data_changes:
-                viewer.bulk_changes.emit(data_changes)
+                viewer.bulk_changes.emit(viewer.current_table, data_changes)
             if axis_changes:
-                viewer.axis_bulk_changes.emit(axis_changes)
+                viewer.axis_bulk_changes.emit(viewer.current_table, axis_changes)
             self._process_events()
             self._log(f"Multiplied selection by {factor}")
             return True
@@ -660,9 +664,9 @@ class TestRunner:
                 operation_fn, f"Add {value}"
             )
             if data_changes:
-                viewer.bulk_changes.emit(data_changes)
+                viewer.bulk_changes.emit(viewer.current_table, data_changes)
             if axis_changes:
-                viewer.axis_bulk_changes.emit(axis_changes)
+                viewer.axis_bulk_changes.emit(viewer.current_table, axis_changes)
             self._process_events()
             self._log(f"Added {value} to selection")
             return True
@@ -922,7 +926,13 @@ class TestRunner:
             elif target == "main" and self.main_window:
                 widget = self.main_window
             elif target == "table_browser" and self.main_window:
-                widget = self.main_window.table_browser
+                # The table browser lives on the current document, not the main
+                # window (mirror the set_level_filter fix) (B13).
+                document = self.main_window.get_current_document()
+                if not document or not hasattr(document, "table_browser"):
+                    self._log("ERROR: No document with table browser")
+                    return ""
+                widget = document.table_browser
             else:
                 self._log(f"ERROR: Invalid target or widget not available: {target}")
                 return ""

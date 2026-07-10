@@ -12,6 +12,7 @@ from PySide6.QtCore import Signal
 from .table_browser import TableBrowser
 from ..core.rom_definition import RomDefinition, Table
 from ..core.rom_reader import RomReader
+from ..core.table_edit_state import TableEditState
 
 
 class RomDocument(QWidget):
@@ -37,6 +38,20 @@ class RomDocument(QWidget):
         self.file_name = Path(rom_path).name
         self._modified = False
         self.project_path = None  # Set by open_project_path() for project tabs
+        # Base label shown on this document's tab (without the "*" dirty marker).
+        # Standalone ROMs use the file name; project tabs override this with
+        # "[P] {name}" in open_project_path(). _update_tab_title() reads it so a
+        # modified project tab shows "*[P] name" instead of clobbering the label
+        # with the bare filename (B15).
+        self.tab_base_title = self.file_name
+        # This document is the SINGLE owner of its per-ROM edit state (Phase 3,
+        # finding C1): modified-cell borders + capture-once originals. Its open
+        # TableViewer(s) share this object by method, never by aliasing a raw
+        # dict. State dies with the document — no per-path dicts on MainWindow.
+        self.edit_state = TableEditState()
+        # Per-ROM tab/window tint (None = default gray), assigned by MainWindow's
+        # color allocator.
+        self._rom_color = None
         self.init_ui()
 
     def init_ui(self):
@@ -93,6 +108,14 @@ class RomDocument(QWidget):
             self._modified = modified
             self.modified_changed.emit(modified)
 
+    def get_color(self):
+        """Return this ROM's assigned tint (QColor) or None for default gray."""
+        return self._rom_color
+
+    def set_color(self, color):
+        """Assign this ROM's tint. None means the default gray."""
+        self._rom_color = color
+
     def save(self, file_path: str = None):
         """
         Save this ROM
@@ -108,5 +131,9 @@ class RomDocument(QWidget):
             self.rom_path = file_path
             self.file_name = Path(file_path).name
             self.rom_reader.rom_path = Path(file_path)
+            # Standalone tabs are labelled by file name; keep the base title in
+            # sync after a rename. Project tabs keep their "[P] {name}" label.
+            if self.project_path is None:
+                self.tab_base_title = self.file_name
 
         self.set_modified(False)

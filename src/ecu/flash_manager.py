@@ -25,9 +25,10 @@ from .constants import (
     ROM_SIZE,
     ROM_FLASH_START_MIN,
     BLOCK_SIZE,
-    SBL_SIZE,
     CAN_BAUDRATE,
     J2534_PROTOCOL_ISO15765,
+    ISO15765_BS,
+    ISO15765_STMIN,
     DEFAULT_J2534_DLL,
     NRC_CONDITIONS_NOT_CORRECT,
     RPM_FLASH_GATE,
@@ -39,27 +40,24 @@ from .exceptions import (
     EngineRunningError,
     NegativeResponseError,
     ROMValidationError,
-    ChecksumError,
-    J2534Error,
-    UDSError,
     UDSTimeoutError,
     SecureModuleNotAvailable,
 )
-from .checksum import correct_rom_checksums
 from .rom_utils import (
-    detect_vehicle_generation,
     validate_rom_size,
     find_first_difference,
     calculate_flash_start_index,
 )
+from .flash_prep import prepare_flash_image
+from .dtc import dedup_dtcs
 
 # Security module: try private, fall back to stub
 try:
-    from ._secure import compute_security_key, get_sbl_data
+    from ._secure import compute_security_key
 
     SECURE_MODULE_AVAILABLE = True
 except ImportError:
-    from ._secure_stub import compute_security_key, get_sbl_data
+    from ._secure_stub import compute_security_key
 
     SECURE_MODULE_AVAILABLE = False
 
@@ -425,7 +423,6 @@ class FlashManager:
         )
 
         # Set ISO-15765 block size and separation time to 0
-        from .constants import ISO15765_BS, ISO15765_STMIN
 
         self._device.set_config(self._channel_id, {ISO15765_BS: 0, ISO15765_STMIN: 0})
 
@@ -629,41 +626,22 @@ class FlashManager:
             callback: Progress callback
             archive_path: Optional file path to save as current ECU ROM archive
         """
-        # --- Phase 1: Validate ROM (BEFORE touching ECU) ---
+        # --- Phase 1: Prepare the flash image (BEFORE touching ECU) ---
+        # validate → generation → checksum-correct(+verify) → bounds → SBL, via
+        # the ONE shared prep pipeline (flash_prep). The SD-staged path uses the
+        # exact same call, so the two can never drift and brick an ECU.
         self._notify(callback, "Validating ROM...", percent=0.0)
 
-        if not validate_rom_size(rom_data):
-            raise ROMValidationError(
-                f"ROM must be exactly {ROM_SIZE} bytes, got {len(rom_data)}"
-            )
-
-        generation = detect_vehicle_generation(rom_data)
+        rom_buf, sbl_data, generation, corrections = prepare_flash_image(
+            rom_data, flash_start_index
+        )
         logger.info(f"Vehicle generation: {generation}")
-
-        # Make mutable copy for checksum correction
-        rom_buf = bytearray(rom_data)
-        corrections = correct_rom_checksums(rom_buf)
         if corrections:
             logger.info(f"Corrected {len(corrections)} checksums")
             for start, end, offset, old, new in corrections:
                 logger.debug(
                     f"  0x{start:06X}-0x{end:06X}: " f"0x{old:08X} -> 0x{new:08X}"
                 )
-
-        # Verify checksums are now correct (defense-in-depth on a copy)
-        verify_corrections = correct_rom_checksums(bytearray(rom_buf))
-        if verify_corrections:
-            raise ChecksumError(
-                f"Checksum verification failed: {len(verify_corrections)} checksum(s) "
-                f"still incorrect after correction"
-            )
-
-        # Validate flash boundaries (defense-in-depth, before ECU contact)
-        if not (0 < flash_start_index < len(rom_buf)):
-            raise FlashError(
-                f"flash_start_index out of bounds: 0x{flash_start_index:06X} "
-                f"(ROM size: 0x{len(rom_buf):06X})"
-            )
 
         self._notify(callback, f"ROM valid ({generation})", percent=2.0)
 
@@ -678,14 +656,9 @@ class FlashManager:
         self._uds.check_flash_counter()
 
         # --- Phase 4: Prepare and transfer SBL ---
+        # (SBL bytes already built in Phase 1 by prepare_flash_image.)
         self._set_state(FlashState.PREPARING_SBL)
         self._notify(callback, "Preparing SBL...", percent=22.0)
-
-        sbl_data = get_sbl_data(flash_start_index, generation)
-        if len(sbl_data) != SBL_SIZE:
-            raise FlashError(
-                f"SBL size mismatch: expected {SBL_SIZE}, got {len(sbl_data)}"
-            )
 
         # Request Download
         self._notify(callback, "Requesting download...", percent=24.0)
@@ -974,7 +947,6 @@ class FlashManager:
                 from .j2534 import J2534Device, setup_isotp_flow_control
                 from .protocol import UDSConnection
                 from .transport import J2534Transport
-                from .constants import ISO15765_BS, ISO15765_STMIN
 
                 with J2534Device(self._dll_path) as device:
                     channel_id = device.connect(
@@ -987,12 +959,7 @@ class FlashManager:
                     uds.tester_present()
                     dtcs = uds.read_dtc_status()
 
-            seen = set()
-            unique_dtcs = []
-            for d in dtcs:
-                if d.code not in seen:
-                    seen.add(d.code)
-                    unique_dtcs.append(d)
+            unique_dtcs = dedup_dtcs(dtcs)
             logger.info("Read %d DTCs (%d unique)", len(dtcs), len(unique_dtcs))
             for dtc in unique_dtcs:
                 logger.info("  %s: %s", dtc.formatted, dtc.description)
@@ -1023,7 +990,6 @@ class FlashManager:
                 from .j2534 import J2534Device, setup_isotp_flow_control
                 from .protocol import UDSConnection
                 from .transport import J2534Transport
-                from .constants import ISO15765_BS, ISO15765_STMIN
 
                 with J2534Device(self._dll_path) as device:
                     channel_id = device.connect(
@@ -1055,7 +1021,6 @@ class FlashManager:
             from .j2534 import J2534Device, setup_isotp_flow_control
             from .protocol import UDSConnection
             from .transport import J2534Transport
-            from .constants import ISO15765_BS, ISO15765_STMIN
 
             with J2534Device(self._dll_path) as device:
                 channel_id = device.connect(J2534_PROTOCOL_ISO15765, 0, CAN_BAUDRATE)
@@ -1152,7 +1117,6 @@ class FlashManager:
             Raw captured CAN data
         """
         from .j2534 import J2534Device
-        from .constants import ISO15765_BS, ISO15765_STMIN
 
         try:
             with J2534Device(self._dll_path) as device:

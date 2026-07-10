@@ -189,21 +189,21 @@ class TestFlashStartIndexBounds:
         rom[0x2030] = 0x35  # NC1
         return bytes(rom)
 
-    @patch("src.ecu.flash_manager.correct_rom_checksums", return_value=[])
+    @patch("src.ecu.flash_prep.correct_rom_checksums", return_value=[])
     def test_zero_index_raises(self, _mock_cksum):
         """flash_start_index=0 rejected (below valid range)."""
         fm = FlashManager()
         with pytest.raises(FlashError, match="out of bounds"):
             fm._flash_rom_inner(self._valid_rom(), 0, None)
 
-    @patch("src.ecu.flash_manager.correct_rom_checksums", return_value=[])
+    @patch("src.ecu.flash_prep.correct_rom_checksums", return_value=[])
     def test_index_at_rom_end_raises(self, _mock_cksum):
         """flash_start_index=ROM_SIZE rejected (no data to transfer)."""
         fm = FlashManager()
         with pytest.raises(FlashError, match="out of bounds"):
             fm._flash_rom_inner(self._valid_rom(), 0x100000, None)
 
-    @patch("src.ecu.flash_manager.correct_rom_checksums", return_value=[])
+    @patch("src.ecu.flash_prep.correct_rom_checksums", return_value=[])
     def test_negative_index_raises(self, _mock_cksum):
         """Negative flash_start_index rejected."""
         fm = FlashManager()

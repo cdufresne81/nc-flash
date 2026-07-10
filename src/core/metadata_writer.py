@@ -7,6 +7,7 @@ Utilities for updating metadata XML files (scalings, tables, etc.)
 from pathlib import Path
 from lxml import etree
 import logging
+import os
 import shutil
 
 logger = logging.getLogger(__name__)
@@ -38,8 +39,10 @@ def update_scaling(xml_path: Path, scaling_name: str, updates: dict) -> bool:
         tree = etree.parse(str(xml_path), parser)
         root = tree.getroot()
 
-        # Find the scaling element
-        scaling_elements = root.xpath(f".//scaling[@name='{scaling_name}']")
+        # Find the scaling element. Use an XPath variable, not string
+        # interpolation — an apostrophe in the name would otherwise raise
+        # XPathEvalError (swallowed to False, so the name could never be edited) (B9).
+        scaling_elements = root.xpath(".//scaling[@name=$name]", name=scaling_name)
 
         if not scaling_elements:
             logger.error(f"Scaling '{scaling_name}' not found in {xml_path}")
@@ -73,10 +76,23 @@ def update_scaling(xml_path: Path, scaling_name: str, updates: dict) -> bool:
         # Current file becomes .bak.1
         shutil.copy2(xml_path, Path(f"{base}.bak.1"))
 
-        # Write back to file
-        tree.write(
-            str(xml_path), encoding="UTF-8", xml_declaration=True, standalone="yes"
-        )
+        # Write atomically: serialize to a temp file in the same directory,
+        # fsync, then os.replace — a crash mid-write can't corrupt the XML (B9).
+        # Clean the temp file up on failure (e.g. os.replace PermissionError
+        # when the XML is held open) so it doesn't litter the metadata dir.
+        tmp_path = Path(f"{base}.tmp")
+        try:
+            with open(tmp_path, "wb") as f:
+                tree.write(f, encoding="UTF-8", xml_declaration=True, standalone="yes")
+                f.flush()
+                os.fsync(f.fileno())
+            os.replace(tmp_path, xml_path)
+        except BaseException:
+            try:
+                tmp_path.unlink(missing_ok=True)
+            except OSError:
+                pass
+            raise
 
         logger.info(f"Updated scaling '{scaling_name}' in {xml_path}")
         return True
@@ -111,7 +127,7 @@ def get_scaling_attributes(xml_path: Path, scaling_name: str) -> dict:
         tree = etree.parse(str(xml_path), parser)
         root = tree.getroot()
 
-        scaling_elements = root.xpath(f".//scaling[@name='{scaling_name}']")
+        scaling_elements = root.xpath(".//scaling[@name=$name]", name=scaling_name)
         if scaling_elements:
             return dict(scaling_elements[0].attrib)
         return {}

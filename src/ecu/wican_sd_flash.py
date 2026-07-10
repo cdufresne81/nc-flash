@@ -111,8 +111,9 @@ def _parse_fw_rev(marker: Optional[bytes]) -> Optional[int]:
 class WiCANSdFlasher:
     """SD-staged, firmware-driven flash over an already-open WiCAN transport.
 
-    Same surface as :class:`WiCANFlasher` (``flash_rom`` / ``dynamic_flash`` /
-    ``preflight``) so it is a one-line swap at the UI's ``_build_flash_driver``.
+    Public surface: ``flash_rom`` / ``dynamic_flash`` / ``preflight`` (the same
+    driver surface the UI's ``_build_flash_driver`` expects; the retired
+    host-driven ``WiCANFlasher`` used to provide it — audit D4).
     The caller owns the transport lifecycle; this class never closes it.
     """
 
@@ -141,7 +142,7 @@ class WiCANSdFlasher:
                 a timestamped cal-ID isn't the only clue to the file's content.
             min_voltage: Battery flash floor (passed to the safeguard flasher).
             flasher_kwargs: Forwarded to the composed :class:`WiCANFlasher`
-                (e.g. ``max_attempts``, ``link_pings``, ``max_p95_ms``).
+                pre-flight gate (e.g. ``link_pings``, ``max_p95_ms``).
         """
         self._transport = transport
         self._http_port = http_port
@@ -166,9 +167,9 @@ class WiCANSdFlasher:
             if datalog is not None
             else (WiCANDatalogClient(host, http_port=http_port) if host else None)
         )
-        # Proven WiCAN safeguards reused by COMPOSITION (not a mixin): link
-        # pre-flight gate, battery guard, and the read-back verify all operate on
-        # the same transport.
+        # Proven WiCAN safeguards reused by COMPOSITION (not a mixin): the link
+        # pre-flight gate and battery guard operate on the same transport (the
+        # read-back verify is this class's own _verify_readback).
         self._safeguards = WiCANFlasher(
             transport, min_voltage=min_voltage, **flasher_kwargs
         )

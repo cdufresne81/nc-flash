@@ -12,7 +12,7 @@ An open-source ROM editor and flash tool for NC Miata (MX-5) ECUs, designed to r
 
 ## Overview
 
-NC Flash is a desktop application that allows you to read, edit, flash, and save ECU ROM files for NC generation Mazda MX-5 Miata vehicles. It includes native J2534/UDS ECU flashing via Tactrix OpenPort 2.0 — no external tools required.
+NC Flash is a desktop application that allows you to read, edit, flash, and save ECU ROM files for NC generation Mazda MX-5 Miata vehicles. It includes native J2534/UDS ECU flashing via Tactrix OpenPort 2.0, plus **wireless read/flash over a WiCAN PRO adapter (Wi-Fi)** — no external tools required.
 
 ## Installation
 
@@ -102,6 +102,7 @@ python main.py
 ### ECU Flashing
 - Dedicated ECU Programming window (Tools > ECU Programming)
 - Native J2534/UDS flash — read and write ECU ROMs directly via Tactrix OpenPort 2.0
+- **WiCAN PRO wireless flashing (Wi-Fi)** — read and flash the ECU over a WiCAN PRO adapter with no cable. Flash is SD-staged and firmware-driven (the adapter runs the program sequence locally over CAN) for brick-safety, and can coexist with the on-device datalogger. Select the adapter in Settings > ECU > Adapter; auto-discovers the adapter on the LAN via mDNS.
 - Flash ROM to ECU with progress tracking and abort support (`Ctrl+Shift+F`)
 - Read ROM from ECU — dump the current calibration
 - Scan RAM — dump ECU RAM for diagnostics
@@ -233,7 +234,6 @@ nc-flash/
 │   │   ├── compare_window.py          # Side-by-side ROM comparison
 │   │   ├── ecu_window.py              # ECU Programming window
 │   │   ├── flash_mixin.py             # Flash operations mixin
-│   │   ├── flash_setup_dialog.py      # Flash setup and DTC dialog
 │   │   ├── graph_viewer.py            # 3D/2D graph visualization
 │   │   ├── patch_dialog.py            # ROM patching dialog
 │   │   ├── table_browser.py           # Category tree browser

@@ -42,7 +42,9 @@ from src.ecu.flash_manager import (
 )
 from src.ecu.exceptions import ECUError, FlashAbortedError, ROMValidationError
 from src.ecu.rom_utils import get_cal_id
+from src.ecu.dtc import dedup_dtcs
 from src.ui.log_console import LogConsole
+from src.ui import theme
 
 logger = logging.getLogger(__name__)
 
@@ -287,7 +289,7 @@ class ECUProgrammingWindow(QMainWindow):
         self._btn_clear_dtcs.clicked.connect(self._on_clear_dtcs)
         row.addWidget(self._btn_clear_dtcs)
 
-        self._btn_scan_ram = QPushButton("Scan RAM")
+        self._btn_scan_ram = QPushButton("Read RAM")
         self._btn_scan_ram.setMinimumHeight(36)
         self._btn_scan_ram.clicked.connect(self._on_scan_ram)
         row.addWidget(self._btn_scan_ram)
@@ -428,14 +430,6 @@ class ECUProgrammingWindow(QMainWindow):
             self._session.cleanup()
             self._session = None
 
-        # Disconnect main window session if active
-        if (
-            hasattr(self._main_window, "_ecu_session")
-            and self._main_window._ecu_session
-        ):
-            if self._main_window._ecu_session.is_connected:
-                self._main_window._ecu_session.disconnect_ecu()
-
         adapter = self._build_adapter_config()
         if adapter["kind"] == "wican":
             connecting_msg = "Connecting to WiCAN (may reboot to SLCAN, ~6s)..."
@@ -464,6 +458,7 @@ class ECUProgrammingWindow(QMainWindow):
 
     def _on_session_state(self, state: str):
         if state == ECUSessionState.CONNECTED.value:
+            self._disconnect_reason = None  # clear any stale loss reason
             self._conn_label.setText("Connected")
             self._conn_label.setStyleSheet(
                 "font-weight: bold; font-size: 13px; color: #44aa44; border: none;"
@@ -472,7 +467,12 @@ class ECUProgrammingWindow(QMainWindow):
             self._btn_disconnect.setEnabled(True)
             self._read_conditions_async()
         elif state == ECUSessionState.DISCONNECTED.value:
-            self._conn_label.setText("Disconnected")
+            # Surface why the link dropped, if a connection_lost reason was
+            # captured, instead of a bare "Disconnected" (G7).
+            reason = getattr(self, "_disconnect_reason", None)
+            self._conn_label.setText(
+                f"Disconnected — {reason}" if reason else "Disconnected"
+            )
             self._conn_label.setStyleSheet(
                 "font-weight: bold; font-size: 13px; color: gray; border: none;"
             )
@@ -490,8 +490,17 @@ class ECUProgrammingWindow(QMainWindow):
 
     def _on_connection_lost(self, reason: str):
         logger.warning("Connection lost: %s", reason)
+        # Remember the reason so the DISCONNECTED state can render it too,
+        # regardless of which signal arrives first (G7).
+        self._disconnect_reason = reason
         self._poll_timer.stop()
         self._reset_cards()
+        if reason:
+            self._conn_label.setText(f"Disconnected — {reason}")
+            self._conn_label.setStyleSheet(
+                "font-weight: bold; font-size: 13px; "
+                f"color: {theme.WARNING_AMBER}; border: none;"
+            )
         self._update_action_states()
 
     # --- Condition Reading ---
@@ -523,8 +532,7 @@ class ECUProgrammingWindow(QMainWindow):
             data["rom_id"] = "N/A"
         try:
             dtcs = uds.read_dtc_status()
-            seen = set()
-            unique = [d for d in dtcs if d.code not in seen and not seen.add(d.code)]
+            unique = dedup_dtcs(dtcs)
             data["dtc_count"] = len(unique)
             data["dtcs"] = unique
         except Exception:
@@ -862,9 +870,9 @@ class ECUProgrammingWindow(QMainWindow):
             "loop, so a dropped WiFi link cannot interrupt the programming session.\n\n"
             "• The link is checked first — a flash is refused on a lossy link.\n"
             "• Keep the ignition ON and stay near the adapter during upload + flash.\n"
-            "• AFTER the flash completes you MUST cycle the ignition (key OFF ~10 s, "
-            "then ON) to boot the new calibration — the ECU stays in its bootloader "
-            "until you do.\n\n"
+            "• The ECU reboots on its own once the flash is confirmed — you do not "
+            "need to cycle the ignition, but cycling it (OFF, then ON) afterward is "
+            "recommended to confirm the new calibration booted.\n\n"
             "Proceed?",
             QMessageBox.Yes | QMessageBox.No,
             QMessageBox.No,
@@ -919,8 +927,14 @@ class ECUProgrammingWindow(QMainWindow):
                     source_name=source_name,
                 )
             started = True
-        except Exception:
-            pass
+        except Exception as e:
+            # A flash that fails to start must not look like a no-op (B7).
+            logger.exception(f"Failed to start flash: {type(e).__name__}: {e}")
+            QMessageBox.critical(
+                self,
+                "Flash Error",
+                f"Could not start the flash:\n{type(e).__name__}: {e}",
+            )
         finally:
             if not started:
                 self._ecu_busy = False
@@ -959,8 +973,14 @@ class ECUProgrammingWindow(QMainWindow):
                 source_name=rom_path.name,
             )
             started = True
-        except Exception:
-            pass
+        except Exception as e:
+            # A flash that fails to start must not look like a no-op (B7).
+            logger.exception(f"Failed to start flash: {type(e).__name__}: {e}")
+            QMessageBox.critical(
+                self,
+                "Flash Error",
+                f"Could not start the flash:\n{type(e).__name__}: {e}",
+            )
         finally:
             if not started:
                 self._ecu_busy = False
@@ -995,8 +1015,9 @@ class ECUProgrammingWindow(QMainWindow):
 
           * J2534: a ``FlashManager`` borrowing the open J2534 session.
           * WiCAN read/scan: a ``FlashManager`` borrowing the WiCAN ``uds``.
-          * WiCAN flash: a ``WiCANFlasher`` (pre-flight link gate + battery guard
-            + abort-and-restart, no mid-stream resend) over the WiCAN transport.
+          * WiCAN flash: a ``WiCANSdFlasher`` (SD-staged, firmware-driven; the
+            old host-driven ``WiCANFlasher`` survives only as its pre-flight
+            link + battery gate) over the WiCAN transport.
 
         Sets ``self._session_acquired``. Returns ``None`` if a WiCAN operation
         has no open connection (the caller aborts the op).
@@ -1116,8 +1137,8 @@ class ECUProgrammingWindow(QMainWindow):
             self._btn_abort.clicked.disconnect()
         except RuntimeError:
             pass  # No previous connections
-        # Only read-only FlashManager ops expose abort; WiCANFlasher (write) does
-        # not, and abort is disabled for writes anyway (aborting risks a brick).
+        # Only read-only FlashManager ops expose abort; WiCANSdFlasher (write)
+        # does not, and abort is disabled for writes anyway (aborting risks a brick).
         if hasattr(manager, "abort"):
             self._btn_abort.clicked.connect(manager.abort)
 
@@ -1218,30 +1239,26 @@ class ECUProgrammingWindow(QMainWindow):
                 QTimer.singleShot(500, self._auto_reconnect)
             elif self._current_operation in ("flash", "dynamic_flash"):
                 # Both adapters finish the flash with an IDENTICAL UDS ECUReset
-                # (0x11 0x01) after RequestTransferExit. The NC ECU then sits in its
-                # programming bootloader until a PHYSICAL ignition cycle boots the new
-                # calibration — the standard documented Mazda NC final step, required
-                # for J2534 and WiCAN alike (the ECU can't tell the adapters apart).
-                # The host cannot do it, so make it an explicit, unmissable
-                # instruction rather than silently "reconnecting" to a bootloader.
+                # (0x11 0x01) after RequestTransferExit, which reboots the ECU and
+                # brings up the freshly written calibration on its own — no ignition
+                # cycle is required to finish. Cycling the key afterward is the
+                # recommended (not mandatory) way to be certain the new cal is live,
+                # so frame it as a recommendation rather than a blocking "you MUST".
                 self._progress_detail.setText(
-                    "Flash written & confirmed. Cycle the ignition to finish."
+                    "Flash written & confirmed. The ECU reboots on its own."
                 )
                 QTimer.singleShot(
                     300,
                     lambda: QMessageBox.information(
                         self,
-                        "Flash Complete — Cycle the Ignition",
+                        "Flash Complete",
                         "The ROM was written and every block was confirmed by the "
                         "ECU.\n\n"
-                        "To boot the new calibration you MUST now cycle the "
-                        "ignition:\n"
-                        "  1. Turn the key OFF and wait ~10 seconds.\n"
-                        "  2. Turn the key back ON (or start the engine).\n\n"
-                        "The ECU stays in its programming bootloader until you do "
-                        "this — it is the normal final step, not an error.\n\n"
-                        "Then click Done to reconnect. To verify the flash "
-                        "byte-for-byte, use Read ROM and compare against your tune.",
+                        "The ECU reboots on its own after a valid flash, so you do "
+                        "not need to cycle the ignition — but it is recommended: turn "
+                        "the key OFF, then back ON to be sure the new calibration "
+                        "boots cleanly.\n\n"
+                        "Click Done to reconnect.",
                     ),
                 )
         else:
@@ -1290,7 +1307,7 @@ class ECUProgrammingWindow(QMainWindow):
         QTimer.singleShot(500, self._on_connect)
 
     def _auto_save_to_reads_dir(
-        self, data: bytes | bytearray, label: str = ""
+        self, data: bytes | bytearray, label: str = "", name_override: str | None = None
     ) -> Path | None:
         """Auto-save data to ~/.nc-flash/reads/ with timestamped filename.
 
@@ -1298,16 +1315,25 @@ class ECUProgrammingWindow(QMainWindow):
             data: Raw bytes to save.
             label: Optional label inserted before timestamp
                    (e.g., "RAM" -> "{id}_RAM_{ts}.bin").
+            name_override: Preferred filename stem (e.g. the ROM's own
+                   calibration ID). Falls back to the ECU status card, then a
+                   generic "ecu_read" when neither is available.
 
         Returns:
             Path to saved file, or None on failure.
         """
         from datetime import datetime
 
-        rom_id = self._card_ecu.get_value().strip()
+        rom_id = (name_override or "").strip()
+        if not rom_id:
+            rom_id = self._card_ecu.get_value().strip()
         if not rom_id or rom_id == "—":
             rom_id = "ecu_read"
-        if rom_id.upper().endswith(".HEX"):
+        else:
+            # ROM_ID is spelled in all caps in the filename (e.g. LF9VEB_...,
+            # LF9VEB_RAM_...); only the generic "ecu_read" fallback stays lower.
+            rom_id = rom_id.upper()
+        if rom_id.endswith(".HEX"):
             rom_id = rom_id[:-4]
 
         from src.utils.settings import get_settings
@@ -1332,8 +1358,34 @@ class ECUProgrammingWindow(QMainWindow):
             return None
 
     def _auto_save_rom(self, rom_data: bytearray) -> Path | None:
-        """Auto-save ROM read to ~/.nc-flash/reads/."""
-        return self._auto_save_to_reads_dir(rom_data)
+        """Auto-save ROM read to ~/.nc-flash/reads/, named by calibration ID."""
+        return self._auto_save_to_reads_dir(
+            rom_data, name_override=self._cal_id_from_rom(rom_data)
+        )
+
+    @staticmethod
+    def _cal_id_from_rom(rom_data: bytes) -> str | None:
+        """Best-effort calibration ID (e.g. 'LF9VEB') read from the ROM bytes.
+
+        The bytes we just read are the authoritative name for the ROM; the ECU
+        status card is only a fallback (it reads 'N/A' before a full read, which
+        is why fresh reads landed as the generic 'ecu_read_<ts>'). Returned in
+        all caps to match the on-disk filename convention. Returns None if the
+        bytes are not a full ROM or carry no valid cal ID (e.g. a RAM dump), so
+        the caller falls back to the card/generic name.
+        """
+        try:
+            cal = (
+                get_cal_id(rom_data)
+                .decode("ascii", errors="replace")
+                .rstrip("\x00")
+                .strip()
+                .upper()
+            )
+            return cal or None
+        except Exception:
+            # Best-effort naming only — never let a bad/partial ROM abort the save.
+            return None
 
     def _auto_save_ram_dump(self, ram_data: bytearray) -> Path | None:
         """Auto-save RAM dump to ~/.nc-flash/reads/."""
@@ -1349,9 +1401,7 @@ class ECUProgrammingWindow(QMainWindow):
         try:
             manager = FlashManager(self._get_dll_path())
             dtcs = manager.read_dtcs(uds=self._session.uds)
-
-            seen = set()
-            unique = [d for d in dtcs if d.code not in seen and not seen.add(d.code)]
+            unique = dedup_dtcs(dtcs)
             self._dtcs = unique
 
             if not unique:
@@ -1428,7 +1478,8 @@ class ECUProgrammingWindow(QMainWindow):
                 event.ignore()
                 return
             # Force-stop the running operation (read-only FlashManager ops only;
-            # WiCANFlasher writes have no abort — they restart-from-scratch).
+            # WiCANSdFlasher writes have no abort — once staged, the firmware
+            # drives the flash to completion on its own).
             if self._current_manager and hasattr(self._current_manager, "abort"):
                 self._current_manager.abort()
             if self._flash_thread and self._flash_thread.isRunning():

@@ -29,9 +29,9 @@ transfer (which erases/writes flash) is NEVER reached, so the ECU's flash is not
 modified. This is exactly where the real flash already failed, so it is no more
 destructive than what already happened (and that was Tactrix-recoverable).
 
-``--commit`` runs the REAL ``WiCANFlasher.flash_rom`` on the ROM (writes flash;
-brick-risk). Keep a Tactrix/cable ready as the proven recovery path. Requires
-``--yes`` as well.
+``--commit`` is RETIRED: the host-driven Option-A flash it drove was removed
+(audit D4) in favour of the SD-staged, firmware-driven flash (``WiCANSdFlasher``).
+This tool is now read-only bench instrumentation (probe / SBL send / frame tap).
 
 Usage
 -----
@@ -41,8 +41,8 @@ Usage
   # Send the full 6-block SBL (still pre-erase) for a fuller picture:
   python tools/wican_flash_diag.py --rom <rom.bin> --auto-config --sbl-blocks 6
 
-  # REAL full flash (writes flash; keep Tactrix ready):
-  python tools/wican_flash_diag.py --rom <rom.bin> --auto-config --commit --yes
+(``--commit`` is retired — see Safety above. To actually flash over WiCAN, use
+the app's SD-staged path or the wican_sd_* bench tools.)
 """
 
 from __future__ import annotations
@@ -273,19 +273,21 @@ def _verdict(tap: FrameTap) -> None:
 
 
 def run_commit(transport, rom: bytes, archive_path: str | None) -> int:
-    """Run the REAL full flash (writes flash). Brick-risk; Tactrix recovery ready."""
-    from src.ecu.wican_flash import WiCANFlasher
+    """RETIRED. The host-driven Option-A flash this instrumented no longer exists.
 
-    tap = FrameTap(transport._session, verbose=False)  # noqa: F841 (taps frames)
-    flasher = WiCANFlasher(transport, max_attempts=1)
-    print("\n[COMMIT] Running REAL full flash (single attempt, no restart) ...")
-
-    def cb(p):
-        print(f"  [{p.percent:5.1f}%] {p.message}")
-
-    flasher.flash_rom(rom, progress_cb=cb, archive_path=archive_path)
-    print("[COMMIT] Full flash reported success.")
-    return 0
+    ``WiCANFlasher`` lost its ``flash_rom``/``dynamic_flash`` (audit D4): the
+    production flash is the SD-staged, firmware-driven path (``WiCANSdFlasher``),
+    which does the per-block TransferData ON THE ESP32 over CAN — there is no
+    host-side per-block send left for this frame tap to instrument. Use the
+    read-only diagnostics here (probe / SBL send), or drive a real SD flash from
+    the NC Flash UI / the SD bench tools.
+    """
+    print(
+        "\n[COMMIT] Retired: the host-driven Option-A WiCAN flash was removed "
+        "(D4). Use the SD-staged flash (WiCANSdFlasher) via the NC Flash UI; the "
+        "read-only probe/SBL diagnostics in this tool still work."
+    )
+    return 2
 
 
 # --- CLI -------------------------------------------------------------------
@@ -302,7 +304,7 @@ def parse_args(argv):
     p.add_argument("--tx-id", type=lambda x: int(x, 0), default=CAN_REQUEST_ID)
     p.add_argument("--rx-id", type=lambda x: int(x, 0), default=CAN_RESPONSE_ID)
     p.add_argument(
-        "--rom", type=Path, required=True, help="ROM .bin (for SBL + commit)"
+        "--rom", type=Path, required=True, help="ROM .bin (source of the SBL blocks)"
     )
     p.add_argument(
         "--sbl-blocks",
@@ -319,9 +321,10 @@ def parse_args(argv):
     p.add_argument(
         "--commit",
         action="store_true",
-        help="Run the REAL full flash (writes flash; brick-risk). Needs --yes.",
+        help="RETIRED (audit D4): prints a retirement notice and exits 2. "
+        "Flash over WiCAN via the app's SD-staged path instead.",
     )
-    p.add_argument("--yes", action="store_true", help="Confirm --commit.")
+    p.add_argument("--yes", action="store_true", help="No-op (was: confirm --commit).")
     p.add_argument(
         "--tx-stmin",
         type=int,
@@ -339,12 +342,8 @@ def _dispatch(args, transport) -> int:
     rom = args.rom.read_bytes()
     print(f"[ROM] {args.rom}  ({len(rom)} bytes)")
     if args.commit:
-        if not args.yes:
-            print(
-                "\n[COMMIT] REFUSED — --commit writes flash. Re-run with --yes once a "
-                "Tactrix recovery path is ready and the ignition is ON."
-            )
-            return 2
+        # run_commit unconditionally prints the retirement notice and returns 2
+        # — no --yes gating needed for something that never writes.
         return run_commit(transport, rom, archive_path=None)
     return run_diag(transport, rom, args.sbl_blocks, args.response_timeout_ms)
 
@@ -400,7 +399,7 @@ def main(argv) -> int:
     print("WiCAN PRO flash DIAGNOSTIC")
     print(
         f"  target: {args.host}:{args.port}  mode: "
-        f"{'COMMIT (real flash)' if args.commit else 'diag (pre-erase)'}"
+        f"{'COMMIT (retired — will refuse)' if args.commit else 'diag (pre-erase)'}"
     )
     print("=" * 70)
 

@@ -11,7 +11,7 @@ undo stacks when multiple ROMs share the same table addresses.
 
 from collections import namedtuple
 from PySide6.QtGui import QUndoGroup, QUndoStack
-from typing import Dict, Optional, Callable, List, Tuple, Union
+from typing import Dict, Optional, Callable, List, Tuple
 import logging
 
 from .undo_commands import (
@@ -44,22 +44,20 @@ def make_table_key(rom_path, table_address: str) -> TableKey:
 
 
 def extract_table_address(table_key) -> str:
-    """Extract the raw table address from a TableKey or legacy string key."""
+    """Extract the raw table address from a TableKey (or a bare address string).
+
+    A bare address is passed when a change carries no composite key
+    (see _find_table_window's `change.table_key or change.table_address`).
+    """
     if isinstance(table_key, TableKey):
         return table_key.table_address
-    # Legacy fallback for string keys
-    if isinstance(table_key, str) and "\0" in table_key:
-        return table_key.rsplit("\0", 1)[1]
     return str(table_key)
 
 
 def extract_rom_path(table_key) -> Optional[str]:
-    """Extract the ROM path from a TableKey or legacy string key."""
+    """Extract the ROM path from a TableKey, or None for a bare address string."""
     if isinstance(table_key, TableKey):
         return table_key.rom_path
-    # Legacy fallback for string keys
-    if isinstance(table_key, str) and "\0" in table_key:
-        return table_key.rsplit("\0", 1)[0]
     return None
 
 
@@ -67,14 +65,14 @@ class TableUndoManager:
     """
     Manages per-table undo/redo using Qt's QUndoGroup.
 
-    - One QUndoStack per table (keyed by composite rom_path\0table_address)
+    - One QUndoStack per table (keyed by TableKey (rom_path, table_address))
     - QUndoGroup manages active stack based on focus
     - Provides unified interface for recording changes
     """
 
     def __init__(self):
         self._undo_group = QUndoGroup()
-        self._stacks: Dict[str, QUndoStack] = {}  # table_key -> QUndoStack
+        self._stacks: Dict[TableKey, QUndoStack] = {}  # TableKey -> QUndoStack
 
         # Callbacks for applying changes to ROM/UI
         self._apply_cell_change: Optional[Callable[[CellChange], None]] = None
@@ -117,12 +115,12 @@ class TableUndoManager:
         self._begin_bulk_update = begin_bulk_update
         self._end_bulk_update = end_bulk_update
 
-    def get_or_create_stack(self, table_key: str) -> QUndoStack:
+    def get_or_create_stack(self, table_key: TableKey) -> QUndoStack:
         """
         Get or create an undo stack for a table.
 
         Args:
-            table_key: Composite key (rom_path\0table_address)
+            table_key: TableKey namedtuple (rom_path, table_address)
 
         Returns:
             QUndoStack for the table
@@ -135,7 +133,7 @@ class TableUndoManager:
 
         return self._stacks[table_key]
 
-    def set_active_stack(self, table_key: Optional[str]):
+    def set_active_stack(self, table_key: Optional[TableKey]):
         """
         Set the active undo stack (called when table window gains focus).
 

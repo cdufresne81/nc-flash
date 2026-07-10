@@ -4,6 +4,7 @@ Unit tests for ROM definition parser module
 
 import pytest
 from pathlib import Path
+from lxml import etree
 from src.core.definition_parser import DefinitionParser, load_definition
 from src.core.rom_definition import RomDefinition, RomID, Scaling, Table, TableType
 from src.core.exceptions import (
@@ -281,3 +282,58 @@ class TestErrorHandling:
 
         with pytest.raises(InvalidDefinitionError, match="No <romid> element found"):
             parser.parse()
+
+
+class TestMalformedTableIsSkipped:
+    """B10 — a malformed numeric attribute skips that table, not the whole file."""
+
+    @staticmethod
+    def _parser(tmp_path):
+        xml = tmp_path / "d.xml"
+        xml.write_text(
+            '<?xml version="1.0"?><rom><romid><xmlid>X</xmlid></romid></rom>',
+            encoding="utf-8",
+        )
+        return DefinitionParser(str(xml))
+
+    def test_bad_numeric_attribute_returns_none_not_raises(self, tmp_path):
+        parser = self._parser(tmp_path)
+        bad = etree.fromstring(
+            '<table name="Bad" type="1D" address="0x100" elements="abc" level="1"/>'
+        )
+        # Previously the unguarded int() raised ValueError up through parse(),
+        # aborting the entire definition. Now the bad table is skipped.
+        assert parser._parse_table(bad) is None
+
+    def test_valid_table_still_parses(self, tmp_path):
+        parser = self._parser(tmp_path)
+        good = etree.fromstring(
+            '<table name="Good" type="1D" address="0x100" elements="8" level="1"/>'
+        )
+        table = parser._parse_table(good)
+        assert table is not None
+        assert table.name == "Good"
+        assert table.elements == 8
+
+    def test_malformed_axis_child_skips_the_parent_table(self, tmp_path):
+        # A 2D table whose X axis fails the numeric guard must be dropped
+        # entirely — keeping it would render a crippled flat list with no
+        # breakpoints (B10's contract is "skip just that TABLE").
+        parser = self._parser(tmp_path)
+        parent = etree.fromstring(
+            '<table name="Fuel" type="2D" address="0x100" elements="8" level="1">'
+            '  <table name="RPM" type="X Axis" address="0x200" elements="bad"/>'
+            "</table>"
+        )
+        assert parser._parse_table(parent) is None
+
+    def test_valid_axis_child_keeps_the_parent_table(self, tmp_path):
+        parser = self._parser(tmp_path)
+        parent = etree.fromstring(
+            '<table name="Fuel" type="2D" address="0x100" elements="8" level="1">'
+            '  <table name="RPM" type="X Axis" address="0x200" elements="8"/>'
+            "</table>"
+        )
+        table = parser._parse_table(parent)
+        assert table is not None
+        assert len(table.children) == 1

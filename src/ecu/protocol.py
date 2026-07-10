@@ -212,8 +212,11 @@ class UDSConnection:
                 )
                 return resp_data[1:]
 
-            # Unexpected response byte
-            logger.warning(
+            # Unexpected response byte. On the no-reboot coexist port these are
+            # usually interloping datalogger OBD replies (0x41 = Mode-01 + 0x40)
+            # in flight when the host took the bus — benign noise, not a fault —
+            # so log at DEBUG (like quiet NRCs) rather than spamming WARNING (G5).
+            logger.debug(
                 f"UDS: unexpected response byte 0x{resp_data[0]:02X} "
                 f"for SID 0x{service_id:02X}"
             )
@@ -270,8 +273,11 @@ class UDSConnection:
             data = self.read_obd_pid(OBD_PID_CONTROL_MODULE_VOLTAGE)
             if len(data) >= 2:
                 return ((data[0] << 8) | data[1]) / 1000.0
-        except Exception:
-            pass
+        except Exception as exc:
+            # Fail-open (a missing PID must not block a flash), but log at DEBUG
+            # so a real comms fault isn't misread as "PID unsupported" in a
+            # post-mortem (G6).
+            logger.debug(f"read_battery_voltage failed (treated as unsupported): {exc}")
         return None
 
     def read_engine_rpm(self) -> float | None:
@@ -285,8 +291,10 @@ class UDSConnection:
             data = self.read_obd_pid(OBD_PID_ENGINE_RPM)
             if len(data) >= 2:
                 return ((data[0] << 8) | data[1]) / 4.0
-        except Exception:
-            pass
+        except Exception as exc:
+            # Fail-open (see read_battery_voltage) but log the real cause at
+            # DEBUG so the RPM gate's "PID unsupported?" isn't misleading (G6).
+            logger.debug(f"read_engine_rpm failed (treated as unsupported): {exc}")
         return None
 
     # --- Diagnostic Sessions ---

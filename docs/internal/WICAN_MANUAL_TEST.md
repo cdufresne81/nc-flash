@@ -43,18 +43,17 @@ python tools/wican_bench_read.py --host 192.168.1.169 --port 35000 \
 
 ## 3. Read the ROM through the NC Flash UI
 
-**Status: NOT YET WIRED.** `src/ui/flash_setup_dialog.py` currently constructs a
-`J2534Transport` unconditionally — there is no WiCAN adapter option in the UI, so
-the ROM cannot be read through the UI over WiCAN today. This is the pending
-**adapter-selector UI + WiCAN settings** task. Until it lands, step 2 (bench tool)
-is the supported manual read path.
+The **adapter selector** has landed: choose the adapter in **Settings ▸ ECU ▸
+Adapter** (`WiCAN`), set host/port in **Settings ▸ ECU ▸ WiCAN**, and the ECU
+Programming window (`src/ui/ecu_window.py`) drives the read over the selected
+transport — there is no `flash_setup_dialog` anymore. Verify:
 
-Once the adapter selector exists, this section should verify:
-
-1. Launch NC Flash; open the flash/read dialog.
+1. Launch NC Flash; open the ECU Programming window.
 2. Select the **WiCAN** adapter; enter host/port (and let it auto-config `slcan`).
 3. Read the ECU ROM; confirm a progress indicator and successful completion.
-4. Save the dump and byte-compare it to `wican_stmin0_full.bin` (identical).
+4. Save the dump and byte-compare it to `wican_readback_hw9.bin` (the current
+   read oracle; `wican_stmin0_full.bin` is stale — see memory
+   `project_wican_read_oracle_stale`).
 5. Confirm the device protocol is **restored** to its previous value on disconnect.
 
 ## 3b. ECU diagnostic functions — RAM scan, read/clear DTC (goal 2 Part A)

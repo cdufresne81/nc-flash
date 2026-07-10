@@ -131,25 +131,29 @@ loaded bus. → A full 1 MB flash is **~13–14 min**; dynamic flash proportiona
   completes. The flow-control pacing (§5) keeps drops rare; this retry recovers the residual.
 - **Writes/flash** (`TransferData` 0x36): **NO mid-stream resend.** The Mazda protocol has no
   block sequence counter (verified vs romdrop); the ECU writes sequentially, so resending a
-  consumed block shifts everything = brick. Resilience instead = TCP reliability + NRC 0x78
-  pending-wait + **clean abort-and-restart-from-scratch** (re-auth, re-SBL, re-transfer).
-  **IMPLEMENTED (build-only, NOT hardware-validated):** `src/ecu/wican_flash.py` (`WiCANFlasher`)
-  + `src/ecu/link_quality.py` — pre-flight link-quality gate, battery guard, abort-and-restart-from-
-  scratch (a fresh whole flash per attempt, never a mid-stream resend), and optional read-back
-  verify. Bench-validate (user-gated) before production use. See `.claude/plans/wican-ecu-functions-goal.md`.
+  consumed block shifts everything = brick.
+  **CURRENT (Option B, hardware-validated):** the host-driven WiCAN write was **retired**
+  (audit D4) — a mid-flash WiFi drop soft-bricked the ECU even with abort-and-restart, because
+  the interrupted programming session left the ECU unbootable until reflashed. The shipped path
+  is the **SD-staged, firmware-driven flash**: the host stages a checksum-corrected image to the
+  WiCAN SD card over reliable TCP (CRC-verified before any ECU contact), then the firmware
+  drives the whole UDS program sequence locally over CAN — **WiFi is not in the flash loop**.
+  See `src/ecu/wican_sd_package.py` / `wican_sd_upload.py` / `wican_sd_flash.py` and
+  `docs/internal/WICAN_PART_C_FINDINGS.md`. `src/ecu/wican_flash.py` (`WiCANFlasher`) survives
+  **gate-only**: its pre-flight link-quality gate + battery guard front the SD flash; its
+  host-driven `flash_rom`/`dynamic_flash`/restart machinery was deleted.
 - **Pre-flight link-quality gate (FLASH ONLY):** ~25 TesterPresent round-trips; require 0 loss
   + stable latency (p95 under a ceiling) + RSSI ok, else block the flash. Reads/diagnostics are
-  never gated (idempotent/recoverable).
-- **Recovery UX:** on mid-flash drop → immediate "🔴 KEEP IGNITION ON, do not disconnect",
-  block app exit, auto-reconnect + restart-from-scratch ×3, then a guided
-  `[Reconnect & Re-flash]` screen.
+  never gated (idempotent/recoverable). (The gate protects the staging/trigger phase; once the
+  firmware owns the flash, a WiFi drop no longer matters.)
 - **Battery/voltage guard:** keep the existing 12.0 V check — the actual historical brick cause.
-- **Read-back verify:** **optional, off by default** (matches the trusted cable flow; WiFi
-  corruption risk ≈ cable because the CAN hop is identical + WiFi FCS + TCP). A manual
-  `[Verify flash]` button reads the written region back and byte-compares to `rom_buf`.
+- **Read-back verify:** **optional, off by default** — write integrity is firmware-confirmed
+  (every block positively ACK'd + TransferExit, the same bar as the trusted J2534 path). The NC
+  ECU sits in its bootloader after the flash's ECUReset until a physical ignition cycle, so
+  read-back is an explicit post-cycle step, not an inline one.
 - **Why corruption is a non-risk:** the flash is lock-step ACK'd — a dropped frame yields a
-  clean timeout/abort, never silent corruption. WiFi adds an *interruption* category, not a
-  corruption category.
+  clean timeout/abort, never silent corruption. And with the SD-staged path, the image the
+  firmware flashes is CRC-verified on the card before any ECU contact.
 
 ## 7. Gated build order
 

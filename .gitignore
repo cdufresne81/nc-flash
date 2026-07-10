@@ -100,3 +100,9 @@ src/ecu/_secure/_security.py
 src/ecu/_secure/_sbl.py
 src/ecu/_secure/__init__.py
 
+
+# Third-party bug-report attachments + generated correction deliverables
+# (LF9KT investigation, Jul 2026 — not ours to publish)
+/LF9KT001.xml
+/LF9KT001_corrected.xml
+/LF9KT001_correction_audit.md
