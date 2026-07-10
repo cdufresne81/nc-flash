@@ -1,9 +1,30 @@
 # Session Notes
 
-## ✅ #83 WiCAN TRIP-LOG SYNC — BUILT + HARDWARE-VALIDATED (Jul 10, 2026)
+## ✅ #83 WiCAN TRIP-LOG SYNC — BUILT + HARDWARE-VALIDATED + SHIPPED v2.11.0 (Jul 10, 2026)
 
 Branch `feature/wican-log-sync` (off master @ v2.10.0), goal doc
-`.claude/plans/wican-log-sync-goal.md`. All phases done, uncommitted:
+`.claude/plans/wican-log-sync-goal.md`. Committed (e51aaca), PR #87, issue #83
+closed. **Post-review /simplify pass (4 parallel agents: reuse/simplification/
+efficiency/altitude) applied before release:**
+- `settings.is_wican_adapter()` = THE adapter predicate (ecu_window gate +
+  `WiCANLogSync.start()` both use it; no more raw `== "wican"` compares in the
+  new code — `_build_adapter_config`'s pre-existing compare left as-is).
+- `wican_discovery.resolve_host_with_fallback()` = THE mDNS re-resolve fallback
+  policy (worker + `_resolve_wican_host` both call it; window keeps the
+  write-back; `test_ecu_window_wican_resolve.py` still green — patches the
+  underlying `resolve_host_for_device_id`).
+- `WiCANLogSync.schedule_auto_start()` owns launch policy (toggle + 3 s defer);
+  `main.py` just calls it. `http_port` is constructor-injected (test seam; the
+  `_HTTP_PORT` ui module global is gone).
+- Dead code dropped: unreachable non-200 guards in `wican_http` (urlopen raises
+  HTTPError for non-2xx), the `WiCANHttpError→WiCANLogsError` rewrap in
+  `download_new` (transport errors now raise the base; size-lie test retargeted),
+  the 4× `getattr(main_window, "wican_log_sync", None)` probes (main.py sets it
+  unconditionally), and `_on_download_logs`'s redundant refresh (rides
+  `running_changed`).
+- Skipped (deliberate): `section` widget_type stays as-is (structurally safe —
+  sections never enter `_widgets`); sanitize `..` double-guard (distinct error
+  messages); `wican_http` as separate module (that's the #84 plan).
 - **P1** `src/ecu/wican_http.py` (SHARED transport for #83+future #84: `get_json`,
   atomic `.part`+size-verify `download_to_file` w/ abort_cb, `sanitize_basename`,
   `WiCANHttpError(ECUError)`) + `src/ecu/wican_logs.py` (`WiCANLogClient`:

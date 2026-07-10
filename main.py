@@ -295,12 +295,9 @@ class MainWindow(
         if self.settings.get_mcp_auto_start():
             self._start_mcp_server()
 
-        # Auto-download new WiCAN trip logs, silently and off the GUI thread.
-        # Deferred a few seconds so it never competes with startup; a missing/
-        # sleeping WiCAN degrades to a quiet log line (most launches have no
-        # device on the LAN). Runs once per launch.
-        if self.settings.get_wican_auto_download_logs():
-            QTimer.singleShot(3000, self.wican_log_sync.start)
+        # Auto-download new WiCAN trip logs, silently and off the GUI thread
+        # (the sync owner defers it and honors its own enable setting).
+        self.wican_log_sync.schedule_auto_start()
 
     def check_metadata_directory(self) -> bool:
         """

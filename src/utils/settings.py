@@ -271,6 +271,14 @@ class AppSettings:
     def set_ecu_adapter(self, kind: str):
         self.settings.setValue("ecu/adapter", "wican" if kind == "wican" else "j2534")
 
+    def is_wican_adapter(self) -> bool:
+        """True when the WiCAN adapter is selected.
+
+        The single predicate for WiCAN-only affordances (trip-log sync, its
+        Download Logs button) — callers never compare the raw adapter string.
+        """
+        return self.get_ecu_adapter() == "wican"
+
     # -- WiCAN (SLCAN-over-TCP) settings --
 
     def get_wican_host(self) -> str:

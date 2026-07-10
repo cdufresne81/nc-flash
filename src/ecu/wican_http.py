@@ -79,21 +79,19 @@ def sanitize_basename(name: str) -> str:
 def get_json(url: str, *, timeout_s: float = DEFAULT_TIMEOUT_S):
     """GET *url* and return the parsed JSON body.
 
-    Raises :class:`WiCANHttpError` on any transport failure, non-200 status,
-    or non-JSON body — always with the URL in the message so bulk callers can
-    surface which endpoint failed.
+    Raises :class:`WiCANHttpError` on any transport failure, HTTP error status
+    (``urlopen`` raises for everything outside 2xx), or non-JSON body — always
+    with the URL in the message so bulk callers can surface which endpoint
+    failed.
     """
     try:
         with urllib.request.urlopen(url, timeout=timeout_s) as resp:
-            status = getattr(resp, "status", None) or resp.getcode()
             raw = resp.read().decode("utf-8", errors="replace")
     except urllib.error.HTTPError as exc:
         raise WiCANHttpError(f"GET {url} failed: HTTP {exc.code}") from exc
     except (urllib.error.URLError, socket.error, OSError) as exc:
         raise WiCANHttpError(f"GET {url} failed: {exc}") from exc
 
-    if status != 200:
-        raise WiCANHttpError(f"GET {url} returned HTTP {status}")
     try:
         return json.loads(raw)
     except json.JSONDecodeError as exc:
@@ -129,9 +127,6 @@ def download_to_file(
     received = 0
     try:
         with urllib.request.urlopen(url, timeout=timeout_s) as resp:
-            status = getattr(resp, "status", None) or resp.getcode()
-            if status != 200:
-                raise WiCANHttpError(f"GET {url} returned HTTP {status}")
             with open(part, "wb") as fh:
                 while True:
                     if abort_cb is not None and abort_cb():

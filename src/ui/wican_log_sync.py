@@ -19,17 +19,11 @@ a worker QThread; the GUI thread is never blocked.
 """
 
 import logging
+from typing import Optional
 
-from PySide6.QtCore import QObject, QThread, Qt, Signal
+from PySide6.QtCore import QObject, QThread, Qt, QTimer, Signal
 
 logger = logging.getLogger(__name__)
-
-#: mDNS re-resolve budget — matches the ECU connect path's budget.
-_RESOLVE_TIMEOUT_S = 3.0
-
-#: The WiCAN's HTTP device-service port (module-level so tests can inject an
-#: ephemeral fake-server port).
-_HTTP_PORT = 80
 
 
 class _LogSyncWorker(QObject):
@@ -38,17 +32,32 @@ class _LogSyncWorker(QObject):
     finished = Signal(object)  # LogSyncResult
     error = Signal(str)
 
-    def __init__(self, host: str, device_id: str, dest_dir: str):
+    def __init__(
+        self,
+        host: str,
+        device_id: str,
+        dest_dir: str,
+        http_port: Optional[int] = None,
+    ):
         super().__init__()
         self._host = host
         self._device_id = device_id
         self._dest_dir = dest_dir
+        self._http_port = http_port  # None -> the client's device default
 
     def run(self):
         try:
+            from src.ecu import wican_discovery
             from src.ecu.wican_logs import WiCANLogClient
 
-            client = WiCANLogClient(self._resolve_host(), http_port=_HTTP_PORT)
+            # Shared re-resolve fallback policy. No settings write-back here —
+            # this runs off the GUI thread; the ECU connect path stays the one
+            # place that caches a fresh IP.
+            host = wican_discovery.resolve_host_with_fallback(
+                self._device_id, self._host
+            )
+            kwargs = {} if self._http_port is None else {"http_port": self._http_port}
+            client = WiCANLogClient(host, **kwargs)
             result = client.download_new(self._dest_dir, abort_cb=self._abort_requested)
             self.finished.emit(result)
         except Exception as e:
@@ -61,27 +70,6 @@ class _LogSyncWorker(QObject):
         thread = QThread.currentThread()
         return bool(thread and thread.isInterruptionRequested())
 
-    def _resolve_host(self) -> str:
-        """Re-resolve the stored device identity to its current IP (best-effort).
-
-        Mirrors the ECU connect path's policy: no identity, discovery
-        unavailable, or any failure falls back to the stored static host. No
-        settings write-back here — this runs off the GUI thread; the connect
-        path stays the one place that caches a fresh IP.
-        """
-        if not self._device_id:
-            return self._host
-        try:
-            from src.ecu import wican_discovery
-
-            resolved = wican_discovery.resolve_host_for_device_id(
-                self._device_id, timeout_s=_RESOLVE_TIMEOUT_S
-            )
-        except Exception as e:
-            logger.debug("WiCAN mDNS re-resolve failed (%s); using stored host", e)
-            return self._host
-        return resolved or self._host
-
 
 class WiCANLogSync(QObject):
     """Single owner of the background trip-log download state."""
@@ -89,15 +77,32 @@ class WiCANLogSync(QObject):
     #: True while a sync runs (drives the Download Logs button state).
     running_changed = Signal(bool)
 
-    def __init__(self, settings, parent=None):
+    #: Launch auto-sync defer — long enough to never compete with startup I/O.
+    _AUTO_START_DELAY_MS = 3000
+
+    def __init__(self, settings, parent=None, *, http_port: Optional[int] = None):
+        """``http_port`` overrides the client's device default (tests only)."""
         super().__init__(parent)
         self._settings = settings
+        self._http_port = http_port
         self._thread = None
         self._worker = None
 
     @property
     def is_running(self) -> bool:
         return self._thread is not None and self._thread.isRunning()
+
+    def schedule_auto_start(self):
+        """Schedule the once-per-launch auto-download, honoring its setting.
+
+        Deferred a few seconds so it never competes with startup; a missing or
+        sleeping WiCAN then degrades to a quiet log line (most launches have
+        no device on the LAN). The composition root just calls this — the
+        enable toggle and the delay are this owner's policy.
+        """
+        if not self._settings.get_wican_auto_download_logs():
+            return
+        QTimer.singleShot(self._AUTO_START_DELAY_MS, self.start)
 
     def start(self) -> bool:
         """Kick a background sync.
@@ -108,7 +113,7 @@ class WiCANLogSync(QObject):
         """
         if self.is_running:
             return False
-        if self._settings.get_ecu_adapter() != "wican":
+        if not self._settings.is_wican_adapter():
             logger.debug("WiCAN log sync skipped: WiCAN adapter not selected")
             return False
         host = (self._settings.get_wican_host() or "").strip()
@@ -117,7 +122,12 @@ class WiCANLogSync(QObject):
             logger.debug("WiCAN log sync skipped: no host/identity configured")
             return False
 
-        worker = _LogSyncWorker(host, device_id, self._settings.get_logs_directory())
+        worker = _LogSyncWorker(
+            host,
+            device_id,
+            self._settings.get_logs_directory(),
+            http_port=self._http_port,
+        )
         thread = QThread(self)
         worker.moveToThread(thread)
         self._thread = thread

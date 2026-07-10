@@ -160,9 +160,11 @@ class WiCANLogClient:
         and between download chunks; an abort returns the partial result —
         completed files remain and the run stays idempotent.
 
-        Raises :class:`WiCANLogsError` when the device is unreachable or a
-        transfer fails mid-run; files downloaded before the failure remain
-        (the run is idempotent — re-running downloads only what is missing).
+        Raises :class:`~src.ecu.wican_http.WiCANHttpError` (or its
+        :class:`WiCANLogsError` subclass for malformed device replies) when
+        the device is unreachable or a transfer fails mid-run; files
+        downloaded before the failure remain (the run is idempotent —
+        re-running downloads only what is missing).
         """
         dest_dir = Path(dest_dir)
         logs = self.list_logs()
@@ -199,16 +201,13 @@ class WiCANLogClient:
                 continue
 
             url = self._url(CSV_DOWNLOAD_PATH, {"file": log.name})
-            try:
-                path = download_to_file(
-                    url,
-                    target,
-                    expected_size=log.size,
-                    timeout_s=self.timeout_s,
-                    abort_cb=abort_cb,
-                )
-            except WiCANHttpError as exc:
-                raise WiCANLogsError(str(exc)) from exc
+            path = download_to_file(
+                url,
+                target,
+                expected_size=log.size,
+                timeout_s=self.timeout_s,
+                abort_cb=abort_cb,
+            )
             logger.info("Downloaded trip log %s (%d bytes)", path.name, log.size)
             result.downloaded.append(path)
 

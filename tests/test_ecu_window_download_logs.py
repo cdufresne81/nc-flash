@@ -14,7 +14,7 @@ from src.ui.ecu_window import ECUProgrammingWindow
 
 def _fake_window(adapter="wican", sync_running=False, ecu_busy=False):
     settings = MagicMock()
-    settings.get_ecu_adapter.return_value = adapter
+    settings.is_wican_adapter.return_value = adapter == "wican"
     main_window = SimpleNamespace(
         settings=settings,
         wican_log_sync=SimpleNamespace(is_running=sync_running),

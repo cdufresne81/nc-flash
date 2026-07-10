@@ -260,7 +260,7 @@ class TestDownloadNew:
     def test_advertised_size_lie_aborts_but_keeps_prior_files(self, tmp_path):
         files = {"good.csv": b"fine\n" * 4, "bad.csv": b"short"}
         with _device(files, advertised={"bad.csv": 9999}) as (client, _):
-            with pytest.raises(WiCANLogsError):
+            with pytest.raises(WiCANHttpError):
                 client.download_new(tmp_path)
             # The file downloaded before the failure survives (idempotent rerun).
             assert (tmp_path / "good.csv").read_bytes() == files["good.csv"]
@@ -390,3 +390,13 @@ class TestLogsPlumbing:
         assert settings.get_wican_auto_download_logs() is True
         settings.set_wican_auto_download_logs(False)
         assert store["ecu/wican_auto_download_logs"] is False
+
+    def test_is_wican_adapter_tracks_adapter_selection(self, _settings):
+        # The single predicate for WiCAN-only affordances — callers never
+        # compare the raw adapter string.
+        settings, _ = _settings
+        assert settings.is_wican_adapter() is False  # j2534 is the default
+        settings.set_ecu_adapter("wican")
+        assert settings.is_wican_adapter() is True
+        settings.set_ecu_adapter("j2534")
+        assert settings.is_wican_adapter() is False

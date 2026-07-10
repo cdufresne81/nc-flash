@@ -41,7 +41,7 @@ def qt_thread_guard():
 @pytest.fixture
 def fake_settings(tmp_path):
     s = MagicMock()
-    s.get_ecu_adapter.return_value = "wican"  # feature is WiCAN-adapter-only
+    s.is_wican_adapter.return_value = True  # feature is WiCAN-adapter-only
     s.get_wican_host.return_value = "127.0.0.1"
     s.get_wican_device_id.return_value = ""  # no mDNS resolve in tests
     s.get_logs_directory.return_value = str(tmp_path / "logs")
@@ -60,14 +60,11 @@ def _wait_sync_done(qtbot, sync):
 
 class TestWiCANLogSync:
     def test_start_downloads_and_returns_to_idle(
-        self, qtbot, fake_settings, monkeypatch, qt_thread_guard
+        self, qtbot, fake_settings, qt_thread_guard
     ):
         data = b"time,rpm\n1,800\n"
         with _device({"trip.csv": data}) as (_, httpd):
-            monkeypatch.setattr(
-                wican_log_sync_module, "_HTTP_PORT", httpd.server_address[1]
-            )
-            sync = WiCANLogSync(fake_settings)
+            sync = WiCANLogSync(fake_settings, http_port=httpd.server_address[1])
             assert sync.start() is True
             _wait_sync_done(qtbot, sync)
         assert not sync.is_running
@@ -77,7 +74,7 @@ class TestWiCANLogSync:
         sync.shutdown()
 
     def test_second_start_while_running_is_refused(
-        self, qtbot, fake_settings, monkeypatch, qt_thread_guard
+        self, qtbot, fake_settings, qt_thread_guard
     ):
         # Hold /csv_list until released so the first sync is deterministically
         # still running when the second start() lands.
@@ -96,10 +93,7 @@ class TestWiCANLogSync:
         t = threading.Thread(target=httpd.serve_forever, daemon=True)
         t.start()
         try:
-            monkeypatch.setattr(
-                wican_log_sync_module, "_HTTP_PORT", httpd.server_address[1]
-            )
-            sync = WiCANLogSync(fake_settings)
+            sync = WiCANLogSync(fake_settings, http_port=httpd.server_address[1])
             assert sync.start() is True
             assert sync.start() is False  # single owner: one sync at a time
             release.set()
@@ -121,42 +115,70 @@ class TestWiCANLogSync:
     def test_j2534_adapter_is_a_noop(self, fake_settings, qt_thread_guard):
         # Product decision: the whole sync is dormant unless the WiCAN adapter
         # is selected — even with a valid host configured.
-        fake_settings.get_ecu_adapter.return_value = "j2534"
+        fake_settings.is_wican_adapter.return_value = False
         sync = WiCANLogSync(fake_settings)
         assert sync.start() is False
         assert not sync.is_running
 
     def test_unreachable_device_is_quiet_and_returns_to_idle(
-        self, qtbot, fake_settings, monkeypatch, qt_thread_guard
+        self, qtbot, fake_settings, qt_thread_guard
     ):
         import socket
 
         with socket.socket() as s:
             s.bind(("127.0.0.1", 0))
             closed_port = s.getsockname()[1]
-        monkeypatch.setattr(wican_log_sync_module, "_HTTP_PORT", closed_port)
-        sync = WiCANLogSync(fake_settings)
+        sync = WiCANLogSync(fake_settings, http_port=closed_port)
         assert sync.start() is True
         _wait_sync_done(qtbot, sync)  # error path also returns to idle
         assert not sync.is_running
         # Nothing was created locally.
         assert not Path(fake_settings.get_logs_directory()).exists()
 
-    def test_shutdown_stops_running_sync(
-        self, qtbot, fake_settings, monkeypatch, qt_thread_guard
-    ):
+    def test_shutdown_stops_running_sync(self, qtbot, fake_settings, qt_thread_guard):
         # Many files so the sync is still mid-run when shutdown() lands; the
         # interruption flag is polled between files/chunks, so shutdown joins
         # the thread promptly and completed files remain.
         files = {f"trip{i}.csv": b"x" * 2048 for i in range(50)}
         with _device(files) as (_, httpd):
-            monkeypatch.setattr(
-                wican_log_sync_module, "_HTTP_PORT", httpd.server_address[1]
-            )
-            sync = WiCANLogSync(fake_settings)
+            sync = WiCANLogSync(fake_settings, http_port=httpd.server_address[1])
             assert sync.start() is True
             sync.shutdown(timeout_ms=10000)
             assert not sync.is_running
         dest = Path(fake_settings.get_logs_directory())
         if dest.exists():
             assert list(dest.rglob("*.part")) == []
+
+    def test_schedule_auto_start_defers_when_enabled(
+        self, fake_settings, monkeypatch, qt_thread_guard
+    ):
+        # The owner (not main.py) owns the launch policy: the enable toggle
+        # and the defer both live in schedule_auto_start.
+        fake_settings.get_wican_auto_download_logs.return_value = True
+        scheduled = []
+
+        class _FakeTimer:
+            @staticmethod
+            def singleShot(ms, cb):
+                scheduled.append((ms, cb))
+
+        monkeypatch.setattr(wican_log_sync_module, "QTimer", _FakeTimer)
+        sync = WiCANLogSync(fake_settings)
+        sync.schedule_auto_start()
+        assert scheduled == [(WiCANLogSync._AUTO_START_DELAY_MS, sync.start)]
+
+    def test_schedule_auto_start_honors_disabled_toggle(
+        self, fake_settings, monkeypatch, qt_thread_guard
+    ):
+        fake_settings.get_wican_auto_download_logs.return_value = False
+        scheduled = []
+
+        class _FakeTimer:
+            @staticmethod
+            def singleShot(ms, cb):
+                scheduled.append((ms, cb))
+
+        monkeypatch.setattr(wican_log_sync_module, "QTimer", _FakeTimer)
+        sync = WiCANLogSync(fake_settings)
+        sync.schedule_auto_start()
+        assert scheduled == []

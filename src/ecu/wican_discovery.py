@@ -303,6 +303,39 @@ def _id_matches(dev: WiCANDevice, target: str, target_nocolon: str) -> bool:
     return target in candidates or target_nocolon in candidates
 
 
+#: Re-resolve budget for the fallback path — shared by every consumer that
+#: talks to a stored adapter identity (ECU connect, trip-log sync).
+RESOLVE_FALLBACK_TIMEOUT_S = 3.0
+
+
+def resolve_host_with_fallback(
+    device_id: str, fallback_host: str, timeout_s: float = RESOLVE_FALLBACK_TIMEOUT_S
+) -> str:
+    """Best-effort: the current IP for ``device_id``, else ``fallback_host``.
+
+    THE single copy of the re-resolve fallback policy: no stored identity,
+    discovery unavailable, device offline, ambiguous identity, or any error
+    all return ``fallback_host`` — a caller is never blocked or broken by
+    discovery. Never raises. A caller that caches a fresh IP (the ECU connect
+    path) compares the return value against ``fallback_host`` itself.
+    """
+    if not device_id:
+        return fallback_host
+    try:
+        resolved = resolve_host_for_device_id(device_id, timeout_s=timeout_s)
+    except Exception as e:  # never let discovery break the caller
+        logger.debug("WiCAN mDNS re-resolve failed (%s); using stored host", e)
+        return fallback_host
+    if not resolved:
+        logger.debug(
+            "WiCAN %s not found via mDNS; using stored host %s",
+            device_id,
+            fallback_host,
+        )
+        return fallback_host
+    return resolved
+
+
 def resolve_host_for_device_id(
     device_id: str, timeout_s: float = DEFAULT_TIMEOUT_S
 ) -> Optional[str]:
