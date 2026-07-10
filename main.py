@@ -78,6 +78,7 @@ from src.ui.project_mixin import ProjectMixin
 from src.ui.session_mixin import SessionMixin
 from src.ui.mcp_mixin import McpMixin
 from src.ui.flash_mixin import FlashMixin
+from src.ui.wican_log_sync import WiCANLogSync
 
 from src.ui.error_helpers import handle_rom_operation_error
 
@@ -192,6 +193,11 @@ class MainWindow(
         # Singleton ECU programming window
         self.ecu_window = None
 
+        # WiCAN trip-log sync — single owner of the background download state,
+        # shared by the launch-time auto-download and the ECU window's
+        # Download Logs button (pure HTTP device utility; no ECU session).
+        self.wican_log_sync = WiCANLogSync(self.settings, parent=self)
+
         # MCP server subprocess
         self._mcp_process = None
 
@@ -224,6 +230,11 @@ class MainWindow(
         so this explicit override is required.
         """
         self._handle_close(event)
+        # Only after an accepted close (user may cancel on unsaved changes):
+        # stop a running trip-log download so its QThread is never destroyed
+        # while running (aborts between chunks; .part contract keeps it safe).
+        if event.isAccepted():
+            self.wican_log_sync.shutdown()
 
     def _deferred_init(self):
         """
@@ -283,6 +294,13 @@ class MainWindow(
         # Auto-start MCP server if enabled in settings
         if self.settings.get_mcp_auto_start():
             self._start_mcp_server()
+
+        # Auto-download new WiCAN trip logs, silently and off the GUI thread.
+        # Deferred a few seconds so it never competes with startup; a missing/
+        # sleeping WiCAN degrades to a quiet log line (most launches have no
+        # device on the LAN). Runs once per launch.
+        if self.settings.get_wican_auto_download_logs():
+            QTimer.singleShot(3000, self.wican_log_sync.start)
 
     def check_metadata_directory(self) -> bool:
         """

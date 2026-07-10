@@ -97,6 +97,13 @@ class AppSettings:
     def set_reads_directory(self, path: str):
         self._set_path("paths/reads_directory", path)
 
+    def get_logs_directory(self) -> str:
+        """Get the WiCAN trip-log directory (defaults to {workspace}/logs)."""
+        return self._get_workspace_path("paths/logs_directory", "logs")
+
+    def set_logs_directory(self, path: str):
+        self._set_path("paths/logs_directory", path)
+
     # ------------------------------------------------------------------ #
     # Window state
     # ------------------------------------------------------------------ #
@@ -299,6 +306,14 @@ class AppSettings:
 
     def set_wican_auto_config(self, enabled: bool):
         self.settings.setValue("ecu/wican_auto_config", bool(enabled))
+
+    def get_wican_auto_download_logs(self) -> bool:
+        """Whether to auto-download new SD trip logs at launch (no-op when no
+        WiCAN host/identity is configured)."""
+        return self.settings.value("ecu/wican_auto_download_logs", True, type=bool)
+
+    def set_wican_auto_download_logs(self, enabled: bool):
+        self.settings.setValue("ecu/wican_auto_download_logs", bool(enabled))
 
 
 # Global settings instance

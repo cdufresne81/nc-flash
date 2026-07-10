@@ -27,6 +27,7 @@ from PySide6.QtWidgets import (
     QScrollArea,
     QSpinBox,
     QSplitter,
+    QFrame,
     QStackedWidget,
     QTreeWidget,
     QTreeWidgetItem,
@@ -52,7 +53,10 @@ class SettingDescriptor:
     category: str
     subcategory: str
     widget_type: (
-        str  # path_dir, path_file, spinbox, combobox, checkbox, button, readonly
+        # path_dir, path_file, spinbox, combobox, checkbox, button, readonly,
+        # section (a visual rule + header splitting a page into topic groups;
+        # no widget, no getter/setter, excluded from search)
+        str
     )
     getter: str
     setter: Optional[str] = None
@@ -378,6 +382,44 @@ SETTINGS_REGISTRY = [
         },
         keywords=["wican", "test", "connection", "link", "ping", "quality"],
     ),
+    SettingDescriptor(
+        key="ecu.wican.section_trip_logs",
+        label="Trip Logs",
+        description="",
+        category="ECU",
+        subcategory="WiCAN",
+        widget_type="section",
+        getter="",
+        setter=None,
+    ),
+    SettingDescriptor(
+        key="ecu.wican.auto_download_logs",
+        label="Auto-download new trip logs on startup",
+        description=(
+            "At app launch, silently pull new datalog CSVs from the WiCAN's SD "
+            "card into the trip logs directory below. Only active while the "
+            "WiCAN adapter is selected; skipped quietly when the device is "
+            "asleep or unreachable; never deletes from the device."
+        ),
+        category="ECU",
+        subcategory="WiCAN",
+        widget_type="checkbox",
+        getter="get_wican_auto_download_logs",
+        setter="set_wican_auto_download_logs",
+        keywords=["wican", "logs", "datalog", "csv", "download", "trip", "auto"],
+    ),
+    SettingDescriptor(
+        key="ecu.wican.logs_dir",
+        label="Trip Logs Directory",
+        description="Local folder where WiCAN trip logs (.csv) are downloaded",
+        category="ECU",
+        subcategory="WiCAN",
+        widget_type="path_dir",
+        getter="get_logs_directory",
+        setter="set_logs_directory",
+        widget_options={"placeholder": "Folder for WiCAN trip logs"},
+        keywords=["wican", "logs", "directory", "folder", "csv", "datalog", "trip"],
+    ),
     # -- ECU > Flash Security --
     SettingDescriptor(
         key="ecu.security.status",
@@ -630,6 +672,21 @@ class SettingsDialog(QDialog):
         ]
 
         for desc in descs:
+            # Section break: a rule + header splitting the page into topic
+            # groups (e.g. WiCAN connection vs trip logs). Not a setting — no
+            # input widget, nothing registered.
+            if desc.widget_type == "section":
+                layout.addSpacing(10)
+                rule = QFrame()
+                rule.setFrameShape(QFrame.HLine)
+                rule.setFrameShadow(QFrame.Sunken)
+                layout.addWidget(rule)
+                header = QLabel(desc.label)
+                header.setStyleSheet("font-weight: 700; font-size: 13px;")
+                layout.addWidget(header)
+                layout.addSpacing(4)
+                continue
+
             # Label (skip for checkbox/button/readonly which embed their own)
             if desc.widget_type not in ("checkbox", "button", "readonly"):
                 lbl = QLabel(desc.label)
@@ -844,6 +901,8 @@ class SettingsDialog(QDialog):
         self._page_title.setText(f"Search: \u201c{query}\u201d")
 
     def _match_score(self, desc: SettingDescriptor, query: str) -> int:
+        if desc.widget_type == "section":
+            return 0  # headers are layout, not settings — never a search hit
         score = 0
         fields = [
             (desc.label, 10),

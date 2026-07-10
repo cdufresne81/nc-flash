@@ -22,6 +22,7 @@ _SUBDIRS = [
     "screenshots",
     "colormaps",
     "reads",
+    "logs",
 ]
 
 
