@@ -189,9 +189,8 @@ class ECUProgrammingWindow(QMainWindow):
         # Re-gate the Download Logs button as the main-window-owned sync
         # starts/stops (Qt auto-disconnects when this window is destroyed).
         main_window.wican_log_sync.running_changed.connect(self._update_action_states)
-        # The download progress dialog (exists only for a sync started from
-        # THIS window's button; launch auto-syncs stay dialog-free by the
-        # sync's quiet-by-contract rule).
+        # The download progress dialog, created only for a sync started from
+        # THIS window's Download Logs button (None otherwise).
         self._download_progress = None
         main_window.wican_log_sync.progress_changed.connect(self._on_download_progress)
         main_window.wican_log_sync.running_changed.connect(
@@ -311,7 +310,7 @@ class ECUProgrammingWindow(QMainWindow):
         # WiCAN device utility, NOT an ECU operation: pure HTTP to the WiCAN's
         # port-80 log endpoints — needs no ECU connection and works whichever
         # adapter is selected. The sync itself is owned by the main window's
-        # WiCANLogSync collaborator (shared with the launch-time auto-download).
+        # WiCANLogSync collaborator.
         self._btn_download_logs = QPushButton("Download Logs")
         self._btn_download_logs.setMinimumHeight(36)
         self._btn_download_logs.setToolTip(
@@ -688,12 +687,12 @@ class ECUProgrammingWindow(QMainWindow):
         # never mix: while a download runs, everything else on this page locks.
         is_wican_adapter = self._main_window.settings.is_wican_adapter()
         log_sync = self._main_window.wican_log_sync
-        utility_running = log_sync.is_running
-        wican_contended = is_wican_adapter and utility_running
+        sync_running = log_sync.is_running
+        wican_contended = is_wican_adapter and sync_running
 
         self._btn_download_logs.setVisible(is_wican_adapter)
         self._btn_download_logs.setEnabled(
-            is_wican_adapter and not utility_running and not busy
+            is_wican_adapter and not sync_running and not busy
         )
 
         # An ECU connect during a download would contend for the WiCAN's
@@ -705,7 +704,7 @@ class ECUProgrammingWindow(QMainWindow):
             getattr(self._session, "state", None) == ECUSessionState.DISCONNECTED
         )
         if is_wican_adapter and disconnected:
-            self._btn_connect.setEnabled(not utility_running)
+            self._btn_connect.setEnabled(not sync_running)
 
         # Nothing works while an operation is in progress, and no ECU
         # operation may start while a download holds the WiCAN.
@@ -1066,13 +1065,12 @@ class ECUProgrammingWindow(QMainWindow):
         progress page; per-file results land in the Activity Log below. Button
         state refresh rides the sync's ``running_changed`` signal.
 
-        A manual start (this button) gets a byte-accurate progress dialog with
-        Cancel; the launch-time auto-sync never comes through here and stays
-        dialog-free (quiet by contract). NON-modal by design: WindowModal
-        would block the main window and every table window too (it blocks the
-        parent, all grandparents, and their siblings — the 2026-07-11 freeze
-        family of mistakes), and no blocking is needed — every button this
-        run must not race is already disabled while the sync runs.
+        The button gets a byte-accurate progress dialog with Cancel. NON-modal
+        by design: WindowModal would block the main window and every table
+        window too (it blocks the parent, all grandparents, and their siblings
+        — the 2026-07-11 freeze family of mistakes), and no blocking is needed
+        — every button this run must not race is already disabled while the
+        sync runs.
         """
         if not self._main_window.wican_log_sync.start():
             return
@@ -1108,11 +1106,12 @@ class ECUProgrammingWindow(QMainWindow):
             return
         if total <= 0:
             return
+        done = min(done, total)
         dialog.setMaximum(max(1, total // 1024))
-        dialog.setValue(min(done, total) // 1024)
+        dialog.setValue(done // 1024)
         mb_total = total / (1024 * 1024)
         if name:
-            mb_done = min(done, total) / (1024 * 1024)
+            mb_done = done / (1024 * 1024)
             dialog.setLabelText(
                 f"Downloading {name}...  ({mb_done:.1f} of {mb_total:.1f} MB)"
             )
@@ -1134,8 +1133,10 @@ class ECUProgrammingWindow(QMainWindow):
     def _on_download_sync_running(self, running: bool):
         """Close the progress dialog when the sync ends (any path).
 
-        Completion, error, and cancel all funnel through running_changed(False);
-        auto-syncs with no dialog make this a no-op.
+        Completion, error, and cancel all funnel through running_changed(False).
+        The dialog-None guard keeps this a no-op for any sync not started from
+        this button (e.g. the synchronous running_changed(True) that fires
+        inside start() before _on_download_logs assigns the dialog).
         """
         if running:
             return

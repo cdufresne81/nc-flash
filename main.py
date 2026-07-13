@@ -194,8 +194,8 @@ class MainWindow(
         self.ecu_window = None
 
         # WiCAN trip-log sync — single owner of the background download state,
-        # shared by the launch-time auto-download and the ECU window's
-        # Download Logs button (pure HTTP device utility; no ECU session).
+        # driven by the ECU window's Download Logs button (pure HTTP device
+        # utility; no ECU session).
         self.wican_log_sync = WiCANLogSync(self.settings, parent=self)
 
         # MCP server subprocess

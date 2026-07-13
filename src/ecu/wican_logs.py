@@ -243,13 +243,16 @@ class WiCANLogClient:
         if progress_cb is not None:
             progress_cb(0, total, "")
 
+        def _log_abort():
+            logger.info(
+                "Trip-log sync aborted; keeping %d downloaded file(s)",
+                len(result.downloaded),
+            )
+
         base = 0  # bytes of fully-downloaded files so far
         for log, target in sync_plan.to_download:
             if abort_cb is not None and abort_cb():
-                logger.info(
-                    "Trip-log sync aborted; keeping %d downloaded file(s)",
-                    len(result.downloaded),
-                )
+                _log_abort()
                 break
 
             per_file_cb = None
@@ -271,10 +274,7 @@ class WiCANLogClient:
                     # A mid-file cancel surfaces as the aborted-download error;
                     # the user asked for this — return the partial result like
                     # a between-files abort (the .part is already cleaned up).
-                    logger.info(
-                        "Trip-log sync aborted; keeping %d downloaded file(s)",
-                        len(result.downloaded),
-                    )
+                    _log_abort()
                     break
                 raise
             logger.info("Downloaded trip log %s (%d bytes)", path.name, log.size)

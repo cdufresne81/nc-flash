@@ -1,11 +1,11 @@
 """Background WiCAN trip-log sync owner (issue #83).
 
 One :class:`WiCANLogSync` instance is owned by the main window; the ECU
-window's "Download Logs" button and the launch-time auto-download both go
-through it, so at most one sync runs at a time (state has ONE owner). The
-download itself is pure HTTP against the WiCAN's port-80 csv_logger endpoints
-— fully decoupled from the CAN bus / SLCAN session / ECU: it never opens an
-ECU connection and works whether the car is on or off.
+window's "Download Logs" button drives it, so at most one sync runs at a time
+(state has ONE owner). The download itself is pure HTTP against the WiCAN's
+port-80 csv_logger endpoints — fully decoupled from the CAN bus / SLCAN
+session / ECU: it never opens an ECU connection and works whether the car is
+on or off.
 
 Product decision (2026-07-10): the WHOLE feature is active only while the
 WiCAN adapter is selected — :meth:`WiCANLogSync.start` is a no-op with
