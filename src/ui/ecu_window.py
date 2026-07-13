@@ -21,6 +21,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QPushButton,
     QProgressBar,
+    QProgressDialog,
     QStackedWidget,
     QMessageBox,
     QFileDialog,
@@ -188,6 +189,14 @@ class ECUProgrammingWindow(QMainWindow):
         # Re-gate the Download Logs button as the main-window-owned sync
         # starts/stops (Qt auto-disconnects when this window is destroyed).
         main_window.wican_log_sync.running_changed.connect(self._update_action_states)
+        # The download progress dialog (exists only for a sync started from
+        # THIS window's button; launch auto-syncs stay dialog-free by the
+        # sync's quiet-by-contract rule).
+        self._download_progress = None
+        main_window.wican_log_sync.progress_changed.connect(self._on_download_progress)
+        main_window.wican_log_sync.running_changed.connect(
+            self._on_download_sync_running
+        )
 
         self._update_action_states()
 
@@ -312,6 +321,7 @@ class ECUProgrammingWindow(QMainWindow):
         row.addWidget(self._btn_download_logs)
 
         actions_layout.addLayout(row)
+
         self._stack.addWidget(actions_page)
 
         # Page 1: Progress
@@ -673,25 +683,48 @@ class ECUProgrammingWindow(QMainWindow):
 
         # Download Logs is a WiCAN device utility (pure HTTP, no ECU session):
         # shown only when the WiCAN adapter is selected (with Tactrix/J2534 the
-        # SD card is a manual operation, so the button is hidden entirely).
-        # Available without a connection, but held off while an ECU operation
-        # runs (don't contend with a flash for the device's SD/CPU) or while a
-        # sync is already in flight.
+        # SD card is a manual operation, so it is hidden entirely). It contends
+        # with every ECU operation for the device's SD/CPU/WiFi, so the two
+        # never mix: while a download runs, everything else on this page locks.
         is_wican_adapter = self._main_window.settings.is_wican_adapter()
         log_sync = self._main_window.wican_log_sync
+        utility_running = log_sync.is_running
+        wican_contended = is_wican_adapter and utility_running
+
         self._btn_download_logs.setVisible(is_wican_adapter)
         self._btn_download_logs.setEnabled(
-            is_wican_adapter and not log_sync.is_running and not busy
+            is_wican_adapter and not utility_running and not busy
         )
 
-        # Nothing works while an operation is in progress
-        if busy:
+        # An ECU connect during a download would contend for the WiCAN's
+        # SD/CPU/WiFi (and connecting re-parks the datalogger). Gate Connect
+        # like the op buttons, but only while fully DISCONNECTED:
+        # mid-connect/connected states own the button elsewhere.
+        # (getattr: session test doubles may expose is_connected only.)
+        disconnected = self._session is None or (
+            getattr(self._session, "state", None) == ECUSessionState.DISCONNECTED
+        )
+        if is_wican_adapter and disconnected:
+            self._btn_connect.setEnabled(not utility_running)
+
+        # Nothing works while an operation is in progress, and no ECU
+        # operation may start while a download holds the WiCAN.
+        if busy or wican_contended:
             self._btn_read_dtcs.setEnabled(False)
             self._btn_clear_dtcs.setEnabled(False)
             self._btn_full_flash.setEnabled(False)
             self._btn_read_rom.setEnabled(False)
             self._btn_scan_ram.setEnabled(False)
             self._btn_flash_current.setEnabled(False)
+            tip = (
+                "Stop the WiCAN trip-log download first"
+                if wican_contended and not busy
+                else ""
+            )
+            self._btn_full_flash.setToolTip(tip)
+            self._btn_read_rom.setToolTip(tip)
+            self._btn_scan_ram.setToolTip(tip)
+            self._btn_flash_current.setToolTip(tip)
             return
 
         # Safe operations: just need connection
@@ -1032,8 +1065,86 @@ class ECUProgrammingWindow(QMainWindow):
         Runs entirely over HTTP on a worker thread — no ECU session, no
         progress page; per-file results land in the Activity Log below. Button
         state refresh rides the sync's ``running_changed`` signal.
+
+        A manual start (this button) gets a byte-accurate progress dialog with
+        Cancel; the launch-time auto-sync never comes through here and stays
+        dialog-free (quiet by contract). NON-modal by design: WindowModal
+        would block the main window and every table window too (it blocks the
+        parent, all grandparents, and their siblings — the 2026-07-11 freeze
+        family of mistakes), and no blocking is needed — every button this
+        run must not race is already disabled while the sync runs.
         """
-        self._main_window.wican_log_sync.start()
+        if not self._main_window.wican_log_sync.start():
+            return
+        dialog = self._create_download_progress_dialog()
+        self._download_progress = dialog
+        dialog.show()
+        dialog.raise_()
+
+    def _create_download_progress_dialog(self):
+        """Build the (unstyled, theme-safe, non-modal) download progress dialog."""
+        dialog = QProgressDialog(
+            "Checking WiCAN for new trip logs...", "Cancel", 0, 0, self
+        )
+        dialog.setWindowTitle("Download Logs")
+        # Non-modal also keeps QProgressDialog.setValue() from re-entering the
+        # event loop (it calls processEvents() only when the dialog is modal).
+        dialog.setWindowModality(Qt.NonModal)
+        dialog.setAutoClose(False)
+        dialog.setAutoReset(False)
+        dialog.setMinimumDuration(0)
+        dialog.canceled.connect(self._on_download_logs_cancel)
+        return dialog
+
+    def _on_download_progress(self, done: int, total: int, name: str):
+        """Drive the dialog from the sync's byte progress (KiB units).
+
+        KiB keeps the range far under QProgressDialog's int32 ceiling for any
+        plausible SD card content. ``total == 0`` (nothing to download) leaves
+        the bar indeterminate for the moment until the run ends.
+        """
+        dialog = self._download_progress
+        if dialog is None:
+            return
+        if total <= 0:
+            return
+        dialog.setMaximum(max(1, total // 1024))
+        dialog.setValue(min(done, total) // 1024)
+        mb_total = total / (1024 * 1024)
+        if name:
+            mb_done = min(done, total) / (1024 * 1024)
+            dialog.setLabelText(
+                f"Downloading {name}...  ({mb_done:.1f} of {mb_total:.1f} MB)"
+            )
+        else:
+            dialog.setLabelText(f"Downloading trip logs ({mb_total:.1f} MB)...")
+
+    def _on_download_logs_cancel(self):
+        """Cancel button: stop the sync without blocking the GUI thread.
+
+        The worker exits at the next 64 KiB chunk; completed files remain and
+        the run stays idempotent. Dialog teardown rides running_changed(False)
+        like every other end-of-run path.
+        """
+        dialog = self._download_progress
+        if dialog is not None:
+            dialog.setLabelText("Cancelling...")
+        self._main_window.wican_log_sync.cancel()
+
+    def _on_download_sync_running(self, running: bool):
+        """Close the progress dialog when the sync ends (any path).
+
+        Completion, error, and cancel all funnel through running_changed(False);
+        auto-syncs with no dialog make this a no-op.
+        """
+        if running:
+            return
+        dialog = self._download_progress
+        if dialog is None:
+            return
+        self._download_progress = None
+        dialog.close()
+        dialog.deleteLater()
 
     def _build_flash_driver(self, operation: str, source_name: str | None = None):
         """Select and prepare the flash/read driver for the current adapter.
@@ -1125,7 +1236,8 @@ class ECUProgrammingWindow(QMainWindow):
         # every ECU operation routed through the device — stop it first (fast
         # abort between chunks; completed files remain, the rest re-fetch on
         # the next sync). J2534 ops don't touch the WiCAN, so they leave a
-        # running sync alone.
+        # running sync alone. _update_action_states locks the ECU buttons
+        # while a utility runs, so this is the backstop for non-button paths.
         log_sync = self._main_window.wican_log_sync
         if self._is_wican() and log_sync.is_running:
             logger.info("Stopping WiCAN trip-log sync for the ECU operation")

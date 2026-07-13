@@ -315,14 +315,6 @@ class AppSettings:
     def set_wican_auto_config(self, enabled: bool):
         self.settings.setValue("ecu/wican_auto_config", bool(enabled))
 
-    def get_wican_auto_download_logs(self) -> bool:
-        """Whether to auto-download new SD trip logs at launch (no-op when no
-        WiCAN host/identity is configured)."""
-        return self.settings.value("ecu/wican_auto_download_logs", True, type=bool)
-
-    def set_wican_auto_download_logs(self, enabled: bool):
-        self.settings.setValue("ecu/wican_auto_download_logs", bool(enabled))
-
 
 # Global settings instance
 _settings = None

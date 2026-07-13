@@ -324,6 +324,46 @@ class TestDownloadNew:
         assert result.downloaded == []
         assert list(tmp_path.iterdir()) == []
 
+    def test_abort_mid_file_returns_partial_result_not_error(self, tmp_path):
+        # A Cancel during a large file lands between CHUNKS, inside
+        # download_to_file — that must end the run like a between-files abort
+        # (partial result returned), never surface as a transfer error.
+        # The abort LATCHES once it sees the in-flight .part (deterministic:
+        # it exists the moment the transfer opens), mirroring the production
+        # signal — QThread.requestInterruption never un-requests.
+        latched = []
+
+        def abort_cb():
+            if latched or (tmp_path / "big.csv.part").exists():
+                latched.append(True)
+            return bool(latched)
+
+        files = {"big.csv": b"x" * (128 * 1024), "next.csv": b"y" * 16}
+        with _device(files) as (client, _):
+            result = client.download_new(tmp_path, abort_cb=abort_cb)
+        assert result.downloaded == []
+        assert not (tmp_path / "big.csv").exists()
+        assert not (tmp_path / "next.csv").exists()  # run really ended
+        _no_part_residue(tmp_path)
+
+    def test_intra_run_collision_never_clobbers(self, tmp_path):
+        # Data-loss regression guard: the plan resolves every target against
+        # PRE-RUN disk state, so a collision-suffixed name ("t.csv" bumped to
+        # "t-2.csv" past a stale local copy) must never land on another remote
+        # log's literal name in the same run — the plan reserves each target.
+        (tmp_path / "t.csv").write_bytes(b"z" * 100)  # older trip, same name
+        files = {"t.csv": b"a" * 200, "t-2.csv": b"b" * 300}
+        with _device(files) as (client, _):
+            plan = client.plan(tmp_path)
+            targets = [target for _, target in plan.to_download]
+            assert len(set(targets)) == len(targets) == 2  # distinct targets
+            result = client.download_new(tmp_path)
+        assert len(result.downloaded) == 2
+        # Every byte of both trips is on disk; the stale local copy untouched.
+        assert (tmp_path / "t.csv").read_bytes() == b"z" * 100
+        on_disk = sorted(p.read_bytes() for p in result.downloaded)
+        assert on_disk == [b"a" * 200, b"b" * 300]
+
     def test_empty_device_is_quiet(self, tmp_path):
         with _device({}) as (client, _):
             result = client.download_new(tmp_path)
@@ -352,6 +392,58 @@ class TestDownloadNew:
             httpd.shutdown()
             httpd.server_close()
             t.join(timeout=2)
+
+
+# --- byte progress (plan + per-chunk callbacks) ---------------------------------
+
+
+class TestDownloadProgress:
+    def test_download_to_file_reports_cumulative_bytes(self, tmp_path):
+        data = b"x" * (150 * 1024)  # spans multiple 64 KiB chunks
+        seen = []
+        with _device({"a.csv": data}) as (client, _):
+            download_to_file(
+                client._url("/download_csv", {"file": "a.csv"}),
+                tmp_path / "a.csv",
+                expected_size=len(data),
+                progress_cb=seen.append,
+            )
+        assert len(seen) >= 2  # more than one chunk actually reported
+        assert seen == sorted(seen)  # cumulative, monotonic
+        assert seen[-1] == len(data)
+
+    def test_plan_totals_exclude_all_skips(self, tmp_path):
+        # total_bytes must count ONLY what will transfer: not the active trip
+        # file, not an already-downloaded copy, not an unsafe device name.
+        (tmp_path / "have.csv").write_bytes(b"12345")
+        files = {
+            "open.csv": b"growing!",
+            "have.csv": b"54321",  # same (name, size) -> already downloaded
+            "../evil.csv": b"pwn",
+            "new.csv": b"fresh data\n" * 3,
+        }
+        with _device(files, active="/sdcard/logs/open.csv") as (client, _):
+            plan = client.plan(tmp_path)
+        assert [log.name for log, _ in plan.to_download] == ["new.csv"]
+        assert sorted(plan.skipped) == sorted(["../evil.csv", "have.csv", "open.csv"])
+        assert plan.total_bytes == len(files["new.csv"])
+
+    def test_download_new_progress_spans_the_whole_run(self, tmp_path):
+        files = {"b.csv": b"n" * 3000, "a.csv": b"o" * 1000}
+        events = []
+        with _device(files) as (client, _):
+            client.download_new(
+                tmp_path, progress_cb=lambda d, t, n: events.append((d, t, n))
+            )
+        total = 4000
+        # Determinate before the first byte, complete at the end, one shared
+        # total throughout, monotonic byte counts, per-file attribution.
+        assert events[0] == (0, total, "")
+        assert events[-1] == (total, total, "a.csv")
+        assert all(t == total for _, t, _ in events)
+        dones = [d for d, _, _ in events]
+        assert dones == sorted(dones)
+        assert (3000, total, "b.csv") in events
 
 
 # --- settings / workspace plumbing ---------------------------------------------
@@ -384,12 +476,6 @@ class TestLogsPlumbing:
         from pathlib import Path
 
         assert Path(settings.get_logs_directory()).name == "logs"
-
-    def test_auto_download_defaults_on_and_round_trips(self, _settings):
-        settings, store = _settings
-        assert settings.get_wican_auto_download_logs() is True
-        settings.set_wican_auto_download_logs(False)
-        assert store["ecu/wican_auto_download_logs"] is False
 
     def test_is_wican_adapter_tracks_adapter_selection(self, _settings):
         # The single predicate for WiCAN-only affordances — callers never

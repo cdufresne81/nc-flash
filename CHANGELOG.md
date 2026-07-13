@@ -2,6 +2,17 @@
 
 All notable changes to NC Flash are documented here.
 
+## [Unreleased]
+
+### Added
+- **Download Logs now shows a byte-accurate progress dialog with Cancel (#88)** — clicking **Download Logs** in the ECU Programming window pops a progress dialog driven by real bytes. A planning pass sums the device's advertised file sizes up front (the skip decisions — active trip file, already downloaded, unsafe name — now live in one place and run before the first byte), so the bar is determinate immediately; the label shows `Downloading <file>… (X.X of Y.Y MB)`. **Cancel** stops the run without freezing the GUI: files already downloaded are kept, the in-flight `.part` is cleaned up, and the next sync re-fetches only what's missing. The dialog is non-modal (it never blocks the main window or any open table window) and only the manual button raises it; the automatic launch sync path stays quiet as before. Field-motivated: a morning sync moved ~66 MB for two minutes with no visible progress and no way to stop it.
+
+### Changed
+- **Download Logs and ECU operations are now mutually exclusive** — while a trip-log download runs, every ECU action (Flash Current / Full Flash / Read ROM / Read RAM / Read+Clear DTCs) and the Connect button are locked with an explanatory tooltip, so a download and a flash/read can never contend for the WiCAN's SD card, CPU, and WiFi at the same time. Previously only the reverse held (starting an ECU operation stopped a running download); that backstop remains for non-button code paths.
+
+### Removed
+- **Automatic trip-log download on startup** — NC Flash no longer pulls trip logs from the WiCAN at launch, and the *Settings > ECU > WiCAN > "Auto-download new trip logs on startup"* toggle has been removed. Trip logs are now downloaded only on demand via the **Download Logs** button (with the new progress dialog above). The trip-logs directory setting is unchanged.
+
 ## [v2.11.0] - 2026-07-10
 
 ### Added

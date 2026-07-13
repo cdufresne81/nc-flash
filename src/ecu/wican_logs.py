@@ -83,6 +83,21 @@ class LogSyncResult:
     skipped: list = field(default_factory=list)  # list[str] remote names
 
 
+@dataclass(frozen=True)
+class SyncPlan:
+    """What one sync run will actually transfer, decided before the first byte.
+
+    Produced by :meth:`WiCANLogClient.plan` — the ONE place the skip decisions
+    (unsafe name, active trip file, already downloaded) live. ``total_bytes``
+    is the sum of the sizes ``/csv_list`` advertised for ``to_download``, so a
+    progress display is byte-accurate from the start.
+    """
+
+    to_download: list = field(default_factory=list)  # list[(TripLog, Path)]
+    skipped: list = field(default_factory=list)  # list[str] remote names
+    total_bytes: int = 0
+
+
 class WiCANLogClient:
     """Downloads new SD trip logs from a WiCAN into a local directory."""
 
@@ -146,25 +161,13 @@ class WiCANLogClient:
 
     # --- the sync ------------------------------------------------------------
 
-    def download_new(
-        self, dest_dir, *, skip_active: bool = True, abort_cb=None
-    ) -> LogSyncResult:
-        """Download every remote log not yet present locally into *dest_dir*.
+    def plan(self, dest_dir, *, skip_active: bool = True) -> SyncPlan:
+        """Decide what a sync run will download, without transferring anything.
 
         Skips (in ``skipped``, by remote name): logs already present with the
         same size (under the original or a ``-N`` collision-suffixed name),
         the active trip file when *skip_active*, and logs whose device name
         fails sanitization (warned, never trusted).
-
-        ``abort_cb`` (no-arg, returns truthy to abort) is polled between files
-        and between download chunks; an abort returns the partial result —
-        completed files remain and the run stays idempotent.
-
-        Raises :class:`~src.ecu.wican_http.WiCANHttpError` (or its
-        :class:`WiCANLogsError` subclass for malformed device replies) when
-        the device is unreachable or a transfer fails mid-run; files
-        downloaded before the failure remain (the run is idempotent —
-        re-running downloads only what is missing).
         """
         dest_dir = Path(dest_dir)
         logs = self.list_logs()
@@ -175,46 +178,124 @@ class WiCANLogClient:
             # is the risk — fail the run rather than guess.
             active = self.active_log_basename()
 
-        result = LogSyncResult()
+        to_download = []
+        skipped = []
+        total_bytes = 0
+        # Targets already promised to an earlier log THIS run. The whole plan
+        # resolves against pre-run disk state, so without this a collision-
+        # suffixed name could land on a later log's literal name and the two
+        # downloads would silently clobber each other.
+        reserved = set()
         for log in logs:
+            try:
+                name = sanitize_basename(log.name)
+            except WiCANHttpError as exc:
+                logger.warning("Skipping device log with unsafe name: %s", exc)
+                skipped.append(log.name)
+                continue
+
+            if active is not None and name == active:
+                logger.info("Skipping active trip file %s (still being written)", name)
+                skipped.append(log.name)
+                continue
+
+            target = self._resolve_target(dest_dir, name, log.size, reserved)
+            if target is None:
+                skipped.append(log.name)  # already downloaded
+                continue
+
+            reserved.add(target)
+            to_download.append((log, target))
+            total_bytes += log.size
+
+        return SyncPlan(
+            to_download=to_download, skipped=skipped, total_bytes=total_bytes
+        )
+
+    def download_new(
+        self, dest_dir, *, skip_active: bool = True, abort_cb=None, progress_cb=None
+    ) -> LogSyncResult:
+        """Download every remote log not yet present locally into *dest_dir*.
+
+        The skip decisions live in :meth:`plan`; ``skipped`` in the result is
+        the plan's skip list.
+
+        ``abort_cb`` (no-arg, returns truthy to abort) is polled between files
+        and between download chunks; an abort returns the partial result —
+        completed files remain and the run stays idempotent.
+
+        ``progress_cb`` (three args: cumulative bytes done across the whole
+        run, total bytes the plan will transfer, name of the file currently
+        transferring) is invoked once up front as ``(0, total, "")`` — so a
+        progress display is determinate before the first byte — then after
+        every chunk.
+
+        Raises :class:`~src.ecu.wican_http.WiCANHttpError` (or its
+        :class:`WiCANLogsError` subclass for malformed device replies) when
+        the device is unreachable or a transfer fails mid-run; files
+        downloaded before the failure remain (the run is idempotent —
+        re-running downloads only what is missing).
+        """
+        sync_plan = self.plan(dest_dir, skip_active=skip_active)
+
+        result = LogSyncResult(skipped=list(sync_plan.skipped))
+        total = sync_plan.total_bytes
+        if progress_cb is not None:
+            progress_cb(0, total, "")
+
+        base = 0  # bytes of fully-downloaded files so far
+        for log, target in sync_plan.to_download:
             if abort_cb is not None and abort_cb():
                 logger.info(
                     "Trip-log sync aborted; keeping %d downloaded file(s)",
                     len(result.downloaded),
                 )
                 break
-            try:
-                name = sanitize_basename(log.name)
-            except WiCANHttpError as exc:
-                logger.warning("Skipping device log with unsafe name: %s", exc)
-                result.skipped.append(log.name)
-                continue
 
-            if active is not None and name == active:
-                logger.info("Skipping active trip file %s (still being written)", name)
-                result.skipped.append(log.name)
-                continue
-
-            target = self._resolve_target(dest_dir, name, log.size)
-            if target is None:
-                result.skipped.append(log.name)  # already downloaded
-                continue
+            per_file_cb = None
+            if progress_cb is not None:
+                per_file_cb = self._file_progress(progress_cb, base, total, log.name)
 
             url = self._url(CSV_DOWNLOAD_PATH, {"file": log.name})
-            path = download_to_file(
-                url,
-                target,
-                expected_size=log.size,
-                timeout_s=self.timeout_s,
-                abort_cb=abort_cb,
-            )
+            try:
+                path = download_to_file(
+                    url,
+                    target,
+                    expected_size=log.size,
+                    timeout_s=self.timeout_s,
+                    abort_cb=abort_cb,
+                    progress_cb=per_file_cb,
+                )
+            except WiCANHttpError:
+                if abort_cb is not None and abort_cb():
+                    # A mid-file cancel surfaces as the aborted-download error;
+                    # the user asked for this — return the partial result like
+                    # a between-files abort (the .part is already cleaned up).
+                    logger.info(
+                        "Trip-log sync aborted; keeping %d downloaded file(s)",
+                        len(result.downloaded),
+                    )
+                    break
+                raise
             logger.info("Downloaded trip log %s (%d bytes)", path.name, log.size)
             result.downloaded.append(path)
+            base += log.size
 
         return result
 
     @staticmethod
-    def _resolve_target(dest_dir: Path, name: str, size: int) -> Optional[Path]:
+    def _file_progress(progress_cb, base: int, total: int, name: str):
+        """Adapt the per-chunk byte count of one file to whole-run progress."""
+
+        def cb(received: int):
+            progress_cb(base + received, total, name)
+
+        return cb
+
+    @staticmethod
+    def _resolve_target(
+        dest_dir: Path, name: str, size: int, reserved=frozenset()
+    ) -> Optional[Path]:
         """Pick the local path for a remote log, honoring the collision guard.
 
         Returns None when a local copy with the same size already exists (under
@@ -222,6 +303,10 @@ class WiCANLogClient:
         returns the first free path: ``name``, else ``stem-2.ext``, ``-3``, …
         (clockless devices reuse names across reboots; never clobber a
         different file, never re-download an existing one).
+
+        ``reserved`` holds paths already promised to other logs in the same
+        planning pass (not yet on disk) — treated as occupied so two logs in
+        one run can never resolve to the same target.
         """
         plain = dest_dir / name
         stem, dot, ext = name.rpartition(".")
@@ -230,13 +315,16 @@ class WiCANLogClient:
 
         candidate = plain
         for n in range(2, _MAX_COLLISION_SUFFIX + 1):
-            if not candidate.exists():
+            if candidate in reserved:
+                pass  # promised to another log this run — probe the next name
+            elif not candidate.exists():
                 return candidate
-            try:
-                if candidate.stat().st_size == size:
-                    return None  # same trip already downloaded
-            except OSError:
-                pass  # race/unreadable — treat as occupied, probe the next name
+            else:
+                try:
+                    if candidate.stat().st_size == size:
+                        return None  # same trip already downloaded
+                except OSError:
+                    pass  # race/unreadable — treat as occupied, probe the next
             candidate = dest_dir / (f"{stem}-{n}.{ext}" if ext else f"{stem}-{n}")
         raise WiCANLogsError(
             f"More than {_MAX_COLLISION_SUFFIX} local name collisions for "
