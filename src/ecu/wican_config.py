@@ -44,11 +44,12 @@ import threading
 import time
 import urllib.error
 import urllib.request
-from typing import Optional
+from typing import Callable, Optional
 
 from .constants import (
     DATALOG_KEEPALIVE_INTERVAL_S,
     PRE_SESSION_SETTLE_S,
+    WICAN_CSV_TRIP_LEASE_MS,
 )
 from .exceptions import ECUError
 
@@ -517,6 +518,35 @@ class WiCANDatalogClient:
         # worker thread).
         self._reserve_lock = threading.RLock()
         self._reserve_depth = 0
+        # Live-trip lifecycle (Live Datalog button). While a leased manual trip streams,
+        # the physical park/claim leases are LIFTED (the poller must drive the bus to
+        # produce rows) without touching the logical refcount — `_suspended` records that
+        # divergence so the physical leases are re-armed when the trip ends. `_live_trip`
+        # keeps the keepalive daemon renewing the firmware csv lease (the trip's own
+        # dead-man). `_silent_hold` is the one logical ref the trip's STOP takes so
+        # "Stop Live Datalog" leaves the device parked (silent) until the app closes,
+        # the next trip starts, or release_trip_hold().
+        self._suspended = False
+        self._live_trip = False
+        self._silent_hold = False
+        # External-stop detection (web-UI Stop Trip mid-stream). The keepalive renews
+        # the csv lease with op=renew, which the firmware 409s once the trip is no
+        # longer manual-ON: `_trip_external_stop` remembers that (end_live_trip then
+        # leaves the mode to whoever set it), `_trip_external_cb` is the one-shot
+        # notification begin_live_trip registered (fires on the keepalive thread).
+        # `_csv_renew_legacy` degrades pre-renew firmware back to the old re-start
+        # heartbeat (which fights a web Stop — exactly why op=renew exists).
+        self._trip_external_stop = False
+        self._trip_external_cb: Optional[Callable[[], None]] = None
+        self._csv_renew_legacy = False
+        # Bulk-transfer window (trip-log download). The device's httpd is a single
+        # task: while it streams a multi-MB file every keepalive tick times out by
+        # construction, so the tick's failure line is demoted to DEBUG for the
+        # window's duration (field incident 2026-07-12: a 2-minute sync logged the
+        # same INFO line 11 times). Logging-only — the keepalive itself still fires
+        # every tick and renews the leases the moment the httpd frees up between
+        # files; the firmware interlock covers the in-file gaps, as designed.
+        self._bulk_quiet = False
 
     def _url(self, path: str) -> str:
         return f"http://{self.host}:{self.http_port}{path}"
@@ -525,6 +555,15 @@ class WiCANDatalogClient:
     def _op_path(op: str, **params: object) -> str:
         """Build a ``/datalog?op=<op>[&k=v...]`` path, omitting None-valued params."""
         query = f"/datalog?op={op}"
+        for key, value in params.items():
+            if value is not None:
+                query += f"&{key}={value}"
+        return query
+
+    @staticmethod
+    def _csv_op_path(op: str, **params: object) -> str:
+        """Build a ``/csv_logger?op=<op>[&k=v...]`` path, omitting None-valued params."""
+        query = f"/csv_logger?op={op}"
         for key, value in params.items():
             if value is not None:
                 query += f"&{key}={value}"
@@ -584,7 +623,7 @@ class WiCANDatalogClient:
 
     # -- HTTP (soft-degrading) --------------------------------------------------
 
-    def _request_ex(self, method: str, path: str):
+    def _request_ex(self, method: str, path: str, quiet: bool = False):
         """Issue ``method path`` -> ``(status, data)``.
 
         ``status`` is the HTTP status code if the device answered (200/404/409/500…)
@@ -593,7 +632,12 @@ class WiCANDatalogClient:
         so a broken ``/datalog`` can never abort a flash. The status is surfaced so a
         caller can treat a 409 ("already auto-reaped by the firmware reaper") as
         success rather than a failure.
+
+        ``quiet`` demotes the failure lines to DEBUG — logging only, nothing else
+        changes. Used by keepalive ticks during a bulk transfer, where timeouts are
+        expected by construction (single-task device httpd).
         """
+        log_failure = logger.debug if quiet else logger.info
         url = self._url(path)
         try:
             req = urllib.request.Request(url, method=method)
@@ -601,7 +645,7 @@ class WiCANDatalogClient:
                 status = getattr(resp, "status", None) or resp.getcode()
                 body = resp.read().decode("utf-8", errors="replace")
         except urllib.error.HTTPError as exc:
-            logger.info(
+            log_failure(
                 "%s %s -> HTTP %s (datalog unsupported/stale; firmware interlock holds)",
                 method,
                 path,
@@ -609,27 +653,38 @@ class WiCANDatalogClient:
             )
             return exc.code, None
         except (urllib.error.URLError, socket.error, OSError) as exc:
-            logger.info(
+            log_failure(
                 "%s %s failed (%s); relying on firmware interlock", method, path, exc
             )
             return None, None
         if status != 200:
-            logger.info(
+            log_failure(
                 "%s %s -> HTTP %s; relying on firmware interlock", method, path, status
             )
             return status, None
         try:
             data = json.loads(body)
         except (ValueError, TypeError):
-            logger.info("%s %s returned non-JSON; ignoring", method, path)
+            log_failure("%s %s returned non-JSON; ignoring", method, path)
             return status, None
         return status, (data if isinstance(data, dict) else None)
 
-    def _request(self, method: str, path: str) -> Optional[dict]:
+    def _request(self, method: str, path: str, quiet: bool = False) -> Optional[dict]:
         """Issue ``method path``; return the parsed JSON dict, else ``None`` (any
         non-200 / failure). Thin wrapper over :meth:`_request_ex`."""
-        _status, data = self._request_ex(method, path)
+        _status, data = self._request_ex(method, path, quiet=quiet)
         return data
+
+    def set_bulk_transfer(self, active: bool) -> None:
+        """Mark a bulk HTTP transfer window (trip-log download) open/closed.
+
+        While open, keepalive-tick failures log at DEBUG instead of INFO — during
+        a large file download against the single-task device httpd every tick
+        times out by construction, and 10+ identical INFO lines per sync read as
+        an incident when they are the designed interlock fallback. Logging-only:
+        the ticks still fire and renew the leases between files.
+        """
+        self._bulk_quiet = bool(active)
 
     # -- Dead-man's-switch lease: pause / claim / keepalive / resume ------------
 
@@ -741,15 +796,115 @@ class WiCANDatalogClient:
 
         Mirrors :meth:`bus_claim`/:meth:`pause` ordering on the way out
         (``bus_release`` then ``resume``) so the keepalive daemon stops only once both
-        leases are dropped. A release with no outstanding acquire is a no-op.
+        leases are dropped. A release with no outstanding acquire is a no-op. When the
+        physical leases are suspended for a live trip, the last release just clears the
+        suspension — there is nothing physical to release, and the running trip keeps
+        its own (csv-lease) dead-man.
         """
         with self._reserve_lock:
             if self._reserve_depth == 0:
                 return
             self._reserve_depth -= 1
             if self._reserve_depth == 0:
+                if self._suspended:
+                    self._suspended = False
+                else:
+                    self.bus_release()
+                    self.resume()
+
+    # -- Live-trip lifecycle (Live Datalog button; leased manual trip) ----------
+
+    def begin_live_trip(
+        self, on_external_stop: Optional[Callable[[], None]] = None
+    ) -> None:
+        """Start a NEW leased manual trip: un-park the bus, rotate to a fresh file.
+
+        Order matters: the physical leases are lifted FIRST (``resume`` restores the
+        pre-pause mode, and the poller must drive the bus again to produce rows), then
+        ``op=start&rotate=1&lease_ms=`` forces logging ON into a fresh trip file with
+        the firmware csv lease armed. The logical refcount is untouched — whoever holds
+        refs (ECU session / silent hold) gets the park back in :meth:`end_live_trip`.
+        Soft-degrading like every op here: on pre-lease firmware the extra params are
+        ignored and this is a plain manual start.
+
+        ``on_external_stop`` fires AT MOST ONCE, on the keepalive thread, if the trip
+        is stopped out from under us (web-UI Stop Trip → the ``op=renew`` heartbeat
+        409s). The caller ends its stream; :meth:`end_live_trip` then leaves the
+        device's mode alone — the external operator's Stop must win.
+        """
+        with self._reserve_lock:
+            if self._reserve_depth > 0 and not self._suspended:
                 self.bus_release()
                 self.resume()
+                self._suspended = True
+            self._trip_external_stop = False
+            self._trip_external_cb = on_external_stop
+            self._live_trip = (
+                True  # before _ensure_keepalive: ticks must renew the lease
+            )
+            self._request(
+                "POST",
+                self._csv_op_path("start", rotate=1, lease_ms=WICAN_CSV_TRIP_LEASE_MS),
+            )
+            self._ensure_keepalive()
+
+    def end_live_trip(self) -> None:
+        """End the leased trip: re-park for any ref holders, device back to AUTO.
+
+        Order matters: outstanding refs (ECU session, silent hold) get the physical
+        park/claim re-armed FIRST — while the manual trip still owns the mode, so no
+        instant of un-parked AUTO exists where a record could open a stub trip file.
+        The pause snapshots the then-current mode ("on"), which is exactly why
+        ``op=auto`` runs after: it restores follow-ignition as the steady state
+        EVERYWHERE — current mode, the firmware's pre-pause restore target, and the
+        csv lease. Idempotent; safe on a trip that never started.
+
+        Externally-stopped trip (web-UI Stop Trip → ``op=renew`` 409): the mode ops
+        are SKIPPED entirely — the operator at the device set it OFF and an ``op=auto``
+        here would flip their explicit Stop back to follow-ignition (the same
+        who-owns-the-mode fight the renewal heartbeat just lost, from the other side).
+        The physical re-park for ref holders still happens.
+        """
+        with self._reserve_lock:
+            external = self._trip_external_stop
+            self._trip_external_stop = False
+            self._trip_external_cb = None
+            if self._suspended:
+                self._suspended = False
+                if self._reserve_depth > 0:
+                    self.bus_claim()
+                    self.pause()
+                    time.sleep(PRE_SESSION_SETTLE_S)
+            if not external:
+                status, _ = self._request_ex("POST", self._csv_op_path("auto"))
+                if status is not None and status != 200:
+                    # Pre-op=auto firmware (400): best-effort op=stop — a sticky OFF
+                    # beats an orphaned FORCE_ON filling the SD until reboot.
+                    self._request("POST", self._csv_op_path("stop"))
+            self._live_trip = False
+            self._maybe_stop_keepalive()
+
+    def hold_silent(self) -> None:
+        """Take the trip's STOP ref: keep the device parked after a stopped trip.
+
+        One logical ref, taken at most once, so "Stop Live Datalog" means the device
+        stays quiet (no polling, no SD logging) until :meth:`release_trip_hold`, the
+        next :meth:`begin_live_trip` (which lifts the physical leases but keeps the
+        ref), or the firmware reaper if this host dies. No-op while already held.
+        """
+        with self._reserve_lock:
+            if self._silent_hold:
+                return
+            self._silent_hold = True
+            self.acquire_bus()
+
+    def release_trip_hold(self) -> None:
+        """Drop the silent-hold ref (app close / feature teardown). No-op if unheld."""
+        with self._reserve_lock:
+            if not self._silent_hold:
+                return
+            self._silent_hold = False
+            self.release_bus()
 
     def get_state(self) -> Optional[dict]:
         """``GET /datalog`` -> live coexistence state dict (or ``None``).
@@ -780,8 +935,12 @@ class WiCANDatalogClient:
                 self._atexit_registered = True
 
     def _maybe_stop_keepalive(self) -> None:
-        """Stop the keepalive once BOTH leases have been released."""
-        if self._park_token is None and self._claim_token is None:
+        """Stop the keepalive once both leases are released AND no live trip runs."""
+        if (
+            self._park_token is None
+            and self._claim_token is None
+            and not self._live_trip
+        ):
             self._stop_keepalive()
 
     def _stop_keepalive(self) -> None:
@@ -795,7 +954,46 @@ class WiCANDatalogClient:
             thread.join(timeout=self.timeout_s + 1.0)
 
     def _send_keepalive(self) -> None:
-        """One keepalive POST renewing whichever leases we currently hold."""
+        """One keepalive POST renewing whichever leases we currently hold.
+
+        A live trip renews the firmware csv lease with ``op=renew`` — a heartbeat
+        that can NEVER (re)start logging. The old re-``start`` form silently
+        restarted a trip the operator had just stopped from the device's web UI
+        (field incident, 2026-07-11): every Stop lost to the next 4 s tick. A 409
+        now means exactly that — the trip was stopped under us — so we remember it
+        and fire the one-shot ``on_external_stop`` callback; a 400 means pre-renew
+        firmware, where we degrade back to the re-start heartbeat (accepting its
+        known fight) rather than losing the dead-man entirely.
+        """
+        quiet = self._bulk_quiet
+        if self._live_trip and not self._trip_external_stop:
+            if self._csv_renew_legacy:
+                self._request(
+                    "POST",
+                    self._csv_op_path("start", lease_ms=WICAN_CSV_TRIP_LEASE_MS),
+                    quiet=quiet,
+                )
+            else:
+                status, _ = self._request_ex(
+                    "POST",
+                    self._csv_op_path("renew", lease_ms=WICAN_CSV_TRIP_LEASE_MS),
+                    quiet=quiet,
+                )
+                if status == 409:
+                    self._trip_external_stop = True
+                    callback, self._trip_external_cb = self._trip_external_cb, None
+                    logger.info(
+                        "live trip was stopped at the device (web UI); "
+                        "ending the host stream and leaving the mode alone"
+                    )
+                    if callback is not None:
+                        callback()
+                elif status == 400:
+                    self._csv_renew_legacy = True
+                    self._request(
+                        "POST",
+                        self._csv_op_path("start", lease_ms=WICAN_CSV_TRIP_LEASE_MS),
+                    )
         if self._park_token is None and self._claim_token is None:
             return
         self._request(
@@ -805,6 +1003,7 @@ class WiCANDatalogClient:
                 park_token=self._park_token,
                 claim_token=self._claim_token,
             ),
+            quiet=quiet,
         )
 
     def _keepalive_loop(self, stop: threading.Event) -> None:
@@ -829,6 +1028,11 @@ class WiCANDatalogClient:
         """
         self._park_token = None
         self._claim_token = None
+        self._live_trip = False
+        self._suspended = False
+        self._silent_hold = False
+        self._trip_external_stop = False
+        self._trip_external_cb = None
         self._stop_keepalive()
 
     def reconcile(self) -> None:
@@ -864,3 +1068,36 @@ class WiCANDatalogClient:
             "datalog reconcile: resuming a datalogger left paused by a prior run"
         )
         self.resume()
+
+
+# Per-host shared WiCANDatalogClient registry. The firmware issues a FRESH token on
+# every lease arm, so two independent client instances against one device clobber each
+# other's leases (the first holder's renewals start 409ing and its park drops early).
+# Every lease holder — the ECU session's whole-session reservation, the flash fence,
+# the live-datalog trip — must therefore route through ONE client per device, whose
+# refcount + suspension state stay coherent. Keyed by host:port; never evicted (a
+# handful of small objects per run at most).
+_datalog_clients: dict = {}
+_datalog_clients_lock = threading.Lock()
+
+
+def get_datalog_client(host: str, http_port: int = 80) -> WiCANDatalogClient:
+    """THE way to obtain a :class:`WiCANDatalogClient` — one shared instance per device."""
+    key = f"{host}:{http_port}"
+    with _datalog_clients_lock:
+        client = _datalog_clients.get(key)
+        if client is None:
+            client = WiCANDatalogClient(host, http_port=http_port)
+            _datalog_clients[key] = client
+        return client
+
+
+def peek_datalog_client(host: str, http_port: int = 80) -> Optional[WiCANDatalogClient]:
+    """Return the existing shared client for this device, or ``None``.
+
+    For callers that only want to nudge an ALREADY-active client (e.g. the
+    trip-log sync quieting keepalive noise) — when no session holds a client,
+    there are no keepalives to quiet and nothing should be created.
+    """
+    with _datalog_clients_lock:
+        return _datalog_clients.get(f"{host}:{http_port}")

@@ -186,7 +186,9 @@ class TestWiCANCoexistConnect:
         calls = []
         with (
             patch("src.ecu.wican_config.WiCANConfigurator"),
-            patch("src.ecu.wican_config.WiCANDatalogClient") as MockDatalog,
+            # The session obtains the SHARED per-host client via the factory —
+            # patch that seam (the class itself is no longer constructed here).
+            patch("src.ecu.wican_config.get_datalog_client") as MockDatalog,
             patch("src.ecu.transport.create_ecu_transport"),
             patch("src.ecu.protocol.UDSConnection") as MockUDS,
             patch.object(
@@ -224,7 +226,8 @@ class TestWiCANCoexistConnect:
         calls = []
         with (
             patch("src.ecu.wican_config.WiCANConfigurator"),
-            patch("src.ecu.wican_config.WiCANDatalogClient") as MockDatalog,
+            # Same factory seam as test_coexist_reserves_bus_for_whole_session.
+            patch("src.ecu.wican_config.get_datalog_client") as MockDatalog,
             patch("src.ecu.transport.create_ecu_transport"),
             patch("src.ecu.protocol.UDSConnection") as MockUDS,
             patch.object(

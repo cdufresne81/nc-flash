@@ -63,7 +63,7 @@ from .constants import (
 from .exceptions import FlashError
 from .flash_manager import FlashManager, FlashProgress, FlashState, ProgressCallback
 from .rom_utils import find_first_difference
-from .wican_config import WiCANDatalogClient
+from .wican_config import WiCANDatalogClient, get_datalog_client
 from .wican_flash import WiCANFlasher
 from .wican_sd_package import FlashPackage, build_flash_package
 from .wican_sd_upload import WiCANSdUploader
@@ -162,10 +162,13 @@ class WiCANSdFlasher:
         # transport exposes no host (injected-uploader test paths) it's a no-op,
         # and every /datalog failure is swallowed (the firmware FLASH_ACTIVE_BIT
         # interlock is the real brick guard, this is advisory).
+        # SHARED per-host client (get_datalog_client): the session reservation, this
+        # flash fence, and the live-datalog trip must see one refcount — independent
+        # instances clobber each other's firmware lease tokens.
         self._datalog = (
             datalog
             if datalog is not None
-            else (WiCANDatalogClient(host, http_port=http_port) if host else None)
+            else (get_datalog_client(host, http_port=http_port) if host else None)
         )
         # Proven WiCAN safeguards reused by COMPOSITION (not a mixin): the link
         # pre-flight gate and battery guard operate on the same transport (the

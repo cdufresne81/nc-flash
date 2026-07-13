@@ -187,7 +187,7 @@ unowned, the host is gone, and the bus is idle.
 | `HOST_CLAIM_LEASE_TTL` | **75 s** | **must exceed** worst-case auth: `TIMEOUT_RESPONSE_PENDING_MAX` 60 s + settle + key-compute + margin. 30 s is provably too small. |
 | `DATALOG_KEEPALIVE_INTERVAL` | 4 s | ⅓ of park TTL ⇒ tolerates 2 lost keepalives; under `DATALOG_TIMEOUT_S` 5 s. Renews **both** leases. |
 | `SO_KEEPALIVE` (35001) | 5 s / 5 s / 3 (unchanged) | half-open lid-close detected ~20 s; clean crash sub-second |
-| `BUS_IDLE_QUIESCE` | 300 ms | SD flash drives blocks ~211 ms apart; 300 ms of no TX **and** no RX proves "between operations" |
+| `BUS_IDLE_QUIESCE` | 300 ms | SD flash drives blocks ~211 ms apart; 300 ms of no **device TX** proves "between operations". **TX-only as of 2026-07-11** — originally TX+RX, but the PCM broadcasts periodic frames (0x201 RPM …) continuously with the ignition on, so an RX-fed clock never idles in a running car and the reaper could NEVER fire (proven on the bench: fully parked device, `bus_idle_ms` pinned at single digits). Every host→ECU exchange must transmit *through* this device, so TX-idle is sufficient evidence; ambient ECU broadcasts prove nothing about host presence. |
 | `HOST_SESSION_TEARDOWN_GRACE` | 3 s | after a claim-lease expiry, wait this long before resuming (ECU drops its session on host silence) |
 | reaper tick | 1 Hz | latency dominated by TTLs, not tick |
 | `STUCK_FLASH_CEILING` | 180 s | **alarm only**, never clears BIT1 |
@@ -209,9 +209,10 @@ this to immediate).
 - **`can.c`** — `can_should_park()` ⇒ `FLASH_ACTIVE_BIT | DATALOG_PARK_BIT |
   HOST_BUS_CLAIM_BIT` (the one-line auth-window fence; `poll_log`/`autopid`
   unchanged, they already call it).
-- **`can.c`** — add `s_last_tx_us`/`s_last_rx_us` (volatile u64) + getters; stamp
-  TX at the end of `can_send()` (single TX chokepoint) and RX in the TWAI rx path.
-  The "bus provably idle" evidence.
+- **`can.c`** — activity stamp (`s_last_bus_activity_ms`) + getter; stamped at the
+  end of `can_send()` (single TX chokepoint) ONLY. The "bus provably idle" evidence.
+  (As-built note 2026-07-11: the original TX+RX stamp was wrong — see the
+  `BUS_IDLE_QUIESCE` row above; the RX stamp was removed.)
 - **`can.c`** — add the `DATALOG_PARK` lease state (`s_park_gen`, `s_park_token`,
   `s_park_owner_fd` = 35001 `s_conn_gen` at pause, `s_park_deadline_us`) +
   `can_park_lease_set/renew/expired/owner_alive`. **`*_expired()` must check

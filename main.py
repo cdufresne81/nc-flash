@@ -79,6 +79,7 @@ from src.ui.session_mixin import SessionMixin
 from src.ui.mcp_mixin import McpMixin
 from src.ui.flash_mixin import FlashMixin
 from src.ui.wican_log_sync import WiCANLogSync
+from src.ui.wican_live_datalog import WiCANLiveDatalog
 
 from src.ui.error_helpers import handle_rom_operation_error
 
@@ -198,6 +199,11 @@ class MainWindow(
         # Download Logs button (pure HTTP device utility; no ECU session).
         self.wican_log_sync = WiCANLogSync(self.settings, parent=self)
 
+        # WiCAN live datalog — single owner of the background stream state,
+        # driven by the ECU window's "Live Datalog" toggle (pure raw-TCP tail of
+        # the device's port-35002 NCDLv1 listener; no ECU session).
+        self.wican_live_datalog = WiCANLiveDatalog(self.settings, parent=self)
+
         # MCP server subprocess
         self._mcp_process = None
 
@@ -235,6 +241,11 @@ class MainWindow(
         # while running (aborts between chunks; .part contract keeps it safe).
         if event.isAccepted():
             self.wican_log_sync.shutdown()
+            # Stop a running live-datalog stream so its QThread is never
+            # destroyed while running (interrupts the blocking socket read),
+            # and give the device back: dispose() also releases the silent hold
+            # a "Stop Live Datalog" took, restoring autonomous trip logging.
+            self.wican_live_datalog.dispose()
 
     def _deferred_init(self):
         """

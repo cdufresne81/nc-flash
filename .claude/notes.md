@@ -1,5 +1,263 @@
 # Session Notes
 
+## WIP preserved + live-datalog PARKED (Jul 13, 2026)
+
+Too many features were in flight at once on one working tree. Preserved
+everything to the remotes, then parked the live-datalog work pending a
+firmware-stability investigation.
+
+**Branch inventory (both repos on a branch named `feature/live-datalog-stream`):**
+- **Firmware** (`nc-flash-wican-fw`, origin cdufresne81): branch pushed.
+  `0dfa41e` = live datalog stream on TCP 35002 (NCDLv1); `15d1b69` = live-trip
+  lifecycle (op=auto/rotate/lease_ms/renew, lease_armed), poll_log/can
+  wake-kick + `producers_parked`, web-UI parked status. **This is the exact
+  build OTA'd on the bench device** — was uncommitted until now.
+- **Editor** (`nc-rom-editor`): branch pushed. Holds TWO tangled feature sets —
+  (a) live datalog stream + MLV trailing + device trip-lifecycle control, and
+  (b) Download-Logs progress dialog + Cancel + utility/ECU-op mutual exclusion +
+  the keepalive-log-spam quiet fix. They braid through TWO shared files
+  (`src/ecu/wican_config.py`, `src/ui/ecu_window.py`) — a clean split needs
+  hunk-level surgery, not whole-file staging.
+
+**PARKED: live datalog.** Suspected we introduced firmware instability (the
+overnight crash-loop below). Before building further on live datalog, CAREFULLY
+TEST THE PREVIOUS FIRMWARE (`v1.5.0` / `wican-pro`, which has none of the
+lifecycle/stream code) to confirm whether the instability predates this work or
+was introduced by it. Investigation is fully specced in Fable's goal doc
+**`.claude/plans/wican-stability-goal.md`** (gitignored, local only — W1
+firmware diagnostics, W2 recording-slowness A/B, W3 worker-thread connect;
+AC1–AC10; brick constraints). The firmware `feature/live-datalog-stream` branch
+is the parked snapshot to bisect against `v1.5.0`.
+
+**NEXT (planned, not started): Download-Logs improvements branch.** Items (a-set
+above): Download-Logs progress dialog + Cancel, and Download/ECU mutual
+exclusion. **NC Flash ONLY — no firmware changes required** (rides already-
+released `/csv_list`, `/csv/<file>`, `/datalog` keepalive endpoints from fw
+v1.1.0+). Whole-file modules (wican_logs.py, wican_http.py, wican_log_sync.py +
+tests) come over clean; the two shared files above need hunk-level extraction,
+and the mutual-exclusion code currently references the Live Datalog button (must
+be trimmed since that button won't exist on a download-only branch).
+
+## Overnight WiCAN instability RCA + download progress dialog (Jul 12, 2026)
+
+**Field report**: device unreachable in the morning (web UI + NC Flash),
+replug fixed it; keepalive-timeout spam during the 66 MB log download; user
+asked for a byte-based progress popup with Cancel.
+
+**RCA (task: firmware fixes NOT yet built — awaiting user go-ahead):**
+- The device **crash-looped overnight**: every trip-file boundary is a REBOOT
+  (`timestamp_ms` column resets to ~23.1 s at row 1 of EVERY file; 24–25 s
+  wall-clock gaps). 7 unexpected reboots Jul 12 02:45→15:02 UTC, then a
+  terminal HANG at 15:02:58.967 UTC (52 s into session 8; clean CSV tail; the
+  usual watchdog reboot never came) — cleared only by the user's replug at
+  15:03:02. The "failed 27 MB download" at 11:01:53 local = the 15:01:42 UTC
+  crash mid-transfer.
+- **Reboot reasons UNKNOWN because of a second bug**: the SD event log
+  (`GET /event_log`, the ONLY diagnostic surviving a power cycle) has a
+  2-day hole (Jul 10 18:46 → Jul 12 15:03). Root cause found in
+  `event_log.c::event_log_init()`: the RTC_NOINIT crash guard's skip path
+  returns WITHOUT clearing `s_evl_guard`, so after ONE crash <15 s post-init,
+  every subsequent WARM boot skips SD persistence forever (comment claims
+  "self-recovers next boot" — only a poweron clears it). One-line fix.
+- restart_tracker counters are PSRAM-noinit → wiped by poweron;
+  `unexpected_reset_count:0` after a replug proves NOTHING. Coredump is
+  disabled and there is NO coredump partition (partition table change = USB
+  flash, not OTA-able).
+- Crash-looping is NOT clearly the Jul-11 OTA: the event-log guard latched
+  Jul 10 (a <15 s crash existed then, fw v1.4.0); previous nights simply
+  never logged overnight (no files), so no baseline. Last night's diff was
+  audited clean (lock-free volatiles, no handler blocking, no leaks).
+- Diagnostics plan (all OTA-able except coredump partition): fix the guard
+  one-liner; NVS lifetime boot/unexpected counters + last-unexpected-reset
+  record (restart_tracker.c); /diag endpoint (heap min/free, wifi disconnect
+  counter); low-rate SD heartbeat line via event_log. Full details in the
+  workflow output: `tasks/wp0v7o97p.output` (session scratchpad).
+- Secondary findings: LWIP socket budget oversubscribed (18 total vs httpd
+  max_open_sockets=15 + 4 always-on listeners — raise LWIP to ~24-28 or cut
+  httpd to ~8); wifi_mgr has NO reachability supervisor (associated-but-dead
+  STA never self-heals, and ap_auto_disable removes the rescue AP); 35001/
+  35002 socket hygiene is GOOD (SO_KEEPALIVE ~20 s reap, no fd leak).
+  Post-poweron mystery: no new CSV session opened 15:03→15:04:37 claim
+  (expected DATALOG_OPEN at ~23 s uptime) — unexplained, low priority.
+
+**AFTERNOON ADDENDUM (same day):** Two more user reports, both investigated,
+work handed to Opus via **`.claude/plans/wican-stability-goal.md`** (READ IT —
+it carries the full evidence + acceptance criteria + constraints):
+- **Web UI 3–5 s slow while the device RECORDS** (measured: 6% ping loss,
+  RTT 6–58 ms on LAN, TCP connects ~1.07 s = SYN retransmit, /main.js up to
+  3 s). Snappy while parked the same morning. Device- vs extender-side NOT yet
+  split — A/B protocol is W2 in the goal doc.
+- **GUI freeze opening the ECU window while recording**: root cause =
+  `ecu_window.py:213` auto-connect (`QTimer.singleShot(100, self._on_connect)`)
+  + the WHOLE WiCAN connect chain runs SYNCHRONOUSLY on the GUI thread
+  (`_on_connect_progress` comment ~464 even pumps processEvents between
+  blocking calls). Recording slowness (above) balloons each round-trip →
+  seconds of freeze. Fix = worker-thread connect (W3); the user's proposed
+  "stop recording when NC Flash opens" was assessed and argued against in the
+  doc (connect already parks; the stop itself would block the same way).
+- User's terminal-hang observation refined the RCA: LED fast (CAN alive) +
+  web UI readable + rows_written FROZEN → SD/writer or OOM domain, not Wi-Fi.
+
+**BUILT (host, tested, UNCOMMITTED):** Download Logs progress dialog +
+Cancel + keepalive quiet window — see CHANGELOG [Unreleased]. Key seams:
+`WiCANLogClient.plan()` (skip logic + total_bytes in ONE place; RESERVES
+each resolved target so intra-run -N collisions can't clobber),
+`download_to_file(progress_cb=cumulative bytes)`, worker throttles to 10 Hz,
+`WiCANLogSync.progress_changed(done,total,name)` + non-blocking `cancel()`
+(mid-file cancel returns the partial result — never the error path),
+ECU window owns a NON-modal QProgressDialog (WindowModal would block the
+main window + table windows too: parent+grandparents+siblings; review catch),
+auto-sync stays dialog-free. `set_bulk_transfer()`/`peek_datalog_client()`
+in wican_config are logging-only (brick-critical file untouched otherwise).
+Verified on real hardware (plan totals byte-exact vs /csv_list; live
+progress cb). NOTE: 2 pre-existing clipboard paste tests
+(test_table_viewer_window) fail ONLY while the Windows clipboard is held by
+another process (probe showed 0/10 system-wide round-trips at the time) —
+environmental, they passed on the identical tree earlier the same day.
+
+## LIVE DATALOG follow-up 4: freeze fix + web-Stop-wins + Start Trip fixes BUILT (Jul 11, 2026 night)
+
+Same branches (host `feature/live-datalog-stream` + fw fork), still UNCOMMITTED.
+Three field reports from the user's live test, all fixed + deployed (fw OTA'd):
+- **UI freeze on Live Datalog start (FIXED, host)**: the MLV trail offer was an
+  app-modal `QMessageBox.question` parented to the MAIN window while the user
+  worked in the ECU window → dialog opened UNDERNEATH, all input blocked,
+  nothing visible to dismiss = "screen froze" (stream kept capturing fine).
+  Now NON-modal, parented to the ACTIVE window, raised+focused; accepting
+  trails the NEWEST capture (the offered first file had rotated away at 0 rows
+  in 3 ms); run end auto-dismisses an unanswered offer (no bogus "declined").
+  Owner keeps `_trail_box`/`_latest_capture`; tests drive the REAL dialog
+  (modality regression assert included).
+- **Web Stop Trip restarted on its own (FIXED, fw+host)**: the host live-trip
+  keepalive re-POSTed `op=start&lease_ms` every 4 s → silently restarted every
+  operator Stop (also explains the rotating capture files in the user's log).
+  New fw `op=renew&lease_ms`: heartbeat-only, 409 once mode != ON. Host
+  keepalive uses renew; 409 → one-shot `on_external_stop` (keepalive thread) →
+  worker `_external_stop` latch → stream ends cleanly, NO silent hold, and
+  `end_live_trip` SKIPS op=auto — the operator's OFF stands. 400 → legacy fw →
+  degrade to old re-start heartbeat (`_csv_renew_legacy`). Known corner: web
+  Stop+re-Start inside one tick is invisible (host tails the new trip).
+- **Start Trip fixes BUILT (were "directions" in follow-up 3)**: fw
+  `producers_parked` in /csv_status + every op reply; `parked` in /poll_status
+  (self-describing stale snapshot); web UI honest messages ("armed — paused:
+  bus reserved by NC Flash…", Field Console "Armed (paused)", parked Start
+  toasts). Start Trip stays enabled while fenced (arming is valid). Wake-kick:
+  op=start/op=auto set `can_datalog_kick()` (can.c — csv_logger must not
+  depend on fast_log); poll task consumes it in the quiesce loop (pending
+  through the anti-flap window; cleared while polling normally). Kick NOT
+  hardware-exercised (bench ECU awake → never quiesces); logic-verified only.
+- **Hardware verification (bench, post-OTA)**: field case reproduced honestly
+  (fence → op=start → producers_parked:true + parked:true); renew 200-while-ON
+  / 409-after-Stop with mode left OFF; production-client E2E passed
+  (scratchpad `web_stop_wins_e2e.py`); device restored to AUTO + autonomously
+  logging. Pre-OTA backup: fw repo `rollback_deployed_v1_5_0-1-g0dfa41e.bin`
+  (NEW build has the SAME git-describe name — verify deploys by content, e.g.
+  `producers_parked` in /csv_status).
+- Suites: full host suite 1712 passed / 12 skipped; wican_config +2 tests
+  (web-stop-wins, legacy fallback) + renew-only keepalive assert;
+  live_datalog +2 (external stop, run-end offer dismissal) + trail tests
+  rewritten against the real non-modal dialog. CHANGELOG updated (3 entries).
+
+## LIVE DATALOG follow-up 3: trip lifecycle + reaper fix + Start Trip RCA (Jul 11, 2026 eve)
+
+On `feature/live-datalog-stream` (uncommitted; fw fork also uncommitted), the
+user-approved item-4 design BUILT + hardware-validated end-to-end:
+- **Semantics (user-defined)**: Live Datalog press = NEW trip file on the
+  device; Stop = device stops logging too (stays silent); disconnect / app
+  close = autonomous follow-ignition logging restored; crash = firmware
+  reapers self-heal to AUTO.
+- **Firmware** (`csv_logger.c`, deployed via OTA): `/csv_logger?op=auto`
+  (restores mode + the /datalog pre-pause snapshot + clears lease — the old
+  "sticky FORCE_OFF, no op=auto" gotcha is GONE), `op=start&rotate=1`
+  (new-trip rotation, close why=`rotate`), `op=start&lease_ms=N` (live-trip
+  dead-man, writer-loop reaper → AUTO, `EVL_REAPER_RESUME`), `lease_armed`
+  in both status JSONs. All verified on-device incl. lease reap + rotation.
+- **Host**: `get_datalog_client()` per-host SHARED client (fw issues a fresh
+  token per arm → independent instances clobber leases; session + flash fence
+  + live trip now share one). `WiCANDatalogClient.begin_live_trip()` (suspend
+  physical park/claim, refcount untouched; leased rotated start; keepalive
+  renews csv lease), `end_live_trip()` (re-park FIRST for ref holders, then
+  op=auto — no un-parked-AUTO stub-file instant), `hold_silent()`/
+  `release_trip_hold()` (Stop leaves device quiet until dispose/next trip).
+  Owner: trip begins only AFTER the NCDLv1 banner; user stop takes the hold,
+  stream ERROR restores AUTO instead; `dispose()` (main.py closeEvent)
+  releases the hold. ECU window: Connect locks while a utility runs.
+- **FIRMWARE BUG FOUND+FIXED: dead-man reaper could never fire in a running
+  car** — idle evidence was TX+RX and the PCM broadcasts continuously →
+  `bus_idle_ms` pinned ~0 → crashed host's park/claim NEVER reaped (proven:
+  bench device stuck parked). Now device-TX-only (`can.c`). Crash-while-parked
+  now reaps in ~80 s on a live bus (E2E-proven); crash-mid-trip in ~12 s.
+- **Start Trip RCA (subagent, on-device)**: web UI Start Trip = bare
+  `op=start`; a session only opens when a RECORD arrives, and BOTH producers
+  park on `can_should_park()` — the user's other RUNNING NC Flash instance's
+  whole-session fence (park+claim, keepalived) was holding the bus → "Trip
+  armed — waiting for data" forever; reboot doesn't help (app re-fences on
+  reconnect). Second trigger: quiesced poll_log (ECU asleep) — manual ON
+  can't wake it. /poll_status shows a STALE pre-park snapshot (looks healthy
+  while parked!). Fix directions → ALL BUILT in follow-up 4 (above); product
+  call resolved as "keep Start Trip enabled while fenced, message honestly".
+- E2E: scratchpad `trip_lifecycle_e2e.py` (7 scenarios, ALL PASSED).
+- Suites touched: wican_config (+6), live_datalog (+4), download_logs (+2),
+  session tests re-seamed to the factory.
+
+## LIVE DATALOG follow-up 2: MLV trail offer + fw TCP_NODELAY (Jul 11, 2026 PM)
+
+On `feature/live-datalog-stream` (uncommitted), from the user's 4-item ask:
+- **MLV latency confirmed from decompiled bytecode** (CFR on the installed
+  `HogLogViewer.jar`): trail-mode ingest = hardcoded 50 ms poll (Data Loader
+  Thread), trail engages at ≥50 samples (60 s timeout), playback starts 10
+  samples before the end at 1.0× → visible lag ≈ ~1 s at 10 Hz by DESIGN,
+  not file latency. Properties-launch keys (`fileName`/`trailFile`/
+  `startPlayback`/`displayView`) verified present in installed build (`ax/bL`).
+- **Firmware TCP_NODELAY** on the 35002 accepted socket
+  (`datalog_stream.c`, fw repo, UNCOMMITTED), built + OTA'd to the bench
+  device, verified live: baseline (Nagle) was ALREADY clean at 10 Hz
+  (mean 102.5 ms, p95 134, no clumps — the theoretical 200 ms clumping does
+  not occur at this rate); after NODELAY mean 102.7 / p95 111 ms. Change is
+  insurance for higher grid rates. Probe: scratchpad stream_timing_probe.py.
+- **"Trail in MegaLogViewerHD?" prompt**: first capture per run,
+  `WiCANLiveDatalog._maybe_offer_trail` → new `src/ui/mlv_trail.py`
+  (find_mlv 64/32-bit paths, `<capture>.mlv.properties` forward-slashed,
+  `QProcess.startDetached`). Rotations never re-prompt; no install → no
+  dialog. Tests: `test_mlv_trail.py` (6) + 3 owner tests (now 13); autouse
+  `no_mlv` fixture keeps the suite independent of the dev machine's MLV.
+- **Bench facts learned**: `/datalog` pause/resume/bus_claim/keepalive IS
+  built & deployed (stale memory said not built — fixed);
+  `/csv_logger?op=stop` = sticky FORCE_OFF, **no op=auto exists** (only
+  /datalog resume restores the pre-pause mode) — key constraint for the
+  planned "ECU window parks datalog" feature (user item 4, input given,
+  not yet built). AutoPID `ecu_status:offline` while `/poll_status` is
+  healthy = the quiesced-poller state; a protocol flip (slcan+back) re-inits.
+
+## LIVE DATALOG follow-up: utility/ECU mutual exclusion + capture narration (Jul 11, 2026)
+
+On `feature/live-datalog-stream` (uncommitted), two user field-reports fixed:
+- **Activity Log now says where captures go** (user saw start/connected/stopped
+  with no path): `WiCANLiveDatalog.start()` names `{logs}/live`
+  (`live_capture_dir()` = THE derivation), `_open_file` logs the FULL local
+  path, `_close_file` logs `capture saved: <path> (N rows)`, first `#idle`
+  logs "no datalog session open; waiting", and a stop with no session logs
+  "nothing was captured" (owner tracks `_captured_any` via `file_opened`).
+- **Download Logs / Live Datalog / ECU ops are now mutually exclusive**
+  (`_update_action_states`): while either utility runs, all six ECU action
+  buttons lock w/ tooltip "Stop the WiCAN trip-log download / live datalog
+  first", and the utilities lock each other — only the live toggle stays
+  enabled while streaming (it IS the stop). Lock applies only when
+  `is_wican_adapter` (J2534 ops never touched the WiCAN — matches
+  `_start_flash`, whose stop-first remains as the non-button-path backstop).
+- Tests: `test_ecu_window_download_logs.py` now 8 (connected-fake proves the
+  utility lock, control test proves it's not the no-connection gate);
+  `test_wican_live_datalog.py` now 10 (caplog narration: recording full-path
+  line, one-shot idle, nothing-captured stop, + same-owner restart guarding
+  the per-run `_captured_any` reset — the 3 gaps a 12-agent review workflow
+  confirmed; 0 code defects found). CHANGELOG Unreleased updated (Added
+  bullet + new Changed bullet); WICAN_LIVE_STREAM.md ECU-window bullet
+  updated. Full suite 1685+2 passed / 13 skipped.
+- Known edge (deliberately not built): the 3 s launch auto-sync
+  (`WiCANLogSync.schedule_auto_start`) doesn't check the live stream — owners
+  are decoupled; a user starting the live stream within 3 s of launch could
+  briefly overlap both utilities. UI gating makes it impossible via buttons.
+
 ## ✅ #83 WiCAN TRIP-LOG SYNC — BUILT + HARDWARE-VALIDATED + SHIPPED v2.11.0 (Jul 10, 2026)
 
 Branch `feature/wican-log-sync` (off master @ v2.10.0), goal doc

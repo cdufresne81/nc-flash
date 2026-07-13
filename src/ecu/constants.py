@@ -77,6 +77,20 @@ COEXIST_PROBE_TIMEOUT_MS = 1500
 #: runs once on the 0->1 transition, BEFORE connect's Tester-Present and the flash.
 PRE_SESSION_SETTLE_S = 0.2
 
+# --- WiCAN live datalog stream (docs/internal/WICAN_LIVE_STREAM.md, fw issue #3) ---
+#: TCP port of the always-on live-datalog stream listener. NC Flash connects here
+#: to live-tail the wide-CSV datalog the device writes to SD (the device only ever
+#: serves; the host sends nothing). Distinct from 35001 (the SLCAN coexist port):
+#: a stream connection is NOT host-presence and never touches the park/claim/lease
+#: machinery. Hardcoded + always-on like 35001, probed via the banner below (never
+#: assumed present). MUST match firmware main/datalog_stream.h.
+WICAN_DATALOG_STREAM_PORT = 35002
+#: First line the device sends on accept over WICAN_DATALOG_STREAM_PORT: the NCDLv1
+#: capability banner (``#hello NCDLv1 fw=<git_version>``). The stream client
+#: validates this prefix; a refused/timed-out connect or a wrong banner means
+#: firmware without the live stream. MUST match firmware main/datalog_stream.h.
+NCDL_BANNER_PREFIX = "#hello NCDLv1"
+
 # --- WiCAN dead-man's-switch / datalog auto-resume (docs/internal/WICAN_DEADMAN_AUTORESUME.md) ---
 # ONE timing contract shared by host + firmware (firmware uses the *_US = *_S * 1e6
 # microsecond forms). These govern the brick-safe auto-resume of the datalogger when
@@ -94,9 +108,18 @@ HOST_CLAIM_LEASE_TTL_S = 75.0
 #: Keepalive POST interval (s). ⅓ of the park TTL (tolerates 2 lost keepalives before a
 #: false expiry) and under DATALOG_TIMEOUT_S so renews never pile up. Renews BOTH leases.
 DATALOG_KEEPALIVE_INTERVAL_S = 4.0
-#: Bus-idle quiesce window (ms): the reaper requires this long with NO tx AND no rx
+#: Live-trip manual-lease TTL (ms), armed via ``/csv_logger?op=start&lease_ms=``. The
+#: dead-man for a leased manual trip (logger forced ON with the bus un-parked): if the
+#: host vanishes mid-stream, the firmware restores AUTO after this long without a renewal.
+#: Matches the park-lease TTL — the same 4 s keepalive tick renews it, tolerating two
+#: lost renewals before a false expiry.
+WICAN_CSV_TRIP_LEASE_MS = 12000
+#: Bus-idle quiesce window (ms): the reaper requires this long with no DEVICE TX
 #: before resuming (the SD flash drives blocks ~211ms apart, so 300ms proves
-#: "between operations"). Host-side informational; the firmware enforces it.
+#: "between operations"). Device TX only — NOT rx: the PCM broadcasts frames
+#: continuously with the ignition on, so an rx-fed clock never idles in a running
+#: car and the reaper could never fire (fixed 2026-07-11). Host-side informational;
+#: the firmware enforces it.
 BUS_IDLE_QUIESCE_MS = 300
 #: After a host-claim lease expiry the firmware reaper waits this long (ECU drops its
 #: programming session on host silence) before resuming. Host-side informational.

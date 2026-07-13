@@ -107,6 +107,7 @@ def download_to_file(
     expected_size: Optional[int] = None,
     timeout_s: float = DEFAULT_TIMEOUT_S,
     abort_cb=None,
+    progress_cb=None,
 ) -> Path:
     """Stream *url* to *dest* atomically and return *dest*.
 
@@ -119,6 +120,10 @@ def download_to_file(
     ``abort_cb`` (no-arg, returns truthy to abort) is polled between chunks so
     a worker thread can be stopped promptly at app exit; an abort cleans up the
     ``.part`` file and raises like any other failure.
+
+    ``progress_cb`` (one arg: cumulative bytes received so far) is invoked
+    after every chunk lands on disk, so a caller can drive a byte-accurate
+    progress display for large trip logs.
     """
     dest = Path(dest)
     dest.parent.mkdir(parents=True, exist_ok=True)
@@ -136,6 +141,8 @@ def download_to_file(
                         break
                     fh.write(chunk)
                     received += len(chunk)
+                    if progress_cb is not None:
+                        progress_cb(received)
     except WiCANHttpError:
         _remove_quietly(part)
         raise

@@ -204,7 +204,7 @@ class ECUSession(QObject):
         """
         from .protocol import UDSConnection
         from .transport import create_ecu_transport
-        from .wican_config import WiCANConfigurator, WiCANDatalogClient
+        from .wican_config import WiCANConfigurator, get_datalog_client
 
         if not self._wican_host or not self._wican_port:
             raise ValueError("WiCAN adapter requires a host and port")
@@ -215,7 +215,7 @@ class ECUSession(QObject):
         # clear it). Cheap + soft-degrading: a no-op unless this host left a breadcrumb,
         # and any /datalog error is swallowed. MUST run before any flash leans on it.
         try:
-            WiCANDatalogClient(self._wican_host).reconcile()
+            get_datalog_client(self._wican_host).reconcile()
         except Exception as exc:  # never let recovery break a connect
             logger.debug("datalog reconcile at connect failed (non-fatal): %s", exc)
 
@@ -231,7 +231,10 @@ class ECUSession(QObject):
                 # swallows the ECU's reply, so Tester-Present — and every later DTC /
                 # RAM-scan / flash op — would time out. Refcounted + soft-degrading; the
                 # firmware dead-man reaper auto-resumes the logger if this host vanishes.
-                self._wican_datalog = WiCANDatalogClient(self._wican_host)
+                # SHARED per-host client (get_datalog_client): the live-datalog trip
+                # lifecycle and this whole-session reservation must see one refcount,
+                # or their firmware lease tokens clobber each other.
+                self._wican_datalog = get_datalog_client(self._wican_host)
                 self._wican_datalog.acquire_bus()
                 # Drain datalogger frames still in-flight when we took the bus.
                 # acquire_bus() pauses poll_log, but Mode-01 PID responses already

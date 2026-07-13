@@ -26,6 +26,9 @@ ACCENT_BORDER = "rgba(0, 120, 215, 0.4)"
 # Amber for warning states (e.g. the ECU window's unexpected-disconnect label).
 WARNING_AMBER = "#cc6600"
 
+# Muted grey for secondary/subtitle text (e.g. status subtitles under a button).
+MUTED_TEXT = "#888888"
+
 
 def get_toolbar_stylesheet(checked: bool = False) -> str:
     """QSS for the app's flat icon toolbars (main / table / compare windows).

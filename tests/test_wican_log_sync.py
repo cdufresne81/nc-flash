@@ -149,6 +149,68 @@ class TestWiCANLogSync:
         if dest.exists():
             assert list(dest.rglob("*.part")) == []
 
+    def test_progress_signal_spans_the_run(self, qtbot, fake_settings, qt_thread_guard):
+        # progress_changed must arrive on the GUI thread: determinate total
+        # up front, monotonic bytes, and a final done == total emit.
+        files = {"b.csv": b"n" * 3000, "a.csv": b"o" * 1000}
+        events = []
+        with _device(files) as (_, httpd):
+            sync = WiCANLogSync(fake_settings, http_port=httpd.server_address[1])
+            sync.progress_changed.connect(lambda d, t, n: events.append((d, t, n)))
+            assert sync.start() is True
+            _wait_sync_done(qtbot, sync)
+        assert events, "no progress events reached the GUI thread"
+        total = 4000
+        assert events[0] == (0, total, "")
+        assert events[-1] == (total, total, "a.csv")
+        dones = [d for d, _, _ in events]
+        assert dones == sorted(dones)
+
+    def test_cancel_stops_mid_run_without_blocking(
+        self, qtbot, fake_settings, qt_thread_guard, caplog
+    ):
+        # cancel() (the dialog's Cancel button) must return immediately and
+        # let the worker wind down through the normal finished path: back to
+        # idle, no .part residue, completed files remain — and NEVER through
+        # the error path (a deliberate cancel must not log "check skipped",
+        # whether it lands between files or mid-file between chunks).
+        files = {f"trip{i}.csv": b"x" * 2048 for i in range(50)}
+        with caplog.at_level("INFO", logger="src.ui.wican_log_sync"):
+            with _device(files) as (_, httpd):
+                sync = WiCANLogSync(fake_settings, http_port=httpd.server_address[1])
+                assert sync.start() is True
+                sync.cancel()  # non-blocking; teardown rides running_changed
+                _wait_sync_done(qtbot, sync)
+                assert not sync.is_running
+        assert "WiCAN trip-log check skipped" not in caplog.text
+        dest = Path(fake_settings.get_logs_directory())
+        if dest.exists():
+            assert list(dest.rglob("*.part")) == []
+        # Idle cancel is a no-op.
+        sync.cancel()
+
+    def test_bulk_quiet_window_wraps_the_download(
+        self, qtbot, fake_settings, monkeypatch, qt_thread_guard
+    ):
+        # While the sync monopolizes the device httpd, an existing datalog
+        # client's keepalive logging is quieted — set before the transfer,
+        # cleared after, even though no client is ever CREATED by the sync.
+        calls = []
+
+        class _FakeDatalogClient:
+            def set_bulk_transfer(self, active):
+                calls.append(active)
+
+        import src.ecu.wican_config as wican_config
+
+        fake = _FakeDatalogClient()
+        monkeypatch.setattr(wican_config, "peek_datalog_client", lambda *a, **k: fake)
+        with _device({"trip.csv": b"data\n"}) as (_, httpd):
+            sync = WiCANLogSync(fake_settings, http_port=httpd.server_address[1])
+            assert sync.start() is True
+            _wait_sync_done(qtbot, sync)
+        assert calls == [True, False]
+
     def test_schedule_auto_start_defers_when_enabled(
         self, fake_settings, monkeypatch, qt_thread_guard
     ):

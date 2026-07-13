@@ -518,6 +518,13 @@ class _MockDatalogServer:
         self._next_token = 1000
         self.keepalive_count = 0
         self.requests: list[tuple[str, str]] = []  # (method, path)
+        # /csv_logger model (live-trip lifecycle): manual mode, the firmware
+        # dead-man lease, and how many rotate=1 new-trip requests arrived.
+        # mode "no_csv_auto" emulates pre-op=auto firmware (op=auto -> 400).
+        self.manual_mode = "auto"
+        self.lease_armed = False
+        self.rotations = 0
+        self.csv_ops: list[str] = []  # raw /csv_logger paths, in order
 
         server = self
 
@@ -565,11 +572,38 @@ class _MockDatalogServer:
 
             def do_POST(self):
                 server.requests.append(("POST", self.path))
-                if server.mode != "ok":
+                if server.mode not in ("ok", "no_csv_auto", "no_csv_renew"):
                     self._reply()
                     return
                 qs = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
                 op = qs.get("op", [""])[0]
+                if urllib.parse.urlparse(self.path).path == "/csv_logger":
+                    server.csv_ops.append(self.path)
+                    if op == "start":
+                        server.manual_mode = "on"
+                        # Mirrors the firmware: an UNLEASED start disarms the lease.
+                        server.lease_armed = "lease_ms" in qs
+                        if qs.get("rotate", ["0"])[0] == "1":
+                            server.rotations += 1
+                    elif op == "stop":
+                        server.manual_mode = "off"
+                        server.lease_armed = False
+                    elif op == "auto" and server.mode != "no_csv_auto":
+                        server.manual_mode = "auto"
+                        server.lease_armed = False
+                    elif op == "renew" and server.mode != "no_csv_renew":
+                        # Mirrors the firmware: a heartbeat that can NEVER restart a
+                        # stopped trip — 409 once the trip is no longer manual-ON.
+                        if server.manual_mode == "on":
+                            server.lease_armed = True
+                        else:
+                            self._reply(409)
+                            return
+                    else:  # unknown op, or an op this firmware vintage predates
+                        self._send(400, b"op must be start, stop or mark")
+                        return
+                    self._reply()
+                    return
                 token = qs.get("token", [None])[0]
                 code = 200
                 if op == "pause":
@@ -704,6 +738,181 @@ def test_reserved_releases_on_exception(_recovery_in_tmp):
             assert server.claimed is False and server.parked is False
         finally:
             client.close()
+
+
+def test_live_trip_lifts_and_restores_the_session_reservation(_recovery_in_tmp):
+    """A live trip needs the bus UN-parked (the poller produces the rows), but the
+    logical session reservation must survive: begin lifts the physical leases without
+    touching the refcount; end restores AUTO on the device and re-arms the park for
+    the still-connected ECU session."""
+    with _MockDatalogServer("ok") as server:
+        client = _datalog_client(server)
+        try:
+            client.acquire_bus()  # the ECU session's whole-session reservation
+            assert server.parked is True and server.claimed is True
+            client.begin_live_trip()
+            assert server.parked is False and server.claimed is False
+            assert server.manual_mode == "on" and server.lease_armed is True
+            assert server.rotations == 1  # every press = a NEW trip file
+            client.end_live_trip()
+            assert server.manual_mode == "auto" and server.lease_armed is False
+            assert server.parked is True and server.claimed is True  # session re-parked
+            client.release_bus()
+            assert server.parked is False and server.claimed is False
+        finally:
+            client.close()
+
+
+def test_session_disconnect_mid_trip_keeps_streaming(_recovery_in_tmp):
+    """Dropping the LAST session ref while the physical leases are suspended for a
+    live trip must neither POST a phantom resume (nothing is armed — the firmware
+    would restore a stale pre-pause mode) nor re-park: the trip keeps running on its
+    own csv-lease dead-man."""
+    with _MockDatalogServer("ok") as server:
+        client = _datalog_client(server)
+        try:
+            client.acquire_bus()
+            client.begin_live_trip()
+            resumes_before = _count_ops(server)["resume"]
+            client.release_bus()  # ECU session disconnects mid-stream
+            assert _count_ops(server)["resume"] == resumes_before
+            assert server.manual_mode == "on"  # trip still running
+            client.end_live_trip()
+            assert server.manual_mode == "auto"
+            assert server.parked is False  # no refs left: device fully free
+        finally:
+            client.close()
+
+
+def test_stop_choreography_parks_the_device_silent(_recovery_in_tmp):
+    """User stop: hold_silent FIRST (park while the manual trip still owns the mode —
+    no instant of un-parked AUTO that could open a stub trip), then end_live_trip
+    (op=auto fixes mode + restore snapshot). The device ends parked and stays silent
+    until release_trip_hold. Both hold ops are idempotent."""
+    with _MockDatalogServer("ok") as server:
+        client = _datalog_client(server)
+        try:
+            client.begin_live_trip()
+            client.hold_silent()
+            client.end_live_trip()
+            assert server.parked is True and server.claimed is True
+            assert server.manual_mode == "auto" and server.lease_armed is False
+            client.hold_silent()  # one-shot: no double-acquire
+            client.release_trip_hold()
+            assert server.parked is False and server.claimed is False
+            client.release_trip_hold()  # idempotent
+        finally:
+            client.close()
+        assert _count_ops(server)["pause"] == 1  # the hold armed exactly once
+
+
+def test_keepalive_renews_the_trip_lease(_recovery_in_tmp):
+    """While a trip runs, every keepalive tick POSTs op=renew&lease_ms — the
+    heartbeat form that can NEVER restart a stopped trip. Re-POSTing op=start
+    here is the field regression (web Stop lost to every 4 s tick); no tick may
+    rotate the trip file either."""
+    with _MockDatalogServer("ok") as server:
+        client = _datalog_client(server, keepalive_interval_s=0.05)
+        try:
+            client.begin_live_trip()
+            renewals = []
+            deadline = time.time() + 5.0
+            while time.time() < deadline:
+                renewals = [
+                    p for p in server.csv_ops if "op=renew" in p and "lease_ms" in p
+                ]
+                if len(renewals) >= 2:
+                    break
+                time.sleep(0.05)
+            assert len(renewals) >= 2
+            assert all("rotate" not in p for p in renewals)
+            # The begin itself is the ONLY leased start; ticks never re-start.
+            starts = [p for p in server.csv_ops if "op=start" in p]
+            assert len(starts) == 1
+        finally:
+            client.end_live_trip()
+            client.close()
+
+
+def test_web_stop_mid_trip_wins_over_the_keepalive(_recovery_in_tmp):
+    """Web-UI Stop Trip during a host live trip: the next heartbeat 409s, the
+    one-shot callback fires, and NOTHING the host does afterwards may touch the
+    mode — no re-start (the old fight) and no op=auto from end_live_trip (that
+    would flip the operator's explicit OFF back to follow-ignition)."""
+    with _MockDatalogServer("ok") as server:
+        client = _datalog_client(server, keepalive_interval_s=0.05)
+        stopped = threading.Event()
+        try:
+            client.begin_live_trip(on_external_stop=stopped.set)
+            # The device operator presses Stop Trip (another client's op=stop).
+            server.manual_mode = "off"
+            server.lease_armed = False
+            ops_at_stop = len(server.csv_ops)
+            assert stopped.wait(5.0)
+            client.end_live_trip()
+            after = server.csv_ops[ops_at_stop:]
+            assert all("op=start" not in p for p in after)  # the old fight
+            assert all("op=auto" not in p for p in after)  # mode left alone
+            assert server.manual_mode == "off"  # the operator's Stop stands
+        finally:
+            client.close()
+
+
+def test_renew_legacy_firmware_falls_back_to_leased_start(_recovery_in_tmp):
+    """Pre-renew firmware answers op=renew with 400: degrade to the old leased
+    re-start heartbeat (keeping the dead-man) instead of losing renewal."""
+    with _MockDatalogServer("no_csv_renew") as server:
+        client = _datalog_client(server, keepalive_interval_s=0.05)
+        try:
+            client.begin_live_trip()
+            deadline = time.time() + 5.0
+            fallback_starts = []
+            while time.time() < deadline:
+                fallback_starts = [
+                    p
+                    for p in server.csv_ops
+                    if "op=start" in p and "lease_ms" in p and "rotate" not in p
+                ]
+                if len(fallback_starts) >= 2:
+                    break
+                time.sleep(0.05)
+            assert len(fallback_starts) >= 2
+            # Feature detection is remembered: exactly one 400'd renew probe.
+            assert len([p for p in server.csv_ops if "op=renew" in p]) == 1
+            assert server.manual_mode == "on"
+        finally:
+            client.end_live_trip()
+            client.close()
+
+
+def test_end_live_trip_falls_back_to_stop_on_pre_auto_firmware(_recovery_in_tmp):
+    """Pre-op=auto firmware answers 400: best effort is op=stop — a sticky OFF beats
+    an orphaned FORCE_ON filling the SD until reboot."""
+    with _MockDatalogServer("no_csv_auto") as server:
+        client = _datalog_client(server)
+        try:
+            client.begin_live_trip()
+            client.end_live_trip()
+            assert server.manual_mode == "off"
+        finally:
+            client.close()
+
+
+def test_get_datalog_client_shares_one_instance_per_device(_recovery_in_tmp):
+    """The firmware issues a fresh lease token on every arm, so ALL lease holders
+    (session reservation, flash fence, live trip) must share one client per device
+    or their tokens clobber each other."""
+    from src.ecu.wican_config import _datalog_clients, get_datalog_client
+
+    _datalog_clients.clear()
+    try:
+        a = get_datalog_client("10.0.0.9")
+        b = get_datalog_client("10.0.0.9")
+        c = get_datalog_client("10.0.0.9", http_port=8080)
+        assert a is b
+        assert a is not c
+    finally:
+        _datalog_clients.clear()
 
 
 def test_release_bus_without_acquire_is_a_noop(_recovery_in_tmp):
@@ -863,6 +1072,57 @@ def test_datalog_keepalive_renews_both_leases_real_thread(_recovery_in_tmp):
         time.sleep(0.2)
         assert server.keepalive_count == settled  # no ticks after release
         assert client._ka_thread is None
+
+
+def test_keepalive_failure_logs_quiet_during_bulk_transfer(_recovery_in_tmp, caplog):
+    """During a bulk transfer window (trip-log download) keepalive-tick failures
+    log at DEBUG instead of INFO — during a large download against the device's
+    single-task httpd every tick times out by construction, and the repeated
+    INFO line reads as an incident (field report 2026-07-12). Logging-only: the
+    tick still fires either way, and the level is restored after the window."""
+    import logging as _logging
+
+    from src.ecu.wican_config import WiCANDatalogClient
+
+    # Port 1 is not listening -> every tick fails like a busy/absent httpd.
+    client = WiCANDatalogClient("127.0.0.1", http_port=1, timeout_s=0.3)
+    client._park_token = 7  # as if a pause() lease were held
+
+    def _tick_levels():
+        caplog.clear()
+        client._send_keepalive()  # direct tick; no daemon needed
+        return [
+            r.levelno
+            for r in caplog.records
+            if "relying on firmware interlock" in r.getMessage()
+        ]
+
+    try:
+        with caplog.at_level(_logging.DEBUG, logger="src.ecu.wican_config"):
+            levels = _tick_levels()
+            assert levels and set(levels) == {_logging.INFO}
+
+            client.set_bulk_transfer(True)
+            levels = _tick_levels()
+            assert levels and set(levels) == {_logging.DEBUG}
+
+            client.set_bulk_transfer(False)
+            levels = _tick_levels()
+            assert levels and set(levels) == {_logging.INFO}
+    finally:
+        client.close()
+
+
+def test_peek_datalog_client_never_creates(_recovery_in_tmp):
+    """peek returns the existing shared client or None — it must never create
+    one (a sync with no session around has no keepalives to quiet)."""
+    from src.ecu.wican_config import get_datalog_client, peek_datalog_client
+
+    host = "peek-test-host.invalid"
+    assert peek_datalog_client(host) is None
+    client = get_datalog_client(host)
+    assert peek_datalog_client(host) is client
+    client.close()
 
 
 def test_datalog_keepalive_stops_on_close(_recovery_in_tmp):
