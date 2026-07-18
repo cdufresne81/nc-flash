@@ -2,7 +2,7 @@
 
 All notable changes to NC Flash are documented here.
 
-## [Unreleased]
+## [v2.12.0] - 2026-07-18
 
 ### Added
 - **New WiCAN Trip Logs window (Tools > WiCAN Trip Logs, plus an SD-card toolbar icon)** — the trip-log features move out of the ECU Programming window into a dedicated device-utility window with its own gating model (needs the WiCAN adapter selected, never an ECU session — it works with the car off, which is exactly when logs are usually fetched). It shows the device's SD trip logs in a table (name, size, date, and a per-file status: **New** / **Downloaded** / **Recording** for the still-open trip file), with Refresh, **Download New Logs**, and an Open Logs Folder shortcut. The table is the designed foundation for the upcoming on-device SD file manager and the live-datalog controls. The window is hidden with Tactrix/J2534 (same product decision as the whole trip-log sync).

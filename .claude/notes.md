@@ -1,6 +1,6 @@
 # Session Notes
 
-## 🚧 feature/trip-logs-window — separate Trip Logs window (started Jul 18, 2026)
+## ✅ feature/trip-logs-window — Trip Logs window, MERGED + RELEASED v2.12.0 (Jul 18, 2026)
 
 Fresh branch off master @ 191ce1f (post-#89 merge). Goal: move the trip-log /
 datalogging surface OUT of the ECU Flash window into its own top-level window.
