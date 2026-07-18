@@ -16,7 +16,6 @@ from unittest.mock import MagicMock
 import pytest
 from PySide6.QtCore import qInstallMessageHandler
 
-import src.ui.wican_log_sync as wican_log_sync_module
 from src.ui.wican_log_sync import WiCANLogSync
 from test_ecu_wican_logs import _Handler, _device
 
@@ -149,36 +148,42 @@ class TestWiCANLogSync:
         if dest.exists():
             assert list(dest.rglob("*.part")) == []
 
-    def test_schedule_auto_start_defers_when_enabled(
-        self, fake_settings, monkeypatch, qt_thread_guard
+    def test_progress_signal_spans_the_run(self, qtbot, fake_settings, qt_thread_guard):
+        # progress_changed must arrive on the GUI thread: determinate total
+        # up front, monotonic bytes, and a final done == total emit.
+        files = {"b.csv": b"n" * 3000, "a.csv": b"o" * 1000}
+        events = []
+        with _device(files) as (_, httpd):
+            sync = WiCANLogSync(fake_settings, http_port=httpd.server_address[1])
+            sync.progress_changed.connect(lambda d, t, n: events.append((d, t, n)))
+            assert sync.start() is True
+            _wait_sync_done(qtbot, sync)
+        assert events, "no progress events reached the GUI thread"
+        total = 4000
+        assert events[0] == (0, total, "")
+        assert events[-1] == (total, total, "a.csv")
+        dones = [d for d, _, _ in events]
+        assert dones == sorted(dones)
+
+    def test_cancel_stops_mid_run_without_blocking(
+        self, qtbot, fake_settings, qt_thread_guard, caplog
     ):
-        # The owner (not main.py) owns the launch policy: the enable toggle
-        # and the defer both live in schedule_auto_start.
-        fake_settings.get_wican_auto_download_logs.return_value = True
-        scheduled = []
-
-        class _FakeTimer:
-            @staticmethod
-            def singleShot(ms, cb):
-                scheduled.append((ms, cb))
-
-        monkeypatch.setattr(wican_log_sync_module, "QTimer", _FakeTimer)
-        sync = WiCANLogSync(fake_settings)
-        sync.schedule_auto_start()
-        assert scheduled == [(WiCANLogSync._AUTO_START_DELAY_MS, sync.start)]
-
-    def test_schedule_auto_start_honors_disabled_toggle(
-        self, fake_settings, monkeypatch, qt_thread_guard
-    ):
-        fake_settings.get_wican_auto_download_logs.return_value = False
-        scheduled = []
-
-        class _FakeTimer:
-            @staticmethod
-            def singleShot(ms, cb):
-                scheduled.append((ms, cb))
-
-        monkeypatch.setattr(wican_log_sync_module, "QTimer", _FakeTimer)
-        sync = WiCANLogSync(fake_settings)
-        sync.schedule_auto_start()
-        assert scheduled == []
+        # cancel() (the dialog's Cancel button) must return immediately and
+        # let the worker wind down through the normal finished path: back to
+        # idle, no .part residue, completed files remain — and NEVER through
+        # the error path (a deliberate cancel must not log "check skipped",
+        # whether it lands between files or mid-file between chunks).
+        files = {f"trip{i}.csv": b"x" * 2048 for i in range(50)}
+        with caplog.at_level("INFO", logger="src.ui.wican_log_sync"):
+            with _device(files) as (_, httpd):
+                sync = WiCANLogSync(fake_settings, http_port=httpd.server_address[1])
+                assert sync.start() is True
+                sync.cancel()  # non-blocking; teardown rides running_changed
+                _wait_sync_done(qtbot, sync)
+                assert not sync.is_running
+        assert "WiCAN trip-log check skipped" not in caplog.text
+        dest = Path(fake_settings.get_logs_directory())
+        if dest.exists():
+            assert list(dest.rglob("*.part")) == []
+        # Idle cancel is a no-op.
+        sync.cancel()

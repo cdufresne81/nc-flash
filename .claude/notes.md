@@ -1,5 +1,29 @@
 # Session Notes
 
+## 🟢 feature/download-logs-progress — Download Logs UX, NC-Flash-only (Jul 13, 2026)
+
+Clean branch off master (v2.11.0) carrying ONLY the Download-Logs improvements,
+split out of the parked `feature/live-datalog-stream` branch (which stays parked
+pending the firmware-stability investigation — see that branch + its goal doc).
+No firmware changes — rides the already-released `/csv_list`, `/download_csv`,
+`/datalog` endpoints.
+
+- **Download Logs byte-accurate progress dialog + non-blocking Cancel (closes #88)** —
+  `WiCANLogClient.plan()` (one home for skip decisions + `total_bytes`),
+  per-chunk `progress_cb`, `WiCANLogSync.progress_changed` + `cancel()`, a
+  non-modal `QProgressDialog` owned by the ECU window.
+- **Download Logs ⇄ ECU ops mutually exclusive** — while a download runs, every
+  ECU op + Connect lock (tooltip); the stop-first backstop remains.
+- **Removed startup auto-download** — the `schedule_auto_start()` call, the
+  `get/set_wican_auto_download_logs` setting, and its Settings toggle are gone;
+  downloads are manual-only now. Trip-logs directory setting kept.
+- Deliberately EXCLUDED from this branch (they'd drag brick-critical
+  `wican_config.py`/`session.py` in): the keepalive-log-spam quiet fix
+  (`set_bulk_transfer`/`peek_datalog_client`) and the `get_datalog_client`
+  shared-client refactor — those stay with the live-datalog branch.
+- Green: `black` clean, `flake8 src/ tests/` 0, full suite 1670 passed / 12
+  skipped. PR body must say `Closes #88`.
+
 ## ✅ #83 WiCAN TRIP-LOG SYNC — BUILT + HARDWARE-VALIDATED + SHIPPED v2.11.0 (Jul 10, 2026)
 
 Branch `feature/wican-log-sync` (off master @ v2.10.0), goal doc

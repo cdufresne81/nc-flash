@@ -393,22 +393,6 @@ SETTINGS_REGISTRY = [
         setter=None,
     ),
     SettingDescriptor(
-        key="ecu.wican.auto_download_logs",
-        label="Auto-download new trip logs on startup",
-        description=(
-            "At app launch, silently pull new datalog CSVs from the WiCAN's SD "
-            "card into the trip logs directory below. Only active while the "
-            "WiCAN adapter is selected; skipped quietly when the device is "
-            "asleep or unreachable; never deletes from the device."
-        ),
-        category="ECU",
-        subcategory="WiCAN",
-        widget_type="checkbox",
-        getter="get_wican_auto_download_logs",
-        setter="set_wican_auto_download_logs",
-        keywords=["wican", "logs", "datalog", "csv", "download", "trip", "auto"],
-    ),
-    SettingDescriptor(
         key="ecu.wican.logs_dir",
         label="Trip Logs Directory",
         description="Local folder where WiCAN trip logs (.csv) are downloaded",

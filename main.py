@@ -194,8 +194,8 @@ class MainWindow(
         self.ecu_window = None
 
         # WiCAN trip-log sync — single owner of the background download state,
-        # shared by the launch-time auto-download and the ECU window's
-        # Download Logs button (pure HTTP device utility; no ECU session).
+        # driven by the ECU window's Download Logs button (pure HTTP device
+        # utility; no ECU session).
         self.wican_log_sync = WiCANLogSync(self.settings, parent=self)
 
         # MCP server subprocess
@@ -294,10 +294,6 @@ class MainWindow(
         # Auto-start MCP server if enabled in settings
         if self.settings.get_mcp_auto_start():
             self._start_mcp_server()
-
-        # Auto-download new WiCAN trip logs, silently and off the GUI thread
-        # (the sync owner defers it and honors its own enable setting).
-        self.wican_log_sync.schedule_auto_start()
 
     def check_metadata_directory(self) -> bool:
         """
