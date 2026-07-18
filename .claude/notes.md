@@ -1,6 +1,78 @@
 # Session Notes
 
-## 🟢 feature/download-logs-progress — Download Logs UX, NC-Flash-only (Jul 13, 2026)
+## ✅ feature/trip-logs-window — Trip Logs window, MERGED + RELEASED v2.12.0 (Jul 18, 2026)
+
+Fresh branch off master @ 191ce1f (post-#89 merge). Goal: move the trip-log /
+datalogging surface OUT of the ECU Flash window into its own top-level window.
+
+**BUILT (this branch, pending review/PR):**
+- `src/ui/trip_logs_window.py` — new top-level `TripLogsWindow` (Tools > WiCAN
+  Trip Logs + SD-card toolbar icon `icons.py:"trip_logs"`; both entry points
+  gated WiCAN-only via `_update_trip_logs_visibility()`, recomputed on menu
+  aboutToShow AND `on_settings_changed`): device log TABLE
+  (name/size/mtime with clockless-1970 guard/status New·Downloaded·Recording,
+  colors from theme), Refresh, Download New Logs, Open Logs Folder, INLINE
+  progress row + Cancel (replaces the ECU window's QProgressDialog).
+- `wican_logs.py`: `classify()` extracted as THE per-file decision home
+  (STATUS_* + LogInventoryEntry); `plan()` is now a projection of it.
+- `wican_log_sync.py`: `_InventoryWorker` + `refresh_inventory()` /
+  `inventory_ready`/`inventory_failed`; `schedule_auto_check()` +
+  `new_logs_available(count,bytes)` (AUTO-check only); `format_size` +
+  `estimate_download_text` (400 KiB/s conservative); shutdown() joins both
+  threads. LIFECYCLE GOTCHA (cost a Qt hard-abort on Windows, caught by the
+  real-thread tests): `is_checking` stays True until the QUEUED cleanup nulls
+  `_check_thread` (not isRunning()) so a refresh fired from inventory_ready
+  can never overwrite the refs of a winding-down thread; a lambda-captured
+  queued cleanup crashed — the bound-method pattern (download path) is the
+  one that works. Tests must `_wait_check_done` before dropping the sync.
+- **Auto-download returns as ask-first**: startup check → QMessageBox prompt
+  (count + size + time estimate) → Yes opens TripLogsWindow +
+  `start_download()` (single download path). Toggle restored in Settings
+  ("Check for new trip logs at startup", default ON). Prompt suppressed +
+  download refused while ECU busy (guard at start_download too).
+- ECU window: Download Logs button + dialog methods REMOVED; keeps ECU-side
+  interlock; NEW `busy_changed(bool)` emit-on-change + `is_busy` property;
+  main.py relays busy → TripLogsWindow (2 hops, composer-wired).
+- Tests: `test_trip_logs_window.py` (new, real widgets over fake sync QObject),
+  `test_ecu_window_download_logs.py` RENAMED → `test_ecu_window_wican_interlock.py`
+  (dialog tests dropped, busy-broadcast tests added), inventory/auto-check
+  tests in `test_wican_log_sync.py`, classify tests in `test_ecu_wican_logs.py`.
+- /simplify pass (4 Opus agents) applied: busy predicate deduped into
+  `is_busy` (interlock-test fake subclasses SimpleNamespace to borrow the
+  REAL property), `_DeviceWorker` base (`_make_client`) shared by both
+  workers, `_dispose` teardown helper, stale docstrings retargeted.
+  DEFERRED (judgment call, noted by the altitude agent): `can_start()`/
+  `can_refresh()` predicates on WiCANLogSync + moving the ECU-busy interlock
+  into the sync owner — clean idea but couples the deliberately ECU-agnostic
+  HTTP module to ECU state; revisit if a third gating consumer appears.
+- User hardware-tested the window + prompt flow mid-build: working. Estimate
+  constant 400 KiB/s is conservative vs measured ~560 KiB/s (66 MB/2 min
+  field figure) — tune or self-calibrate later if asked.
+
+Design decisions (user-confirmed):
+
+- **Separate top-level window** (sibling of the ECU window, own menu/toolbar
+  entry) — NOT a tab in the ECU window. Rationale: log download is the daily
+  task and must not live next to brick-risk Flash; each surface keeps ONE
+  homogeneous gating model (ECU window = session-gated; Trip Logs window =
+  device-gated: WiCAN adapter selected, locked while ECU busy).
+- Build the content as a self-contained owned collaborator widget/panel so
+  docking is a one-line decision (no mixins).
+- Ownership unchanged: `WiCANLogSync` stays owned by MainWindow; the window
+  subscribes (`running_changed`/`progress_changed`). Mutual-exclusion semantics
+  from PR #89 unchanged — only presentation moves. ECU window keeps locking on
+  `running_changed`; Trip Logs window needs an "ECU busy" signal to lock its
+  buttons while flash/ops run.
+- **Future occupants to design for** (don't paint into a corner): live-datalog
+  start/stop + status + MLV launch (from parked `feature/live-datalog-stream` —
+  land this window FIRST so the un-park re-homes its UI here instead of
+  re-tangling ecu_window.py); startup auto-download toggle if it returns;
+  **on-device SD file management (browse/delete files on the WiCAN)** — prefer
+  a file-list/table view over a bare download button so manage actions can
+  grow onto it later.
+- NC-Flash-only; no firmware changes needed for the move itself.
+
+## ✅ feature/download-logs-progress — MERGED via PR #89 (Jul 18, 2026)
 
 Clean branch off master (v2.11.0) carrying ONLY the Download-Logs improvements,
 split out of the parked `feature/live-datalog-stream` branch (which stays parked

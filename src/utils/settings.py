@@ -274,8 +274,9 @@ class AppSettings:
     def is_wican_adapter(self) -> bool:
         """True when the WiCAN adapter is selected.
 
-        The single predicate for WiCAN-only affordances (trip-log sync, its
-        Download Logs button) — callers never compare the raw adapter string.
+        The single predicate for WiCAN-only affordances (trip-log sync, the
+        Trip Logs window entry points) — callers never compare the raw
+        adapter string.
         """
         return self.get_ecu_adapter() == "wican"
 
@@ -314,6 +315,15 @@ class AppSettings:
 
     def set_wican_auto_config(self, enabled: bool):
         self.settings.setValue("ecu/wican_auto_config", bool(enabled))
+
+    def get_wican_auto_download_logs(self) -> bool:
+        """Whether to check the WiCAN for new SD trip logs at launch. The check
+        only PROMPTS (with a size/time estimate) — nothing downloads without
+        the user's yes; a confirmed download runs in the Trip Logs window."""
+        return self.settings.value("ecu/wican_auto_download_logs", True, type=bool)
+
+    def set_wican_auto_download_logs(self, enabled: bool):
+        self.settings.setValue("ecu/wican_auto_download_logs", bool(enabled))
 
 
 # Global settings instance

@@ -25,6 +25,7 @@ from src.ecu.wican_http import (
     get_json,
     sanitize_basename,
 )
+from src.ecu import wican_logs
 from src.ecu.wican_logs import WiCANLogClient, WiCANLogsError
 from src.utils.workspace import _SUBDIRS
 
@@ -446,6 +447,48 @@ class TestDownloadProgress:
         assert (3000, total, "b.csv") in events
 
 
+class TestClassify:
+    def test_every_remote_log_gets_a_status(self, tmp_path):
+        # classify is the ONE home of the per-file decisions: the table view
+        # and plan() must agree because both derive from it.
+        (tmp_path / "have.csv").write_bytes(b"12345")
+        files = {
+            "open.csv": b"growing!",
+            "have.csv": b"54321",  # same (name, size) -> already downloaded
+            "../evil.csv": b"pwn",
+            "new.csv": b"fresh data\n" * 3,
+        }
+        with _device(files, active="/sdcard/logs/open.csv") as (client, _):
+            entries = client.classify(tmp_path)
+        by_name = {e.log.name: e for e in entries}
+        assert len(entries) == len(files)  # nothing dropped, device order kept
+        assert [e.log.name for e in entries] == list(files)
+        assert by_name["open.csv"].status == wican_logs.STATUS_ACTIVE
+        assert by_name["have.csv"].status == wican_logs.STATUS_DOWNLOADED
+        assert by_name["../evil.csv"].status == wican_logs.STATUS_UNSAFE_NAME
+        assert by_name["new.csv"].status == wican_logs.STATUS_NEW
+        # target is the chosen local path for NEW entries, absent otherwise.
+        assert by_name["new.csv"].target == tmp_path / "new.csv"
+        assert all(
+            e.target is None for e in entries if e.status != wican_logs.STATUS_NEW
+        )
+
+    def test_plan_is_a_projection_of_classify(self, tmp_path):
+        (tmp_path / "have.csv").write_bytes(b"12345")
+        files = {
+            "have.csv": b"54321",
+            "b.csv": b"n" * 3000,
+            "a.csv": b"o" * 1000,
+        }
+        with _device(files) as (client, _):
+            entries = client.classify(tmp_path)
+            plan = client.plan(tmp_path)
+        new = [e for e in entries if e.status == wican_logs.STATUS_NEW]
+        assert plan.to_download == [(e.log, e.target) for e in new]
+        assert plan.skipped == ["have.csv"]
+        assert plan.total_bytes == sum(e.log.size for e in new)
+
+
 # --- settings / workspace plumbing ---------------------------------------------
 
 
@@ -486,3 +529,9 @@ class TestLogsPlumbing:
         assert settings.is_wican_adapter() is True
         settings.set_ecu_adapter("j2534")
         assert settings.is_wican_adapter() is False
+
+    def test_auto_check_defaults_on_and_round_trips(self, _settings):
+        settings, _ = _settings
+        assert settings.get_wican_auto_download_logs() is True
+        settings.set_wican_auto_download_logs(False)
+        assert settings.get_wican_auto_download_logs() is False

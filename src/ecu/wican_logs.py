@@ -87,15 +87,31 @@ class LogSyncResult:
 class SyncPlan:
     """What one sync run will actually transfer, decided before the first byte.
 
-    Produced by :meth:`WiCANLogClient.plan` — the ONE place the skip decisions
-    (unsafe name, active trip file, already downloaded) live. ``total_bytes``
-    is the sum of the sizes ``/csv_list`` advertised for ``to_download``, so a
-    progress display is byte-accurate from the start.
+    Derived from :meth:`WiCANLogClient.classify` — the ONE place the skip
+    decisions (unsafe name, active trip file, already downloaded) live.
+    ``total_bytes`` is the sum of the sizes ``/csv_list`` advertised for
+    ``to_download``, so a progress display is byte-accurate from the start.
     """
 
     to_download: list = field(default_factory=list)  # list[(TripLog, Path)]
     skipped: list = field(default_factory=list)  # list[str] remote names
     total_bytes: int = 0
+
+
+#: Per-file statuses produced by :meth:`WiCANLogClient.classify`.
+STATUS_NEW = "new"  # will be downloaded (target path chosen)
+STATUS_DOWNLOADED = "downloaded"  # same (name, size) already on disk
+STATUS_ACTIVE = "active"  # the trip file still being written
+STATUS_UNSAFE_NAME = "unsafe-name"  # device-supplied name failed sanitization
+
+
+@dataclass(frozen=True)
+class LogInventoryEntry:
+    """One remote log with its sync decision (a table row for a consumer UI)."""
+
+    log: TripLog
+    status: str  # one of the STATUS_* constants
+    target: Optional[Path] = None  # local path; set only for STATUS_NEW
 
 
 class WiCANLogClient:
@@ -161,13 +177,18 @@ class WiCANLogClient:
 
     # --- the sync ------------------------------------------------------------
 
-    def plan(self, dest_dir, *, skip_active: bool = True) -> SyncPlan:
-        """Decide what a sync run will download, without transferring anything.
+    def classify(self, dest_dir, *, skip_active: bool = True) -> list:
+        """Classify every remote log against local state (list[LogInventoryEntry]).
 
-        Skips (in ``skipped``, by remote name): logs already present with the
-        same size (under the original or a ``-N`` collision-suffixed name),
-        the active trip file when *skip_active*, and logs whose device name
-        fails sanitization (warned, never trusted).
+        THE one home of the per-file sync decisions, in device order
+        (newest-first): :data:`STATUS_DOWNLOADED` when a local copy with the
+        same size exists (under the original or a ``-N`` collision-suffixed
+        name), :data:`STATUS_ACTIVE` for the still-growing open trip file when
+        *skip_active*, :data:`STATUS_UNSAFE_NAME` when the device-supplied name
+        fails sanitization (warned, never trusted), else :data:`STATUS_NEW`
+        with the chosen local ``target``. Both :meth:`plan` (the download run)
+        and inventory consumers (the Trip Logs table, the startup new-log
+        check) derive from this.
         """
         dest_dir = Path(dest_dir)
         logs = self.list_logs()
@@ -178,9 +199,7 @@ class WiCANLogClient:
             # is the risk — fail the run rather than guess.
             active = self.active_log_basename()
 
-        to_download = []
-        skipped = []
-        total_bytes = 0
+        entries = []
         # Targets already promised to an earlier log THIS run. The whole plan
         # resolves against pre-run disk state, so without this a collision-
         # suffixed name could land on a later log's literal name and the two
@@ -191,25 +210,36 @@ class WiCANLogClient:
                 name = sanitize_basename(log.name)
             except WiCANHttpError as exc:
                 logger.warning("Skipping device log with unsafe name: %s", exc)
-                skipped.append(log.name)
+                entries.append(LogInventoryEntry(log=log, status=STATUS_UNSAFE_NAME))
                 continue
 
             if active is not None and name == active:
                 logger.info("Skipping active trip file %s (still being written)", name)
-                skipped.append(log.name)
+                entries.append(LogInventoryEntry(log=log, status=STATUS_ACTIVE))
                 continue
 
             target = self._resolve_target(dest_dir, name, log.size, reserved)
             if target is None:
-                skipped.append(log.name)  # already downloaded
+                entries.append(LogInventoryEntry(log=log, status=STATUS_DOWNLOADED))
                 continue
 
             reserved.add(target)
-            to_download.append((log, target))
-            total_bytes += log.size
+            entries.append(LogInventoryEntry(log=log, status=STATUS_NEW, target=target))
+        return entries
 
+    def plan(self, dest_dir, *, skip_active: bool = True) -> SyncPlan:
+        """Decide what a sync run will download, without transferring anything.
+
+        A projection of :meth:`classify`: ``to_download`` keeps the NEW entries
+        (device order), ``skipped`` every other remote name.
+        """
+        entries = self.classify(dest_dir, skip_active=skip_active)
+        to_download = [(e.log, e.target) for e in entries if e.status == STATUS_NEW]
+        skipped = [e.log.name for e in entries if e.status != STATUS_NEW]
         return SyncPlan(
-            to_download=to_download, skipped=skipped, total_bytes=total_bytes
+            to_download=to_download,
+            skipped=skipped,
+            total_bytes=sum(log.size for log, _ in to_download),
         )
 
     def download_new(

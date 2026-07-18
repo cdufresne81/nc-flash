@@ -16,7 +16,12 @@ from unittest.mock import MagicMock
 import pytest
 from PySide6.QtCore import qInstallMessageHandler
 
-from src.ui.wican_log_sync import WiCANLogSync
+from src.ecu.wican_logs import STATUS_DOWNLOADED, STATUS_NEW
+from src.ui.wican_log_sync import (
+    WiCANLogSync,
+    estimate_download_text,
+    format_size,
+)
 from test_ecu_wican_logs import _Handler, _device
 
 from http.server import ThreadingHTTPServer
@@ -187,3 +192,152 @@ class TestWiCANLogSync:
             assert list(dest.rglob("*.part")) == []
         # Idle cancel is a no-op.
         sync.cancel()
+
+
+def _wait_check_done(qtbot, sync):
+    """Block until the check thread is fully finished AND cleaned up.
+
+    inventory_ready/inventory_failed fire from a queued handler while the
+    worker QThread may still be winding down — a test that lets ``sync`` go
+    out of scope right then can destroy a running QThread (a hard Qt abort,
+    not a failure). The queued cleanup nulling ``_check_thread`` only runs
+    after the thread's ``finished``, so waiting for it is the safe barrier.
+    """
+    qtbot.waitUntil(lambda: sync._check_thread is None, timeout=10000)
+
+
+class TestInventory:
+    """refresh_inventory + the startup auto-check (prompt-first, no silent
+    download): real QThreads over the fake device, like the sync tests."""
+
+    def test_manual_refresh_emits_entries_without_announcing(
+        self, qtbot, fake_settings, qt_thread_guard
+    ):
+        dest = Path(fake_settings.get_logs_directory())
+        dest.mkdir(parents=True)
+        (dest / "old.csv").write_bytes(b"12345")
+        files = {"new.csv": b"fresh", "old.csv": b"54321"}
+        announced = []
+        checking = []
+        with _device(files) as (_, httpd):
+            sync = WiCANLogSync(fake_settings, http_port=httpd.server_address[1])
+            sync.new_logs_available.connect(lambda c, b: announced.append((c, b)))
+            sync.checking_changed.connect(checking.append)
+            with qtbot.waitSignal(sync.inventory_ready, timeout=10000) as blocker:
+                assert sync.refresh_inventory() is True
+            _wait_check_done(qtbot, sync)
+        entries = blocker.args[0]
+        assert [e.status for e in entries] == [STATUS_NEW, STATUS_DOWNLOADED]
+        # A manual refresh must NEVER trigger the startup prompt.
+        assert announced == []
+        assert not sync.is_checking
+        # checking_changed(False) is the consumer's re-enable signal — it must
+        # arrive even though it fires from the queued cleanup, after ready.
+        assert checking == [True, False]
+
+    def test_unreachable_device_emits_failed_quietly(
+        self, qtbot, fake_settings, qt_thread_guard
+    ):
+        import socket
+
+        with socket.socket() as s:
+            s.bind(("127.0.0.1", 0))
+            closed_port = s.getsockname()[1]
+        sync = WiCANLogSync(fake_settings, http_port=closed_port)
+        with qtbot.waitSignal(sync.inventory_failed, timeout=10000):
+            assert sync.refresh_inventory() is True
+        _wait_check_done(qtbot, sync)
+        assert not sync.is_checking
+
+    def test_refresh_refused_while_download_runs(self, fake_settings, qt_thread_guard):
+        # A download owns the device's SD/WiFi; the finished download
+        # refreshes anyway (running_changed(False) → window refresh).
+        sync = WiCANLogSync(fake_settings)
+        sync._thread = MagicMock(isRunning=lambda: True)
+        assert sync.refresh_inventory() is False
+        sync._thread = None
+
+    def test_auto_check_announces_new_logs_with_totals(
+        self, qtbot, fake_settings, qt_thread_guard
+    ):
+        files = {"a.csv": b"x" * 3000, "b.csv": b"y" * 1000}
+        fake_settings.get_wican_auto_download_logs.return_value = True
+        with _device(files) as (_, httpd):
+            sync = WiCANLogSync(fake_settings, http_port=httpd.server_address[1])
+            with qtbot.waitSignal(sync.new_logs_available, timeout=10000) as blocker:
+                assert sync.schedule_auto_check(delay_ms=0) is True
+            _wait_check_done(qtbot, sync)
+        assert blocker.args == [2, 4000]
+
+    def test_auto_check_is_silent_when_nothing_is_new(
+        self, qtbot, fake_settings, qt_thread_guard
+    ):
+        dest = Path(fake_settings.get_logs_directory())
+        dest.mkdir(parents=True)
+        (dest / "a.csv").write_bytes(b"12345")
+        announced = []
+        with _device({"a.csv": b"54321"}) as (_, httpd):
+            sync = WiCANLogSync(fake_settings, http_port=httpd.server_address[1])
+            sync.new_logs_available.connect(lambda c, b: announced.append((c, b)))
+            with qtbot.waitSignal(sync.inventory_ready, timeout=10000):
+                assert sync.schedule_auto_check(delay_ms=0) is True
+            _wait_check_done(qtbot, sync)
+        assert announced == []
+
+    def test_auto_check_honors_toggle_and_adapter(self, fake_settings):
+        fake_settings.get_wican_auto_download_logs.return_value = False
+        sync = WiCANLogSync(fake_settings)
+        assert sync.schedule_auto_check(delay_ms=0) is False
+
+        fake_settings.get_wican_auto_download_logs.return_value = True
+        fake_settings.is_wican_adapter.return_value = False
+        assert sync.schedule_auto_check(delay_ms=0) is False
+
+    def test_shutdown_joins_a_running_check(
+        self, qtbot, fake_settings, qt_thread_guard
+    ):
+        # Hold /csv_list so the check is deterministically mid-flight when
+        # shutdown() lands; the guard fixture fails the test on a
+        # destroyed-while-running abort.
+        release = threading.Event()
+
+        class _SlowHandler(_Handler):
+            def do_GET(self):
+                release.wait(timeout=10)
+                super().do_GET()
+
+        httpd = ThreadingHTTPServer(("127.0.0.1", 0), _SlowHandler)
+        httpd.files = {}
+        httpd.active = None
+        httpd.advertised = {}
+        httpd.status_error = False
+        t = threading.Thread(target=httpd.serve_forever, daemon=True)
+        t.start()
+        try:
+            sync = WiCANLogSync(fake_settings, http_port=httpd.server_address[1])
+            assert sync.refresh_inventory() is True
+            assert sync.refresh_inventory() is False  # one check at a time
+            release.set()
+            sync.shutdown(timeout_ms=10000)
+            # The thread is joined; is_checking stays True until the queued
+            # cleanup runs on the next event-loop turn (by design — it blocks
+            # a new check from overwriting the refs early).
+            _wait_check_done(qtbot, sync)
+            assert not sync.is_checking
+        finally:
+            release.set()
+            httpd.shutdown()
+            httpd.server_close()
+            t.join(timeout=2)
+
+
+class TestFormattingHelpers:
+    def test_format_size(self):
+        assert format_size(512) == "1 KB"  # never "0 KB" for a real file
+        assert format_size(512 * 1024) == "512 KB"
+        assert format_size(int(12.4 * 1024 * 1024)) == "12.4 MB"
+
+    def test_estimate_download_text_buckets(self):
+        assert estimate_download_text(100 * 1024) == "under 10 seconds"
+        assert "seconds" in estimate_download_text(10 * 1024 * 1024)
+        assert "minutes" in estimate_download_text(100 * 1024 * 1024)

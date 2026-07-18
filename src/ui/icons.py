@@ -263,6 +263,26 @@ def _draw_round(p, c):
     p.drawEllipse(QPointF(17, 4), 1.5, 1.5)
 
 
+def _draw_trip_logs(p, c):
+    """SD card with data rows — the WiCAN's trip logs live on its SD card."""
+    body = QPolygonF(
+        [
+            QPointF(9, 2),
+            QPointF(16, 2),
+            QPointF(16, 18),
+            QPointF(4, 18),
+            QPointF(4, 7),
+        ]
+    )
+    p.setBrush(Qt.NoBrush)
+    p.drawPolygon(body)  # polygon closes (4,7)->(9,2): the SD cut corner
+    p.setPen(QPen(c, 1.3, Qt.SolidLine, Qt.RoundCap))
+    for x in (10, 12, 14):  # contact pins
+        p.drawLine(QPointF(x, 4.0), QPointF(x, 6.5))
+    p.drawLine(QPointF(6.5, 11), QPointF(13.5, 11))  # log rows
+    p.drawLine(QPointF(6.5, 14), QPointF(13.5, 14))
+
+
 def _draw_screenshot(p, c):
     """Camera icon for screenshot action."""
     pen = QPen(c, 1.6, Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin)
@@ -289,6 +309,7 @@ _ICON_DRAWERS = {
     "history": _draw_history,
     "mcp_on": _draw_mcp_on,
     "mcp_off": _draw_mcp_off,
+    "trip_logs": _draw_trip_logs,
     # Table viewer window
     "copy": _draw_copy,
     "export": _draw_export,
