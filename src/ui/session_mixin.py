@@ -142,6 +142,9 @@ class SessionMixin:
 
     def on_settings_changed(self):
         """Handle settings changes"""
+        # Trip Logs entry points follow the selected ECU adapter (WiCAN-only)
+        self._update_trip_logs_visibility()
+
         # Reinitialize ROM detector with new metadata path
         try:
             metadata_dir = self.settings.get_metadata_directory()

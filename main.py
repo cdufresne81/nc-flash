@@ -193,10 +193,15 @@ class MainWindow(
         # Singleton ECU programming window
         self.ecu_window = None
 
-        # WiCAN trip-log sync — single owner of the background download state,
-        # driven by the ECU window's Download Logs button (pure HTTP device
+        # Singleton WiCAN Trip Logs window (the device-utility surface)
+        self.trip_logs_window = None
+
+        # WiCAN trip-log sync — single owner of the background download and
+        # inventory state, driven by the Trip Logs window (pure HTTP device
         # utility; no ECU session).
         self.wican_log_sync = WiCANLogSync(self.settings, parent=self)
+        # Startup check found new logs: ask before downloading anything.
+        self.wican_log_sync.new_logs_available.connect(self._on_new_trip_logs_available)
 
         # MCP server subprocess
         self._mcp_process = None
@@ -294,6 +299,10 @@ class MainWindow(
         # Auto-start MCP server if enabled in settings
         if self.settings.get_mcp_auto_start():
             self._start_mcp_server()
+
+        # Startup WiCAN new-log check (settings-gated; prompts, never
+        # downloads on its own — see _on_new_trip_logs_available).
+        self.wican_log_sync.schedule_auto_check()
 
     def check_metadata_directory(self) -> bool:
         """
@@ -478,6 +487,13 @@ class MainWindow(
         ecu_prog_action.setShortcut("Ctrl+Shift+E")
         ecu_prog_action.triggered.connect(self._on_open_ecu_window)
 
+        # WiCAN-only feature: hidden with Tactrix/J2534 (same product decision
+        # as the whole trip-log sync). Visibility (menu entry + toolbar icon)
+        # is recomputed on menu open and after every Settings change.
+        self.trip_logs_action = tools_menu.addAction("WiCAN &Trip Logs...")
+        self.trip_logs_action.triggered.connect(self._on_open_trip_logs_window)
+        tools_menu.aboutToShow.connect(self._update_trip_logs_visibility)
+
         tools_menu.addSeparator()
 
         screenshot_action = tools_menu.addAction("&Screenshot")
@@ -524,6 +540,12 @@ class MainWindow(
         act.setToolTip("ECU Programming (Ctrl+Shift+E)")
         act.triggered.connect(self._on_open_ecu_window)
         self._toolbar_flash = act
+
+        act = tb.addAction(make_icon(self, "trip_logs"), "")
+        act.setToolTip("WiCAN Trip Logs")
+        act.triggered.connect(self._on_open_trip_logs_window)
+        self._toolbar_trip_logs = act
+        self._update_trip_logs_visibility()
 
         tb.addSeparator()
 
@@ -1519,9 +1541,81 @@ class MainWindow(
 
         window = ECUProgrammingWindow(main_window=self, parent=self)
         window.setAttribute(Qt.WA_DeleteOnClose)
-        window.destroyed.connect(lambda: setattr(self, "ecu_window", None))
+        window.destroyed.connect(self._on_ecu_window_destroyed)
+        # Relay ECU-busy to the Trip Logs window (2 hops: owner → here →
+        # consumer; both windows are transient, this composer is not).
+        window.busy_changed.connect(self._on_ecu_busy_changed)
         self.ecu_window = window
         window.show()
+
+    def _on_ecu_window_destroyed(self):
+        self.ecu_window = None
+        # A destroyed ECU window cannot be mid-operation (close is confirmed
+        # while one runs) — release the Trip Logs hold.
+        self._on_ecu_busy_changed(False)
+
+    def _on_ecu_busy_changed(self, busy: bool):
+        if self.trip_logs_window is not None:
+            self.trip_logs_window.set_ecu_busy(busy)
+
+    def _update_trip_logs_visibility(self):
+        """Show the Trip Logs entry points only while the WiCAN adapter is
+        selected (menu item + toolbar icon; one rule, every trigger)."""
+        visible = self.settings.is_wican_adapter()
+        self.trip_logs_action.setVisible(visible)
+        self._toolbar_trip_logs.setVisible(visible)
+
+    def _on_open_trip_logs_window(self):
+        """Open the WiCAN Trip Logs window (singleton)."""
+        from src.ui.trip_logs_window import TripLogsWindow
+
+        if self.trip_logs_window is not None:
+            self.trip_logs_window.raise_()
+            self.trip_logs_window.activateWindow()
+            return
+
+        window = TripLogsWindow(main_window=self, parent=self)
+        window.setAttribute(Qt.WA_DeleteOnClose)
+        window.destroyed.connect(lambda: setattr(self, "trip_logs_window", None))
+        if self.ecu_window is not None:
+            window.set_ecu_busy(self.ecu_window.is_busy)
+        self.trip_logs_window = window
+        window.show()
+
+    def _on_new_trip_logs_available(self, count: int, total_bytes: int):
+        """Startup check found new trip logs: confirm before downloading.
+
+        The download itself runs through the Trip Logs window — the single
+        download surface — so progress, cancel, and the ECU interlock behave
+        exactly like a manual download.
+        """
+        from src.ui.wican_log_sync import estimate_download_text, format_size
+
+        if self.ecu_window is not None and self.ecu_window.is_busy:
+            # Never interrupt (or race) a running ECU operation with a prompt
+            # whose Yes would contend for the WiCAN. Logs stay on the SD.
+            logger.info(
+                "New WiCAN trip logs found, but an ECU operation is running — "
+                "download them later from the Trip Logs window"
+            )
+            return
+
+        plural = "s" if count != 1 else ""
+        reply = QMessageBox.question(
+            self,
+            "New WiCAN Trip Logs",
+            f"{count} new trip log{plural} on the WiCAN "
+            f"({format_size(total_bytes)}).\n"
+            f"Estimated download time: {estimate_download_text(total_bytes)}.\n\n"
+            "Download now?",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.Yes,
+        )
+        if reply != QMessageBox.Yes:
+            logger.info("New trip logs available; download declined by user")
+            return
+        self._on_open_trip_logs_window()
+        self.trip_logs_window.start_download()
 
     # ========== Table Selection and Window Management ==========
 
