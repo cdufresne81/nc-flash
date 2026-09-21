@@ -1654,8 +1654,8 @@
             inc="0.1" storagetype="float" endian="big" />
         <scaling name="769252" units="" toexpr="x" frexpr="x" format="%0.0f" min="500.000"
             max="6500.000" inc="100" storagetype="float" endian="big" />
-        <scaling name="768977" units="" toexpr="x" frexpr="x" format="%0.2f" min="0.000" max="0.000"
-            inc="1" storagetype="float" endian="big" />
+        <scaling name="768977" units="" toexpr="x" frexpr="x" format="%d" min="50.000" max="50.000"
+            inc="1" storagetype="uint8" endian="big" />
         <scaling name="769028" units="" toexpr="x" frexpr="x" format="%0.2f" min="7777.000"
             max="7777.000" inc="1" storagetype="float" endian="big" />
         <scaling name="769032" units="" toexpr="x" frexpr="x" format="%0.2f" min="11.250"
