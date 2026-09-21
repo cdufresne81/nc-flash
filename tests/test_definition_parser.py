@@ -135,7 +135,7 @@ class TestTableParsing:
         """Test that tables are parsed"""
         definition = load_definition(str(sample_xml_path))
 
-        # Should have 511 tables for lf9veb
+        # lf9veb has 577 top-level tables (exact floor asserted in TestBundledLf9vebDefinition)
         assert len(definition.tables) > 500
 
     def test_table_basic_attributes(self, sample_xml_path):
@@ -337,3 +337,38 @@ class TestMalformedTableIsSkipped:
         table = parser._parse_table(parent)
         assert table is not None
         assert len(table.children) == 1
+
+
+class TestBundledLf9vebDefinition:
+    """The bundled lf9veb.xml is a byte copy of nc-flash-re/xml/lf9veb.xml (synced by
+    nc-flash-re/tools/sync_ncflash_definitions.py — never edit it here). These guard the
+    one way a definition can damage a ROM: a storage type wider than the real cell."""
+
+    def test_kr_exit_delay_is_a_byte(self, sample_xml_path):
+        # 0xBBBD1 is one uint8. Typed float, a save wrote 4 bytes over 0xBBBD1-0xBBBD4 and
+        # zeroed the KR increment rate that starts at 0xBBBD4.
+        definition = load_definition(str(sample_xml_path))
+        table = next(
+            t for t in definition.tables if t.name == "KR Accumulator - Exit Delay"
+        )
+        assert table.address_int == 0xBBBD1
+        assert definition.scalings[table.scaling].storagetype == "uint8"
+
+    def test_no_float_table_at_an_unaligned_address(self, sample_xml_path):
+        # The SH-2 cannot fetch a float from an address that is not a multiple of 4, so a
+        # float table there is always a mistyped narrower cell. lf9veb.xml only: the TCM
+        # definitions legitimately hold uint16 tables at odd addresses.
+        definition = load_definition(str(sample_xml_path))
+        bad = [
+            (t.name, t.address)
+            for top in definition.tables
+            for t in [top, *top.children]
+            if t.scaling in definition.scalings
+            and definition.scalings[t.scaling].storagetype == "float"
+            and t.address_int % 4
+        ]
+        assert bad == []
+
+    def test_table_count_matches_the_master(self, sample_xml_path):
+        definition = load_definition(str(sample_xml_path))
+        assert len(definition.tables) >= 577
