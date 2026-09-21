@@ -54,7 +54,7 @@ class WiCANFlasher:
 
     Composed by :class:`~src.ecu.wican_sd_flash.WiCANSdFlasher` (which owns the
     actual SD-staged, firmware-driven flash). The caller owns the transport
-    lifecycle (open/close, ``slcan`` auto-config) — this class only reads the
+    lifecycle (open/close) — this class only reads the
     link/battery over it and never closes it.
     """
 

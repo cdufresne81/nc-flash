@@ -54,20 +54,21 @@ BATTERY_VOLTAGE_WARNING = 12.0  # volts — block flash below this
 RPM_FLASH_GATE = 1.0
 
 # --- WiCAN no-reboot coexistence (docs/internal/WICAN_SLCAN_COEXISTENCE_PLAN.md) ---
-#: TCP port of the always-on dedicated SLCAN listener that no-reboot coexistence
-#: firmware keeps open alongside the datalogger. The host flashes over this port
-#: with NO protocol-switch reboot and without disturbing the datalogger. Pinned +
-#: probed via version_ping (never assumed present).
+#: TCP port of the always-on SLCAN listener the firmware keeps open alongside
+#: the datalogger. It is the ONLY CAN socket the device exposes: there is no
+#: protocol to switch, no reboot, and no user-configurable port. Still probed via
+#: version_ping rather than assumed, so an adapter on stock/old firmware gets a
+#: clear "update the firmware" instead of a mystery timeout.
 WICAN_DEDICATED_SLCAN_PORT = 35001
 #: Firmware build (NCFRv<rev>) at/above which the dedicated SLCAN port exists.
-#: Today's fastwrite firmware is NCFRv5 (no dedicated port) → the host falls back
-#: to the legacy reboot-switch. The coexistence firmware (task #36) bumps the
-#: marker to this rev AND opens WICAN_DEDICATED_SLCAN_PORT; both sides share this
-#: one contract.
+#: Below this rev the port is simply not there and NC Flash cannot talk to the
+#: adapter at all — the user is told to update the firmware. Both sides share
+#: this one contract.
 COEXIST_MIN_FW_REV = 6
 #: Probe connect timeout (ms) for the coexist-port capability check. Short so a
-#: device WITHOUT the dedicated port (every current build) falls back to the
-#: proven reboot path quickly instead of stalling the connect.
+#: device WITHOUT the port fails fast instead of stalling the connect; a refusal
+#: that needs longer than this to surface is caught by the one confirming retry
+#: (see _COEXIST_PROBE_RETRY_MS).
 COEXIST_PROBE_TIMEOUT_MS = 1500
 #: Settle (s) after a bus-claim+pause before the FIRST host-driven ECU contact.
 #: On the coexist port the datalogger owns the single CAN bus until it parks; the

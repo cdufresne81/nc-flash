@@ -259,6 +259,123 @@ heuristic could catch stale CONTIGUOUS defs too (the quiet 2D corruption — rig
 wrong values — has no header to validate; 17 Protect 2D tables were silently 4-off); (3) LFG1TG
 defs are verbatim TF copies and untestable (no TG bin in repo).
 
+## Recent Completed Work (Aug 24, 2026) - WiCAN legacy protocol-switch trim + Test Connection rewrite (#99)
+
+The firmware fork now has ONE mode and ONE CAN socket (the fixed coexistence SLCAN listener), so every
+host path that switched the adapter's protocol, rebooted it, or connected to a user-chosen port was dead
+code. Design by Fable (`.claude/plans/wican_legacy_trim_design.md`); implemented from it.
+
+**Removed:** settings `ecu.wican.port` + `ecu.wican.auto_config` and their `AppSettings` accessors and
+dialog descriptors; `WiCANConfigurator`'s protocol read/write/restore surface (`set_protocol`,
+`switch_to_slcan`, `slcan_session`, `restore`, `current_protocol`, `read/write/clear_recovery`,
+`read_config`, `_post_config`, `_wait_for_protocol`), the top-level-protocol text helpers, and the
+start-up strand sweep (`recover_stranded_protocols`) — `wican_config.py` 1121 → ~550 lines, leaving
+`host_caps()` + `read_config_raw()` + all of `WiCANDatalogClient`; `CoexistProbeInconclusive` (nothing
+raises it). **`read_config_raw` and `WiCANConfigError` were deleted and then RESTORED** — issue #99's
+audit comment lists `read_config_raw` as must-stay and the design doc had it on the delete list; the
+issue wins. Do NOT re-delete either: `tests/test_ecu_session_wican.py::test_configurator_cannot_write_config`
+now pins both as kept surface. Also removed: `src/ui/wican_strand_recovery.py` + its `main.py` kick; the
+legacy tail of `_connect_wican`
+plus `ProbeVerdict` / `_guard_inconclusive_probe` / `_enter_slcan_durable` / `_restore_wican_protocol`
+and the `restore_protocol` params on disconnect/teardown (session.py 752 → ~560).
+
+**`_try_open_coexist_port` → `_open_coexist_transport`:** returns the OPEN transport or RAISES `WiCANError`
+with a graded message (refused = "update the firmware", low rev names both revs, silence = retry-then-fail,
+timeout = network). `_is_connection_refused` → public `is_connection_refused` (the UI needs it too).
+**Gotcha found by the new tests:** an `except WiCANError: raise` clause swallowed the *transport's own*
+connect errors and re-raised them ungraded ("timed out"), so graded failures are now set into a variable
+and raised after the `finally`, never inside the `try`.
+
+**Test Connection rewritten** (`settings_dialog.py`): off-thread `_WiCANTestWorker` + progress dialog
+mirroring the mDNS-scan lifecycle, probing the fixed SLCAN port and grading the `NCFRv` marker through the
+pure `_grade_wican_test(host, rev, elapsed_ms, error)`. **No UDS, no link-quality sweep, NO bus
+reservation** — `version_ping` is answered by firmware without touching CAN, so it cannot pause a running
+datalog trip and has nothing to release on error/cancel paths.
+
+**Tools:** all eight default to `WICAN_DEDICATED_SLCAN_PORT`; `--auto-config`/`--http-port` gone.
+`bench_read`, `bench_ecu`, `flash_diag`, `fastread_verify`, `state_probe`, `bus_status` now wrap their work
+in `WiCANDatalogClient` acquire/release (without it the datalogger eats UDS replies → fake bricked ECU);
+`fw_ping` and `bus_sniff` deliberately do not.
+
+**Migration:** orphaned `ecu/wican_port` + `ecu/wican_auto_config` QSettings keys and old
+`wican_recovery_*.json` sidecars are left alone — nothing reads them, deleting adds risk for zero gain.
+
+**Adversarial Opus review returned DO-NOT-SHIP on one real defect, now fixed.** The "Test Connection
+never touches the bus" claim was FALSE: `WiCANTransport.open()` sends SLCAN `C`/`S6`/`O` + a prime
+TesterPresent, and firmware maps `C` to `can_disable()` on the SHARED peripheral, so the probe punched a
+~10 s hole (`POLLLOG_BUS_WITHHELD_MS`) in a running datalog trip. Fable ruled **Option B**: `open()` was
+mechanically split into `_open_socket()` + bring-up, and a new `open_socket_only()` gives a bare TCP
+connect; `_channel_open` gates whether `close()` sends `C`, so a probe hangs up with a FIN. Session path
+is byte-identical on the wire. `version_ping` needs only the socket — verified through firmware
+(`ncflash_is_fastread_cmd` routes `X` before the SLCAN state machine).
+
+**My two "hazard check" tests were tautological** — they asserted against a MagicMock that never ran the
+real `open()`, and the prime frame goes via `_session.send`, not the `send_message` they watched. Both
+passed with the bug fully present. Replaced by `tests/test_ecu_wican_probe_wire.py`: a loopback server
+records every byte and asserts no `C`/`S6`/`O`, no `t7E0` frame, nothing after the command until FIN.
+**Verified non-vacuous** — with `open()` the transcript is `C
+ S6
+` and the fence trips.
+
+**Fable also REVERSED its own §2.7 ruling on `wican_bus_sniff.py`: it MUST reserve the bus.** On the
+coexist port frames only arrive via the #36 RX-forward, which runs while the host holds the bus — an
+unreserved sniff reads a healthy bus as silent and reports a false "ECU not running".
+
+**Still open:**
+- **Bench verification NOT run.** See `WICAN_MANUAL_TEST.md` §3a — judge by trip-CSV `timestamp_ms`
+  cadence + device event log, NOT the web UI mode flag (the mode stays ON while the bus is dead, which is
+  why the first version of that check was blind).
+- **Separate commit, deliberately not folded in:** remove the trailing `C` from `close()`. It disables the
+  shared bus AFTER the reservation is released, so the logger eats the full ~10 s withhold after every
+  disconnect, read and flash. Pre-existing, sits on the flash teardown path, needs its own bench pass.
+  KEEP the `C` at the start of `open()` and `_prime_channel` — both bench-proven and masked by the park.
+- Design doc has an AMENDMENT appended superseding §3.1 and correcting §2.7.
+
+**Re-review verdict: SHIP** (3 LOW findings, 2 folded in immediately because they were the same
+false-assurance shape as the original defect):
+- `open()` after `open_socket_only()` was a SILENT no-op — the caller got a transport it believed had a
+  channel and didn't. Now it runs the bring-up over the existing socket.
+- `open_socket_only()`'s docstring claimed message-level sends "will fail". They did NOT: `_require_open`
+  checks only the socket, and firmware `can_send()` gates on CAN_ENABLE_BIT (which poll_log keeps set),
+  not on whether `O` was issued — so a frame from a socket-only transport really would reach the bus. New
+  `_require_channel()` now gates `send_message`/`receive_message`; `fast_read`/`version_ping` unchanged.
+- Deferred (cosmetic): Test Connection during a flash reports "Unexpected Response". Softened the message
+  to name a running flash as the likely cause rather than implying the wrong device is on that IP.
+
+**`/simplify` pass (4 agents: reuse / simplification / efficiency / altitude).** Applied: the seven bench
+tools now use the existing `WiCANDatalogClient.reserved()` context manager instead of seven hand-rolled
+acquire/try/finally pairs (they had already drifted); `wican_coexist_verify.py` + `wican_deadman_verify.py`
+switched to `open_socket_only()` — **they were still calling `open()` for a version ping, i.e. disabling the
+CAN bus in the very tools the bench checklist tells you to run**; `fast_read()` gained the missing
+`_require_channel()` guard (the invariant was enforced by enumerating call sites and the enumeration was
+already incomplete) + a tripwire test listing every CAN-moving method; `_cleanup_scan_thread`/
+`_cleanup_test_thread` collapsed into one `_cleanup_thread(thread, worker, wait_ms)` with named join
+budgets; dead `QApplication` import and dead `wican_host` property removed; `_MockWiCANServer` is GET-only
+now (it still emulated `/store_config`, making an absence look like a presence) + 6 orphaned section
+banners; port constant interpolated into the user-facing descriptor; test sleeps replaced by a
+`wait_closed()` join (~2.3 s faster AND less flaky).
+
+**Deferred to follow-up issues** (all four agents agreed these are real but not worth destabilising a
+bench-pending change): a shared `_AsyncJob`/thread-lifecycle collaborator to replace the 4th copy of the
+QThread pattern (settings_dialog x2, ecu_window, wican_log_sync); moving the probe-outcome CLASSIFIER into
+`src/ecu` so `_grade_wican_test` and `_open_coexist_transport` stop wording the same four outcomes
+differently (they already disagree in shipped strings); a `tools/_wican_link.py` entry-point helper so a new
+tool cannot forget the reservation; `is_connection_refused`'s home; `WiCANConfigurator` -> module functions;
+sharing `_RawServer` with the new `_TranscriptServer`.
+
+**Efficiency agent's hazard note (pre-existing, NOT introduced, needs a Fable call):** the session's own
+probe `_open()` uses the FULL `transport.open()` before the marker is graded — same C/S6/O + prime-frame
+hazard class as the Settings probe had. Old code did the same in the same order, so this is not a
+regression, but the split now makes the fix cheap: probe with `open_socket_only()`, grade, then `open()`
+over the same socket (which this change taught `open()` to do). Would also save the ~0.4 s bring-up on the
+two failure paths that currently discard the channel immediately.
+
+Reviewer also flagged a LATENT FIRMWARE BUG worth its own issue in the fw repo (NOT in scope here):
+`poll_log.c` `withheld_since_us` is reset only inside the successful self-heal, so a bus that comes back
+on its own (exactly what `open()`'s C→O blip does) leaves a STALE timestamp — the next genuinely
+ownerless disable then self-heals almost immediately instead of after 10 s. Fails optimistic; don't lean
+on it.
+
 ## Recent Completed Work (Jul 9, 2026) - ECU read naming + flash-complete message + romdrop-defs issue
 
 Three small user-requested tasks (uncommitted, working tree on `feature/architecture-hardening`):

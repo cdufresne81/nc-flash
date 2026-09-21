@@ -23,7 +23,8 @@ if str(_REPO_ROOT / "tools") not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT / "tools"))
 
 from src.ecu.protocol import UDSConnection  # noqa: E402
-from src.ecu.wican_config import WiCANConfigError, WiCANConfigurator  # noqa: E402
+from src.ecu.constants import WICAN_DEDICATED_SLCAN_PORT  # noqa: E402
+from src.ecu.wican_config import WiCANDatalogClient  # noqa: E402
 from src.ecu.wican_transport import WiCANError, WiCANTransport  # noqa: E402
 from wican_bench_read import _authenticate_for_raw_reads  # noqa: E402
 
@@ -31,8 +32,7 @@ from wican_bench_read import _authenticate_for_raw_reads  # noqa: E402
 def main(argv: list[str]) -> int:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--host", default="192.168.1.169")
-    p.add_argument("--port", type=int, default=35000)
-    p.add_argument("--http-port", type=int, default=80)
+    p.add_argument("--port", type=int, default=WICAN_DEDICATED_SLCAN_PORT)
     p.add_argument("--start", type=lambda x: int(x, 0), default=0xD8400)
     p.add_argument("--len", dest="length", type=lambda x: int(x, 0), default=0x8000)
     p.add_argument("--reference", type=Path, default=Path("wican_stmin0_full.bin"))
@@ -43,9 +43,12 @@ def main(argv: list[str]) -> int:
         f"[VERIFY] fast-read 0x{args.start:06X}..0x{args.start + args.length:06X} "
         f"({args.length} bytes)"
     )
+    # Reserve the CAN bus for the whole run. On the coexistence port the
+    # datalogger is the sole TWAI consumer and EATS the ECU's UDS replies, so the
+    # security-access auth below would time out and look exactly like a bricked
+    # ECU. Soft-degrading: a device with no /datalog endpoint just carries on.
     try:
-        cfg = WiCANConfigurator(args.host, http_port=args.http_port)
-        with cfg.slcan_session():
+        with WiCANDatalogClient(args.host).reserved():
             transport = WiCANTransport(args.host, args.port)
             transport.open()
             try:
@@ -59,7 +62,7 @@ def main(argv: list[str]) -> int:
                 dt = time.monotonic() - t0
             finally:
                 transport.close()
-    except (WiCANError, WiCANConfigError) as exc:
+    except WiCANError as exc:
         print(f"[VERIFY] FAILED: {exc}")
         return 2
 

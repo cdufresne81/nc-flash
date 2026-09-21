@@ -20,6 +20,8 @@ if str(_REPO_ROOT) not in sys.path:
 from src.ecu.protocol import UDSConnection  # noqa: E402
 from src.ecu.exceptions import NegativeResponseError  # noqa: E402
 from src.ecu.wican_transport import WiCANTransport  # noqa: E402
+from src.ecu.constants import WICAN_DEDICATED_SLCAN_PORT  # noqa: E402
+from src.ecu.wican_config import WiCANDatalogClient  # noqa: E402
 
 T = 3000  # ms per request — fail fast
 
@@ -46,13 +48,31 @@ def probe(uds, label, fn):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--host", default="192.168.1.169")
-    ap.add_argument("--port", type=int, default=35000)
+    ap.add_argument(
+        "--port",
+        type=int,
+        default=WICAN_DEDICATED_SLCAN_PORT,
+        help="SLCAN TCP port (the firmware's fixed coexistence port).",
+    )
     args = ap.parse_args()
 
-    t = WiCANTransport(host=args.host, port=args.port)
-    t.open()
-    uds = UDSConnection(t)
+    # Reserve the CAN bus first. On the coexistence port the datalogger is the
+    # sole TWAI consumer and EATS the ECU's UDS replies, so every probe below
+    # would time out and this tool would report a bricked ECU that is perfectly
+    # healthy. Soft-degrading: a device with no /datalog endpoint carries on.
+    with WiCANDatalogClient(args.host).reserved():
+        t = WiCANTransport(host=args.host, port=args.port)
+        t.open()
+        try:
+            _run_probes(UDSConnection(t))
+        finally:
+            # Close on the error path too, or a failed probe leaves the
+            # adapter's only CAN listener holding a connection until the OS
+            # reaps it -- and the next run cannot get in.
+            t.close()
 
+
+def _run_probes(uds):
     print("=== WiCAN ECU state probe ===", flush=True)
     probe(
         uds,
@@ -81,8 +101,6 @@ def main():
         print("  RMBA positive: APPLICATION running (unprotected read).")
     else:
         print("  Inconclusive (no clean RMBA response). See lines above.")
-
-    t.close()
 
 
 if __name__ == "__main__":

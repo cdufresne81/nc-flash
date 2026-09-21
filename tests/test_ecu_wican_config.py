@@ -1,13 +1,19 @@
 """
-Tests for src/ecu/wican_config.py — the WiCAN HTTP config auto-switch.
+Tests for src/ecu/wican_config.py — read-only device HTTP + datalog coordination.
 
-This module REWRITES the user's entire device config (which holds their WiFi /
-MQTT passwords in plaintext) and reboots the device, so the cardinal rule is:
-change ONLY the top-level ``protocol`` token and preserve every other byte. The
-tests below stand up a realistic in-process mock HTTP server on loopback (never
-a real device) whose config includes the ``home_/drive_/batt_alert_protocol``
-sibling keys and a secret-looking ``sta_pass`` field, then assert byte-level
-that those survive a switch.
+The module under test no longer writes device config at all (issue #99: the
+firmware has one mode, so there is nothing to switch and nothing that could
+strand a device). What remains, and what these tests cover:
+
+  * ``read_config_raw`` — returns the device blob VERBATIM, with no json
+    round-trip that could reorder keys or retype values. The mock's config
+    deliberately carries a secret-looking ``sta_pass``, so a change that starts
+    reserialising or echoing the body shows up here.
+  * ``host_caps`` — the firmware's host contract, and its soft degradation to
+    ``None`` on a missing, garbage, or unreachable endpoint.
+  * ``WiCANDatalogClient`` — bus reservation, leases, keepalive and the
+    crash-recovery breadcrumb. These are brick-safety invariants: they decide
+    whether the user's datalogger is running while the host owns the CAN bus.
 
 Everything runs headless over 127.0.0.1 — no hardware, no PySide6.
 """
@@ -21,13 +27,7 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 
 import pytest
 
-from src.ecu.exceptions import ECUError
-from src.ecu.wican_config import (
-    WiCANConfigError,
-    WiCANConfigurator,
-    get_top_level_protocol,
-    set_top_level_protocol,
-)
+from src.ecu.wican_config import WiCANConfigurator
 
 # A realistic, mostly-flat config blob. Critically it includes:
 #   * a top-level "protocol" (the ONLY field we may change),
@@ -50,12 +50,11 @@ REALISTIC_CONFIG = (
 
 
 class _MockWiCANServer:
-    """In-process HTTP server emulating the WiCAN /load_config + /store_config.
+    """In-process HTTP server emulating the WiCAN's READ endpoints.
 
-    ``config`` holds the current raw config text. POSTing stores the body
-    verbatim (mirroring the firmware, which does NOT reserialize). The optional
-    ``fail_gets_after_post`` knob makes the first N GETs after a POST return 503
-    to emulate the device being unreachable mid-reboot.
+    GET-only, deliberately: the host has no way to write device config any more
+    (issue #99), so there is no ``/store_config`` handler here to make that look
+    possible. ``config`` is the raw text served at ``/load_config``.
     """
 
     def __init__(self, config: str):
@@ -63,10 +62,6 @@ class _MockWiCANServer:
         #: Body served at /host_caps. None => 404, i.e. every build in the field
         #: today, which predates the endpoint.
         self.host_caps_body = None
-        self.posts: list[str] = []
-        self.fail_gets_after_post = 0
-        self._pending_get_failures = 0
-        self.always_fail_get = False
 
         server = self
 
@@ -92,23 +87,7 @@ class _MockWiCANServer:
                 if self.path != "/load_config":
                     self._send_text(404, "not found")
                     return
-                if server.always_fail_get or server._pending_get_failures > 0:
-                    if server._pending_get_failures > 0:
-                        server._pending_get_failures -= 1
-                    self._send_text(503, "rebooting")
-                    return
                 self._send_text(200, server.config)
-
-            def do_POST(self):
-                if self.path != "/store_config":
-                    self._send_text(404, "not found")
-                    return
-                length = int(self.headers.get("Content-Length", 0))
-                body = self.rfile.read(length).decode("utf-8")
-                server.posts.append(body)
-                server.config = body  # store verbatim, like the firmware
-                server._pending_get_failures = server.fail_gets_after_post
-                self._send_text(200, "Configuration saved! Rebooting...")
 
         self._httpd = HTTPServer(("127.0.0.1", 0), Handler)
         self.port = self._httpd.server_address[1]
@@ -125,208 +104,9 @@ class _MockWiCANServer:
 
 
 def _make_configurator(server, **kwargs):
-    """Build a WiCANConfigurator pointed at the mock, with fast polling."""
+    """Build a WiCANConfigurator pointed at the mock, with a short timeout."""
     kwargs.setdefault("timeout_s", 2.0)
-    kwargs.setdefault("reboot_timeout_s", 5.0)
-    kwargs.setdefault("poll_interval_s", 0.05)
     return WiCANConfigurator("127.0.0.1", http_port=server.port, **kwargs)
-
-
-# ---------------------------------------------------------------------------
-# set_top_level_protocol / get_top_level_protocol — pure text unit tests.
-# ---------------------------------------------------------------------------
-
-
-def test_set_top_level_protocol_exactly_one_match():
-    out = set_top_level_protocol(REALISTIC_CONFIG, "slcan")
-    assert '"protocol": "slcan"' in out
-    assert '"protocol": "poll_log"' not in out
-
-
-def test_set_top_level_protocol_does_not_touch_siblings():
-    out = set_top_level_protocol(REALISTIC_CONFIG, "slcan")
-    # The sibling protocol keys and their values must be byte-identical.
-    assert '"home_protocol": "auto_pid"' in out
-    assert '"drive_protocol": "realdash"' in out
-    assert '"batt_alert_protocol": "mqtt"' in out
-
-
-def test_set_top_level_protocol_preserves_secrets_and_surrounding_text():
-    out = set_top_level_protocol(REALISTIC_CONFIG, "slcan")
-    # Only the protocol token changed: every other field is byte-identical.
-    expected = REALISTIC_CONFIG.replace('"protocol": "poll_log"', '"protocol": "slcan"')
-    assert out == expected
-    assert '"sta_pass": "hunter2"' in out
-    assert '"mqtt_pass": "s3cr3t!"' in out
-
-
-def test_set_top_level_protocol_raises_when_no_top_level_protocol():
-    # A body with ONLY sibling protocol keys must not match.
-    body = (
-        '{"home_protocol": "auto_pid", "drive_protocol": "realdash", '
-        '"batt_alert_protocol": "mqtt"}'
-    )
-    with pytest.raises(WiCANConfigError):
-        set_top_level_protocol(body, "slcan")
-    with pytest.raises(WiCANConfigError):
-        get_top_level_protocol(body)
-
-
-def test_set_top_level_protocol_raises_on_multiple_top_level_matches():
-    body = '{"protocol": "a", "x": 1, "protocol": "b"}'
-    with pytest.raises(WiCANConfigError):
-        set_top_level_protocol(body, "slcan")
-
-
-def test_get_top_level_protocol_ignores_siblings():
-    assert get_top_level_protocol(REALISTIC_CONFIG) == "poll_log"
-
-
-def test_set_top_level_protocol_value_with_special_chars_is_literal():
-    # A replacement value containing a backslash/group-ref must be inserted
-    # literally (no regex backreference expansion).
-    out = set_top_level_protocol('{"protocol": "x"}', r"a\1b")
-    assert get_top_level_protocol(out) == r"a\1b"
-
-
-# ---------------------------------------------------------------------------
-# switch_to_slcan / restore — full round trips against the mock server.
-# ---------------------------------------------------------------------------
-
-
-def test_switch_to_slcan_returns_previous_and_preserves_all_fields():
-    with _MockWiCANServer(REALISTIC_CONFIG) as server:
-        cfg = _make_configurator(server)
-
-        previous = cfg.switch_to_slcan()
-
-        assert previous == "poll_log"
-        assert cfg.current_protocol() == "slcan"
-
-        # Exactly one POST happened, and it changed ONLY the protocol token.
-        assert len(server.posts) == 1
-        stored = server.posts[0]
-        expected = REALISTIC_CONFIG.replace(
-            '"protocol": "poll_log"', '"protocol": "slcan"'
-        )
-        assert stored == expected
-
-        # Byte-level: every non-protocol field survived unchanged.
-        stored_obj = json.loads(stored)
-        assert stored_obj["sta_pass"] == "hunter2"
-        assert stored_obj["mqtt_pass"] == "s3cr3t!"
-        assert stored_obj["home_protocol"] == "auto_pid"
-        assert stored_obj["drive_protocol"] == "realdash"
-        assert stored_obj["batt_alert_protocol"] == "mqtt"
-
-
-def test_switch_to_slcan_idempotent_when_already_slcan():
-    already = REALISTIC_CONFIG.replace('"protocol": "poll_log"', '"protocol": "slcan"')
-    with _MockWiCANServer(already) as server:
-        cfg = _make_configurator(server)
-
-        previous = cfg.switch_to_slcan()
-
-        assert previous == "slcan"
-        assert cfg.is_slcan() is True
-        # No write should ever happen when already in slcan mode.
-        assert server.posts == []
-
-
-def test_restore_round_trips_back_to_previous():
-    with _MockWiCANServer(REALISTIC_CONFIG) as server:
-        cfg = _make_configurator(server)
-
-        previous = cfg.switch_to_slcan()
-        assert cfg.current_protocol() == "slcan"
-
-        cfg.restore(previous)
-
-        assert cfg.current_protocol() == "poll_log"
-        assert len(server.posts) == 2
-        # The restored config is byte-identical to the original.
-        assert server.config == REALISTIC_CONFIG
-
-
-def test_restore_is_noop_when_already_target():
-    with _MockWiCANServer(REALISTIC_CONFIG) as server:
-        cfg = _make_configurator(server)
-
-        cfg.restore("poll_log")  # device is already poll_log
-
-        assert server.posts == []
-        assert cfg.current_protocol() == "poll_log"
-
-
-def test_read_config_returns_parsed_dict():
-    with _MockWiCANServer(REALISTIC_CONFIG) as server:
-        cfg = _make_configurator(server)
-        parsed = cfg.read_config()
-        assert parsed["protocol"] == "poll_log"
-        assert parsed["sta_pass"] == "hunter2"
-
-
-# ---------------------------------------------------------------------------
-# Reboot-window tolerance and timeout.
-# ---------------------------------------------------------------------------
-
-
-def test_wait_for_protocol_tolerates_transient_503_after_post():
-    with _MockWiCANServer(REALISTIC_CONFIG) as server:
-        # First two GETs after the POST return 503 (device rebooting), then OK.
-        server.fail_gets_after_post = 2
-        cfg = _make_configurator(server)
-
-        previous = cfg.switch_to_slcan()
-
-        assert previous == "poll_log"
-        assert cfg.current_protocol() == "slcan"
-
-
-def test_wait_for_protocol_times_out_when_never_ready():
-    with _MockWiCANServer(REALISTIC_CONFIG) as server:
-        cfg = _make_configurator(server, reboot_timeout_s=0.3, poll_interval_s=0.05)
-        # Device accepts the POST but every subsequent GET fails (never reboots
-        # back). The verify wait must raise rather than hang or lie.
-        server.always_fail_get = True
-
-        with pytest.raises(WiCANConfigError):
-            cfg.switch_to_slcan()
-
-
-# ---------------------------------------------------------------------------
-# Defensive write guards.
-# ---------------------------------------------------------------------------
-
-
-def test_set_protocol_rejects_edit_that_breaks_json_before_posting(monkeypatch):
-    with _MockWiCANServer(REALISTIC_CONFIG) as server:
-        cfg = _make_configurator(server)
-
-        # Force the targeted edit helper to return non-JSON text. set_protocol
-        # must catch this in its defensive parse-check and refuse to POST.
-        import src.ecu.wican_config as mod
-
-        monkeypatch.setattr(
-            mod, "set_top_level_protocol", lambda raw, value: '{"protocol": '
-        )
-
-        with pytest.raises(WiCANConfigError):
-            cfg.set_protocol("slcan")
-
-        # Nothing was written to the device.
-        assert server.posts == []
-
-
-def test_read_config_raw_raises_on_unreachable_host():
-    # Port 1 on loopback is not listening; the read must raise WiCANConfigError.
-    cfg = WiCANConfigurator("127.0.0.1", http_port=1, timeout_s=1.0)
-    with pytest.raises(WiCANConfigError):
-        cfg.read_config_raw()
-
-
-def test_wican_config_error_is_ecu_error():
-    assert issubclass(WiCANConfigError, ECUError)
 
 
 # ---------------------------------------------------------------------------
@@ -351,157 +131,6 @@ def _recovery_in_tmp(tmp_path, monkeypatch):
     monkeypatch.setattr(mod, "_sidecar_dir", lambda: str(tmp_path))
     monkeypatch.setattr(mod.tempfile, "gettempdir", lambda: str(legacy))
     return tmp_path
-
-
-def _slcan_config(base=REALISTIC_CONFIG):
-    return base.replace('"protocol": "poll_log"', '"protocol": "slcan"')
-
-
-def test_recovery_path_is_host_keyed_and_sanitized(_recovery_in_tmp):
-    cfg = WiCANConfigurator("192.168.0.10", http_port=80)
-    # The host is sanitized (dots -> underscores) and lives in our temp dir.
-    assert cfg.recovery_path == os.path.join(
-        str(_recovery_in_tmp), "wican_recovery_192_168_0_10.json"
-    )
-
-
-def test_read_recovery_tolerates_missing_file(_recovery_in_tmp):
-    cfg = WiCANConfigurator("127.0.0.1", http_port=80)
-    assert not os.path.exists(cfg.recovery_path)
-    assert cfg.read_recovery() is None
-
-
-def test_read_recovery_tolerates_corrupt_file(_recovery_in_tmp):
-    cfg = WiCANConfigurator("127.0.0.1", http_port=80)
-    with open(cfg.recovery_path, "w", encoding="utf-8") as fh:
-        fh.write("{ this is not valid json")
-    assert cfg.read_recovery() is None
-
-
-def test_read_recovery_ignores_other_host_sidecar(_recovery_in_tmp):
-    cfg = WiCANConfigurator("127.0.0.1", http_port=80)
-    # A sidecar whose recorded host differs from ours must be ignored.
-    with open(cfg.recovery_path, "w", encoding="utf-8") as fh:
-        json.dump({"host": "10.0.0.9", "previous_protocol": "poll_log"}, fh)
-    assert cfg.read_recovery() is None
-
-
-def test_write_then_read_recovery_round_trips(_recovery_in_tmp):
-    cfg = WiCANConfigurator("127.0.0.1", http_port=80)
-    cfg._write_recovery("poll_log")
-    assert cfg.read_recovery() == "poll_log"
-    cfg.clear_recovery()
-    assert cfg.read_recovery() is None
-    # clear is idempotent / best-effort on a missing file.
-    cfg.clear_recovery()
-
-
-def test_slcan_session_normal_path(_recovery_in_tmp):
-    """poll_log device: inside block it is slcan with a recovery file; after,
-    it is poll_log again and the recovery file is gone."""
-    with _MockWiCANServer(REALISTIC_CONFIG) as server:
-        cfg = _make_configurator(server)
-        assert cfg.read_recovery() is None
-
-        with cfg.slcan_session() as prev:
-            assert prev == "poll_log"
-            # Inside the block the device is slcan ...
-            assert cfg.current_protocol() == "slcan"
-            # ... and a recovery sidecar records the TRUE original.
-            assert os.path.exists(cfg.recovery_path)
-            assert cfg.read_recovery() == "poll_log"
-
-        # After the block the device is restored and the sidecar is gone.
-        assert cfg.current_protocol() == "poll_log"
-        assert not os.path.exists(cfg.recovery_path)
-        assert cfg.read_recovery() is None
-
-
-def test_slcan_session_recovers_true_original_after_crash(_recovery_in_tmp):
-    """Crash sim: a recovery file (poll_log) pre-exists AND the device is already
-    slcan. The session must restore poll_log from the RECORDED value (not the
-    current slcan) and clear the file."""
-    with _MockWiCANServer(_slcan_config()) as server:
-        cfg = _make_configurator(server)
-        # Pre-write the breadcrumb a crashed prior run would have left.
-        cfg._write_recovery("poll_log")
-        assert cfg.current_protocol() == "slcan"
-
-        with cfg.slcan_session() as prev:
-            # The TRUE original came from the sidecar, NOT the current slcan.
-            assert prev == "poll_log"
-            assert cfg.current_protocol() == "slcan"
-            # No needless re-switch: device was already slcan.
-            assert server.posts == []
-
-        # Restored to the recorded original and the sidecar is cleared.
-        assert cfg.current_protocol() == "poll_log"
-        assert len(server.posts) == 1
-        assert not os.path.exists(cfg.recovery_path)
-
-
-def test_slcan_session_persists_breadcrumb_before_switch(_recovery_in_tmp, monkeypatch):
-    """The recovery sidecar must be written BEFORE the device is switched, so a
-    hard kill during the multi-second switch/reboot still leaves a breadcrumb
-    the next run can use to restore the true original."""
-    with _MockWiCANServer(REALISTIC_CONFIG) as server:
-        cfg = _make_configurator(server)
-
-        def boom(protocol):
-            # At switch time the breadcrumb must already be on disk.
-            assert os.path.exists(cfg.recovery_path)
-            assert cfg.read_recovery() == "poll_log"
-            raise RuntimeError("simulated crash during switch")
-
-        monkeypatch.setattr(cfg, "set_protocol", boom)
-
-        with pytest.raises(RuntimeError):
-            with cfg.slcan_session():
-                pass
-
-        # The switch never committed (no POST) and the breadcrumb survives, so
-        # the next run can still restore poll_log.
-        assert server.posts == []
-        assert cfg.read_recovery() == "poll_log"
-
-
-def test_slcan_session_intentional_slcan_does_nothing(_recovery_in_tmp):
-    """Device already slcan, NO recovery file: the session writes NO recovery
-    file and performs NO restore (device stays slcan)."""
-    with _MockWiCANServer(_slcan_config()) as server:
-        cfg = _make_configurator(server)
-        assert cfg.read_recovery() is None
-
-        with cfg.slcan_session() as prev:
-            assert prev == "slcan"
-            assert cfg.current_protocol() == "slcan"
-            # No sidecar was ever written.
-            assert not os.path.exists(cfg.recovery_path)
-            assert server.posts == []
-
-        # Still slcan, no restore POST, and still no sidecar.
-        assert cfg.current_protocol() == "slcan"
-        assert server.posts == []
-        assert not os.path.exists(cfg.recovery_path)
-
-
-def test_slcan_session_restores_on_exception(_recovery_in_tmp):
-    """An exception inside the block still restores the original and clears the
-    sidecar (the finally must run)."""
-    with _MockWiCANServer(REALISTIC_CONFIG) as server:
-        cfg = _make_configurator(server)
-
-        class _Boom(Exception):
-            pass
-
-        with pytest.raises(_Boom):
-            with cfg.slcan_session() as prev:
-                assert prev == "poll_log"
-                assert cfg.current_protocol() == "slcan"
-                raise _Boom()
-
-        assert cfg.current_protocol() == "poll_log"
-        assert not os.path.exists(cfg.recovery_path)
 
 
 # ---------------------------------------------------------------------------
@@ -894,195 +523,6 @@ def test_datalog_keepalive_stops_on_close(_recovery_in_tmp):
 
 
 # ---------------------------------------------------------------------------
-# Issue #92 — the breadcrumb is the ONLY record of the user's original mode.
-# If the restore fails, that record must survive so a later run can undo the
-# strand. Today both restore paths delete it in a ``finally``, which turns a
-# recoverable failure into a permanent one.
-# ---------------------------------------------------------------------------
-
-
-def test_failed_restore_keeps_the_breadcrumb(_recovery_in_tmp, monkeypatch):
-    """slcan_session(): a restore that raises must NOT clear the sidecar."""
-    with _MockWiCANServer(REALISTIC_CONFIG) as server:
-        cfg = _make_configurator(server)
-
-        with pytest.raises(WiCANConfigError):
-            with cfg.slcan_session() as prev:
-                assert prev == "poll_log"
-                # The breadcrumb exists while we hold the session.
-                assert cfg.read_recovery() == "poll_log"
-
-                def _boom(_protocol):
-                    raise WiCANConfigError("device went away mid-restore")
-
-                monkeypatch.setattr(cfg, "restore", _boom)
-
-        # The device is still in slcan and the restore failed. The sidecar is now
-        # the only thing that knows the user was on poll_log — losing it here is
-        # what makes a strand permanent.
-        assert os.path.exists(
-            cfg.recovery_path
-        ), "sidecar deleted after a FAILED restore"
-        assert cfg.read_recovery() == "poll_log"
-
-
-# ---------------------------------------------------------------------------
-# Issue #92 — recovery must not depend on the user reconnecting.
-#
-# Today a stranded device is only ever un-stranded inside a later successful
-# connect to that same host. If the user gives up on the tool (the natural
-# reaction to "my logger stopped working"), nothing ever restores it. This is a
-# CONTRACT test for a seam that does not exist yet: it fails on ImportError
-# today, so unlike the tests above it cannot disprove anything -- it defines the
-# API the fix must provide.
-# ---------------------------------------------------------------------------
-
-
-def test_startup_sweep_restores_a_stranded_device(_recovery_in_tmp):
-    """A breadcrumb + a device sitting in slcan is enough to recover it.
-
-    No ECUSession, no connect, no GUI -- just the sweep a fresh app launch runs.
-    """
-    from src.ecu.wican_config import recover_stranded_protocols
-
-    with _MockWiCANServer(_slcan_config()) as server:
-        # Exactly what a hard-killed run leaves behind: the device is in slcan
-        # and a sidecar remembers the user was on poll_log.
-        stranded = WiCANConfigurator("127.0.0.1", http_port=server.port)
-        stranded._write_recovery("poll_log")
-
-        records = recover_stranded_protocols(
-            http_port=server.port,
-            confirm=lambda host, previous: True,
-        )
-
-        assert get_top_level_protocol(server.config) == "poll_log"
-        assert len(server.posts) == 1, "the sweep must write exactly once"
-        assert not os.path.exists(stranded.recovery_path)
-        assert [r["action"] for r in records] == ["restored"]
-        assert records[0]["host"] == "127.0.0.1"
-
-
-def _sweep_with_datalog_state(monkeypatch, state):
-    """Make the sweep see ``state`` from /datalog without a real endpoint."""
-    import src.ecu.wican_config as mod
-
-    class _Stub:
-        def __init__(self, host, http_port=80, **kw):
-            pass
-
-        def get_state(self):
-            return state
-
-    monkeypatch.setattr(mod, "WiCANDatalogClient", _Stub)
-
-
-def test_sweep_refuses_while_a_flash_is_active(_recovery_in_tmp, monkeypatch):
-    """BRICK GUARD: never reboot a device that is mid-flash.
-
-    The stranded device may be stranded *because* another machine is flashing
-    through it right now. Rebooting it there can leave the car's ECU half
-    written, which is unrecoverable from this app.
-    """
-    from src.ecu.wican_config import recover_stranded_protocols
-
-    _sweep_with_datalog_state(monkeypatch, {"flash_active": True})
-    with _MockWiCANServer(_slcan_config()) as server:
-        cfg = WiCANConfigurator("127.0.0.1", http_port=server.port)
-        cfg._write_recovery("poll_log")
-
-        records = recover_stranded_protocols(
-            http_port=server.port, confirm=lambda *a: True
-        )
-
-        assert [r["action"] for r in records] == ["busy"]
-        assert server.posts == [], "wrote to a device that is mid-flash"
-        assert os.path.exists(cfg.recovery_path), "sidecar dropped while busy"
-
-
-def test_sweep_refuses_while_a_host_holds_the_bus(_recovery_in_tmp, monkeypatch):
-    """Same guard for the pre-flash auth window, which no flash flag covers."""
-    from src.ecu.wican_config import recover_stranded_protocols
-
-    _sweep_with_datalog_state(monkeypatch, {"host_bus_claimed": True})
-    with _MockWiCANServer(_slcan_config()) as server:
-        cfg = WiCANConfigurator("127.0.0.1", http_port=server.port)
-        cfg._write_recovery("poll_log")
-
-        records = recover_stranded_protocols(
-            http_port=server.port, confirm=lambda *a: True
-        )
-
-        assert [r["action"] for r in records] == ["busy"]
-        assert server.posts == []
-        assert os.path.exists(cfg.recovery_path)
-
-
-def test_sweep_drops_a_stale_sidecar_without_touching_the_device(_recovery_in_tmp):
-    """Device already back on poll_log: clean up, but never write to it."""
-    from src.ecu.wican_config import recover_stranded_protocols
-
-    with _MockWiCANServer(REALISTIC_CONFIG) as server:  # NOT slcan
-        cfg = WiCANConfigurator("127.0.0.1", http_port=server.port)
-        cfg._write_recovery("poll_log")
-
-        records = recover_stranded_protocols(http_port=server.port)
-
-        assert [r["action"] for r in records] == ["stale"]
-        assert server.posts == []
-        assert not os.path.exists(cfg.recovery_path)
-
-
-def test_sweep_keeps_the_sidecar_when_the_device_is_unreachable(_recovery_in_tmp):
-    """A device that is merely off must stay recoverable on a later launch."""
-    from src.ecu.wican_config import recover_stranded_protocols
-
-    cfg = WiCANConfigurator("127.0.0.1", http_port=9)  # discard port: nothing there
-    cfg._write_recovery("poll_log")
-
-    records = recover_stranded_protocols(http_port=9, timeout_s=0.4)
-
-    assert [r["action"] for r in records] == ["unreachable"]
-    assert os.path.exists(cfg.recovery_path)
-
-
-def test_sweep_honours_a_declined_confirmation(_recovery_in_tmp):
-    """Saying no leaves the device alone AND keeps the sidecar for next time."""
-    from src.ecu.wican_config import recover_stranded_protocols
-
-    with _MockWiCANServer(_slcan_config()) as server:
-        cfg = WiCANConfigurator("127.0.0.1", http_port=server.port)
-        cfg._write_recovery("poll_log")
-
-        records = recover_stranded_protocols(
-            http_port=server.port, confirm=lambda host, prev: False
-        )
-
-        assert [r["action"] for r in records] == ["declined"]
-        assert server.posts == []
-        assert os.path.exists(cfg.recovery_path)
-
-
-def test_sweep_skips_a_host_with_a_live_session(_recovery_in_tmp):
-    """The GUI can exclude a device it is actively using."""
-    from src.ecu.wican_config import recover_stranded_protocols
-
-    with _MockWiCANServer(_slcan_config()) as server:
-        cfg = WiCANConfigurator("127.0.0.1", http_port=server.port)
-        cfg._write_recovery("poll_log")
-
-        records = recover_stranded_protocols(
-            http_port=server.port,
-            confirm=lambda *a: True,
-            should_skip=lambda host: host == "127.0.0.1",
-        )
-
-        assert [r["action"] for r in records] == ["skipped"]
-        assert server.posts == []
-        assert os.path.exists(cfg.recovery_path)
-
-
-# ---------------------------------------------------------------------------
 # /host_caps: the small, secret-free capability reply (#92).
 #
 # It exists so a host tool can settle "does this device support no-reboot
@@ -1091,6 +531,29 @@ def test_sweep_skips_a_host_with_a_live_session(_recovery_in_tmp):
 # on Windows. Absent on every build in the field today, so "no endpoint" must
 # never be read as evidence about the firmware.
 # ---------------------------------------------------------------------------
+
+
+def test_read_config_raw_returns_the_device_text_verbatim():
+    """No json round-trip: the blob is returned byte-for-byte as the device sent
+    it, so nothing can silently reorder keys or retype values."""
+    with _MockWiCANServer(REALISTIC_CONFIG) as server:
+        assert _make_configurator(server).read_config_raw() == REALISTIC_CONFIG
+
+
+def test_read_config_raw_raises_on_unreachable_host():
+    from src.ecu.wican_config import WiCANConfigError
+
+    cfg = WiCANConfigurator("127.0.0.1", http_port=9, timeout_s=0.4)
+    with pytest.raises(WiCANConfigError):
+        cfg.read_config_raw()
+
+
+def test_wican_config_error_is_an_ecu_error():
+    """It must be caught by the app's unified ECU error handlers."""
+    from src.ecu.exceptions import ECUError
+    from src.ecu.wican_config import WiCANConfigError
+
+    assert issubclass(WiCANConfigError, ECUError)
 
 
 def test_host_caps_parses_a_good_reply():
@@ -1129,50 +592,3 @@ def test_host_caps_never_raises_when_the_device_is_gone():
 # An upgrade must adopt them, or a device the OLD build stranded could never be
 # recovered automatically.
 # ---------------------------------------------------------------------------
-
-
-def test_legacy_sidecar_is_adopted_and_moved(_recovery_in_tmp):
-    """read_recovery() finds a crumb the old build left in the OS temp dir."""
-    import src.ecu.wican_config as mod
-
-    cfg = WiCANConfigurator("192.168.0.10", http_port=80)
-    legacy = mod._legacy_host_keyed_temp_path("192.168.0.10", "wican_recovery")
-    assert legacy != cfg.recovery_path, "fixture must give two distinct dirs"
-    with open(legacy, "w", encoding="utf-8") as fh:
-        fh.write('{"host": "192.168.0.10", "previous_protocol": "poll_log"}')
-
-    assert cfg.read_recovery() == "poll_log"
-    # Adopted into the new home, and the old copy cleaned up so it cannot be
-    # picked up twice later.
-    assert os.path.exists(cfg.recovery_path)
-    assert not os.path.exists(legacy)
-
-
-def test_legacy_sidecar_for_another_host_is_ignored(_recovery_in_tmp):
-    """The host check still applies to a migrated file."""
-    import src.ecu.wican_config as mod
-
-    cfg = WiCANConfigurator("192.168.0.10", http_port=80)
-    legacy = mod._legacy_host_keyed_temp_path("192.168.0.10", "wican_recovery")
-    with open(legacy, "w", encoding="utf-8") as fh:
-        fh.write('{"host": "10.9.9.9", "previous_protocol": "poll_log"}')
-
-    assert cfg.read_recovery() is None
-
-
-def test_sweep_finds_a_sidecar_left_in_the_legacy_location(_recovery_in_tmp):
-    """A device stranded by the OLD build is still recovered after upgrading."""
-    import src.ecu.wican_config as mod
-    from src.ecu.wican_config import recover_stranded_protocols
-
-    with _MockWiCANServer(_slcan_config()) as server:
-        legacy = mod._legacy_host_keyed_temp_path("127.0.0.1", "wican_recovery")
-        with open(legacy, "w", encoding="utf-8") as fh:
-            fh.write('{"host": "127.0.0.1", "previous_protocol": "poll_log"}')
-
-        records = recover_stranded_protocols(
-            http_port=server.port, confirm=lambda *a: True
-        )
-
-        assert [r["action"] for r in records] == ["restored"]
-        assert get_top_level_protocol(server.config) == "poll_log"

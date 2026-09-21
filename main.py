@@ -2575,14 +2575,6 @@ def main():
         logger.info(f"Opening file from command line: {file_arg}")
         QTimer.singleShot(0, lambda: window._open_rom_file(file_arg))
 
-    # Put back any WiCAN adapter an earlier run left in bench (slcan) mode (#92).
-    # A read-only scan on a worker thread, then ONE dialog before anything is
-    # rebooted. Kept on `window` so its threads outlive this function.
-    from src.ui.wican_strand_recovery import WiCANStrandRecovery
-
-    window._wican_strand_recovery = WiCANStrandRecovery(window)
-    QTimer.singleShot(1500, window._wican_strand_recovery.start)
-
     logger.info("Application window displayed")
     exit_code = app.exec()
     logger.info(f"Application exiting with code {exit_code}")

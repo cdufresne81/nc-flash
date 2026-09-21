@@ -21,7 +21,7 @@ byte mismatch, is a regression.
 ## 1. Confirm the firmware build (version ping)
 
 ```bash
-python tools/wican_fw_ping.py --host 192.168.1.169 --port 35000
+python tools/wican_fw_ping.py --host 192.168.1.169
 ```
 
 Expect `[RESULT] fast-read firmware live: NCFRv<rev>`. If it reports OLD/UNKNOWN,
@@ -31,11 +31,15 @@ the firmware fork) and bump the version string when wire behaviour changes.
 ## 2. Read the full ROM via the bench tool (works today)
 
 ```bash
-python tools/wican_bench_read.py --host 192.168.1.169 --port 35000 \
-    --auto-config --fast-read --reference wican_stmin0_full.bin --out wican_read.bin
+python tools/wican_bench_read.py --host 192.168.1.169 \
+    --fast-read --reference wican_readback_hw9.bin --out wican_read.bin
 ```
 
-- `--auto-config` flips the device to `slcan` and restores the prior protocol on exit.
+- No flags select the port or the mode any more: the firmware has one mode and
+  one CAN socket (the fixed coexistence SLCAN port), and the tool RESERVES the
+  CAN bus for the run — it parks the datalogger and resumes it on exit. Without
+  that reservation the datalogger eats the ECU's UDS replies and a healthy ECU
+  reports as bricked.
 - PASS criteria: `[GATE] RESULT: PASS — byte-for-byte identical` and `DONE in ~214 s`.
 - To test just a region (e.g. the response-pending area), add
   `--fast-read-start 0xD8400 --fast-read-len 0x8000`, or use
@@ -44,17 +48,56 @@ python tools/wican_bench_read.py --host 192.168.1.169 --port 35000 \
 ## 3. Read the ROM through the NC Flash UI
 
 The **adapter selector** has landed: choose the adapter in **Settings ▸ ECU ▸
-Adapter** (`WiCAN`), set host/port in **Settings ▸ ECU ▸ WiCAN**, and the ECU
+Adapter** (`WiCAN`), set the host in **Settings ▸ ECU ▸ WiCAN** (there is no
+port to configure), and the ECU
 Programming window (`src/ui/ecu_window.py`) drives the read over the selected
 transport — there is no `flash_setup_dialog` anymore. Verify:
 
 1. Launch NC Flash; open the ECU Programming window.
-2. Select the **WiCAN** adapter; enter host/port (and let it auto-config `slcan`).
+2. Select the **WiCAN** adapter; enter the host IP.
 3. Read the ECU ROM; confirm a progress indicator and successful completion.
 4. Save the dump and byte-compare it to `wican_readback_hw9.bin` (the current
    read oracle; `wican_stmin0_full.bin` is stale — see memory
    `project_wican_read_oracle_stale`).
-5. Confirm the device protocol is **restored** to its previous value on disconnect.
+5. Confirm the datalogger **resumes** on disconnect. Judge this by the trip
+   CSV resuming, not by the web UI mode flag (see §3a).
+
+   ⚠️ **Known residual, not a regression:** `close()` still sends the SLCAN `C`
+   on a session transport, which disables the shared bus after the reservation
+   has already been released — so the logger currently waits out the firmware's
+   full ~10 s withhold after every disconnect, read and flash. Removing that
+   trailing `C` is a SEPARATE commit with its own bench pass (it sits on the
+   flash teardown path); measure the gap here so there is a before/after number.
+
+### 3a. Test Connection (Settings ▸ ECU ▸ WiCAN)
+
+1. Press **Test Connection** — expect *Connection OK* naming the live `NCFRv`
+   rev and the marker round-trip, within a couple of seconds.
+2. **The hazard check — press it twice during a live trip.** Start a datalog
+   trip at 10 Hz, then press Test Connection twice while it is recording.
+
+   ⚠️ **Do NOT judge this by the web UI's logging-mode indicator.** The mode
+   stays ON even when the CAN bus underneath has been disabled — that is exactly
+   why the first version of this check was blind to a real ~10 s outage. Observe
+   the bus, not the flag:
+
+   - **Trip CSV row cadence (ground truth).** Pull the trip CSV and check
+     `timestamp_ms` continuity across the test window: **no gap > ~500 ms**. The
+     firmware's bus withhold shows up as a ≥ 10 000 ms hole in the rows.
+   - **Device event log for the window** — no CAN-disable, gate-close, or PROBE
+     re-entry events. This is the firmware's own confession channel and catches a
+     partial regression the CSV granularity might hide.
+   - **`GET /datalog` before / during / after** — `datalog_parked` false
+     throughout and no `park_token` issued, proving no reservation was silently
+     taken either.
+
+   Mechanism, for when this needs re-deriving: the probe uses
+   `open_socket_only()` — a bare TCP connect with no `C`/`S6`/`O` and no prime
+   frame — so it puts nothing on the bus. A plain `open()` would send `C`, which
+   maps to `can_disable()` on the shared peripheral. The wire-level regression
+   fence is `tests/test_ecu_wican_probe_wire.py`.
+3. Point the host field at an unused IP and press it — expect *Connection
+   Failed* naming the network, not a firmware-update instruction.
 
 ## 3b. ECU diagnostic functions — RAM scan, read/clear DTC (goal 2 Part A)
 
@@ -65,14 +108,14 @@ WiCAN. READ RAM and READ DTC are non-destructive; CLEAR DTC mutates ECU state
 
 ```bash
 # READ DTC (no auth needed) — expect the same codes a J2534/OBD reader shows:
-python tools/wican_bench_ecu.py --host 192.168.1.169 --port 35000 --read-dtc
+python tools/wican_bench_ecu.py --host 192.168.1.169 --read-dtc
 
 # READ RAM (needs _secure auth) — 48 KB dump + sanity summary:
-python tools/wican_bench_ecu.py --host 192.168.1.169 --port 35000 --scan-ram \
+python tools/wican_bench_ecu.py --host 192.168.1.169 --scan-ram \
     --out wican_ram.bin
 
 # CLEAR DTC (mutates state) — read -> clear -> re-read:
-python tools/wican_bench_ecu.py --host 192.168.1.169 --port 35000 --clear-dtc --yes
+python tools/wican_bench_ecu.py --host 192.168.1.169 --clear-dtc --yes
 ```
 
 PASS criteria:
@@ -85,12 +128,15 @@ PASS criteria:
   engine running, codes may re-set immediately; the verdict accepts a reduced
   set. Re-read with `--read-dtc` to confirm.
 
-`--auto-config` works here too (flips to `slcan` over HTTP, restores on exit).
+This tool reserves the CAN bus too (`[BUS] Reserving...` / `[BUS] Bus
+released`). `tools/wican_bus_sniff.py` deliberately does NOT — it is a passive
+listener, and parking the datalogger would silence the traffic it exists to see.
 
 ## 4. Teardown
 
-- Confirm the WiCAN protocol was restored (the bench tool / configurator does this
-  automatically, even on Ctrl-C or error, via the recovery sidecar).
+- Confirm the datalogger resumed (the bench tools release the bus in a
+  `finally`, so this holds on Ctrl-C or error too; a hard kill is covered by the
+  firmware dead-man reaper and by `reconcile()` on the next connect).
 - If a run was killed mid-stream, the device may need a reboot
   (`curl -s -X POST http://<host>/system_reboot`) to clear a wedged CAN channel
   before the next `S6` handshake.

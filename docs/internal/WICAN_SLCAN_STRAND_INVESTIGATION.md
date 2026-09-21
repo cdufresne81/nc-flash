@@ -1,5 +1,7 @@
 # WiCAN Bench SLCAN strand — open investigation (August 2026)
 
+> **Historical.** The legacy protocol-switch path this document investigates was removed in the WiCAN single-mode trim (see CHANGELOG): the firmware now has one mode and one CAN socket, so the host never writes the device's stored config and cannot strand it. Kept for the reasoning and the bench evidence.
+
 > **STATUS 2026-08-19: the host-side fix is written and verified — see branch
 > `fix/wican-slcan-strand-92`** (`e6f4fb0` red tests, `e977ed3` bench harness, the fix commit
 > after it). All three defects were reproduced on real hardware and are now fixed and covered.

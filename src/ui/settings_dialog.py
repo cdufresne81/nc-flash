@@ -13,7 +13,6 @@ from typing import Optional
 from PySide6.QtCore import QObject, Qt, QThread, QTimer, Signal
 from PySide6.QtGui import QShortcut, QKeySequence
 from PySide6.QtWidgets import (
-    QApplication,
     QCheckBox,
     QComboBox,
     QDialog,
@@ -36,10 +35,18 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from ..ecu.constants import WICAN_DEDICATED_SLCAN_PORT
 from ..utils.settings import get_settings
 from ..utils.colormap import reload_colormap
 
 logger = logging.getLogger(__name__)
+
+#: Join budgets for the two worker threads this dialog runs. Each must exceed
+#: the worker's own hard bound: the mDNS scan returns promptly once its cancel
+#: event is set, while the connection probe can be inside a socket wait for
+#: ~9 s and has no cancel event to shorten it.
+_SCAN_JOIN_MS = 3000
+_PROBE_JOIN_MS = 12000
 
 # ---------------------------------------------------------------------------
 # Settings Registry
@@ -327,7 +334,11 @@ SETTINGS_REGISTRY = [
     SettingDescriptor(
         key="ecu.wican.host",
         label="WiCAN Host / IP",
-        description="IP address or hostname of the WiCAN adapter (e.g. 192.168.1.169).",
+        description=(
+            "IP address or hostname of the WiCAN adapter (e.g. 192.168.1.169). "
+            f"The SLCAN service runs on fixed TCP port {WICAN_DEDICATED_SLCAN_PORT}"
+            " — there is no port to configure."
+        ),
         category="ECU",
         subcategory="WiCAN",
         widget_type="text",
@@ -341,38 +352,12 @@ SETTINGS_REGISTRY = [
         keywords=["wican", "host", "ip", "address", "wifi", "scan", "discover", "mdns"],
     ),
     SettingDescriptor(
-        key="ecu.wican.port",
-        label="WiCAN SLCAN Port",
-        description="TCP port of the WiCAN SLCAN socket (the PRO is often 35000).",
-        category="ECU",
-        subcategory="WiCAN",
-        widget_type="spinbox",
-        getter="get_wican_port",
-        setter="set_wican_port",
-        widget_options={"min": 1, "max": 65535},
-        keywords=["wican", "port", "slcan", "tcp"],
-    ),
-    SettingDescriptor(
-        key="ecu.wican.auto_config",
-        label="Auto-configure adapter (SLCAN switch + restore)",
-        description=(
-            "Switch the WiCAN into SLCAN mode on connect (a ~6 s reboot) and "
-            "restore its previous protocol on disconnect. Turn off if you keep "
-            "the device permanently in SLCAN mode."
-        ),
-        category="ECU",
-        subcategory="WiCAN",
-        widget_type="checkbox",
-        getter="get_wican_auto_config",
-        setter="set_wican_auto_config",
-        keywords=["wican", "slcan", "auto", "config", "protocol", "switch"],
-    ),
-    SettingDescriptor(
         key="ecu.wican.test_connection",
         label="Test Connection",
         description=(
-            "Open the WiCAN link and report reachability + link quality "
-            "(packet loss / latency). Honours the auto-configure setting above."
+            "Probe the adapter's SLCAN port and check its firmware version "
+            "against what NC Flash requires. Does not contact the ECU or "
+            "interrupt datalogging."
         ),
         category="ECU",
         subcategory="WiCAN",
@@ -479,6 +464,135 @@ class _WiCANScanWorker(QObject):
             self.error.emit(e)
 
 
+def _grade_wican_test(host, rev, elapsed_ms, error):
+    """Turn a WiCAN probe result into (kind, title, message). Pure — no Qt, no I/O.
+
+    ``kind`` is ``"ok"`` or ``"warn"``. Split out from the dialog so every
+    outcome is unit-testable without spinning up a window or a socket.
+    """
+    from src.ecu.constants import COEXIST_MIN_FW_REV
+    from src.ecu.session import is_connection_refused
+
+    port = WICAN_DEDICATED_SLCAN_PORT
+    if error is not None:
+        if is_connection_refused(error):
+            return (
+                "warn",
+                "Connection Refused",
+                f"{host} is reachable, but nothing is listening on SLCAN port "
+                f"{port}.\n\nThis usually means the adapter is running old or "
+                f"stock firmware. Update the WiCAN firmware "
+                f"(NCFRv{COEXIST_MIN_FW_REV}+) and test again.",
+            )
+        return (
+            "warn",
+            "Connection Failed",
+            f"Could not reach the WiCAN adapter at {host}:\n{error}\n\n"
+            "Check that the device is powered, on this network, and that the IP "
+            "is correct (use Scan to find it).",
+        )
+    if rev is None:
+        return (
+            "warn",
+            "Unexpected Response",
+            f"The adapter at {host} accepted the connection on port {port} but "
+            "did not identify its firmware within 6 seconds.\n\nIf a flash or "
+            "ROM read is running, this is expected — the adapter answers the "
+            "version check only once it is free, so try again when it "
+            "finishes.\n\nOtherwise the device may be busy or the Wi-Fi link "
+            "lossy — try again. If this persists, the device on this address "
+            "may not be a WiCAN running the NC Flash firmware.",
+        )
+    if rev < COEXIST_MIN_FW_REV:
+        return (
+            "warn",
+            "Firmware Too Old",
+            f"The adapter at {host} answered with firmware NCFRv{rev}, but NC "
+            f"Flash requires NCFRv{COEXIST_MIN_FW_REV} or newer.\n\nUpdate the "
+            "WiCAN firmware (OTA) and test again.",
+        )
+    return (
+        "ok",
+        "Connection OK",
+        f"WiCAN reachable at {host}, SLCAN port {port}.\n\n"
+        f"Firmware: NCFRv{rev} (NCFRv{COEXIST_MIN_FW_REV}+ required — OK).\n"
+        f"Marker round-trip: {elapsed_ms:.0f} ms.\n\n"
+        "This confirms the adapter and its firmware. The ECU itself is "
+        "contacted when you connect in the ECU Programming window.",
+    )
+
+
+class _WiCANTestWorker(QObject):
+    """Probes the WiCAN's SLCAN port off the GUI thread.
+
+    Deliberately does NOT talk to the ECU, and never touches the CAN bus. It
+    uses ``open_socket_only()``: a bare TCP connect with NO SLCAN channel
+    commands (``C``/``S6``/``O``) and no prime frame, then ``version_ping``,
+    then a close that sends nothing but a FIN. Verified against the firmware —
+    on the dedicated SLCAN port the fast-read ``X`` command is dispatched before
+    the SLCAN state machine sees it, and the version-ping branch answers from a
+    static marker without reading or changing CAN state.
+
+    That is what makes the claim load-bearing rather than decorative: a plain
+    ``open()`` would send ``C`` (which DISABLES the shared CAN peripheral) and
+    put a real TesterPresent on the bus, punching a ~10 s hole in a running
+    datalog trip. So this path takes no bus reservation, has none to release on
+    any error or cancel path, and cannot report a false "ECU dead" for a car
+    whose ignition is simply off.
+
+    Hard-bounded by its socket timeouts (worst case ~9 s), so an abandoned run
+    after Cancel always ends on its own.
+    """
+
+    finished = Signal(object)  # (rev, elapsed_ms, error_or_None)
+
+    def __init__(self, host):
+        super().__init__()
+        self._host = host
+
+    def run(self):
+        import time as _time
+
+        rev = None
+        error = None
+        elapsed_ms = 0.0
+        transport = None
+        try:
+            from src.ecu.transport import create_ecu_transport
+            from src.ecu.wican_sd_flash import _parse_fw_rev
+
+            t0 = _time.monotonic()
+            transport = create_ecu_transport(
+                {
+                    "kind": "wican",
+                    "host": self._host,
+                    "port": WICAN_DEDICATED_SLCAN_PORT,
+                    # 3 s, not the session's 1.5 s: a user-initiated diagnostic
+                    # can afford to wait past the ~2 s Windows RST latency so a
+                    # closed port is reported as "refused" (update the firmware)
+                    # rather than as a network problem.
+                    "connect_timeout_ms": 3000,
+                }
+            )
+            # NOT open(): see the class docstring — open() would disable the
+            # shared CAN bus and put a frame on it.
+            transport.open_socket_only()
+            marker = transport.version_ping(window_ms=3000)
+            if marker is None:
+                marker = transport.version_ping(window_ms=3000)  # one retry
+            rev = _parse_fw_rev(marker)
+            elapsed_ms = (_time.monotonic() - t0) * 1000.0
+        except Exception as e:
+            error = e
+        finally:
+            if transport is not None:
+                try:
+                    transport.close()
+                except Exception:
+                    pass
+        self.finished.emit((rev, elapsed_ms, error))
+
+
 class SettingsDialog(QDialog):
     """Application settings dialog with tree navigation and search."""
 
@@ -498,6 +612,12 @@ class SettingsDialog(QDialog):
         # In-flight mDNS scan state (None when no scan is running).
         self._scan_thread = None
         self._scan_worker = None
+        # In-flight Test Connection state (None when no probe is running).
+        self._test_thread = None
+        self._test_worker = None
+        self._test_progress = None
+        self._test_timer = None
+        self._test_cancelled = False
         self._scan_progress = None
         self._scan_timer = None
         self._scan_cancel_event = None
@@ -1105,99 +1225,151 @@ class SettingsDialog(QDialog):
             )
 
     def _test_wican_connection(self):
-        """Open the WiCAN link from the current field values and grade it."""
-        from PySide6.QtWidgets import QMessageBox
+        """Probe the adapter's SLCAN port and grade its firmware (off-thread).
 
+        Verifies the host <-> adapter link and the firmware contract ONLY. It
+        deliberately does not open a UDS session or run a link-quality sweep:
+        both would need the whole-session bus reservation, which pauses a
+        running datalog trip, and neither adds anything the ECU Programming
+        window's Connect (which reserves the bus properly) does not already do.
+        A test run with the ignition off would also report a scary failure for a
+        perfectly healthy adapter.
+        """
         host_edit = self._widgets.get("ecu.wican.host")
-        port_spin = self._widgets.get("ecu.wican.port")
-        auto_cb = self._widgets.get("ecu.wican.auto_config")
         host = (host_edit.text().strip() if host_edit else "") or "192.168.1.169"
-        port = port_spin.value() if port_spin else 35000
-        auto_config = auto_cb.isChecked() if auto_cb else True
 
-        try:
-            from src.ecu.transport import create_ecu_transport
-            from src.ecu.protocol import UDSConnection
-            from src.ecu.link_quality import check_link_quality
-            from src.ecu.wican_config import WiCANConfigurator, WiCANConfigError
-            from src.ecu.wican_transport import WiCANError
-        except ImportError as e:
-            QMessageBox.warning(self, "Unavailable", f"WiCAN modules unavailable:\n{e}")
+        # A WindowModal progress dialog blocks re-clicks, but guard regardless.
+        if self._test_thread is not None:
             return
 
-        QApplication.setOverrideCursor(Qt.WaitCursor)
-        configurator = None
-        prev_protocol = None
-        transport = None
-        try:
-            if auto_config:
-                configurator = WiCANConfigurator(host)
-                # Write the crash-recovery breadcrumb BEFORE switching, the same
-                # way a real session does. The bare switch_to_slcan() this
-                # replaces left NO record at all, so a crash during the ~6 s
-                # reboot -- or the silently-swallowed restore below -- stranded
-                # the device in bench mode with nothing able to find it, not even
-                # the start-up sweep (#92).
-                recorded = configurator.read_recovery()
-                current = configurator.current_protocol()
-                prev_protocol = recorded if recorded is not None else current
-                if prev_protocol != "slcan":
-                    configurator.write_recovery(prev_protocol)
-                if current != "slcan":
-                    configurator.set_protocol("slcan")
-            transport = create_ecu_transport(
-                {"kind": "wican", "host": host, "port": port}
+        # Worst case ~9 s (3 s connect + two 3 s ping windows); the ticker runs a
+        # little past that so the bar never completes before the worker reports.
+        timeout_s = 10.0
+        total_ticks = max(1, int(timeout_s * 10))  # 100 ms ticker resolution
+
+        progress = QProgressDialog(
+            "Testing WiCAN connection…", "Cancel", 0, total_ticks, self
+        )
+        progress.setWindowTitle("Test Connection")
+        progress.setWindowModality(Qt.WindowModal)
+        progress.setMinimumDuration(0)
+        progress.setAutoClose(False)
+        progress.setAutoReset(False)
+        progress.setValue(0)
+
+        worker = _WiCANTestWorker(host)
+        thread = QThread()
+        worker.moveToThread(thread)
+
+        timer = QTimer(self)
+        timer.setInterval(100)
+
+        self._test_thread = thread
+        self._test_worker = worker
+        self._test_progress = progress
+        self._test_timer = timer
+        self._test_cancelled = False
+        self._test_host = host
+        self._test_timeout_s = timeout_s
+
+        timer.timeout.connect(self._on_test_tick)
+        progress.canceled.connect(self._on_test_cancel)
+        # Bound-method receivers => queued delivery lands on the GUI thread. The
+        # thread/worker are NOT self-disposed via deleteLater: _teardown_test owns
+        # the lifecycle and quit()+wait()s the thread before disposing it.
+        # Dropping the Python refs to a still-running QThread lets PySide6 GC the
+        # wrapper and destroy the C++ thread mid-run.
+        worker.finished.connect(self._on_test_finished, Qt.QueuedConnection)
+        thread.started.connect(worker.run)
+
+        timer.start()
+        thread.start()
+        progress.show()
+
+    def _on_test_tick(self):
+        """Advance the elapsed-seconds counter on the test progress dialog."""
+        if self._test_cancelled:
+            return
+        progress = self._test_progress
+        if progress is None:
+            return
+        # Cap below the maximum so the dialog never auto-closes before the worker
+        # reports back; the worker's finished signal does the real close.
+        value = min(progress.value() + 1, progress.maximum() - 1)
+        progress.setValue(value)
+        secs = value / 10.0
+        progress.setLabelText(
+            f"Testing WiCAN connection…\n\n{self._test_host}\n\n"
+            f"{secs:.0f}s  (up to {self._test_timeout_s:.0f}s)"
+        )
+
+    def _on_test_cancel(self):
+        """Cancel — stop reporting; the bounded worker ends on its own.
+
+        There is nothing to interrupt and nothing to release: the probe holds no
+        bus reservation, and its socket timeouts hard-bound it to ~9 s. We drop
+        the result rather than pop a dialog over an abandoned test.
+        """
+        self._test_cancelled = True
+        if self._test_timer is not None:
+            self._test_timer.stop()
+        if self._test_progress is not None:
+            self._test_progress.setLabelText("Cancelling…")
+
+    def _on_test_finished(self, result):
+        """Worker `finished` slot (GUI thread): grade and report unless cancelled."""
+        from PySide6.QtWidgets import QMessageBox
+
+        # Tests are serialized (re-entrancy guard + modal dialog), so a slot with
+        # no active test is a stale delivery from a torn-down worker — drop it.
+        if self._test_thread is None:
+            return
+        cancelled = self._test_cancelled
+        host = self._test_host
+        self._teardown_test()
+        if cancelled:
+            return
+
+        rev, elapsed_ms, error = result
+        kind, title, text = _grade_wican_test(host, rev, elapsed_ms, error)
+        if kind == "ok":
+            QMessageBox.information(self, title, text)
+        else:
+            QMessageBox.warning(self, title, text)
+
+    def _teardown_test(self, blocking=False):
+        """Stop the ticker + dialog and dispose of the probe thread.
+
+        Same lifecycle contract as :meth:`_teardown_scan`: deferred by default so
+        we never join inside a slot, synchronous on dialog close because no later
+        event-loop turn is guaranteed to run the deferred cleanup — which would
+        leave a QThread destroyed while still running.
+        """
+        if self._test_timer is not None:
+            self._test_timer.stop()
+            self._test_timer.deleteLater()
+        if self._test_progress is not None:
+            # close() (not cancel()) so we don't re-fire the canceled signal.
+            self._test_progress.close()
+            self._test_progress.deleteLater()
+        thread = self._test_thread
+        worker = self._test_worker
+        self._test_timer = None
+        self._test_progress = None
+        self._test_thread = None
+        self._test_worker = None
+        self._test_cancelled = False
+        if thread is None:
+            return
+        # Hold the refs in the closure/args so the QThread isn't GC'd before it
+        # has been quit() + join()ed. The join budget exceeds the worker's ~9 s
+        # hard bound so a probe still in a socket wait is never destroyed under.
+        if blocking:
+            self._cleanup_thread(thread, worker, _PROBE_JOIN_MS)
+        else:
+            QTimer.singleShot(
+                0, lambda: self._cleanup_thread(thread, worker, _PROBE_JOIN_MS)
             )
-            transport.open()
-            uds = UDSConnection(transport)
-            result = check_link_quality(uds)
-            QApplication.restoreOverrideCursor()
-            if result.ok:
-                QMessageBox.information(
-                    self,
-                    "Connection OK",
-                    f"WiCAN reachable at {host}:{port}.\n\n"
-                    f"Link: {result.replies}/{result.pings} replied, "
-                    f"loss {result.loss_pct:.0f}%, p95 {result.p95_ms:.0f} ms.\n"
-                    f"{result.reason}",
-                )
-            else:
-                QMessageBox.warning(
-                    self,
-                    "Link Marginal",
-                    f"WiCAN reachable at {host}:{port}, but the link is not "
-                    f"flash-ready:\n\n{result.reason}\n\n"
-                    "Reads may still work; do not flash over this link.",
-                )
-        except (WiCANError, WiCANConfigError, OSError) as e:
-            QApplication.restoreOverrideCursor()
-            QMessageBox.warning(
-                self, "Connection Failed", f"Could not reach the WiCAN adapter:\n{e}"
-            )
-        finally:
-            if QApplication.overrideCursor() is not None:
-                QApplication.restoreOverrideCursor()
-            if transport is not None:
-                try:
-                    transport.close()
-                except Exception:
-                    pass
-            if configurator is not None and prev_protocol and prev_protocol != "slcan":
-                try:
-                    configurator.restore(prev_protocol)
-                except Exception as exc:
-                    # KEEP the breadcrumb (#92): the device is still in bench
-                    # mode and this is the only record of the user's real one.
-                    # The next launch's sweep will offer to put it back.
-                    logger.warning(
-                        "WiCAN Test Connection: restoring %s to %r failed (%s); "
-                        "breadcrumb kept so start-up can recover it",
-                        host,
-                        prev_protocol,
-                        exc,
-                    )
-                else:
-                    configurator.clear_recovery()
 
     def _scan_wican_devices(self, host_edit):
         """Discover WiCAN adapters over mDNS (off-thread) and let the user pick one.
@@ -1211,9 +1383,8 @@ class SettingsDialog(QDialog):
         ``device_id`` for persistence (so connect-time re-resolve can follow the
         adapter across DHCP changes).
 
-        The SLCAN port field is deliberately left untouched: the mDNS record
-        advertises the device's HTTP port (80), NOT the SLCAN port we connect on
-        (35000) — overwriting the port from discovery would break the link.
+        Discovery only ever fills in the host: the mDNS record advertises the
+        device's HTTP port (80), not the fixed SLCAN port the ECU link uses.
         """
         from PySide6.QtWidgets import QMessageBox
 
@@ -1396,17 +1567,28 @@ class SettingsDialog(QDialog):
         # Hold the refs in the closure/args so the QThread isn't GC'd before it
         # has been quit() + join()ed.
         if blocking:
-            self._cleanup_scan_thread(thread, worker)
+            self._cleanup_thread(thread, worker, _SCAN_JOIN_MS)
         else:
-            QTimer.singleShot(0, lambda: self._cleanup_scan_thread(thread, worker))
+            QTimer.singleShot(
+                0, lambda: self._cleanup_thread(thread, worker, _SCAN_JOIN_MS)
+            )
 
     @staticmethod
-    def _cleanup_scan_thread(thread, worker):
-        """Quit, join, and dispose a finished/cancelled scan thread (GUI thread)."""
+    def _cleanup_thread(thread, worker, wait_ms):
+        """Quit, join, and dispose a finished/cancelled worker thread (GUI thread).
+
+        ONE copy of the QThread disposal contract, shared by the mDNS scan and
+        the connection probe. Getting this wrong destroys a running C++ thread
+        mid-operation, so it must not exist twice and drift.
+
+        ``wait_ms`` is the join budget: it has to exceed the worker's own hard
+        bound, which differs per job (the scan honours a cancel event promptly;
+        the probe can be sitting in a socket wait for ~9 s).
+        """
         if thread is not None:
             if thread.isRunning():
                 thread.quit()
-                thread.wait(3000)
+                thread.wait(wait_ms)
             thread.deleteLater()
         if worker is not None:
             worker.deleteLater()
@@ -1558,4 +1740,7 @@ class SettingsDialog(QDialog):
             if self._scan_cancel_event is not None:
                 self._scan_cancel_event.set()
             self._teardown_scan(blocking=True)
+        if self._test_thread is not None:
+            self._test_cancelled = True
+            self._teardown_test(blocking=True)
         super().done(result)

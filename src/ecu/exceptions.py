@@ -41,22 +41,6 @@ class J2534ConnectionError(J2534Error):
     pass
 
 
-class CoexistProbeInconclusive(ECUError):
-    """Raised when we cannot tell whether the adapter supports no-reboot flashing.
-
-    The capability probe on the dedicated SLCAN port failed in a way that proves
-    nothing — a timeout, a reset, an unexpected error — on a device that is
-    otherwise reachable. The old behaviour was to assume old firmware and reboot
-    the adapter into bench (slcan) mode, which stops the datalogger and, if the
-    session then died, left the device stranded that way (#92).
-
-    A refused TCP connect is NOT this: nothing listening on the port is real
-    evidence of pre-coexistence firmware, and that still takes the legacy path.
-    """
-
-    pass
-
-
 # --- UDS Protocol Errors ---
 
 

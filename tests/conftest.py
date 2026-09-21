@@ -83,11 +83,11 @@ def mock_uds(mock_j2534_device):
 def _isolate_wican_sidecars(tmp_path_factory, monkeypatch):
     """Never let a test write a WiCAN sidecar into the user's real directory.
 
-    The protocol/datalog sidecars live in ``~/.nc-flash`` so a temp clean cannot
-    destroy the record of a stranded adapter (#92). That makes stray test writes
-    worse than untidy: the app's start-up sweep reads that directory, so a
-    leaked breadcrumb naming a host from a fixture would send the real app off
-    trying to recover a device that never existed.
+    The datalog breadcrumb lives in ``~/.nc-flash`` so a temp clean cannot
+    destroy the record of a datalogger this host left parked (#92). That makes
+    stray test writes worse than untidy: a leaked breadcrumb naming a host from
+    a fixture would make the next real connect to that address try to resume a
+    datalogger nobody paused.
 
     Autouse, so isolation is the default and no future test has to remember.
     Per-test fixtures that redirect the same helpers still win, since they are

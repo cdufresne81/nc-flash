@@ -76,8 +76,9 @@ may only go down); new colors get a named constant in `theme.py`.
 **`src/ecu/` is brick-critical** ← audit §G, project rule #6.
 The flash/transport path can leave a real MX-5 ECU unbootable. Behavior-
 preserving refactors only; anything that changes wire behavior needs the bench
-checklist in `docs/internal/WICAN_MANUAL_TEST.md` (device 192.168.1.169,
-remember the `--auto-config` protocol-revert gotcha) before it lands.
+checklist in `docs/internal/WICAN_MANUAL_TEST.md` (device 192.168.1.169;
+the bench tools reserve the CAN bus themselves — a tool that talks UDS without
+that reservation sees a fake "bricked ECU") before it lands.
 
 ## When a rule is genuinely in the way
 
