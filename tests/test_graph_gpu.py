@@ -653,14 +653,21 @@ def test_hover_face_maps_to_cell(qtbot, engine, isolated_settings):
         assert format_tick(data["values"][r, c]) in text
         assert format_tick(data["x_axis"][c]) in text
         assert format_tick(data["y_axis"][r]) in text
-    # and a real pick at the centre of the pane lands on the surface
-    w, h = b.widget.width(), b.widget.height()
-    found = any(
-        b.hover_text_at(w * fx, h * fy)
-        for fx in (0.4, 0.5, 0.6)
-        for fy in (0.4, 0.5, 0.6)
-    )
-    assert found
+    # and a real pick at a known cell's on-screen centre reads that cell
+    from src.ui.graph_gpu import BX, BY
+
+    r, c = 3, 4
+    g = b.surface._zgrid
+    rows, cols = data["values"].shape
+    zc = (g[r, c] + g[r + 1, c + 1]) / 2  # on the quad's split diagonal
+    world = np.array([(c + 0.5) / cols * BX, (r + 0.5) / rows * BY, zc, 1.0])
+    cam = b.camera
+    ndc = np.asarray(cam.projection_matrix) @ np.asarray(cam.view_matrix) @ world
+    ndc = ndc[:3] / ndc[3]
+    w, h = b._logical_size()
+    x, y = (ndc[0] + 1) / 2 * w, (1 - ndc[1]) / 2 * h
+    text = b.hover_text_at(x, y)
+    assert format_tick(data["values"][r, c]) in text, (x, y, text)
 
 
 # ---------------------------------------------------------------------------
