@@ -153,6 +153,19 @@ def _settle(qtbot, win, ms=150):
         b.widget.force_draw()
 
 
+def _layout(qtbot, win, graph_w, height):
+    """Give the graph pane exactly ``graph_w`` px next to an unsqueezed table.
+
+    Don't rely on the window's own sizing: headless CI screens are small
+    (800 px), so opening the graph caps the window and squeezes the table pane,
+    and Qt then restores a squeezed pane before stretching the other one.
+    """
+    table_w = max(win.splitter.widget(0).sizeHint().width(), win.splitter.sizes()[0])
+    win.resize(table_w + win.splitter.handleWidth() + graph_w, height)
+    win.splitter.setSizes([table_w, graph_w])
+    qtbot.wait(200)
+
+
 def _select(win, cells):
     tw = win.viewer.table_widget
     tw.clearSelection()
@@ -459,11 +472,7 @@ class TestSizing:
         self, qtbot, engine, isolated_settings
     ):
         win = _open(qtbot, _table_3d(), _data_3d(), engine)
-        qtbot.wait(100)
-        t0, g0 = win.splitter.sizes()
-        w0 = win.width()
-        win.resize(w0 - 150, win.height())  # shrink first: room to grow on-screen
-        qtbot.wait(200)
+        _layout(qtbot, win, 400, 520)
         t0, g0 = win.splitter.sizes()
         w0 = win.width()
         win.resize(w0 + 120, win.height())
@@ -476,11 +485,14 @@ class TestSizing:
 
     def test_pane_width_persists(self, qtbot, engine, isolated_settings):
         win = _open(qtbot, _table_3d(), _data_3d(), engine)
-        t, g = win.splitter.sizes()
-        win.splitter.setSizes([t, 480])
-        win.resize(t + 480 + win.splitter.handleWidth(), win.height())
-        qtbot.wait(100)
+        _layout(qtbot, win, 480, win.height())
         width = win.graph_widget.width()
+        needed = win._table_only_size.width() + win.splitter.handleWidth() + width
+        cap = QApplication.primaryScreen().availableGeometry().width() * 0.95
+        if needed > cap:
+            pytest.skip(
+                f"screen too small to re-show a {width}px pane ({needed} > {cap:.0f})"
+            )
         win._toggle_graph()  # hiding the graph persists the pane width
         qtbot.wait(100)
         assert isolated_settings.get_graph_pane_width() == width
@@ -521,9 +533,8 @@ def test_fit_to_pane_no_clipping(qtbot, engine, isolated_settings, kind, size):
     )
     win = _open(qtbot, table, data, engine)
     b = win.graph_widget.backend
-    t, _ = win.splitter.sizes()
-    win.resize(t + size[0] + win.splitter.handleWidth(), size[1] + 60)
-    qtbot.wait(300)
+    _layout(qtbot, win, size[0], size[1] + 60)
+    qtbot.wait(100)
     img = _frame(b)
     h, w = img.shape[:2]
     # Background = the stage gradient: per row, the median of the outer columns.
@@ -541,8 +552,10 @@ def test_fit_to_pane_no_clipping(qtbot, engine, isolated_settings, kind, size):
     )
     assert edge.mean() < 0.002, f"plot touches the edge ({edge.mean():.4f})"
     ys, xs = np.nonzero(content)
-    bbox = (xs.max() - xs.min()) * (ys.max() - ys.min()) / (w * h)
-    assert bbox >= 0.35, f"plot too small in pane ({bbox:.2f})"
+    # A fitted plot fills its LIMITING dimension (width in a tall pane, height
+    # in a wide one); area share alone is naturally small at extreme aspects.
+    fill = max((xs.max() - xs.min()) / w, (ys.max() - ys.min()) / h)
+    assert fill >= 0.7, f"plot too small in pane ({fill:.2f} of limiting side)"
 
 
 # ---------------------------------------------------------------------------
@@ -629,7 +642,9 @@ def test_hover_face_maps_to_cell(qtbot, engine, isolated_settings):
         pytest.skip("hover readout is a GPU-engine feature")
     data = _data_3d()
     win = _open(qtbot, _table_3d(), data, engine)
+    _layout(qtbot, win, 500, 520)
     b = win.graph_widget.backend
+    b.widget.force_draw()
     for face in (0, 1, 2 * (3 * COLS + 4), 2 * (ROWS * COLS) - 1):
         r, c = b.surface.cell_at_face(face)
         from src.ui.graph_model import format_tick, hover_text
