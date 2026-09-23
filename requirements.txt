@@ -3,7 +3,14 @@ PySide6>=6.10.0,<7.0.0
 
 # Data manipulation and visualization
 numpy>=2.2.0,<3.0.0
+# Classic graph renderer: fallback when no GPU adapter is available
 matplotlib>=3.10.0,<4.0.0
+# GPU graph renderer (WebGPU). Exact pins: pre-1.0 APIs churn between releases.
+# wgpu 0.32 needs Python >= 3.11; an older interpreter (e.g. an existing 3.10
+# venv) skips them and the graph falls back to the classic renderer.
+pygfx==0.17.0; python_version >= "3.11"
+wgpu==0.32.0; python_version >= "3.11"
+rendercanvas==2.7.2; python_version >= "3.11"
 
 # XML parsing for ROM definitions
 lxml>=6.0.0,<7.0.0

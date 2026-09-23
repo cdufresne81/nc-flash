@@ -129,8 +129,10 @@ PASS criteria:
   set. Re-read with `--read-dtc` to confirm.
 
 This tool reserves the CAN bus too (`[BUS] Reserving...` / `[BUS] Bus
-released`). `tools/wican_bus_sniff.py` deliberately does NOT — it is a passive
-listener, and parking the datalogger would silence the traffic it exists to see.
+released`). So does `tools/wican_bus_sniff.py`, counter-intuitively for a
+listener: on the coexistence port frames only reach a client through the
+firmware's RX-forward, which runs while the host holds the bus — an unreserved
+sniff sees silence on a healthy bus.
 
 ## 4. Teardown
 

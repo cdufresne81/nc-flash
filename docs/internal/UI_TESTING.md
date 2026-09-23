@@ -86,9 +86,9 @@ Test scripts are plain text files with one command per line. Comments start with
 #### Graph Operations
 | Command | Description |
 |---------|-------------|
-| `open_graph` | Show graph panel |
+| `open_graph` | Show graph panel (waits until the renderer exists; logs the engine: `gpu` or `classic`) |
 | `close_graph` | Hide graph panel |
-| `rotate_graph <elev> <azim>` | Set 3D view angle (elevation 0-90, azimuth 0-360) |
+| `rotate_graph <elev> <azim>` | Set 3D view angle via `GraphWidget.set_view` (elevation 0-90, azimuth 0-360), works on both engines |
 
 #### Undo/Redo
 | Command | Description |
@@ -111,6 +111,7 @@ Test scripts are plain text files with one command per line. Comments start with
 | `store_width` | Store current window width |
 | `assert_width <px> [tolerance]` | Assert window width |
 | `assert_width_restored [tolerance]` | Assert width matches stored |
+| `resize_window <w> <h>` | Resize current table window (like dragging a corner) |
 
 ### Example Script
 
@@ -177,3 +178,14 @@ for script in tests/gui/test_*.txt; do
     python tools/test_runner.py --script "$script"
 done
 ```
+
+
+## Graph engine before/after baseline
+
+`tests/gui/test_graph_baseline.txt` is the visual regression script for the table
+graph (3D default/selection/edit/undo/rotation/resizes, small map, 2D). Run it
+before and after any graph change, move the outputs into
+`docs/screenshots/graph_before/` and `graph_after/`, then build side-by-side
+sheets with `python tools/graph_eval/compare_sheet.py`
+(`docs/screenshots/graph_compare_NN.png`). Force the classic renderer with
+`NCFLASH_GRAPH_ENGINE=classic`.

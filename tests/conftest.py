@@ -98,3 +98,16 @@ def _isolate_wican_sidecars(tmp_path_factory, monkeypatch):
     sidecars = tmp_path_factory.mktemp("wican_sidecars")
     monkeypatch.setattr(mod, "_sidecar_dir", lambda: str(sidecars))
     monkeypatch.setattr(mod.tempfile, "gettempdir", lambda: str(sidecars))
+
+
+@pytest.fixture
+def isolated_settings(tmp_path, monkeypatch):
+    """Point get_settings() at a throwaway INI file (never the user's registry)."""
+    from PySide6.QtCore import QSettings
+
+    import src.utils.settings as settings_mod
+
+    s = settings_mod.AppSettings()
+    s.settings = QSettings(str(tmp_path / "settings.ini"), QSettings.IniFormat)
+    monkeypatch.setattr(settings_mod, "_settings", s)
+    return s
