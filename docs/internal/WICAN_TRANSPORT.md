@@ -177,16 +177,25 @@ is unchanged; active transport always visible during a flash.
 
 ## 8b. Device protocol mode (slcan switch)
 
-The WiCAN's active CAN protocol is a **persisted device setting** (`protocol` in its
-`config.json`), not a per-connection option — raw SLCAN only flows when `protocol == "slcan"`.
-The user runs a **custom firmware fork**, where the stock value is a custom `poll_log` mode
-(slcan itself is currently left stock-equivalent).
+> **Superseded.** The protocol-switch design described in this section was
+> REMOVED (issue #99). The firmware fork now has exactly one mode and one CAN
+> socket — the always-on SLCAN listener on `WICAN_DEDICATED_SLCAN_PORT` — so the
+> host never reads, writes or restores the device's `protocol` setting, and there
+> is no reboot on connect. `WiCANConfigurator` is read-only (`/host_caps`, plus
+> `/load_config` for bench diagnostics). The historical description is kept below
+> because the wire evidence in the validation bullet is still the reference for
+> the transport itself.
 
-- **Now:** `src/ecu/wican_config.py` `WiCANConfigurator` does a **targeted** HTTP read-modify-write
-  (`GET /load_config` → change *only* the top-level `protocol` token, preserving every other
-  field incl. plaintext WiFi/MQTT passwords → `POST /store_config` → device reboots ~6 s →
-  verify) to switch to `slcan` on connect and **restore** the previous mode on disconnect.
-  Proven against the real device (2026-06-20): `poll_log → slcan → poll_log`, ~6 s reboot.
+The WiCAN's active CAN protocol WAS a **persisted device setting** (`protocol` in its
+`config.json`), not a per-connection option — raw SLCAN only flowed when `protocol == "slcan"`.
+The user runs a **custom firmware fork**, where the stock value was a custom `poll_log` mode.
+
+- **Historical:** `src/ecu/wican_config.py` `WiCANConfigurator` did a **targeted** HTTP
+  read-modify-write (`GET /load_config` → change *only* the top-level `protocol` token,
+  preserving every other field incl. plaintext WiFi/MQTT passwords → `POST /store_config` →
+  device reboots ~6 s → verify) to switch to `slcan` on connect and **restore** the previous
+  mode on disconnect. Proven against the real device (2026-06-20): `poll_log → slcan →
+  poll_log`, ~6 s reboot. All of this is gone; nothing in the host writes device config.
 - **Real-hardware validation (2026-06-20, live MX-5 NC ECU on `192.168.1.169:35000`):**
   full stack proven end-to-end. TCP + `C/S6/O` handshake accepted; **"monitoring" not required to
   open the socket**; port **35000**; ~55 ms TesterPresent round-trip (25/25, 0% loss). The

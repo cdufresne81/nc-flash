@@ -374,8 +374,6 @@ class ECUProgrammingWindow(QMainWindow):
             return {
                 "kind": "wican",
                 "host": self._resolve_wican_host(s),
-                "port": s.get_wican_port(),
-                "auto_config": s.get_wican_auto_config(),
             }
         return {"kind": "j2534", "dll_path": self._get_dll_path()}
 
@@ -422,8 +420,8 @@ class ECUProgrammingWindow(QMainWindow):
         """Show a connect-step message on the connection label."""
         self._conn_label.setText(message)
         # The WiCAN connect runs synchronously on the UI thread; pump once so the
-        # step message (incl. the ~6 s SLCAN-reboot notice) paints before the
-        # blocking switch/open call rather than after it returns.
+        # step message paints before the blocking open call rather than after it
+        # returns.
         QApplication.processEvents()
 
     def _on_connect(self):
@@ -440,7 +438,7 @@ class ECUProgrammingWindow(QMainWindow):
 
         adapter = self._build_adapter_config()
         if adapter["kind"] == "wican":
-            connecting_msg = "Connecting to WiCAN (may reboot to SLCAN, ~6s)..."
+            connecting_msg = "Connecting to WiCAN..."
         else:
             connecting_msg = "Connecting..."
         self._conn_label.setText(connecting_msg)

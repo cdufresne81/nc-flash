@@ -62,28 +62,23 @@ class TestWiCANSettings:
     def test_default_host(self, app_settings):
         assert app_settings.get_wican_host() == "192.168.1.169"
 
-    def test_default_port(self, app_settings):
-        assert app_settings.get_wican_port() == 35000
-
-    def test_default_auto_config_on(self, app_settings):
-        assert app_settings.get_wican_auto_config() is True
-
     def test_host_round_trip(self, app_settings):
         app_settings.set_wican_host("10.0.0.5")
         assert app_settings.get_wican_host() == "10.0.0.5"
 
-    def test_port_round_trip(self, app_settings):
-        app_settings.set_wican_port(3333)
-        assert app_settings.get_wican_port() == 3333
-
-    def test_port_is_int(self, app_settings):
-        app_settings.set_wican_port("4444")
-        value = app_settings.get_wican_port()
-        assert value == 4444 and isinstance(value, int)
-
-    def test_auto_config_round_trip(self, app_settings):
-        app_settings.set_wican_auto_config(False)
-        assert app_settings.get_wican_auto_config() is False
+    def test_no_configurable_port_or_auto_config(self, app_settings):
+        """The firmware has one mode on one fixed port, so neither setting can
+        mean anything any more. `auto_config` is the dangerous one: it used to
+        gate the ONLY working connect path, so a user who read its help text and
+        turned it off lost all ECU connectivity. Pinned negatively so a revert
+        cannot quietly reintroduce a setting nothing honours."""
+        for attr in (
+            "get_wican_port",
+            "set_wican_port",
+            "get_wican_auto_config",
+            "set_wican_auto_config",
+        ):
+            assert not hasattr(app_settings, attr), f"{attr} came back"
 
     def test_default_device_id_empty(self, app_settings):
         assert app_settings.get_wican_device_id() == ""

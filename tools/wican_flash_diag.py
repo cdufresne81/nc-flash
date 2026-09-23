@@ -36,10 +36,13 @@ This tool is now read-only bench instrumentation (probe / SBL send / frame tap).
 Usage
 -----
   # Diagnostic (safe, pre-erase) — capture the ECU's Flow Control + drop point:
-  python tools/wican_flash_diag.py --rom <rom.bin> --auto-config
+  python tools/wican_flash_diag.py --rom <rom.bin>
 
   # Send the full 6-block SBL (still pre-erase) for a fuller picture:
-  python tools/wican_flash_diag.py --rom <rom.bin> --auto-config --sbl-blocks 6
+  python tools/wican_flash_diag.py --rom <rom.bin> --sbl-blocks 6
+
+The run RESERVES the CAN bus (parks the datalogger, resumes it on exit); without
+that the datalogger eats the ECU's UDS replies and a healthy ECU looks bricked.
 
 (``--commit`` is retired — see Safety above. To actually flash over WiCAN, use
 the app's SD-staged path or the wican_sd_* bench tools.)
@@ -69,7 +72,8 @@ from src.ecu.exceptions import ECUError, SecureModuleNotAvailable  # noqa: E402
 from src.ecu.flash_manager import FlashManager  # noqa: E402
 from src.ecu.protocol import UDSConnection  # noqa: E402
 from src.ecu.rom_utils import detect_vehicle_generation  # noqa: E402
-from src.ecu.wican_config import WiCANConfigError, WiCANConfigurator  # noqa: E402
+from src.ecu.constants import WICAN_DEDICATED_SLCAN_PORT  # noqa: E402
+from src.ecu.wican_config import WiCANDatalogClient  # noqa: E402
 from src.ecu.wican_transport import WiCANError, WiCANTransport  # noqa: E402
 
 try:
@@ -300,7 +304,12 @@ def parse_args(argv):
         epilog=__doc__,
     )
     p.add_argument("--host", default="192.168.1.169")
-    p.add_argument("--port", type=int, default=35000)
+    p.add_argument(
+        "--port",
+        type=int,
+        default=WICAN_DEDICATED_SLCAN_PORT,
+        help="SLCAN TCP port (the firmware's fixed coexistence port).",
+    )
     p.add_argument("--tx-id", type=lambda x: int(x, 0), default=CAN_REQUEST_ID)
     p.add_argument("--rx-id", type=lambda x: int(x, 0), default=CAN_RESPONSE_ID)
     p.add_argument(
@@ -332,8 +341,6 @@ def parse_args(argv):
         help="Outbound CF pacing floor (ms) for our TransferData burst. Omit to use "
         "the WiCAN default (DEFAULT_TX_STMIN). 0 = no pacing (reproduce the failure).",
     )
-    p.add_argument("--auto-config", action="store_true", help="HTTP-switch to slcan.")
-    p.add_argument("--http-port", type=int, default=80)
     p.add_argument("-v", "--verbose", action="store_true")
     return p.parse_args(argv)
 
@@ -403,20 +410,14 @@ def main(argv) -> int:
     )
     print("=" * 70)
 
-    if args.auto_config:
-        configurator = WiCANConfigurator(args.host, http_port=args.http_port)
-        try:
-            print(f"\n[AUTO-CONFIG] Switching {args.host} -> slcan ...")
-            with configurator.slcan_session() as previous:
-                print(f"[AUTO-CONFIG] Device in slcan (was {previous!r}).")
-                rc = _open_and_run(args)
-            if previous != "slcan":
-                print(f"[AUTO-CONFIG] Restored to {previous!r}.")
-            return rc
-        except WiCANConfigError as exc:
-            print(f"[AUTO-CONFIG] FAILED: {exc}")
-            return 6
-    return _open_and_run(args)
+    # Reserve the CAN bus for the whole run: on the coexistence port the
+    # datalogger is the sole TWAI consumer and eats the ECU's UDS replies.
+    # Soft-degrading — a device with no /datalog endpoint just carries on.
+    print(f"\n[BUS] Reserving the CAN bus on {args.host} (parks the datalogger) ...")
+    with WiCANDatalogClient(args.host).reserved():
+        rc = _open_and_run(args)
+    print("[BUS] Bus released; the datalogger resumes.")
+    return rc
 
 
 if __name__ == "__main__":

@@ -101,7 +101,11 @@ def check_version(host: str) -> bool:
     )
     t = WiCANTransport(host, WICAN_DEDICATED_SLCAN_PORT)
     try:
-        t.open()
+        # Socket only: a full open() would send the SLCAN `C` (which DISABLES
+        # the shared CAN peripheral) and inject a prime TesterPresent. This
+        # check is a version ping, so it must leave a running datalog trip and
+        # the bus exactly as it found them.
+        t.open_socket_only()
     except Exception as exc:  # noqa: BLE001
         return _ok(
             "connect 35001",

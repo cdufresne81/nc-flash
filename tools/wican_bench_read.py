@@ -17,29 +17,29 @@ to:
                    step 5). This phase authenticates (seed/key) and therefore
                    requires the private _secure module the app already uses.
 
-  PREREQUISITES on the WiCAN PRO (from wican-fw #476 — do these in the web UI):
-    * Protocol = "slcan", CAN bitrate = 500K (S6), wifi = AP.
-    * ENABLE "monitoring" — the socket passes NO frames until it is on.
-    * Note the SLCAN TCP port (general socket 3333, but the PRO is often 23) and
-      pass it with --port. Read it off the device; do not assume.
+  PREREQUISITES: the WiCAN runs NC Flash firmware (its fixed coexistence SLCAN
+  port is always open — nothing to configure in the web UI) and the ignition is
+  ON. The run RESERVES the CAN bus, which parks the datalogger and resumes it on
+  exit; without that reservation the datalogger eats the ECU's UDS replies and a
+  perfectly healthy ECU looks bricked.
 
   USAGE:
     # Fast link check only (seconds, no security module needed):
-    python tools/wican_bench_read.py --host 192.168.0.10 --port 3333 --smoke-only
+    python tools/wican_bench_read.py --host 192.168.1.169 --smoke-only
 
     # Full read + save, then prove byte-perfect against a J2534 dump:
-    python tools/wican_bench_read.py --host 192.168.0.10 --port 3333 \\
+    python tools/wican_bench_read.py --host 192.168.1.169 \\
         --out wican_read.bin --reference j2534_dump.bin
 
   READ-SPEED SWEEP (Phase 0 instrumentation — non-destructive, idempotent):
     # Does the ECU honour read sizes > 0x400? (probe 0x400/0x800/0xFFE)
-    python tools/wican_bench_read.py --host 192.168.0.10 --port 35000 --probe
+    python tools/wican_bench_read.py --host 192.168.1.169 --probe
 
     # Time 64 blocks under different pacing to find the per-block floor:
     #   STmin sweep (shot A):   --rx-stmin 2     (try 3, 2, 1, 0xF5)
     #   BS-paced bursting (B):  --rx-stmin 0 --rx-block-size 15
     #   bigger blocks:          --block-size 0xFFE   (after --probe confirms it)
-    python tools/wican_bench_read.py --host 192.168.0.10 --port 35000 \\
+    python tools/wican_bench_read.py --host 192.168.1.169 \\
         --bench-blocks 64 --rx-stmin 2 --block-size 0x400
 
 This script is non-destructive (it only READS the ECU). It never flashes.
@@ -72,9 +72,9 @@ from src.ecu.exceptions import (  # noqa: E402
 )
 from src.ecu.flash_manager import FlashManager  # noqa: E402
 from src.ecu.protocol import UDSConnection  # noqa: E402
+from src.ecu.constants import WICAN_DEDICATED_SLCAN_PORT  # noqa: E402
 from src.ecu.wican_config import (  # noqa: E402
-    WiCANConfigError,
-    WiCANConfigurator,
+    WiCANDatalogClient,
 )
 from src.ecu.wican_transport import (  # noqa: E402
     DEFAULT_N_CR_MS,
@@ -440,14 +440,12 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=__doc__,
     )
-    p.add_argument(
-        "--host", default="192.168.0.10", help="WiCAN IP (PRO AP default 192.168.0.10)"
-    )
+    p.add_argument("--host", default="192.168.1.169", help="WiCAN IP")
     p.add_argument(
         "--port",
         type=int,
-        default=3333,
-        help="SLCAN TCP port — read it off the device (PRO is often 23, general 3333)",
+        default=WICAN_DEDICATED_SLCAN_PORT,
+        help="SLCAN TCP port (the firmware's fixed coexistence port).",
     )
     p.add_argument(
         "--tx-id",
@@ -585,21 +583,6 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     p.add_argument(
         "--connect-timeout-ms", type=int, default=5000, help="TCP connect timeout"
     )
-    p.add_argument(
-        "--auto-config",
-        action="store_true",
-        help=(
-            "Before opening the link, switch the WiCAN's HTTP-config protocol to "
-            "'slcan' (required to pass CAN traffic), and restore your previous "
-            "protocol afterwards. OFF by default."
-        ),
-    )
-    p.add_argument(
-        "--http-port",
-        type=int,
-        default=80,
-        help="WiCAN web/HTTP-config port for --auto-config (default 80)",
-    )
     p.add_argument("-v", "--verbose", action="store_true", help="Debug logging")
     return p.parse_args(argv)
 
@@ -629,60 +612,27 @@ def main(argv: list[str]) -> int:
         f"read_size=0x{args.block_size:X} n_cr_ms={args.n_cr_ms} "
         f"tcp_nodelay={not args.no_tcp_nodelay} so_rcvbuf={args.so_rcvbuf}"
     )
-    print("  REMINDER: enable 'monitoring' + set S6/500K + the right port in the")
-    print("            WiCAN web UI, and keep the ignition ON.")
+    print("  REMINDER: keep the ignition ON.")
     print("=" * 70)
 
-    # Opt-in: flip the device's HTTP-config protocol to 'slcan' before we open
-    # the socket (the firmware passes NO CAN traffic otherwise) via a durable
-    # session context manager that ALWAYS restores the user's previous protocol
-    # on exit — even on a link-open failure, a read error, or Ctrl-C — and
-    # survives a hard kill mid-session via its crash-recovery sidecar.
-    if args.auto_config:
-        configurator = WiCANConfigurator(args.host, http_port=args.http_port)
-        try:
-            print(
-                f"\n[AUTO-CONFIG] Switching {args.host} HTTP protocol -> slcan "
-                f"(was: querying)..."
-            )
-            if configurator.read_recovery() is not None:
-                print(
-                    "[AUTO-CONFIG] Found a stranded recovery file from a prior "
-                    "interrupted run — the TRUE original protocol will be restored "
-                    "on exit, not the current slcan value."
-                )
-            with configurator.slcan_session() as previous_protocol:
-                print(
-                    f"[AUTO-CONFIG] Device now in slcan mode "
-                    f"(previous protocol: {previous_protocol!r})."
-                )
-                if previous_protocol != "slcan":
-                    print(
-                        f"[AUTO-CONFIG] Previous protocol {previous_protocol!r} "
-                        f"will be restored on exit."
-                    )
-                rc = _run_link(args)
-            # The context manager's finally has now restored + cleared recovery.
-            if previous_protocol != "slcan":
-                print(f"[AUTO-CONFIG] Device restored to {previous_protocol!r}.")
-            return rc
-        except WiCANConfigError as exc:
-            print(f"[AUTO-CONFIG] FAILED: {exc}")
-            print(
-                "       Check the --http-port and that the WiCAN web UI is reachable, "
-                "or drop --auto-config and set 'slcan' manually. If a recovery file "
-                "was left behind, the next --auto-config run will restore it."
-            )
-            return 6
-
-    return _run_link(args)
+    # Reserve the CAN bus for the whole run. On the coexistence port the
+    # datalogger is the sole TWAI consumer and EATS the ECU's UDS replies, so the
+    # smoke test and the read below would time out and a healthy ECU would look
+    # bricked. Released in the finally so the datalogger resumes on a read error
+    # or Ctrl-C; the firmware dead-man reaper covers a hard kill. Soft-degrading:
+    # a device with no /datalog endpoint just carries on.
+    print(f"\n[BUS] Reserving the CAN bus on {args.host} (parks the datalogger) ...")
+    with WiCANDatalogClient(args.host).reserved():
+        rc = _run_link(args)
+    print("[BUS] Bus released; the datalogger resumes.")
+    return rc
 
 
 def _run_link(args: argparse.Namespace) -> int:
     """Open the transport and run the smoke test + optional full read.
 
-    Returns the process exit code. The caller is responsible for any protocol
-    auto-config restore (handled by ``slcan_session`` around this call).
+    Returns the process exit code. The caller owns the CAN-bus reservation
+    around this call.
     """
     transport = WiCANTransport(
         args.host,
@@ -704,8 +654,8 @@ def _run_link(args: argparse.Namespace) -> int:
     except WiCANError as exc:
         print(f"[LINK] FAILED to open: {exc}")
         print(
-            "       Check: WiCAN reachable on the network, correct --port, "
-            "'monitoring' enabled, bitrate S6/500K."
+            "       Check: WiCAN reachable on this network, powered, and running "
+            "NC Flash firmware (its SLCAN port is always open)."
         )
         return 2
 

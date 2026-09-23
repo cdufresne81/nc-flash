@@ -17,15 +17,17 @@ Hardware-confirm vehicle for **Part A** of the WiCAN ECU-functions goal
     --clear-dtc   Read -> clear -> re-read DTCs to prove the clear took.
                   *** MUTATES ECU STATE *** — requires --yes to proceed.
 
-  PREREQUISITES on the WiCAN PRO (web UI): protocol "slcan", bitrate 500K
-  (S6), "monitoring" enabled, ignition ON. Or pass --auto-config to flip the
-  device to slcan over HTTP and restore your previous protocol on exit.
+  PREREQUISITES: the WiCAN runs NC Flash firmware (its fixed coexistence SLCAN
+  port is always open — nothing to configure) and the ignition is ON. This tool
+  RESERVES the CAN bus for the duration of the run, which parks the datalogger
+  and resumes it on exit; without that reservation the datalogger eats the ECU's
+  UDS replies and a healthy ECU looks bricked.
 
   USAGE:
-    python tools/wican_bench_ecu.py --host 192.168.1.169 --port 35000 --read-dtc
-    python tools/wican_bench_ecu.py --host 192.168.1.169 --port 35000 --scan-ram \\
+    python tools/wican_bench_ecu.py --host 192.168.1.169 --read-dtc
+    python tools/wican_bench_ecu.py --host 192.168.1.169 --scan-ram \\
         --out wican_ram.bin
-    python tools/wican_bench_ecu.py --host 192.168.1.169 --port 35000 --clear-dtc --yes
+    python tools/wican_bench_ecu.py --host 192.168.1.169 --clear-dtc --yes
 
   READ RAM and READ DTC are non-destructive (idempotent reads). CLEAR DTC
   erases stored trouble codes — a standard, benign diagnostic write, but a
@@ -55,9 +57,9 @@ from src.ecu.exceptions import (  # noqa: E402
 )
 from src.ecu.flash_manager import FlashManager  # noqa: E402
 from src.ecu.protocol import UDSConnection  # noqa: E402
+from src.ecu.constants import WICAN_DEDICATED_SLCAN_PORT  # noqa: E402
 from src.ecu.wican_config import (  # noqa: E402
-    WiCANConfigError,
-    WiCANConfigurator,
+    WiCANDatalogClient,
 )
 from src.ecu.wican_transport import (  # noqa: E402
     WiCANError,
@@ -246,7 +248,10 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     )
     p.add_argument("--host", default="192.168.1.169", help="WiCAN IP")
     p.add_argument(
-        "--port", type=int, default=35000, help="SLCAN TCP port (PRO often 35000)"
+        "--port",
+        type=int,
+        default=WICAN_DEDICATED_SLCAN_PORT,
+        help="SLCAN TCP port (the firmware's fixed coexistence port).",
     )
     p.add_argument(
         "--tx-id",
@@ -282,20 +287,6 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     p.add_argument(
         "--connect-timeout-ms", type=int, default=5000, help="TCP connect timeout"
     )
-    p.add_argument(
-        "--auto-config",
-        action="store_true",
-        help=(
-            "Flip the WiCAN HTTP-config protocol to 'slcan' before opening the link "
-            "and restore your previous protocol afterwards. OFF by default."
-        ),
-    )
-    p.add_argument(
-        "--http-port",
-        type=int,
-        default=80,
-        help="WiCAN web/HTTP-config port for --auto-config (default 80)",
-    )
     p.add_argument("-v", "--verbose", action="store_true", help="Debug logging")
     return p.parse_args(argv)
 
@@ -321,27 +312,18 @@ def main(argv: list[str]) -> int:
         f"  target: {args.host}:{args.port}  tx=0x{args.tx_id:03X} rx=0x{args.rx_id:03X}"
     )
     print(f"  mode:   {mode}")
-    print("  REMINDER: 'monitoring' + S6/500K + right port in the WiCAN web UI,")
-    print("            ignition ON.")
+    print("  REMINDER: ignition ON.")
     print("=" * 70)
 
-    if args.auto_config:
-        configurator = WiCANConfigurator(args.host, http_port=args.http_port)
-        try:
-            print(f"\n[AUTO-CONFIG] Switching {args.host} HTTP protocol -> slcan ...")
-            with configurator.slcan_session() as previous_protocol:
-                print(
-                    f"[AUTO-CONFIG] Device in slcan mode (was {previous_protocol!r})."
-                )
-                rc = _run(args)
-            if previous_protocol != "slcan":
-                print(f"[AUTO-CONFIG] Device restored to {previous_protocol!r}.")
-            return rc
-        except WiCANConfigError as exc:
-            print(f"[AUTO-CONFIG] FAILED: {exc}")
-            return 6
-
-    return _run(args)
+    # Reserve the CAN bus for the whole run. On the coexistence port the
+    # datalogger is the sole TWAI consumer and EATS the ECU's UDS replies, so
+    # every request below would time out and a healthy ECU would look bricked.
+    # Soft-degrading: a device with no /datalog endpoint just carries on.
+    print(f"\n[BUS] Reserving the CAN bus on {args.host} (parks the datalogger) ...")
+    with WiCANDatalogClient(args.host).reserved():
+        rc = _run(args)
+    print("[BUS] Bus released; the datalogger resumes.")
+    return rc
 
 
 def _run(args: argparse.Namespace) -> int:
@@ -361,8 +343,8 @@ def _run(args: argparse.Namespace) -> int:
     except WiCANError as exc:
         print(f"[LINK] FAILED to open: {exc}")
         print(
-            "       Check: WiCAN reachable, correct --port, 'monitoring' enabled, "
-            "bitrate S6/500K."
+            "       Check: WiCAN reachable on this network, powered, and running "
+            "NC Flash firmware (its SLCAN port is always open)."
         )
         return 2
 

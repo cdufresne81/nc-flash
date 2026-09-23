@@ -14,11 +14,11 @@ Two adapters share this one seam (the rest of the app is transport-agnostic):
 
   * **J2534** (default, wired) — opens a ``J2534Device``/ISO-TP channel. This
     path is byte-for-byte unchanged from the original implementation.
-  * **WiCAN** (opt-in, wireless) — opens a ``WiCANTransport`` over SLCAN/TCP.
-    If auto-config is on, the device's HTTP ``protocol`` is switched to
-    ``slcan`` on the FIRST connect (a ~6 s reboot) and restored only on an
-    explicit disconnect / app exit — NOT on the internal auto-reconnect after a
-    read — so a single session never reboots the adapter more than once.
+  * **WiCAN** (opt-in, wireless) — opens a ``WiCANTransport`` over SLCAN/TCP
+    on the adapter's fixed coexistence port
+    (``WICAN_DEDICATED_SLCAN_PORT``). The firmware has one mode and one CAN
+    socket, so the host never reconfigures or reboots the adapter; it reserves
+    the CAN bus from the datalogger for the life of the session instead.
 """
 
 import logging
@@ -34,29 +34,12 @@ logger = logging.getLogger(__name__)
 
 #: Longer window for the ONE version-ping retry when the coexistence port
 #: accepted the connection but stayed silent. A busy device or a lossy WiFi link
-#: can eat the first window; a retry is far cheaper than wrongly concluding "old
-#: firmware" and rebooting the adapter out of its datalogging mode (#92).
+#: can eat the first window; a retry is far cheaper than wrongly telling the user
+#: their firmware is wrong when their WiFi simply dropped a packet.
 _COEXIST_PROBE_RETRY_MS = 3000
 
 
-class ProbeVerdict(Enum):
-    """What the coexistence-port probe actually established.
-
-    The distinction that matters is CONCLUSIVE vs not: only conclusive evidence
-    of pre-coexistence firmware may authorise writing the device's stored mode.
-    """
-
-    #: Coexistence firmware confirmed; use the dedicated port, no reboot.
-    COEXIST = "coexist"
-    #: Conclusively pre-coexistence: the port was refused, or a real NCFRv
-    #: marker came back below the threshold. The legacy mode write is correct.
-    OLD_FIRMWARE = "old_firmware"
-    #: Proved nothing (timeout, reset, silence, unexpected error). Must NOT
-    #: authorise a mode write.
-    INCONCLUSIVE = "inconclusive"
-
-
-def _is_connection_refused(exc: BaseException) -> bool:
+def is_connection_refused(exc: BaseException) -> bool:
     """True when ``exc`` was ultimately caused by a refused TCP connect.
 
     The transport wraps socket errors (``raise WiCANError(...) from exc``), so
@@ -119,8 +102,6 @@ class ECUSession(QObject):
         self._adapter_kind = "wican" if cfg.get("kind") == "wican" else "j2534"
         self._dll_path = cfg.get("dll_path") or dll_path
         self._wican_host = cfg.get("host")
-        self._wican_port = cfg.get("port")
-        self._wican_auto_config = bool(cfg.get("auto_config", True))
 
         self._state = ECUSessionState.DISCONNECTED
         self._device = None
@@ -130,9 +111,6 @@ class ECUSession(QObject):
 
         # WiCAN-only state
         self._transport = None
-        self._configurator = None
-        self._slcan_prev_protocol = None  # original protocol to restore to
-        self._slcan_switched = False  # True once we've switched this session
         # No-reboot coexistence (#36): the WHOLE-session bus reservation. On the
         # dedicated coexist port the datalogger owns the single CAN bus and eats the
         # ECU's UDS replies until the host reserves it, so we hold a refcounted
@@ -155,16 +133,6 @@ class ECUSession(QObject):
     @property
     def is_connected(self) -> bool:
         return self._state in (ECUSessionState.CONNECTED, ECUSessionState.BUSY)
-
-    @property
-    def wican_host(self):
-        """Address of the WiCAN adapter this session drives (``None`` for J2534).
-
-        Public so callers can tell whether a given adapter is already in use --
-        the start-up strand sweep needs it to avoid rebooting a device this app
-        is talking to.
-        """
-        return self._wican_host if self._adapter_kind == "wican" else None
 
     @property
     def device(self):
@@ -213,8 +181,8 @@ class ECUSession(QObject):
             self._set_state(ECUSessionState.CONNECTED)
         except Exception as e:
             logger.error("ECU session connect failed: %s", e)
-            # Restore the WiCAN protocol if we switched it before failing.
-            self._teardown(restore_protocol=True)
+            # Release any bus reservation taken before the failure.
+            self._teardown()
             self._set_state(ECUSessionState.DISCONNECTED)
             self.connection_lost.emit(f"Connect failed: {e}")
 
@@ -245,113 +213,70 @@ class ECUSession(QObject):
         logger.info("ECU session established (J2534)")
 
     def _connect_wican(self):
-        """Open the WiCAN link, verify ECU.
+        """Open the WiCAN link on the dedicated SLCAN port, verify ECU.
 
-        Prefers the **no-reboot dedicated SLCAN port** when the adapter runs
-        coexistence firmware (capability-probed via ``version_ping``): that path
-        skips the ``WiCANConfigurator`` protocol switch entirely (no ~6 s reboot)
-        and leaves the datalogger undisturbed. Against stock/old firmware the
-        probe fails and we fall back to the proven reboot-switch path — strictly
-        non-breaking.
+        The firmware fork has exactly one mode and one CAN socket: the always-on
+        coexistence SLCAN listener on ``WICAN_DEDICATED_SLCAN_PORT``. There is no
+        protocol to switch, no reboot, and no user-chosen port — a device that
+        does not answer there is running old or stock firmware and is reported as
+        such rather than reconfigured.
         """
         from .protocol import UDSConnection
-        from .transport import create_ecu_transport
-        from .wican_config import WiCANConfigurator, WiCANDatalogClient
+        from .wican_config import WiCANDatalogClient
 
-        if not self._wican_host or not self._wican_port:
-            raise ValueError("WiCAN adapter requires a host and port")
+        if not self._wican_host:
+            raise ValueError("WiCAN adapter requires a host")
 
-        # No-reboot coexistence (#36.C) crash recovery: if a prior run was hard-killed
-        # mid-flash after pausing the datalogger, resume it now — UNLESS a flash is
-        # currently active (a second NC Flash instance mid-flash; its own resume will
-        # clear it). Cheap + soft-degrading: a no-op unless this host left a breadcrumb,
-        # and any /datalog error is swallowed. MUST run before any flash leans on it.
+        # Crash recovery: if a prior run was hard-killed mid-flash after pausing the
+        # datalogger, resume it now — UNLESS a flash is currently active (a second NC
+        # Flash instance mid-flash; its own resume will clear it). Cheap +
+        # soft-degrading: a no-op unless this host left a breadcrumb, and any
+        # /datalog error is swallowed. MUST run before any flash leans on it.
         try:
             WiCANDatalogClient(self._wican_host).reconcile()
         except Exception as exc:  # never let recovery break a connect
             logger.debug("datalog reconcile at connect failed (non-fatal): %s", exc)
 
-        # No-reboot path: coexistence firmware keeps an always-on dedicated SLCAN
-        # port open, so flashing needs neither the protocol-switch reboot nor the
-        # WiCANConfigurator. Probe for it first; ANY failure falls back below.
-        if self._wican_auto_config and not self._slcan_switched:
-            coexist, verdict = self._try_open_coexist_port()
-            if coexist is not None:
-                self._transport = coexist
-                # Reserve the bus for the WHOLE session BEFORE the first UDS frame.
-                # Without this the datalogger (poll_log) is the sole TWAI consumer and
-                # swallows the ECU's reply, so Tester-Present — and every later DTC /
-                # RAM-scan / flash op — would time out. Refcounted + soft-degrading; the
-                # firmware dead-man reaper auto-resumes the logger if this host vanishes.
-                self._wican_datalog = WiCANDatalogClient(self._wican_host)
-                self._wican_datalog.acquire_bus()
-                # Drain datalogger frames still in-flight when we took the bus.
-                # acquire_bus() pauses poll_log, but Mode-01 PID responses already
-                # on the wire keep arriving for a beat; without this they bleed into
-                # the first TesterPresent receive and are mis-parsed (the benign but
-                # noisy "unexpected response byte 0x41 for SID 0x3E" warnings). Flush
-                # until the bus is quiet so the first UDS exchange starts clean.
-                coexist.flush()
-                self._uds = UDSConnection(coexist)
-                self._uds.tester_present()
-                logger.info(
-                    "ECU session established (WiCAN no-reboot port %s:%s)",
-                    self._wican_host,
-                    coexist.port,
-                )
-                return
-            # Not coexistence firmware — switch the adapter into SLCAN mode ONCE
-            # per session (a ~6 s reboot). Restore only on a real disconnect.
-            self._configurator = WiCANConfigurator(self._wican_host)
-            if verdict is ProbeVerdict.INCONCLUSIVE:
-                # The probe proved nothing. Writing the stored mode from here is
-                # what strands devices (#92), so establish the right to do it or
-                # abort — this raises unless the device is demonstrably old, or
-                # is already in slcan (where the legacy path writes nothing).
-                self._guard_inconclusive_probe(self._configurator)
-            self.progress.emit("Switching adapter to SLCAN (~6 s reboot)…")
-            self._slcan_prev_protocol = self._enter_slcan_durable(self._configurator)
-            self._slcan_switched = True
-
         self.progress.emit("Opening WiCAN link…")
-        self._transport = create_ecu_transport(
-            {"kind": "wican", "host": self._wican_host, "port": self._wican_port}
-        )
-        self._transport.open()
-        self._uds = UDSConnection(self._transport)
-
-        # Single Tester Present to verify ECU is alive
+        transport = self._open_coexist_transport()
+        self._transport = transport
+        # Reserve the bus for the WHOLE session BEFORE the first UDS frame.
+        # Without this the datalogger (poll_log) is the sole TWAI consumer and
+        # swallows the ECU's reply, so Tester-Present — and every later DTC /
+        # RAM-scan / flash op — would time out. Refcounted + soft-degrading; the
+        # firmware dead-man reaper auto-resumes the logger if this host vanishes.
+        self._wican_datalog = WiCANDatalogClient(self._wican_host)
+        self._wican_datalog.acquire_bus()
+        # Drain datalogger frames still in-flight when we took the bus.
+        # acquire_bus() pauses poll_log, but Mode-01 PID responses already
+        # on the wire keep arriving for a beat; without this they bleed into
+        # the first TesterPresent receive and are mis-parsed (the benign but
+        # noisy "unexpected response byte 0x41 for SID 0x3E" warnings). Flush
+        # until the bus is quiet so the first UDS exchange starts clean.
+        transport.flush()
+        self._uds = UDSConnection(transport)
         self._uds.tester_present()
         logger.info(
-            "ECU session established (WiCAN %s:%s)", self._wican_host, self._wican_port
+            "ECU session established (WiCAN %s:%s)",
+            self._wican_host,
+            transport.port,
         )
 
-    def _try_open_coexist_port(self):
-        """Probe for no-reboot coexistence firmware and report WHY it decided.
+    def _open_coexist_transport(self):
+        """Open the dedicated SLCAN port and verify the firmware contract.
 
-        A coexistence build (firmware rev ``>= COEXIST_MIN_FW_REV``) keeps an
-        always-on dedicated SLCAN TCP port that routes through the
-        protocol-agnostic fast-read/write codecs, so the host can flash without
-        the ~6 s protocol-switch reboot and without the ``WiCANConfigurator``.
+        Returns the OPEN transport, or raises :class:`WiCANError` with a message
+        that says which of the four distinguishable failures happened. The
+        distinction is worth keeping even without a fallback path: "nothing is
+        listening" (old firmware — update it) and "the network is unreachable"
+        send the user to completely different places.
 
-        This used to collapse EVERY failure into "old firmware", which is only
-        true for some of them. Writing the device's stored mode is a reboot that
-        stops the datalogger, so it needs real evidence, not a shrug (#92):
-
-          * ``OLD_FIRMWARE`` — the TCP connect was REFUSED (nothing is bound to
-            the port; only coexistence firmware ever binds it), or a genuine
-            ``NCFRv`` marker below the threshold came back. Conclusive.
-          * ``COEXIST`` — a marker at/above the threshold. Transport handed back
-            OPEN.
-          * ``INCONCLUSIVE`` — a timeout, a reset, a silent port, an unexpected
-            error. Proves nothing, so it must NOT authorise a mode write.
-
-        Still never raises: it reports a verdict and lets the caller set policy.
-
-        :returns: ``(open_transport_or_None, ProbeVerdict)``
+        Never leaves a socket behind: the probe transport is closed on every
+        raising path.
         """
         from .transport import create_ecu_transport
         from .wican_sd_flash import _parse_fw_rev  # reuse the NCFRv<rev> parser
+        from .wican_transport import WiCANError
         from .constants import (
             WICAN_DEDICATED_SLCAN_PORT,
             COEXIST_MIN_FW_REV,
@@ -382,7 +307,12 @@ class ECUSession(QObject):
             return transport
 
         probe = None
-        verdict = ProbeVerdict.INCONCLUSIVE
+        outcome = "unresolved"
+        # Set instead of raised: the transport itself raises WiCANError for a
+        # failed connect, so a `raise` inside the try below would be caught by
+        # our own handler and re-raised UNGRADED — the user would see a bare
+        # "timed out" instead of being told which thing to go fix.
+        graded = None
         t0 = time.monotonic()
         connected_at = None
         retry_note = None
@@ -390,23 +320,25 @@ class ECUSession(QObject):
             try:
                 probe = _open(COEXIST_PROBE_TIMEOUT_MS)
             except Exception as first:
-                if _is_connection_refused(first):
+                if is_connection_refused(first):
                     raise
                 retry_at = time.monotonic()
                 # A timed-out connect and a REFUSED one are the same event seen
                 # through too short a window: measured on Windows, the RST for a
                 # closed port takes ~2 s to surface, while the probe budget is
                 # 1.5 s -- so a genuinely pre-coexistence device looks like a
-                # network problem and would be wrongly refused. Retry once, long
-                # enough for a refusal to land, purely to tell the two apart.
-                # Only failing paths pay this; a healthy port connects in ~20 ms.
+                # network problem and the user is sent to debug their WiFi
+                # instead of updating the firmware. Retry once, long enough for a
+                # refusal to land, purely to tell the two apart. Only failing
+                # paths pay this; a healthy port connects in ~20 ms.
                 try:
                     probe = _open(_COEXIST_PROBE_RETRY_MS)
                 except Exception as second:
+                    refused = is_connection_refused(second)
                     retry_note = (
                         f"attempt 1 unresolved in {COEXIST_PROBE_TIMEOUT_MS} ms; "
                         f"confirming retry -> "
-                        f"{'refused' if _is_connection_refused(second) else 'still unresolved'}"
+                        f"{'refused' if refused else 'still unresolved'}"
                         f" in {(time.monotonic() - retry_at) * 1000:.0f} ms"
                     )
                     raise
@@ -420,7 +352,7 @@ class ECUSession(QObject):
             if marker is None:
                 # The port ACCEPTED us and then said nothing. Only the
                 # coexistence listener binds this port, so silence here is far
-                # more likely to be a slow link or a busy device than old
+                # more likely to be a slow link or a busy device than the wrong
                 # firmware. Give it one longer window before giving up.
                 logger.info(
                     "WiCAN dedicated port accepted but stayed silent; retrying "
@@ -429,45 +361,44 @@ class ECUSession(QObject):
                 marker = probe.version_ping(window_ms=_COEXIST_PROBE_RETRY_MS)
             rev = _parse_fw_rev(marker)
             if rev is not None and rev >= COEXIST_MIN_FW_REV:
-                verdict = ProbeVerdict.COEXIST
-                self.progress.emit("No-reboot coexistence firmware detected…")
+                outcome = f"NCFRv{rev}"
                 logger.info(
-                    "WiCAN coexistence firmware NCFRv%s on dedicated port %s",
+                    "WiCAN firmware NCFRv%s on dedicated port %s",
                     rev,
                     WICAN_DEDICATED_SLCAN_PORT,
                 )
             elif rev is not None:
-                verdict = ProbeVerdict.OLD_FIRMWARE
-                logger.info(
-                    "WiCAN dedicated port answered NCFRv%s (< NCFRv%s); "
-                    "legacy reboot path",
-                    rev,
-                    COEXIST_MIN_FW_REV,
+                outcome = f"NCFRv{rev} too old"
+                graded = (
+                    f"WiCAN firmware NCFRv{rev} is too old — NC Flash requires "
+                    f"NCFRv{COEXIST_MIN_FW_REV}+. Update the WiCAN firmware."
                 )
             else:
-                logger.warning(
-                    "WiCAN dedicated port %s accepted the connection but never "
-                    "sent its version marker; capability UNKNOWN (refusing to "
-                    "assume old firmware)",
-                    WICAN_DEDICATED_SLCAN_PORT,
+                outcome = "no marker"
+                graded = (
+                    f"The adapter accepted the connection on port "
+                    f"{WICAN_DEDICATED_SLCAN_PORT} but never sent its firmware "
+                    f"marker. Check the Wi-Fi link and try again."
                 )
         except Exception as exc:
-            if _is_connection_refused(exc):
-                verdict = ProbeVerdict.OLD_FIRMWARE
-                logger.info(
-                    "WiCAN dedicated port %s refused the connection; "
-                    "pre-coexistence firmware, legacy reboot path",
-                    WICAN_DEDICATED_SLCAN_PORT,
-                )
-            else:
-                logger.warning(
-                    "WiCAN coexist-port probe failed inconclusively (%s); "
-                    "capability UNKNOWN",
-                    exc,
-                )
+            self._close_probe(probe)
+            if is_connection_refused(exc):
+                outcome = "refused"
+                raise WiCANError(
+                    f"Nothing is listening on SLCAN port "
+                    f"{WICAN_DEDICATED_SLCAN_PORT} at {self._wican_host}. The "
+                    f"adapter is running old or stock firmware — update it to "
+                    f"NCFRv{COEXIST_MIN_FW_REV}+."
+                ) from exc
+            outcome = "unreachable"
+            raise WiCANError(
+                f"Could not reach the WiCAN's SLCAN port "
+                f"{WICAN_DEDICATED_SLCAN_PORT} at {self._wican_host}: {exc}. "
+                f"Check that the device is powered and on this network."
+            ) from exc
         finally:
             now = time.monotonic()
-            # One line per probe carrying the verdict and where the time went, so
+            # One line per probe carrying the outcome and where the time went, so
             # a field report is attributable to connect / ping instead of guessed
             # at. A probe that needed the confirming retry is logged at WARNING
             # with the measured refusal latency: that number is the only evidence
@@ -475,125 +406,41 @@ class ECUSession(QObject):
             # with the OS TCP retransmission settings, not machine speed.
             logger.log(
                 logging.WARNING if retry_note else logging.INFO,
-                "coexist probe: verdict=%s connect=%.2fs ping=%.2fs total=%.2fs%s",
-                verdict.value,
+                "coexist probe: outcome=%s connect=%.2fs ping=%.2fs total=%.2fs%s",
+                outcome,
                 (connected_at - t0) if connected_at else (now - t0),
                 (now - connected_at) if connected_at else 0.0,
                 now - t0,
                 f" [{retry_note}]" if retry_note else "",
             )
 
-        if verdict is ProbeVerdict.COEXIST:
-            return probe, verdict  # hand the OPEN transport to the caller
+        if graded is not None:
+            self._close_probe(probe)
+            raise WiCANError(graded)
+        return probe  # OPEN, handed to the caller
+
+    @staticmethod
+    def _close_probe(probe):
+        """Close a probe transport, swallowing errors. Never leaks a socket."""
         if probe is not None:
             try:
                 probe.close()
             except Exception:
                 pass
-        return None, verdict
 
-    def _guard_inconclusive_probe(self, configurator):
-        """Establish the right to write the stored mode, or refuse (#92).
-
-        Reached only when the capability probe proved nothing. Rebooting the
-        adapter into bench mode stops the datalogger, and if the session then
-        dies the device stays that way — so this path needs evidence, not a
-        guess. Order of preference:
-
-          1. ``/host_caps`` — a small, secret-free capability reply. A rev at or
-             above the threshold means coexistence firmware IS present and its
-             port is simply not answering: there is nothing to connect to and no
-             right to write. Below the threshold is conclusive old firmware.
-          2. No ``/host_caps`` (every build in the field before it shipped) —
-             fall back to the stored protocol. Already ``slcan`` means the
-             legacy path performs NO write, so it is safe to continue; that also
-             keeps a device this tool previously stranded reachable.
-
-        :raises CoexistProbeInconclusive: when no evidence justifies the write.
-        """
-        from .exceptions import CoexistProbeInconclusive
-        from .constants import COEXIST_MIN_FW_REV, WICAN_DEDICATED_SLCAN_PORT
-
-        caps = configurator.host_caps()
-        rev = (caps or {}).get("ncfr_rev")
-        if isinstance(rev, int):
-            if rev >= COEXIST_MIN_FW_REV:
-                raise CoexistProbeInconclusive(
-                    f"This adapter reports no-reboot firmware (NCFRv{rev}), but "
-                    f"its port {WICAN_DEDICATED_SLCAN_PORT} did not answer. "
-                    "Refusing to reboot it into bench mode — check the Wi-Fi "
-                    "link and try again."
-                )
-            logger.info(
-                "/host_caps reports NCFRv%s (< NCFRv%s); legacy mode write is "
-                "justified",
-                rev,
-                COEXIST_MIN_FW_REV,
-            )
-            return
-
-        try:
-            current = configurator.current_protocol()
-        except Exception as exc:
-            raise CoexistProbeInconclusive(
-                "Could not confirm whether this adapter supports no-reboot "
-                f"flashing, and it did not answer over HTTP either ({exc}). "
-                "Refusing to change its mode."
-            ) from exc
-
-        if current == "slcan":
-            logger.info(
-                "probe inconclusive but the adapter is already in slcan; "
-                "continuing on the legacy path (no mode write will occur)"
-            )
-            return
-
-        raise CoexistProbeInconclusive(
-            f"Could not confirm whether this adapter supports no-reboot "
-            f"flashing: port {WICAN_DEDICATED_SLCAN_PORT} did not answer, "
-            f"though the device is reachable and reports {current!r}. Refusing "
-            "to reboot it into bench mode — check the Wi-Fi link and try again."
-        )
-
-    @staticmethod
-    def _enter_slcan_durable(configurator) -> str:
-        """Enter SLCAN, persisting the TRUE original protocol to the crash-recovery
-        sidecar BEFORE switching, and return that original.
-
-        Mirrors ``WiCANConfigurator.slcan_session`` for this event-driven (non
-        context-manager) lifecycle: if a prior run crashed mid-session it left a
-        breadcrumb, so a recorded original is preferred over the device's current
-        (possibly already-``slcan``) value. The breadcrumb is written before the
-        switch so a hard kill during the multi-second reboot is recoverable.
-        """
-        recorded = configurator.read_recovery()
-        current = configurator.current_protocol()
-        true_prev = recorded if recorded is not None else current
-        if true_prev != "slcan":
-            configurator.write_recovery(true_prev)
-        if current != "slcan":
-            configurator.set_protocol("slcan")
-        return true_prev
-
-    def disconnect_ecu(self, restore_protocol: bool = True):
-        """Close the transport.
-
-        Args:
-            restore_protocol: For WiCAN, restore the adapter's original HTTP
-                protocol (a reboot). The internal auto-reconnect after a read
-                passes ``False`` so the adapter stays in SLCAN across the
-                reconnect; a user-initiated disconnect uses the default ``True``.
-        """
+    def disconnect_ecu(self):
+        """Close the transport and release the WiCAN bus reservation."""
         if self._state == ECUSessionState.DISCONNECTED:
             return
         if self._state == ECUSessionState.BUSY:
-            # A flash/read worker is actively using the transport. Closing it now
-            # (and rebooting the WiCAN protocol) would yank the link out from
-            # under a running operation — a brick risk on a write. The caller
-            # must release() first; refuse rather than tear down mid-operation.
+            # A flash/read worker is actively using the transport. Closing it
+            # now would yank the link out from under a running operation — a
+            # brick risk on a write — and hand the CAN bus back to the
+            # datalogger mid-flash. The caller must release() first; refuse
+            # rather than tear down mid-operation.
             logger.warning("disconnect_ecu refused while BUSY; release() first")
             return
-        self._teardown(restore_protocol=restore_protocol)
+        self._teardown()
         self._set_state(ECUSessionState.DISCONNECTED)
 
     def acquire(self):
@@ -618,11 +465,11 @@ class ECUSession(QObject):
         if self._state != ECUSessionState.BUSY:
             return
         if connection_dead:
-            # ECU rebooted — tear down the dead connection. Keep the WiCAN
-            # adapter in SLCAN (restore_protocol=False): the window always
-            # auto-reconnects after a connection-dead release, and rebooting the
-            # adapter's protocol on every read would be a needless reboot storm.
-            self._teardown(restore_protocol=False)
+            # ECU rebooted — tear down the dead connection. Teardown still runs
+            # so the whole-session bus reservation is released and the
+            # datalogger resumes; the window auto-reconnects (and re-reserves)
+            # after a connection-dead release.
+            self._teardown()
             self._set_state(ECUSessionState.DISCONNECTED)
             logger.info("ECU session released (connection dead after reset)")
         else:
@@ -630,20 +477,15 @@ class ECUSession(QObject):
             logger.info("ECU session released")
 
     def cleanup(self):
-        """Shut down session and restore the adapter. Call on app exit / before
-        discarding the session.
+        """Shut down the session. Call on app exit / before discarding it.
 
-        Restores the WiCAN protocol even when the session is already
-        DISCONNECTED but still holds an SLCAN switch — e.g. after a
-        ``release(connection_dead=True)`` whose follow-up reconnect never
-        happened (a failed flash/read). Without this, discarding such a session
-        would strand the adapter in SLCAN and lose the original protocol.
+        A no-op when already DISCONNECTED: teardown has then already released
+        the bus reservation, and the firmware dead-man reaper resumes the
+        datalogger if this host ever vanishes without doing so.
         """
         if self._state != ECUSessionState.DISCONNECTED:
-            self._teardown(restore_protocol=True)
+            self._teardown()
             self._set_state(ECUSessionState.DISCONNECTED)
-        else:
-            self._restore_wican_protocol()
 
     # --- Internal ---
 
@@ -653,10 +495,10 @@ class ECUSession(QObject):
             self.state_changed.emit(state.value)
             logger.debug("ECU session state: %s", state.value)
 
-    def _teardown(self, restore_protocol: bool = True):
-        """Close the transport (error-tolerant); optionally restore WiCAN protocol."""
+    def _teardown(self):
+        """Close the transport (error-tolerant) and release the bus reservation."""
         if self._adapter_kind == "wican":
-            self._teardown_wican(restore_protocol=restore_protocol)
+            self._teardown_wican()
         else:
             self._teardown_j2534()
         self._uds = None
@@ -685,12 +527,8 @@ class ECUSession(QObject):
                 pass
             self._device = None
 
-    def _teardown_wican(self, restore_protocol: bool):
-        """Close the WiCAN transport; restore the original protocol if asked.
-
-        ``restore_protocol`` is ``False`` on the internal auto-reconnect (keep
-        the adapter in SLCAN) and ``True`` on a user disconnect / app exit.
-        """
+    def _teardown_wican(self):
+        """Release the bus reservation, then close the WiCAN transport."""
         # Release the whole-session bus reservation FIRST (resume the datalogger)
         # while the transport is still up. Best-effort: a failed release just leaves
         # the firmware dead-man reaper to auto-resume the logger. The flash fence's
@@ -709,44 +547,3 @@ class ECUSession(QObject):
             except Exception:
                 pass
             self._transport = None
-
-        if restore_protocol:
-            self._restore_wican_protocol()
-
-    def _restore_wican_protocol(self):
-        """Restore the original WiCAN protocol and clear the recovery breadcrumb.
-
-        Idempotent and adapter-agnostic: a no-op unless this session actually
-        switched the adapter to SLCAN (``_slcan_switched``). Safe to call from
-        any state, so :meth:`cleanup` can recover a session that was torn down
-        without a protocol restore (``release(connection_dead=True)``).
-        """
-        if not (self._slcan_switched and self._configurator):
-            return
-        prev = self._slcan_prev_protocol
-        try:
-            if prev and prev != "slcan":
-                self.progress.emit("Restoring adapter protocol (~6 s reboot)…")
-                self._configurator.restore(prev)
-        except Exception as exc:
-            # KEEP the breadcrumb AND the switch state (#92). The device is still
-            # in slcan and the sidecar is the only record of the user's real
-            # mode; clearing it here strands the device permanently. Holding the
-            # state also leaves cleanup() -- which runs at app exit and on
-            # session replacement -- a free second attempt, and a reconnect still
-            # works because the `not _slcan_switched` guard skips the re-switch.
-            # If the restore only failed its verify while the write landed, the
-            # retry's set_protocol no-ops and cleanly clears the sidecar.
-            logger.warning(
-                "WiCAN protocol restore failed: %s -- breadcrumb KEPT so a later "
-                "run can un-strand the device",
-                exc,
-            )
-            return
-        try:
-            self._configurator.clear_recovery()
-        except Exception:
-            pass
-        self._slcan_switched = False
-        self._slcan_prev_protocol = None
-        self._configurator = None

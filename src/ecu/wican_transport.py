@@ -292,6 +292,11 @@ class WiCANTransport(EcuTransport):
         self._tx_stmin = tx_stmin
 
         self._sock: Optional[socket.socket] = None
+        #: True only while an SLCAN channel is actually up (``open()`` succeeded).
+        #: A ``open_socket_only()`` probe leaves this False, which is what keeps
+        #: ``close()`` from sending a ``C`` that would disable the shared CAN
+        #: peripheral on a device the probe never intended to touch.
+        self._channel_open = False
         self._stream = SlcanFrameStream()
         # Decoded frames parsed ahead of what the current recv consumed are
         # buffered here so no frame is lost across recv_frame calls.
@@ -318,15 +323,98 @@ class WiCANTransport(EcuTransport):
         acks (bare CR ok / BEL error) are drained between commands; a BEL ack
         for the bitrate or open command raises :class:`WiCANError`.
 
-        Idempotent: calling :meth:`open` on an already-open transport is a
-        no-op.
+        NOTE this TOUCHES THE SHARED CAN PERIPHERAL: on the firmware, ``C``
+        disables the bus and ``O`` re-enables it, and :meth:`_prime_channel`
+        then puts a real TesterPresent frame on it. That is correct for a
+        session that is about to talk to the ECU (and is covered by the
+        session's whole-session bus reservation), but it makes ``open()`` the
+        wrong entry point for anything that only wants to ask the ADAPTER a
+        question — use :meth:`open_socket_only` for that.
+
+        Idempotent on a fully-open transport. On a transport whose socket was
+        opened by :meth:`open_socket_only` it runs the CAN bring-up over the
+        EXISTING socket rather than returning: silently no-op'ing there would
+        hand the caller a transport it believes has a channel and does not.
 
         Raises:
             WiCANError: If the TCP connection or SLCAN bring-up fails.
         """
-        if self._sock is not None:
+        if self._sock is not None and self._channel_open:
             return
 
+        if self._sock is None:
+            self._open_socket()
+
+        try:
+            # Close any channel left open by a previous session (tolerate a
+            # BEL here: closing an already-closed channel is harmless).
+            self._send_raw(CLOSE)
+            self._drain_acks(timeout_ms=200)
+
+            # Set 500 kbps (NC ECU bus speed) and open the channel.
+            self._send_command_checked(BITRATE_500K, "set bitrate (S6)")
+            self._send_command_checked(OPEN, "open channel (O)")
+        except Exception:
+            # Bring-up failed — do not leak the socket.
+            self._close_socket()
+            raise
+        self._channel_open = True
+
+        # The adapter drops the very first frame after open() — send a throwaway
+        # so the caller's first real request is not the casualty (see method).
+        self._prime_channel()
+
+        logger.info(
+            "WiCAN SLCAN channel up on %s:%d (tx=0x%X rx=0x%X)",
+            self._host,
+            self._port,
+            self._tx_id,
+            self._rx_id,
+        )
+
+    def open_socket_only(self) -> None:
+        """Connect the TCP socket and NOTHING else — no CAN channel bring-up.
+
+        For host<->ADAPTER questions that the firmware answers by itself, the
+        only one today being :meth:`version_ping`. It sends no ``C``/``S6``/``O``
+        and no prime frame, so it cannot disable the shared CAN peripheral, put
+        a frame on the bus, or disturb a running datalogger — and it therefore
+        needs no bus reservation.
+
+        Verified against the firmware: on the dedicated SLCAN port the fast-read
+        ``X`` command is dispatched by ``ncflash_is_fastread_cmd`` BEFORE the
+        SLCAN state machine sees it, and the version-ping branch answers from a
+        static marker without reading CAN state or touching the peripheral. The
+        matching ``close()`` sends no ``C`` either (see :attr:`_channel_open`),
+        so a probe leaves the device bit-for-bit as it found it.
+
+        Anything that needs to move CAN traffic must use :meth:`open` instead.
+        :meth:`send_message` and :meth:`receive_message` REFUSE to run on a
+        socket-only transport (see :meth:`_require_channel`) — without that
+        guard they would silently succeed: the host-side check only tests the
+        socket, and the firmware gates transmission on its own CAN-enable bit
+        rather than on whether an ``O`` was ever issued, so the frame would
+        genuinely reach the bus.
+
+        Idempotent, and raises the same way :meth:`open` does.
+
+        Raises:
+            WiCANError: If the TCP connection fails.
+        """
+        if self._sock is not None:
+            return
+        self._open_socket()
+        logger.debug(
+            "WiCAN socket open (no CAN channel) on %s:%d", self._host, self._port
+        )
+
+    def _open_socket(self) -> None:
+        """TCP connect + socket tuning. No SLCAN commands, no CAN traffic.
+
+        The shared half of :meth:`open` and :meth:`open_socket_only`, extracted
+        so the two cannot drift: the bring-up sequence exists in exactly one
+        place and every session-path byte on the wire is unchanged.
+        """
         try:
             sock = socket.create_connection(
                 (self._host, self._port),
@@ -380,32 +468,6 @@ class WiCANTransport(EcuTransport):
         self._sock = sock
         self._stream.reset()
         self._frame_buffer.clear()
-
-        try:
-            # Close any channel left open by a previous session (tolerate a
-            # BEL here: closing an already-closed channel is harmless).
-            self._send_raw(CLOSE)
-            self._drain_acks(timeout_ms=200)
-
-            # Set 500 kbps (NC ECU bus speed) and open the channel.
-            self._send_command_checked(BITRATE_500K, "set bitrate (S6)")
-            self._send_command_checked(OPEN, "open channel (O)")
-        except Exception:
-            # Bring-up failed — do not leak the socket.
-            self._close_socket()
-            raise
-
-        # The adapter drops the very first frame after open() — send a throwaway
-        # so the caller's first real request is not the casualty (see method).
-        self._prime_channel()
-
-        logger.info(
-            "WiCAN SLCAN channel up on %s:%d (tx=0x%X rx=0x%X)",
-            self._host,
-            self._port,
-            self._tx_id,
-            self._rx_id,
-        )
 
     def _prime_channel(self) -> None:
         """Emit one throwaway CAN frame to wake the freshly-opened channel.
@@ -461,16 +523,22 @@ class WiCANTransport(EcuTransport):
                 return
 
     def close(self) -> None:
-        """Close the SLCAN channel and the TCP socket.
+        """Close the SLCAN channel (if one was opened) and the TCP socket.
 
         Error-tolerant: best-effort sends the SLCAN ``C`` close command, then
         closes the socket regardless of any failure. Safe to call when never
         opened or already closed.
+
+        The ``C`` is sent ONLY when this transport actually brought a channel up
+        via :meth:`open`. A :meth:`open_socket_only` probe hangs up with nothing
+        but a TCP FIN — sending ``C`` there would disable the shared CAN
+        peripheral the probe was careful never to touch.
         """
         if self._sock is None:
             return
         try:
-            self._send_raw(CLOSE)
+            if self._channel_open:
+                self._send_raw(CLOSE)
         except Exception as exc:  # pragma: no cover - best-effort teardown
             logger.debug("WiCAN close command failed (ignored): %s", exc)
         finally:
@@ -480,6 +548,7 @@ class WiCANTransport(EcuTransport):
         """Close and forget the socket, swallowing errors."""
         sock = self._sock
         self._sock = None
+        self._channel_open = False
         self._stream.reset()
         self._frame_buffer.clear()
         if sock is not None:
@@ -501,7 +570,7 @@ class WiCANTransport(EcuTransport):
             WiCANError: If the transport is not open, or on socket/SLCAN/ISO-TP
                 failure.
         """
-        self._require_open()
+        self._require_channel()
         try:
             self._session.send(payload, timeout_ms)
         except (IsoTpError, SlcanError, OSError) as exc:
@@ -524,7 +593,7 @@ class WiCANTransport(EcuTransport):
                 ``None``; a corrupted response raises so it is never silently
                 retried by the caller's response-pending loop.
         """
-        self._require_open()
+        self._require_channel()
         try:
             return self._session.receive(timeout_ms)
         except IsoTpTimeout:
@@ -592,7 +661,7 @@ class WiCANTransport(EcuTransport):
             WiCANError: transport not open, socket error, or a short/stalled
                 stream (a firmware-side read failure or a real drop).
         """
-        self._require_open()
+        self._require_channel()
         chunk = chunk or _FAST_READ_CHUNK
         if length <= chunk:
             return self._fast_read_one(start, length, progress_cb, timeout_ms)
@@ -1110,6 +1179,23 @@ class WiCANTransport(EcuTransport):
             logger.debug("WiCAN drain ignored error: %s", exc)
 
     def _require_open(self) -> None:
-        """Raise if the transport has not been opened."""
+        """Raise if the transport has no socket."""
         if self._sock is None:
             raise WiCANError("WiCAN transport is not open; call open() first")
+
+    def _require_channel(self) -> None:
+        """Raise unless an SLCAN channel is actually up.
+
+        The socket check alone is NOT enough for anything that moves CAN
+        traffic. A :meth:`open_socket_only` transport has a live socket and no
+        channel, and neither side would stop a send: the firmware gates
+        transmission on its own CAN-enable bit, which the datalogger keeps set,
+        so an unguarded frame would reach the real bus from a path whose whole
+        purpose is never to touch it.
+        """
+        self._require_open()
+        if not self._channel_open:
+            raise WiCANError(
+                "WiCAN transport has no CAN channel (opened socket-only); "
+                "call open() instead of open_socket_only() to send traffic"
+            )

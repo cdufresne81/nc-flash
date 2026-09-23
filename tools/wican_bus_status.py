@@ -23,6 +23,8 @@ if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
 from src.ecu.wican_transport import WiCANTransport  # noqa: E402
+from src.ecu.constants import WICAN_DEDICATED_SLCAN_PORT  # noqa: E402
+from src.ecu.wican_config import WiCANDatalogClient  # noqa: E402
 
 # SLCAN F-command status bits (CANable/LAWICEL convention).
 BITS = {
@@ -55,11 +57,34 @@ def _read_for(sock, seconds):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--host", default="192.168.1.169")
-    ap.add_argument("--port", type=int, default=35000)
+    ap.add_argument(
+        "--port",
+        type=int,
+        default=WICAN_DEDICATED_SLCAN_PORT,
+        help="SLCAN TCP port (the firmware's fixed coexistence port).",
+    )
     args = ap.parse_args()
 
+    # Reserve the bus so the frames below are OURS. The signal this tool reads
+    # is whether a node ACKs frames WE transmit, and the ECU node ACKs those
+    # whether or not the datalogger is polling — but parking the poller stops its
+    # traffic from muddying the status-flag read. Soft-degrading.
+    with WiCANDatalogClient(args.host).reserved():
+        _probe_bus(args)
+
+
+def _probe_bus(args):
     t = WiCANTransport(host=args.host, port=args.port)
     t.open()  # primes the channel (sends a TesterPresent)
+    try:
+        _read_status(t)
+    finally:
+        # Close on the error path too, or a failed probe leaves the adapter's
+        # only CAN listener holding a connection until the OS reaps it.
+        t.close()
+
+
+def _read_status(t):
     sock = t._sock
 
     # Fire a few raw TesterPresent frames to force TX attempts that need an ACK.
@@ -99,8 +124,6 @@ def main():
             print("could not parse status hex")
     else:
         print("no parseable F-status returned (firmware may not implement 'F')")
-
-    t.close()
 
 
 if __name__ == "__main__":

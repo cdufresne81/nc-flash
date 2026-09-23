@@ -22,6 +22,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from src.ecu.wican_discovery import DiscoveryUnavailable, WiCANDevice
+from src.ui import settings_dialog
 from src.ui.settings_dialog import (
     SETTINGS_REGISTRY,
     SettingsDialog,
@@ -253,7 +254,7 @@ class TestTeardownScan:
             _scan_cancel_event=MagicMock(),
             _scan_host_edit=MagicMock(),
             _scan_cancelled=True,
-            _cleanup_scan_thread=MagicMock(),
+            _cleanup_thread=MagicMock(),
         )
         base.update(over)
         return SimpleNamespace(**base)
@@ -278,7 +279,9 @@ class TestTeardownScan:
         thread, worker = fake._scan_thread, fake._scan_worker
         SettingsDialog._teardown_scan(fake, blocking=True)
         # The captured thread/worker are cleaned synchronously (not deferred).
-        fake._cleanup_scan_thread.assert_called_once_with(thread, worker)
+        fake._cleanup_thread.assert_called_once_with(
+            thread, worker, settings_dialog._SCAN_JOIN_MS
+        )
 
     def test_teardown_is_safe_when_nothing_running(self):
         fake = self._fake(
@@ -292,23 +295,25 @@ class TestTeardownScan:
         )
         SettingsDialog._teardown_scan(fake)  # must not raise
         assert fake._scan_thread is None
-        fake._cleanup_scan_thread.assert_not_called()  # no thread to clean
+        fake._cleanup_thread.assert_not_called()  # no thread to clean
 
 
-class TestCleanupScanThread:
+class TestCleanupThread:
+    """The shared QThread disposal contract (one copy for scan + probe)."""
+
     def test_quits_waits_and_disposes_running_thread(self):
         thread, worker = MagicMock(), MagicMock()
         thread.isRunning.return_value = True
-        SettingsDialog._cleanup_scan_thread(thread, worker)
+        SettingsDialog._cleanup_thread(thread, worker, 3000)
         thread.quit.assert_called_once()
-        thread.wait.assert_called_once()
+        thread.wait.assert_called_once_with(3000)
         thread.deleteLater.assert_called_once()
         worker.deleteLater.assert_called_once()
 
     def test_skips_quit_for_already_finished_thread(self):
         thread, worker = MagicMock(), MagicMock()
         thread.isRunning.return_value = False
-        SettingsDialog._cleanup_scan_thread(thread, worker)
+        SettingsDialog._cleanup_thread(thread, worker, 3000)
         thread.quit.assert_not_called()
         thread.wait.assert_not_called()
         thread.deleteLater.assert_called_once()

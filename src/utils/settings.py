@@ -313,20 +313,6 @@ class AppSettings:
     def set_wican_device_id(self, device_id: str):
         self.settings.setValue("ecu/wican_device_id", device_id or "")
 
-    def get_wican_port(self) -> int:
-        """Get the WiCAN SLCAN TCP port."""
-        return self.settings.value("ecu/wican_port", 35000, type=int)
-
-    def set_wican_port(self, port: int):
-        self.settings.setValue("ecu/wican_port", int(port))
-
-    def get_wican_auto_config(self) -> bool:
-        """Whether to auto-switch the WiCAN to SLCAN on connect and restore after."""
-        return self.settings.value("ecu/wican_auto_config", True, type=bool)
-
-    def set_wican_auto_config(self, enabled: bool):
-        self.settings.setValue("ecu/wican_auto_config", bool(enabled))
-
     def get_wican_auto_download_logs(self) -> bool:
         """Whether to check the WiCAN for new SD trip logs at launch. The check
         only PROMPTS (with a size/time estimate) — nothing downloads without
