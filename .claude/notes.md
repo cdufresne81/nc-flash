@@ -1,6 +1,6 @@
 # Session Notes
 
-## 🎨 feat/graph-engine-eval — GPU graph engine (pygfx) + resizable graph pane (Sep 23, 2026) — UNCOMMITTED
+## ✅ GPU graph engine (pygfx) + resizable pane + axis highlights — MERGED PR #103, RELEASED v2.14.0 (Sep 23, 2026)
 Goal doc: `.claude/plans/graph-engine-pygfx-goal.md` (A1–A25, regression checklist R1–R27).
 - New modules: `src/ui/graph_model.py` (ONE copy of colors/ticks/titles), `graph_gpu.py` (pygfx),
   `graph_classic.py` (matplotlib fallback), `gpu_runtime.py` (engine choice + adapter/device probe,
@@ -26,6 +26,10 @@ Goal doc: `.claude/plans/graph-engine-pygfx-goal.md` (A1–A25, regression check
   Stress harness (GUI opening/clicking tables + bg thread): render+text 2/4, render no text 1/6,
   prod warm-up body 2/6, pure-Python thread / no thread 0/12. After removing it: real app 6/6 clean.
   Cost accepted by user: first graph per session ~3.7 s ("Preparing graph…"), then fast.
+- CI VERIFIED (PR #103): all 5 jobs green; linux 3.12 lavapipe job renders 25 [gpu] tests for real.
+  First PR run failed only because CI's headless screen is 800x800 (graph opening capped the window
+  and squeezed the table pane) — tests now size the pane explicitly (`_layout` helper), hover test
+  picks a projected cell centre, CI matrix `fail-fast: false`. User manual retest: all good.
 - Adversarial review (Opus, SHIP-WITH-FIXES) fixed: GPU deps get `python_version>="3.11"` markers
   (a 3.10 venv made run.bat fail every launch); NaN-cell crosshair blanked the graph; pane width
   shrank by the splitter handle per toggle; graph now claims ALL non-Ctrl/Alt keys (V/H/B/S/[ ]
@@ -41,7 +45,7 @@ Goal doc: `.claude/plans/graph-engine-pygfx-goal.md` (A1–A25, regression check
   bundles wgpu_native DLL + shaders (built in scratch venv, not run).
 - Pending: manual M1–M6 (mouse feel, corner drag, clean-machine/no-GPU packaged run, Linux pkg,
   hover, `+` on real ROM); no Settings-dialog UI for `display/graph_engine` yet (env var only);
-  CI lavapipe job unverified until pushed.
+  hover; `+` on real ROM); no Settings-dialog UI for `display/graph_engine` yet (env var only).
 
 ## 🔢 claude/numeric-values-tables-of1s5u — #92 numeric-only table cells (Aug 11, 2026)
 
