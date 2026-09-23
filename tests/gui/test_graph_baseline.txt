@@ -1,0 +1,93 @@
+# Graph visual baseline: run before AND after a graph-engine change and compare
+# the two screenshot sets side by side (docs/screenshots/graph_*).
+#
+# Every step maps to a regression-checklist item; do not drop steps.
+
+load_rom examples/lf9veb.bin
+
+# --- 3D: big real map --------------------------------------------------------
+open_table "Spark Target | High Fuel Demand, High-Det"
+wait 300
+store_width
+screenshot graph_01_3d_table_only table
+
+open_graph
+wait 800
+screenshot graph_02_3d_default table
+
+# single cell selection highlights one face
+select 4 6
+wait 400
+screenshot graph_03_3d_select_one table
+
+# block selection
+select 8 4 12 9
+wait 400
+screenshot graph_04_3d_select_block table
+
+# live edit: the block must jump up in the graph immediately
+add 15
+wait 400
+screenshot graph_05_3d_after_edit table
+
+# undo: surface returns to original
+undo
+wait 400
+screenshot graph_06_3d_after_undo table
+
+# rotation, then a selection change must keep the angle
+rotate_graph 45 30
+wait 400
+screenshot graph_07_3d_rotated table
+select 2 2
+wait 400
+screenshot graph_08_3d_rotated_then_select table
+
+# resize by "dragging the corner": graph must fill its pane, axes visible
+resize_window 900 520
+wait 500
+screenshot graph_09_3d_small_window table
+resize_window 1700 950
+wait 500
+screenshot graph_10_3d_large_window table
+resize_window 1150 1000
+wait 500
+screenshot graph_11_3d_tall_window table
+
+# toggle off must restore the table-only width
+close_graph
+wait 400
+assert_width_restored
+screenshot graph_12_3d_graph_closed table
+close_table
+
+# --- 3D: small map ------------------------------------------------------------
+open_table "APP to TP Desired - 2nd Gear"
+wait 300
+open_graph
+wait 800
+select 3 3 6 6
+wait 400
+screenshot graph_13_3d_small_map table
+close_graph
+close_table
+
+# --- 2D: line plot ------------------------------------------------------------
+open_table "APP to TP Desired - Max"
+wait 300
+store_width
+open_graph
+wait 800
+screenshot graph_14_2d_default table
+select 3 0 6 0
+wait 400
+screenshot graph_15_2d_select table
+add 10
+wait 400
+screenshot graph_16_2d_after_edit table
+undo
+wait 300
+close_graph
+wait 300
+assert_width_restored
+close_table

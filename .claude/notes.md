@@ -1,5 +1,48 @@
 # Session Notes
 
+## 🎨 feat/graph-engine-eval — GPU graph engine (pygfx) + resizable graph pane (Sep 23, 2026) — UNCOMMITTED
+Goal doc: `.claude/plans/graph-engine-pygfx-goal.md` (A1–A25, regression checklist R1–R27).
+- New modules: `src/ui/graph_model.py` (ONE copy of colors/ticks/titles), `graph_gpu.py` (pygfx),
+  `graph_classic.py` (matplotlib fallback), `gpu_runtime.py` (engine choice + adapter/device probe,
+  on the GUI thread at first graph — NO background warm-up, see below). `GraphWidget` keeps its API + `get_view/set_view/reset_view/
+  engine_name/shutdown`; `_GraphPlotMixin` deleted (old `tests/test_graph_viewer.py` ported into
+  `tests/test_graph_model.py`). `tests/test_lazy_matplotlib.py` → `test_lazy_graph_imports.py`.
+- Leak rules (measured): never create a per-window QRenderWidget subclass capturing the view
+  (Shiboken never frees subclass types); `shutdown()` must `canvas.close()`. PIXEL_RATIO 1.5.
+- Fixed H1 (`+`/`-`/`=` on focused graph edited cells via window Edit shortcuts → ShortcutOverride),
+  H2 (stale after Edit Scaling), H3 (stale 3D ticks after axis edit), H4 (Z range pinned).
+- Sizing: splitter stretch (graph pane owns resizes), GRAPH_MIN_WIDTH 340, remembered pane width
+  (`display/graph_pane_width`, only on spontaneous resize/splitter drag), hide restores exact width
+  (needed layout invalidate + deferred resize: Windows applies the native min-size async).
+- Python floor 3.11 (user decision). CI linux 3.12 installs lavapipe + NCFLASH_REQUIRE_GPU=1.
+- Axis highlight (user request): TableViewer owns `_axis_highlight` (x/y data indices from the
+  selection) + `is_axis_highlighted()`; `ModifiedCellDelegate` paints bold + `theme.AXIS_HIGHLIGHT`
+  outline. GPU graph: single-cell crosshair (`Surface3D._crosshair_paths` samples edge + diagonal
+  midpoints so segments stay on triangle planes) + callouts hx/hy/hz (declutter priority 0); 2D:
+  dashed guides + callouts. Multi-cell = headers only. Classic engine: headers only.
+- ⚠ NEVER do pygfx/wgpu work on a background thread. The first version warmed the GPU up on a
+  thread 2.5 s after launch; with the user clicking, it crashed the interpreter natively (access
+  violation in python314.dll, no traceback, Windows Event Log only; twice in the field Sep 23).
+  Stress harness (GUI opening/clicking tables + bg thread): render+text 2/4, render no text 1/6,
+  prod warm-up body 2/6, pure-Python thread / no thread 0/12. After removing it: real app 6/6 clean.
+  Cost accepted by user: first graph per session ~3.7 s ("Preparing graph…"), then fast.
+- Adversarial review (Opus, SHIP-WITH-FIXES) fixed: GPU deps get `python_version>="3.11"` markers
+  (a 3.10 venv made run.bat fail every launch); NaN-cell crosshair blanked the graph; pane width
+  shrank by the splitter handle per toggle; graph now claims ALL non-Ctrl/Alt keys (V/H/B/S/[ ]
+  still edited from the graph); timers get a context object (close during "Preparing graph…").
+  Follow-ups NOT done: crash sentinel + Settings UI for the classic engine; draw-time GPU error
+  → classic fallback (rendercanvas swallows draw errors); CPU adapters (WARP/llvmpipe) count as GPU.
+- Axis-header highlight is outline-only (bold text got elided: "100.0" -> "10...").
+- `run.bat`/`run.sh` now resync deps via a requirements stamp in the venv (old check was
+  PySide6-only → existing venvs never got pygfx: "No module named 'wgpu'").
+- Evidence: full pytest 1855 passed (after crosshair); `tests/test_graph_gpu.py` 52 passed both engines;
+  before/after sheets `docs/screenshots/graph_compare_NN.png` (baseline script
+  `tests/gui/test_graph_baseline.txt`); bench `tools/graph_eval/bench_graph.py`; PyInstaller build
+  bundles wgpu_native DLL + shaders (built in scratch venv, not run).
+- Pending: manual M1–M6 (mouse feel, corner drag, clean-machine/no-GPU packaged run, Linux pkg,
+  hover, `+` on real ROM); no Settings-dialog UI for `display/graph_engine` yet (env var only);
+  CI lavapipe job unverified until pushed.
+
 ## 🔢 claude/numeric-values-tables-of1s5u — #92 numeric-only table cells (Aug 11, 2026)
 
 **Root cause (confirmed by repro, not inspection):** `on_cell_changed` /

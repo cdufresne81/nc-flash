@@ -23,8 +23,56 @@ ACCENT = "#0078d7"
 ACCENT_WASH = "rgba(0, 120, 215, 0.15)"
 ACCENT_BORDER = "rgba(0, 120, 215, 0.4)"
 
+# Table axis header cell matching the current selection (row/column breakpoint).
+AXIS_HIGHLIGHT = ACCENT
+
 # Amber for warning states (e.g. the ECU window's unexpected-disconnect label).
 WARNING_AMBER = "#cc6600"
+
+# --- Table graph (GPU renderer) ----------------------------------------------
+# The graph pane is a dark "stage" inside the light app: a vertical gradient
+# with light text, so the per-cell table colors pop. sRGB hex; the GPU backend
+# converts to linear where pygfx expects it.
+GRAPH_STAGE_TOP = "#3a4760"
+GRAPH_STAGE_BOTTOM = "#161b27"
+GRAPH_FLOOR_GRID = "#56627a"
+GRAPH_AXIS = "#c8d0e0"
+GRAPH_CELL_EDGE = "#1c2029"
+GRAPH_TEXT = "#e8ecf4"
+GRAPH_TITLE = "#ffffff"
+GRAPH_TEXT_OUTLINE = "#000000"
+GRAPH_AMBIENT_LIGHT = "#ffffff"
+GRAPH_KEY_LIGHT = "#fff4e0"
+GRAPH_FILL_LIGHT = "#cfe0ff"
+GRAPH_SPECULAR = "#555555"
+GRAPH_MARKER_RING = "#ffffff"
+GRAPH_CROSSHAIR = "#ffffff"  # row/column guide through the selected cell
+GRAPH_CALLOUT = "#ffffff"  # axis values of the selected cell
+
+
+def get_graph_readout_stylesheet() -> str:
+    """Hover readout chip floating over the graph (value under the cursor)."""
+    return (
+        "QLabel {"
+        " background-color: rgba(10, 14, 22, 0.82);"
+        f" color: {GRAPH_TEXT};"
+        " border: 1px solid rgba(200, 208, 224, 0.35);"
+        " border-radius: 6px;"
+        " padding: 4px 8px;"
+        " font-size: 9pt;"
+        "}"
+    )
+
+
+def get_graph_status_stylesheet() -> str:
+    """'Preparing graph…' placeholder shown while the GPU warms up."""
+    return (
+        "QLabel {"
+        f" background-color: {GRAPH_STAGE_BOTTOM};"
+        f" color: {GRAPH_AXIS};"
+        " font-size: 10pt;"
+        "}"
+    )
 
 
 def get_toolbar_stylesheet(checked: bool = False) -> str:

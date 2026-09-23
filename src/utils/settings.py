@@ -231,6 +231,17 @@ class AppSettings:
     def set_toggle_categories(self, categories: list):
         self.settings.setValue("display/toggle_categories", categories)
 
+    def get_graph_engine(self) -> str:
+        """Graph renderer: 'auto' (GPU when available) or 'classic' (matplotlib)."""
+        return self.settings.value("display/graph_engine", "auto")
+
+    def get_graph_pane_width(self) -> int:
+        """Last graph pane width the user sized a table window to (px)."""
+        return self.settings.value("display/graph_pane_width", 550, type=int)
+
+    def set_graph_pane_width(self, width: int):
+        self.settings.setValue("display/graph_pane_width", int(width))
+
     def get_auto_round(self) -> bool:
         """Get whether interpolation/smoothing results are auto-rounded."""
         return self.settings.value("editor/auto_round", False, type=bool)

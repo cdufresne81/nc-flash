@@ -1,0 +1,24 @@
+# Selected-cell crosshair: axis header highlight in the table + graph guides and
+# axis callouts (single cell), none for a multi-cell selection.
+load_rom examples/lf9veb.bin
+open_table "Spark Target | High Fuel Demand, High-Det"
+wait 300
+open_graph
+wait 800
+select 6 7
+wait 400
+screenshot crosshair_01_3d_single table
+select 4 3 7 6
+wait 400
+screenshot crosshair_02_3d_block_no_crosshair table
+close_graph
+close_table
+open_table "APP to TP Desired - Max"
+wait 300
+open_graph
+wait 800
+select 8 0
+wait 400
+screenshot crosshair_03_2d_single table
+close_graph
+close_table
