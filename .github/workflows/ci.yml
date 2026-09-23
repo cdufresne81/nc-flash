@@ -16,7 +16,7 @@ jobs:
       matrix:
         include:
           - os: ubuntu-latest
-            python-version: '3.10'
+            python-version: '3.11'
           - os: ubuntu-latest
             python-version: '3.12'
           - os: windows-latest
@@ -50,6 +50,8 @@ jobs:
       if: runner.os == 'Linux'
       run: |
         sudo apt-get update && sudo apt-get install -y libegl1
+        # lavapipe (software Vulkan) so the GPU graph tests render for real
+        sudo apt-get install -y mesa-vulkan-drivers libgl1-mesa-dri
 
     - name: Install dependencies
       run: |
@@ -61,6 +63,8 @@ jobs:
         pytest
       env:
         QT_QPA_PLATFORM: ${{ runner.os == 'Linux' && 'offscreen' || '' }}
+        # This job has lavapipe: GPU graph tests must run, not skip.
+        NCFLASH_REQUIRE_GPU: ${{ (runner.os == 'Linux' && matrix.python-version == '3.12') && '1' || '' }}
 
     - name: Upload coverage reports to Codecov
       if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.12'

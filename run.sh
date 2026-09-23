@@ -10,7 +10,7 @@ echo ""
 # Check if Python is available
 if ! command -v python3 &> /dev/null; then
     echo "ERROR: Python 3 is not installed or not in PATH"
-    echo "Please install Python 3.10 or higher using your package manager"
+    echo "Please install Python 3.11 or higher using your package manager"
     echo "Example: sudo apt install python3 python3-venv"
     exit 1
 fi
@@ -38,15 +38,17 @@ if [ $? -ne 0 ]; then
     exit 1
 fi
 
-# Check if dependencies are installed (check for PySide6)
-python3 -c "import PySide6" 2>/dev/null
-if [ $? -ne 0 ]; then
-    echo "Installing dependencies..."
+# (Re)install dependencies whenever requirements.txt changed since the last
+# install (stamp copy kept inside the venv) - not only when PySide6 is missing,
+# or an existing venv never picks up new dependencies.
+if ! cmp -s requirements.txt venv/.requirements.stamp; then
+    echo "Installing/updating dependencies..."
     pip install -r requirements.txt
     if [ $? -ne 0 ]; then
         echo "ERROR: Failed to install dependencies"
         exit 1
     fi
+    cp requirements.txt venv/.requirements.stamp
     echo "Dependencies installed successfully"
     echo ""
 fi

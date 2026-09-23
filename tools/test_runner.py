@@ -688,6 +688,15 @@ class TestRunner:
         try:
             if not self.current_table_window._graph_visible:
                 self.current_table_window._toggle_graph()
+            # The GPU renderer is created once warm-up finishes (async); wait
+            # for it so later screenshots/rotations see a real graph.
+            gw = self.current_table_window.graph_widget
+            deadline = time.time() + 60
+            while gw is not None and gw.backend is None and time.time() < deadline:
+                self._process_events()
+                time.sleep(0.02)
+            if gw is not None and gw.backend is not None:
+                self._log(f"Graph engine: {gw.engine_name}")
             self._process_events()
             self._log("Graph panel shown")
             return True
@@ -737,19 +746,18 @@ class TestRunner:
 
         try:
             graph_widget = self.current_table_window.graph_widget
-            if graph_widget.ax_3d is None:
-                self._log("ERROR: No 3D axis available (table may be 2D)")
+            current = graph_widget.get_view()
+            if current is None:
+                self._log("ERROR: No 3D view available (table may be 2D)")
                 return False
 
             # Get current values if not specified
-            current_elev = graph_widget.ax_3d.elev
-            current_azim = graph_widget.ax_3d.azim
+            current_elev, current_azim = current
 
             new_elev = elevation if elevation is not None else current_elev
             new_azim = azimuth if azimuth is not None else current_azim
 
-            graph_widget.ax_3d.view_init(elev=new_elev, azim=new_azim)
-            graph_widget.canvas.draw()
+            graph_widget.set_view(new_elev, new_azim)
             self._process_events()
 
             self._log(f"Graph rotated: elevation={new_elev}, azimuth={new_azim}")
@@ -1191,6 +1199,7 @@ class TestRunner:
             "store_width": (lambda s, a: s._cmd_store_width(), 0),
             "assert_width": (lambda s, a: s._cmd_assert_width(a), 1),
             "assert_width_restored": (lambda s, a: s._cmd_assert_width_restored(a), 0),
+            "resize_window": (lambda s, a: s._cmd_resize_window(a), 2),
         }
         return cls._COMMANDS
 
@@ -1232,6 +1241,17 @@ class TestRunner:
         expected = int(args[0])
         tolerance = int(args[1]) if len(args) > 1 else 5
         return self.assert_window_width(expected, tolerance)
+
+    def _cmd_resize_window(self, args):
+        """Resize the current table window (simulates dragging a corner)."""
+        if not self.current_table_window:
+            self._log("ERROR: No table window open")
+            return False
+        w, h = int(args[0]), int(args[1])
+        self.current_table_window.resize(w, h)
+        self.wait(300)
+        self._log(f"Resized table window to {w}x{h}")
+        return True
 
     def _cmd_assert_width_restored(self, args):
         tolerance = int(args[0]) if args else 5

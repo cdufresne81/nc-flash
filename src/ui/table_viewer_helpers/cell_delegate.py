@@ -12,6 +12,7 @@ from PySide6.QtGui import QPen, QColor, QRegularExpressionValidator
 
 from ...core.rom_definition import TableType
 from ...utils.formatting import NUMERIC_INPUT_PATTERN
+from .. import theme
 
 
 class ModifiedCellDelegate(QStyledItemDelegate):
@@ -39,6 +40,14 @@ class ModifiedCellDelegate(QStyledItemDelegate):
             )
         )
         return editor
+
+    def _highlighted_axis(self, index) -> bool:
+        coords = index.data(Qt.UserRole)
+        return (
+            coords is not None
+            and isinstance(coords[0], str)
+            and self.viewer.is_axis_highlighted(coords[0], coords[1])
+        )
 
     def paint(self, painter, option, index):
         """Paint cell with modified border, diff highlight, and/or axis separator"""
@@ -78,6 +87,14 @@ class ModifiedCellDelegate(QStyledItemDelegate):
             # If column 0 (Y-axis), draw right border (both 2D and 3D tables have Y-axis)
             if index.column() == 0:
                 painter.drawLine(option.rect.topRight(), option.rect.bottomRight())
+
+        # Axis breakpoint of the current selection: accent outline only (no bold:
+        # bold text is wider and got elided, e.g. "100.0" -> "10...").
+        if self._highlighted_axis(index):
+            pen = QPen(QColor(theme.AXIS_HIGHLIGHT), 2)
+            pen.setJoinStyle(Qt.MiterJoin)
+            painter.setPen(pen)
+            painter.drawRect(option.rect.adjusted(1, 1, -1, -1))
 
         # Check if this cell is modified (draw complete border around)
         if self.viewer.is_cell_modified(index.row(), index.column()):

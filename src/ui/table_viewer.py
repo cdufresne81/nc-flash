@@ -143,6 +143,12 @@ class TableViewer(QWidget):
         self._delegate = ModifiedCellDelegate(self)
         self.table_widget.setItemDelegate(self._delegate)
 
+        # Axis header cells of the selected rows/columns are highlighted so the
+        # breakpoint (e.g. load 1.00 / rpm 3500) of the selection is readable.
+        # This viewer owns the state; the delegate only reads it.
+        self._axis_highlight = (frozenset(), frozenset())  # (x_axis, y_axis) idx
+        self.table_widget.itemSelectionChanged.connect(self._update_axis_highlight)
+
         # Connect signals to track modifications
         self.cell_changed.connect(self._on_cell_changed_track_modifications)
         self.bulk_changes.connect(self._on_bulk_changes_track_modifications)
@@ -425,6 +431,33 @@ class TableViewer(QWidget):
         commit clears the borders).
         """
         self.table_widget.viewport().update()
+
+    def _update_axis_highlight(self):
+        """Recompute which axis indices the current selection covers."""
+        xs, ys = set(), set()
+        tw = self.table_widget
+        for rng in tw.selectedRanges():
+            for row in range(rng.topRow(), rng.bottomRow() + 1):
+                for col in range(rng.leftColumn(), rng.rightColumn() + 1):
+                    item = tw.item(row, col)
+                    coords = item.data(Qt.UserRole) if item is not None else None
+                    if coords is None or isinstance(coords[0], str):
+                        continue  # axis/blank cells don't drive the highlight
+                    ys.add(coords[0])
+                    if len(coords) > 1:
+                        xs.add(coords[1])
+        table = self.current_table
+        if table is None or table.type != TableType.THREE_D:
+            xs = set()  # 2D tables have no X axis
+        new = (frozenset(xs), frozenset(ys))
+        if new != self._axis_highlight:
+            self._axis_highlight = new
+            tw.viewport().update()
+
+    def is_axis_highlighted(self, axis: str, data_idx: int) -> bool:
+        """True if axis cell ('x_axis'|'y_axis', data_idx) matches the selection."""
+        xs, ys = self._axis_highlight
+        return data_idx in (xs if axis == "x_axis" else ys)
 
     def show_diff_highlights(self) -> bool:
         """Check if diff highlights should be shown"""

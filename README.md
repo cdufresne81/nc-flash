@@ -93,10 +93,13 @@ python main.py
 - Configurable default CSV export directory
 
 ### Table Visualization
-- Interactive 3D surface plot for 3D tables
-- 2D line graph for 2D tables
-- Toggle graph panel (`G` key)
-- Cell selection highlighting on graph
+- GPU-rendered 3D surface for 3D tables: lit, one color per cell, smooth mouse orbit
+- 2D gradient line graph for 2D tables
+- Toggle graph panel (`G` key); drag the window corner to resize the graph, which always refits with every axis label visible
+- Hover any cell in the graph to read its axis values and value
+- Graph keys: arrows rotate, `+`/`-` zoom, `Home`/`R` or double-click reset
+- Cell selection highlighting on graph; edits and undo show live
+- Automatic fallback to the classic (matplotlib) graph when no GPU is available
 - Configurable color maps
 
 ### ECU Flashing
@@ -185,10 +188,11 @@ python main.py
 
 ## Tech Stack
 
-- **Python 3.10+**
+- **Python 3.11+**
 - **PySide6** - Qt6 bindings for Python (GUI framework)
 - **NumPy** - Numerical operations on table data
-- **Matplotlib** - 3D/2D visualization of maps
+- **pygfx / wgpu** - GPU (WebGPU) 3D/2D visualization of maps
+- **Matplotlib** - classic graph fallback when no GPU is available
 
 ## Project Structure
 
@@ -235,7 +239,11 @@ nc-flash/
 │   │   ├── compare_window.py          # Side-by-side ROM comparison
 │   │   ├── ecu_window.py              # ECU Programming window
 │   │   ├── flash_mixin.py             # Flash operations mixin
-│   │   ├── graph_viewer.py            # 3D/2D graph visualization
+│   │   ├── graph_viewer.py            # Graph panel (engine choice, keys)
+│   │   ├── graph_gpu.py               # GPU (pygfx) graph renderer
+│   │   ├── graph_classic.py           # Classic (matplotlib) fallback renderer
+│   │   ├── graph_model.py             # Engine-neutral graph math (colors, ticks)
+│   │   ├── gpu_runtime.py             # GPU probe + background warm-up
 │   │   ├── patch_dialog.py            # ROM patching dialog
 │   │   ├── table_browser.py           # Category tree browser
 │   │   ├── rom_document.py            # Single ROM tab widget
@@ -358,7 +366,7 @@ flake8 src/ tests/
 ### CI/CD
 
 Tests run automatically on GitHub Actions for:
-- Python 3.10, 3.12
+- Python 3.11, 3.12, 3.14
 - Ubuntu, Windows
 
 ## Development Status
