@@ -123,7 +123,7 @@ def engine(request, monkeypatch):
     if _FORCED_CLASSIC:
         pytest.skip("NCFLASH_GRAPH_ENGINE=classic forces the classic engine")
     monkeypatch.setenv("NCFLASH_GRAPH_ENGINE", "auto")
-    gpu_runtime.wait_until_ready(180)
+    gpu_runtime.wait_until_ready()
     eng, reason = gpu_runtime.engine_decision()
     if eng != gpu_runtime.ENGINE_GPU:
         if os.environ.get("NCFLASH_REQUIRE_GPU"):
@@ -172,8 +172,6 @@ def _face_rgba(backend):
     """Per-cell RGBA as rendered (sRGB), shape (rows, cols, 4)."""
     rows, cols = backend.model.values.shape
     if backend.engine_name == "gpu":
-        from src.ui.graph_gpu import srgb_to_linear  # noqa: F401
-
         lin = np.array(backend.surface.mesh.geometry.colors.data)[::2]
         rgb = np.where(
             lin[:, :3] <= 0.0031308,
@@ -482,11 +480,11 @@ class TestSizing:
         win.splitter.setSizes([t, 480])
         win.resize(t + 480 + win.splitter.handleWidth(), win.height())
         qtbot.wait(100)
-        win._remember_pane_width()  # what a user drag triggers
-        assert isolated_settings.get_graph_pane_width() == win.graph_widget.width()
-        remembered = isolated_settings.get_graph_pane_width()
-        win._toggle_graph()
+        width = win.graph_widget.width()
+        win._toggle_graph()  # hiding the graph persists the pane width
         qtbot.wait(100)
+        assert isolated_settings.get_graph_pane_width() == width
+        remembered = width
         win._toggle_graph()
         qtbot.wait(200)
         assert abs(win.graph_widget.width() - remembered) <= 5
@@ -600,16 +598,26 @@ def test_open_close_cycles_release_gpu(qtbot, engine, isolated_settings):
 # H2: scaling edit refreshes colors without toggling G  (A20)
 # ---------------------------------------------------------------------------
 def test_scaling_change_recolors(qtbot, engine, isolated_settings, monkeypatch):
+    """Drive the real _edit_scaling (dialog + XML write stubbed)."""
+    import src.ui.table_viewer_window as tvw
+    from unittest.mock import MagicMock
+
     win = _open(qtbot, _table_3d(), _data_3d(), engine)
     b = win.graph_widget.backend
     c0 = _face_rgba(b).copy()
-    win.rom_definition.scalings["S"].max = 1000.0  # what the dialog applies
-    # the post-dialog refresh path in _edit_scaling
-    win.viewer.display_table(win.table, win.data)
-    win.graph_widget.set_data(
-        win.table, win.data, win.rom_definition, win._get_selected_data_cells()
-    )
+    scaling = win.rom_definition.scalings["S"]
+    dialog = MagicMock()
+    dialog.exec.return_value = True
+    dialog.get_all_updates.return_value = {"S": ({"max": "1000"}, scaling)}
+    monkeypatch.setattr(tvw, "TableScalingDialog", lambda *a, **k: dialog)
+    monkeypatch.setattr(tvw, "update_scaling", lambda *a, **k: True)
+    monkeypatch.setattr(tvw.QMessageBox, "information", lambda *a, **k: None)
+    win.rom_definition.xml_path = "/tmp/fake.xml"
+    n = b.n_data_updates
+    win._edit_scaling()
+    qtbot.waitUntil(lambda: b.n_data_updates > n, timeout=1000)
     _settle(qtbot, win)
+    assert scaling.max == 1000.0
     assert not np.allclose(_face_rgba(b), c0)
 
 
@@ -740,3 +748,49 @@ class TestAxisHighlight:
         n = b.n_color_updates
         qtbot.waitUntil(lambda: b.n_color_updates > n, timeout=1000)
         assert b.line.cross is None
+
+
+# ---------------------------------------------------------------------------
+# adversarial-review regressions
+# ---------------------------------------------------------------------------
+def test_nan_cell_crosshair_keeps_graph_fitted(qtbot, engine, isolated_settings):
+    if engine == "classic":
+        pytest.skip("crosshair is a GPU-engine feature")
+    data = _data_3d()
+    data["values"][3, 4] = np.nan  # erased 0xFFFFFFFF float cells read as NaN
+    win = _open(qtbot, _table_3d(), data, engine)
+    b = win.graph_widget.backend
+    _select(win, [(3, 4)])
+    qtbot.waitUntil(lambda: b.n_color_updates >= 1, timeout=1000)
+    _settle(qtbot, win)
+    s, cx, cy = b._fit
+    assert np.isfinite([s, cx, cy]).all() and s > 0.01
+
+
+def test_pane_width_stable_across_toggles(qtbot, engine, isolated_settings):
+    win = _open(qtbot, _table_3d(), _data_3d(), engine)
+    first = win.graph_widget.width()
+    for _ in range(4):
+        win._toggle_graph()
+        qtbot.wait(100)
+        win._toggle_graph()
+        qtbot.wait(200)
+    assert abs(win.graph_widget.width() - first) <= 2
+
+
+@pytest.mark.parametrize("key", [Qt.Key_BracketRight, Qt.Key_V, Qt.Key_S])
+def test_single_key_edit_shortcuts_blocked_while_graph_focused(
+    qtbot, engine, isolated_settings, key
+):
+    data = _data_3d()
+    win = _open(qtbot, _table_3d(), data, engine)
+    _select(win, [(1, 1), (1, 2), (2, 1), (2, 2)])
+    qtbot.wait(150)
+    before = data["values"].copy()
+    w = win.graph_widget.backend.widget
+    win.activateWindow()
+    w.setFocus()
+    qtbot.waitUntil(lambda: QApplication.focusWidget() is w, timeout=2000)
+    QTest.keyClick(win.windowHandle(), key)
+    qtbot.wait(100)
+    np.testing.assert_array_equal(data["values"], before)

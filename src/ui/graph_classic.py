@@ -6,21 +6,22 @@ contract). matplotlib is imported lazily in ``__init__`` so it stays out of the
 startup import graph.
 """
 
-import logging
-
 import numpy as np
 from PySide6.QtWidgets import QSizePolicy
 
 from ..core.rom_definition import TableType
-from .graph_model import GraphModel, extend_grid, selected_points
-
-logger = logging.getLogger(__name__)
-
-DEFAULT_VIEW = (30.0, -60.0)
+from .gpu_runtime import ENGINE_CLASSIC
+from .graph_model import (
+    DEFAULT_VIEW,
+    SELECTION_RGBA,
+    GraphModel,
+    extend_grid,
+    selected_points,
+)
 
 
 class ClassicGraphView:
-    engine_name = "classic"
+    engine_name = ENGINE_CLASSIC
 
     def __init__(self, parent=None):
         from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
@@ -90,7 +91,7 @@ class ClassicGraphView:
             ax.plot(x[i : i + 2], v[i : i + 2], color=tuple(base[i, :3]), linewidth=2)
         sx, sy = selected_points(m, self._selected)
         if len(sx):
-            ax.scatter(sx, sy, color="blue", s=100, zorder=10, alpha=0.8)
+            ax.scatter(sx, sy, color=SELECTION_RGBA, s=100, zorder=10, alpha=0.8)
         ax.set_xlabel(m.x_title)
         ax.set_ylabel(m.value_title)
         ax.grid(True, alpha=0.3)
@@ -137,11 +138,6 @@ class ClassicGraphView:
             return
         self.ax.view_init(elev=elev, azim=azim)
         self.widget.draw_idle()
-
-    def rotate(self, d_azim, d_elev):
-        view = self.get_view()
-        if view:
-            self.set_view(view[0] + d_elev, view[1] + d_azim)
 
     def get_zoom(self):
         return self._zoom

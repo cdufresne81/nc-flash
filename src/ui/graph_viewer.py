@@ -16,7 +16,7 @@ import logging
 from PySide6.QtCore import QEvent, Qt
 from PySide6.QtWidgets import QLabel, QSizePolicy, QVBoxLayout, QWidget
 
-from ..core.rom_definition import RomDefinition, Table, TableType
+from ..core.rom_definition import RomDefinition, Table
 from . import gpu_runtime, theme
 from .graph_model import build_model, selection_colors
 
@@ -41,6 +41,14 @@ _GRAPH_KEYS = {
 }
 
 _engine_logged = set()
+
+#: key -> (d_azimuth, d_elevation) degrees for 3D rotation
+_ROTATE_KEYS = {
+    Qt.Key_Left: (-ROTATE_STEP, 0.0),
+    Qt.Key_Right: (ROTATE_STEP, 0.0),
+    Qt.Key_Up: (0.0, ROTATE_STEP),
+    Qt.Key_Down: (0.0, -ROTATE_STEP),
+}
 
 
 class GraphWidget(QWidget):
@@ -143,7 +151,7 @@ class GraphWidget(QWidget):
             return
         self._pending = True
         self._status.show()
-        gpu_runtime.when_ready(self._create_backend)
+        gpu_runtime.when_ready(self._create_backend, self)
 
     def _create_backend(self, force_classic=False):
         self._pending = False
@@ -178,7 +186,7 @@ class GraphWidget(QWidget):
         w.installEventFilter(self)
         self._layout.addWidget(w)
         self.setFocusProxy(w)
-        if self.hasFocus() or self.isVisible():
+        if self.hasFocus():  # keep focus where the user put it
             w.setFocus()
 
     def _guard(self, call):
@@ -186,7 +194,10 @@ class GraphWidget(QWidget):
         try:
             call()
         except Exception as exc:  # noqa: BLE001
-            if self.backend is None or self.backend.engine_name != "gpu":
+            if (
+                self.backend is None
+                or self.backend.engine_name != gpu_runtime.ENGINE_GPU
+            ):
                 raise
             logger.warning("GPU graph error, switching this graph to classic: %s", exc)
             old = self.backend
@@ -203,7 +214,7 @@ class GraphWidget(QWidget):
     def eventFilter(self, obj, event):  # noqa: N802
         if self.backend is not None and obj is self.backend.widget:
             et = event.type()
-            if et == QEvent.ShortcutOverride and self._owns_key(event):
+            if et == QEvent.ShortcutOverride and self._claims_shortcut(event):
                 event.accept()
                 return True
             if et == QEvent.KeyPress and self._handle_key(event):
@@ -211,9 +222,20 @@ class GraphWidget(QWidget):
         return super().eventFilter(obj, event)
 
     def _owns_key(self, event) -> bool:
-        return event.key() in _GRAPH_KEYS and not (
-            event.modifiers() & (Qt.ControlModifier | Qt.AltModifier)
-        )
+        return event.key() in _GRAPH_KEYS and not self._has_command_modifier(event)
+
+    @staticmethod
+    def _has_command_modifier(event) -> bool:
+        return bool(event.modifiers() & (Qt.ControlModifier | Qt.AltModifier))
+
+    def _claims_shortcut(self, event) -> bool:
+        """While the graph has focus, it claims EVERY key without Ctrl/Alt.
+
+        The window's single-key Edit shortcuts (+ - = * [ ] V H B S R ...) act
+        on the table selection; fired from the graph they would silently edit
+        ROM data (H1). Ctrl/Alt shortcuts (undo, copy, menus) still pass.
+        """
+        return not self._has_command_modifier(event)
 
     def _handle_key(self, event) -> bool:
         if self.backend is None or not self._owns_key(event):
@@ -227,18 +249,13 @@ class GraphWidget(QWidget):
         elif key in (Qt.Key_Home, Qt.Key_R):
             b.reset_view()
         elif b.is_3d():
-            if key == Qt.Key_Left:
-                b.rotate(-ROTATE_STEP, 0)
-            elif key == Qt.Key_Right:
-                b.rotate(ROTATE_STEP, 0)
-            elif key == Qt.Key_Up:
-                b.rotate(0, ROTATE_STEP)
-            elif key == Qt.Key_Down:
-                b.rotate(0, -ROTATE_STEP)
+            d_azim, d_elev = _ROTATE_KEYS.get(key, (0.0, 0.0))
+            elev, azim = b.get_view()
+            b.set_view(elev + d_elev, azim + d_azim)
         return True
 
     def event(self, event):  # noqa: N802 - focus may sit on the facade itself
-        if event.type() == QEvent.ShortcutOverride and self._owns_key(event):
+        if event.type() == QEvent.ShortcutOverride and self._claims_shortcut(event):
             event.accept()
             return True
         return super().event(event)
@@ -246,9 +263,3 @@ class GraphWidget(QWidget):
     def keyPressEvent(self, event):  # noqa: N802
         if not self._handle_key(event):
             super().keyPressEvent(event)
-
-    def is_2d_or_3d(self):
-        return self.table is not None and self.table.type in (
-            TableType.TWO_D,
-            TableType.THREE_D,
-        )

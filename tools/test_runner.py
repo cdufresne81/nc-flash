@@ -686,15 +686,16 @@ class TestRunner:
             return False
 
         try:
+            from src.ui import gpu_runtime
+
+            gpu_runtime.wait_until_ready()  # first-time GPU probe, up front
             if not self.current_table_window._graph_visible:
                 self.current_table_window._toggle_graph()
-            # The GPU renderer is created once warm-up finishes (async); wait
-            # for it so later screenshots/rotations see a real graph.
+            # The renderer is created on a deferred timer once the layout has
+            # settled; let it land.
             gw = self.current_table_window.graph_widget
-            deadline = time.time() + 60
-            while gw is not None and gw.backend is None and time.time() < deadline:
-                self._process_events()
-                time.sleep(0.02)
+            if gw is not None and gw.backend is None:
+                self.wait(200)
             if gw is not None and gw.backend is not None:
                 self._log(f"Graph engine: {gw.engine_name}")
             self._process_events()

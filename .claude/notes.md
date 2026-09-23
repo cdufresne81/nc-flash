@@ -26,6 +26,12 @@ Goal doc: `.claude/plans/graph-engine-pygfx-goal.md` (A1–A25, regression check
   Stress harness (GUI opening/clicking tables + bg thread): render+text 2/4, render no text 1/6,
   prod warm-up body 2/6, pure-Python thread / no thread 0/12. After removing it: real app 6/6 clean.
   Cost accepted by user: first graph per session ~3.7 s ("Preparing graph…"), then fast.
+- Adversarial review (Opus, SHIP-WITH-FIXES) fixed: GPU deps get `python_version>="3.11"` markers
+  (a 3.10 venv made run.bat fail every launch); NaN-cell crosshair blanked the graph; pane width
+  shrank by the splitter handle per toggle; graph now claims ALL non-Ctrl/Alt keys (V/H/B/S/[ ]
+  still edited from the graph); timers get a context object (close during "Preparing graph…").
+  Follow-ups NOT done: crash sentinel + Settings UI for the classic engine; draw-time GPU error
+  → classic fallback (rendercanvas swallows draw errors); CPU adapters (WARP/llvmpipe) count as GPU.
 - Axis-header highlight is outline-only (bold text got elided: "100.0" -> "10...").
 - `run.bat`/`run.sh` now resync deps via a requirements stamp in the venv (old check was
   PySide6-only → existing venvs never got pygfx: "No module named 'wgpu'").

@@ -86,11 +86,12 @@ def engine_decision() -> tuple:
     return ENGINE_CLASSIC, _state["reason"]
 
 
-def when_ready(callback: Callable[[], None], delay_ms: int = 30) -> None:
+def when_ready(callback: Callable[[], None], context) -> None:
     """Run ``callback`` once the engine decision is final.
 
     The first time, the (blocking, ~1-2.5 s) probe runs on the next event-loop
     turn so the caller's "Preparing graph…" placeholder paints first.
+    ``context`` (a QObject) cancels the callback if it is destroyed first.
     """
     if is_ready():
         callback()
@@ -100,11 +101,11 @@ def when_ready(callback: Callable[[], None], delay_ms: int = 30) -> None:
         _probe()
         callback()
 
-    QTimer.singleShot(delay_ms, _run)
+    QTimer.singleShot(30, context, _run)  # placeholder paints before the stall
 
 
-def wait_until_ready(timeout: float = 60.0) -> bool:
-    """Blocking probe (tests/tools). ``timeout`` kept for API compatibility."""
+def wait_until_ready() -> bool:
+    """Blocking probe for tests/tools (the app itself uses :func:`when_ready`)."""
     if requested_engine() != ENGINE_CLASSIC:
         _probe()
     return is_ready()

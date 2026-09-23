@@ -432,9 +432,13 @@ class TableViewer(QWidget):
         """
         self.table_widget.viewport().update()
 
-    def _update_axis_highlight(self):
-        """Recompute which axis indices the current selection covers."""
-        xs, ys = set(), set()
+    def selected_data_cells(self) -> list:
+        """Selected DATA cells as (data_row, data_col); axis/blank cells excluded.
+
+        2D tables report column 0. The one copy of this walk: the window's graph
+        selection and the axis-header highlight both use it.
+        """
+        cells = []
         tw = self.table_widget
         for rng in tw.selectedRanges():
             for row in range(rng.topRow(), rng.bottomRow() + 1):
@@ -442,17 +446,25 @@ class TableViewer(QWidget):
                     item = tw.item(row, col)
                     coords = item.data(Qt.UserRole) if item is not None else None
                     if coords is None or isinstance(coords[0], str):
-                        continue  # axis/blank cells don't drive the highlight
-                    ys.add(coords[0])
-                    if len(coords) > 1:
-                        xs.add(coords[1])
+                        continue
+                    cells.append((coords[0], coords[1] if len(coords) > 1 else 0))
+        return cells
+
+    def _update_axis_highlight(self):
+        """Recompute which axis indices the current selection covers."""
+        cells = self.selected_data_cells()
         table = self.current_table
-        if table is None or table.type != TableType.THREE_D:
-            xs = set()  # 2D tables have no X axis
-        new = (frozenset(xs), frozenset(ys))
+        is_3d = table is not None and table.type == TableType.THREE_D
+        new = (
+            frozenset(c for _, c in cells) if is_3d else frozenset(),
+            frozenset(r for r, _ in cells),
+        )
         if new != self._axis_highlight:
             self._axis_highlight = new
-            tw.viewport().update()
+            self.table_widget.viewport().update()
+
+    def has_axis_highlight(self) -> bool:
+        return bool(self._axis_highlight[0] or self._axis_highlight[1])
 
     def is_axis_highlighted(self, axis: str, data_idx: int) -> bool:
         """True if axis cell ('x_axis'|'y_axis', data_idx) matches the selection."""

@@ -21,6 +21,20 @@ SELECTION_RGBA = (0.0, 0.5, 1.0, 1.0)
 #: Target number of tick labels per axis before thinning kicks in.
 MAX_TICKS = 6
 
+#: Default 3D view (elevation, azimuth) — same for both renderers.
+DEFAULT_VIEW = (30.0, -60.0)
+
+_lut_cache = {}  # id(ColorMap) -> (ColorMap, float LUT); colormaps are immutable
+
+
+def _lut(cmap) -> np.ndarray:
+    hit = _lut_cache.get(id(cmap))
+    if hit is None or hit[0] is not cmap:
+        hit = (cmap, np.array(cmap.colors, dtype=np.float64) / 255.0)
+        _lut_cache.clear()  # one active colormap at a time
+        _lut_cache[id(cmap)] = hit
+    return hit[1]
+
 
 def cell_colors(values: np.ndarray, scaling_range=None) -> np.ndarray:
     """Per-cell sRGB RGBA floats matching the table viewer gradient.
@@ -46,7 +60,7 @@ def cell_colors(values: np.ndarray, scaling_range=None) -> np.ndarray:
 
     scaled = np.nan_to_num(ratios * 255, nan=127.0)
     indices = np.clip(scaled, 0, 255).astype(np.intp)
-    lut = np.array(get_colormap().colors, dtype=np.float64) / 255.0
+    lut = _lut(get_colormap())
     colors = np.empty((*values.shape, 4))
     colors[..., :3] = lut[indices]
     colors[..., 3] = 1.0
@@ -249,18 +263,20 @@ def selected_points(
     return model.x_values[rows], model.values[rows]
 
 
+def axis_value_labels(model: GraphModel, row: int, col: int) -> Tuple[str, str]:
+    """(x, y) axis-value labels of a 3D cell (index when the axis is missing)."""
+    xv = format_tick(model.x_values[col]) if model.x_values is not None else str(col)
+    yv = format_tick(model.y_values[row]) if model.y_values is not None else str(row)
+    return xv, yv
+
+
 def hover_text(model: GraphModel, row: int, col: int = 0) -> str:
     """Readout for the cell under the cursor: 'X x · Y y → value'."""
     if model.kind == TableType.THREE_D:
         rows, cols = model.values.shape
         if not (0 <= row < rows and 0 <= col < cols):
             return ""
-        xv = (
-            format_tick(model.x_values[col]) if model.x_values is not None else str(col)
-        )
-        yv = (
-            format_tick(model.y_values[row]) if model.y_values is not None else str(row)
-        )
+        xv, yv = axis_value_labels(model, row, col)
         return (
             f"{model.x_title} {xv} · {model.y_title} {yv} → "
             f"{format_tick(model.values[row, col])}"

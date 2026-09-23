@@ -14,12 +14,11 @@ measured (``tools/graph_eval``):
 
 Backend contract (shared with ``graph_classic.ClassicGraphView``):
 ``widget``, ``engine_name``, ``show_model``, ``update_data``, ``update_colors``,
-``is_3d``, ``get_view``, ``set_view``, ``rotate``, ``zoom``, ``get_zoom``,
+``is_3d``, ``get_view``, ``set_view``, ``zoom``, ``get_zoom``,
 ``reset_view``, ``request_draw``, ``grab``, ``shutdown``, counters
 ``n_data_updates`` / ``n_color_updates``.
 """
 
-import logging
 import math
 from typing import List, Optional, Tuple
 
@@ -29,9 +28,12 @@ from PySide6.QtWidgets import QLabel, QSizePolicy
 
 from ..core.rom_definition import TableType
 from . import theme
-from .gpu_runtime import PIXEL_RATIO
+from .gpu_runtime import ENGINE_GPU, PIXEL_RATIO
 from .graph_model import (
+    DEFAULT_VIEW,
+    SELECTION_RGBA,
     GraphModel,
+    axis_value_labels,
     extend_grid,
     format_tick,
     hover_text,
@@ -39,11 +41,8 @@ from .graph_model import (
     selected_points,
 )
 
-logger = logging.getLogger(__name__)
-
 # World box for the 3D surface (matplotlib-like 4:4:3 box, any table shape).
 BX, BY, BZ = 10.0, 10.0, 7.0
-DEFAULT_VIEW = (30.0, -60.0)  # elevation, azimuth — same as the classic graph
 FOV = 22.0
 CAM_DIST = 42.0
 FIT_MARGIN = 10.0  # logical px kept free around the fitted plot
@@ -92,6 +91,11 @@ def single_cell(cells):
     return next(iter(unique)) if len(unique) == 1 else None
 
 
+def _fit_center(p: np.ndarray, e: np.ndarray, s: float) -> float:
+    """Centre (base px) balancing the fitted extent of points p ± e at scale s."""
+    return ((s * p + e).max() + (s * p - e).min()) / 2 / s
+
+
 def _fit_axis(p: np.ndarray, e: np.ndarray, avail: float) -> float:
     """Largest scale s with (max(s*p+e) - min(s*p-e)) <= avail (bisection)."""
     if avail <= 0:
@@ -126,6 +130,8 @@ class Surface3D:
         # label records: [text_obj, axis, base_pos(3,), text, font, enabled]
         self._labels = []
         self._xhair = []
+        self._callouts = {}  # "hx"/"hy"/"hz" -> label record
+        self._layout_key = None  # skip re-placing labels when unchanged
         self._crosshair = None  # (row, col) of the single selected cell
         self._zgrid = None
 
@@ -278,6 +284,8 @@ class Surface3D:
             self._xhair.append(line)
         for axis in ("hx", "hy", "hz"):
             self._add_label(axis, (0, 0, 0), "", CALLOUT_FONT, callout=True)
+        self._callouts = {r[1]: r for r in self._labels if r[1][0] == "h"}
+        self._layout_key = None
         self.set_crosshair(self._crosshair)
 
     def _crosshair_paths(self, r, c):
@@ -336,7 +344,8 @@ class Surface3D:
             cell = None
         for line in self._xhair:
             line.visible = cell is not None
-        callouts = {rec[1]: rec for rec in self._labels if rec[1][0] == "h"}
+        callouts = self._callouts
+        self._layout_key = None  # callout positions change with the cell
         for rec in callouts.values():
             rec[5] = cell is not None
             rec[0].visible = cell is not None
@@ -348,13 +357,16 @@ class Surface3D:
         for line, pts in zip(self._xhair, (row_pts, col_pts)):
             line.geometry.positions.data[:] = pts.astype(np.float32)
             line.geometry.positions.update_full()
-        xv = format_tick(m.x_values[c]) if m.x_values is not None else str(c)
-        yv = format_tick(m.y_values[r]) if m.y_values is not None else str(r)
+        xv, yv = axis_value_labels(m, r, c)
         v = float(m.values[r, c])
         for key, text, base in (
             ("hx", xv, (xc, 0, 0)),
             ("hy", yv, (0, yr, 0)),
-            ("hz", format_tick(v), (0, 0, float(self._zw(v)))),
+            (
+                "hz",
+                format_tick(v),
+                (0, 0, float(self._zw(v)) if np.isfinite(v) else 0.0),
+            ),
         ):
             rec = callouts[key]
             rec[0].set_text(text)
@@ -377,6 +389,10 @@ class Surface3D:
         zx, zy = cands[int(np.argmin(pts[:, 0]))]
         zox = -1.0 if zx < BX / 2 else 1.0
         zoy = -1.0 if zy < BY / 2 else 1.0
+        key = (y_edge, x_edge, zx, zy)
+        if key == self._layout_key:
+            return  # same edges/corner as last frame: nothing moves
+        self._layout_key = key
 
         zpos = [(zx, zy, 0.0), (zx, zy, BZ)]
         for zv in self._z_ticks:
@@ -437,9 +453,14 @@ class Line2D:
         self.plot = gfx.Group()  # data coordinates (ortho camera)
         self.overlay = gfx.Group()  # screen coordinates (labels)
         self.model: Optional[GraphModel] = None
-        self.rect = (0.0, 1.0, 0.0, 1.0)
+        self.base_rect = (0.0, 1.0, 0.0, 1.0)  # data extent + padding
+        self.rect = self.base_rect  # current view rect (zoom applied in draw)
         self._selected = []
         self.points = None
+        self._sel_obj = None  # blue selected-point markers
+        self._guide = None  # dashed guides of the single selected point
+        self.cross = None  # (x, y) of the single selected point
+        self._overlay_key = None  # skip rebuilding labels when unchanged
         self._ticks_x: List[float] = []
         self._ticks_y: List[float] = []
 
@@ -448,6 +469,7 @@ class Line2D:
         self.model = model
         self._selected = list(selected_cells)
         self.plot.clear()
+        self._sel_obj = self._guide = None
         x = np.asarray(model.x_values, float)
         y = np.nan_to_num(np.asarray(model.values, float))
         n = len(x)
@@ -459,7 +481,7 @@ class Line2D:
             ymin, ymax = ymin - 1, ymax + 1
         px, py = 0.03 * (xmax - xmin), 0.08 * (ymax - ymin)
         self.base_rect = (xmin - px, xmax + px, ymin - py, ymax + py)
-        self.rect = self.base_rect  # current view rect (zoom applied in draw)
+        self.rect = self.base_rect
         lin = _to_linear(model.colors).astype(np.float32)
 
         # Grid (behind): nice ticks in both directions.
@@ -480,31 +502,31 @@ class Line2D:
                     ),
                 )
             )
+        line_pos = np.column_stack([x, y, np.zeros(n)]).astype(np.float32)
         if n >= 2:
             # Soft gradient fill under the curve.
-            fill_pos, fill_col, fill_idx = [], [], []
-            for i in range(n):
-                fill_pos += [(x[i], y0, 0), (x[i], y[i], 0)]
-                c = lin[i].copy()
-                c_top, c_bot = c.copy(), c.copy()
-                c_top[3], c_bot[3] = 0.30, 0.02
-                fill_col += [c_bot, c_top]
-            for i in range(n - 1):
-                a = 2 * i
-                fill_idx += [(a, a + 2, a + 3), (a, a + 3, a + 1)]
+            # bottom + top vertex per point, alpha fading line -> transparent
+            fill_pos = np.empty((2 * n, 3), np.float32)
+            fill_pos[0::2] = np.column_stack([x, np.full(n, y0), np.zeros(n)])
+            fill_pos[1::2] = line_pos
+            fill_col = np.repeat(lin, 2, axis=0)
+            fill_col[0::2, 3], fill_col[1::2, 3] = 0.02, 0.30
+            a = 2 * np.arange(n - 1)
+            fill_idx = np.concatenate(
+                [np.column_stack([a, a + 2, a + 3]), np.column_stack([a, a + 3, a + 1])]
+            ).astype(np.int32)
             self.plot.add(
                 gfx.Mesh(
                     gfx.Geometry(
-                        positions=np.array(fill_pos, np.float32),
-                        colors=np.array(fill_col, np.float32),
-                        indices=np.array(fill_idx, np.int32),
+                        positions=fill_pos,
+                        colors=fill_col,
+                        indices=fill_idx,
                     ),
                     gfx.MeshBasicMaterial(
                         color_mode="vertex", alpha_mode="blend", side="both"
                     ),
                 )
             )
-            line_pos = np.column_stack([x, y, np.zeros(n)]).astype(np.float32)
             self.plot.add(
                 gfx.Line(
                     gfx.Geometry(positions=line_pos, colors=lin),
@@ -512,9 +534,8 @@ class Line2D:
                 )
             )
         # Data points.
-        pts = np.column_stack([x, y, np.zeros(n)]).astype(np.float32)
         self.points = gfx.Points(
-            gfx.Geometry(positions=pts, colors=lin),
+            gfx.Geometry(positions=line_pos, colors=lin),
             gfx.PointsMarkerMaterial(
                 size=8.0,
                 color_mode="vertex",
@@ -528,13 +549,12 @@ class Line2D:
 
     def _build_selection(self):
         gfx = self.gfx
-        if getattr(self, "_sel_obj", None) is not None:
-            self.plot.remove(self._sel_obj)
-            self._sel_obj = None
-        for obj in getattr(self, "_guides", []):
-            self.plot.remove(obj)
-        self._guides = []
+        for obj in (self._sel_obj, self._guide):
+            if obj is not None:
+                self.plot.remove(obj)
+        self._sel_obj = self._guide = None
         self.cross = None
+        self._overlay_key = None
         cell = single_cell(self._selected)
         n = len(self.model.values)
         if cell is not None and 0 <= cell[0] < n:
@@ -543,7 +563,7 @@ class Line2D:
             yi = float(np.nan_to_num(self.model.values[i]))
             self.cross = (xi, yi)
             x0, _, y0, _ = self.base_rect
-            guide = gfx.Line(
+            self._guide = gfx.Line(
                 gfx.Geometry(
                     positions=np.array(
                         [
@@ -562,8 +582,7 @@ class Line2D:
                     aa=True,
                 ),
             )
-            self.plot.add(guide)
-            self._guides.append(guide)
+            self.plot.add(self._guide)
         sx, sy = selected_points(self.model, self._selected)
         if len(sx):
             pos = np.column_stack([sx, np.nan_to_num(sy), np.full(len(sx), 0.1)])
@@ -571,7 +590,7 @@ class Line2D:
                 gfx.Geometry(positions=pos.astype(np.float32)),
                 gfx.PointsMarkerMaterial(
                     size=15.0,
-                    color=tuple(srgb_to_linear((0.0, 0.5, 1.0))) + (1.0,),
+                    color=SELECTION_RGBA,  # sRGB, like every material color
                     edge_width=2.0,
                     edge_color=theme.GRAPH_MARKER_RING,
                 ),
@@ -594,13 +613,16 @@ class Line2D:
 
     def build_overlay(self, vp, size):
         gfx, m = self.gfx, self.model
+        key = (tuple(vp), tuple(size), self.rect, self.cross, id(m))
+        if key == self._overlay_key:
+            return  # labels already built for this layout (hover redraws etc.)
+        self._overlay_key = key
         self.overlay.clear()
         vx, vy, vw, vh = vp
-        # thin x ticks if they'd collide
         # Callouts for the single selected point: its x and y values, bold, on
         # the axes; plain ticks that would collide with them are skipped.
         cx_px = cy_px = None
-        if getattr(self, "cross", None) is not None:
+        if self.cross is not None:
             xi, yi = self.cross
             cpx, cpy = self.to_px(xi, yi, vp)
             cx_px, cy_px = float(cpx), float(cpy)
@@ -661,7 +683,7 @@ class Line2D:
 # The view (one per GraphWidget)
 # =============================================================================
 class GpuGraphView(QObject):
-    engine_name = "gpu"
+    engine_name = ENGINE_GPU
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -693,12 +715,11 @@ class GpuGraphView(QObject):
         self.surface: Optional[Surface3D] = None
         self.line: Optional[Line2D] = None
         self.model: Optional[GraphModel] = None
-        self._selected = []
         self.autofit = True
         self._fit = (1.0, 0.0, 0.0)  # scale, cx, cy (base px, from centre)
         self.n_data_updates = 0
         self.n_color_updates = 0
-        self.n_draws = 0
+        self._vp = None  # 2D plot viewport (logical px), set by _draw
         # hover readout
         self.readout = QLabel(parent)
         self.readout.setStyleSheet(theme.get_graph_readout_stylesheet())
@@ -752,43 +773,37 @@ class GpuGraphView(QObject):
         self.camera.look_at(tuple(tgt))
 
     def show_model(self, model: GraphModel, selected_cells):
-        """First show / structural change: (re)build the scene."""
+        """(Re)build for ``model``; a new scene only when the table kind changes.
+
+        The camera is left untouched, so this is also the data-update path.
+        """
         kind_changed = self.model is None or self.model.kind != model.kind
-        self.model, self._selected = model, list(selected_cells)
+        self.model = model
+        self.readout.hide()  # its value may be stale now
         if model.kind == TableType.THREE_D:
             if kind_changed or self.surface is None:
                 self._new_3d_scene()
             self.surface.set_model(model)
-            self.surface.set_crosshair(single_cell(self._selected))
+            self.surface.set_crosshair(single_cell(selected_cells))
         else:
             if kind_changed or self.line is None:
                 self._new_2d_scene()
-            self.line.set_model(model, self._selected)
+            self.line.set_model(model, selected_cells)
         self.request_draw()
 
     def update_data(self, model: GraphModel, selected_cells):
         """Values/axes changed: rebuild geometry + labels; camera untouched."""
         self.n_data_updates += 1
-        if self.model is None or self.model.kind != model.kind:
-            self.show_model(model, selected_cells)
-            return
-        self.model, self._selected = model, list(selected_cells)
-        if self.surface is not None and model.kind == TableType.THREE_D:
-            self.surface.set_model(model)
-            self.surface.set_crosshair(single_cell(self._selected))
-        elif self.line is not None:
-            self.line.set_model(model, self._selected)
-        self.request_draw()
+        self.show_model(model, selected_cells)
 
     def update_colors(self, colors: np.ndarray, selected_cells):
         """Selection-only change: colors buffer only (no geometry rebuild)."""
         self.n_color_updates += 1
-        self._selected = list(selected_cells)
         if self.surface is not None and self.is_3d():
             self.surface.set_colors(colors)
-            self.surface.set_crosshair(single_cell(self._selected))
+            self.surface.set_crosshair(single_cell(selected_cells))
         elif self.line is not None and self.model is not None:
-            self.line.set_selection(colors, self._selected)
+            self.line.set_selection(colors, selected_cells)
         self.request_draw()
 
     # -- view -----------------------------------------------------------------
@@ -813,11 +828,6 @@ class GpuGraphView(QObject):
         self.camera.zoom = zoom
         self.controller.target = (BX / 2, BY / 2, BZ / 2)
         self.request_draw()
-
-    def rotate(self, d_azim, d_elev):
-        view = self.get_view()
-        if view:
-            self.set_view(view[0] + d_elev, view[1] + d_azim)
 
     def get_zoom(self):
         if self.camera is None:
@@ -870,26 +880,14 @@ class GpuGraphView(QObject):
         self.surface.layout_labels(cam_pos, lambda p: self._project_base(p, size))
         pts, ext, recs = self.surface.fit_items()
         base = self._project_base(pts, size)
+        ok = np.isfinite(base).all(axis=1)  # e.g. a NaN cell's callout
+        base, ext, recs = base[ok], ext[ok], [r for r, k in zip(recs, ok) if k]
         if self.autofit:
             sx = _fit_axis(base[:, 0], ext[:, 0], W - 2 * FIT_MARGIN)
             sy = _fit_axis(base[:, 1], ext[:, 1], H - 2 * FIT_MARGIN)
             s = min(sx, sy)
-            cx = (
-                (
-                    (s * base[:, 0] + ext[:, 0]).max()
-                    + (s * base[:, 0] - ext[:, 0]).min()
-                )
-                / 2
-                / s
-            )
-            cy = (
-                (
-                    (s * base[:, 1] + ext[:, 1]).max()
-                    + (s * base[:, 1] - ext[:, 1]).min()
-                )
-                / 2
-                / s
-            )
+            cx = _fit_center(base[:, 0], ext[:, 0], s)
+            cy = _fit_center(base[:, 1], ext[:, 1], s)
             self._fit = (s, cx, cy)
         s, cx, cy = self._fit
         fw, fh = W * s, H * s
@@ -927,7 +925,6 @@ class GpuGraphView(QObject):
         if self.scene is None or self.model is None:
             self.renderer.render(self.bg_scene, self.screen_cam)
             return
-        self.n_draws += 1
         size = self._logical_size()
         self.renderer.render(self.bg_scene, self.screen_cam, flush=False)
         if self.is_3d():
@@ -1006,7 +1003,7 @@ class GpuGraphView(QObject):
                 return ""
             row, col = self.surface.cell_at_face(fi)
             return hover_text(self.model, row, col)
-        if self.line is None or not hasattr(self, "_vp"):
+        if self.line is None or self._vp is None:
             return ""
         px, _ = self.line.to_px(self.model.x_values, self.model.values, self._vp)
         if not len(px):

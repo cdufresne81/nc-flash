@@ -235,9 +235,6 @@ class AppSettings:
         """Graph renderer: 'auto' (GPU when available) or 'classic' (matplotlib)."""
         return self.settings.value("display/graph_engine", "auto")
 
-    def set_graph_engine(self, engine: str):
-        self.settings.setValue("display/graph_engine", engine)
-
     def get_graph_pane_width(self) -> int:
         """Last graph pane width the user sized a table window to (px)."""
         return self.settings.value("display/graph_pane_width", 550, type=int)

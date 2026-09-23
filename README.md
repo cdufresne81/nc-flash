@@ -243,7 +243,7 @@ nc-flash/
 │   │   ├── graph_gpu.py               # GPU (pygfx) graph renderer
 │   │   ├── graph_classic.py           # Classic (matplotlib) fallback renderer
 │   │   ├── graph_model.py             # Engine-neutral graph math (colors, ticks)
-│   │   ├── gpu_runtime.py             # GPU probe + background warm-up
+│   │   ├── gpu_runtime.py             # Engine choice + GPU probe (GUI thread)
 │   │   ├── patch_dialog.py            # ROM patching dialog
 │   │   ├── table_browser.py           # Category tree browser
 │   │   ├── rom_document.py            # Single ROM tab widget

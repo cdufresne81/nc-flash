@@ -115,7 +115,6 @@ class TableViewerWindow(QMainWindow):
         self._diff_mode = diff_mode
         self._graph_visible = False
         self._table_only_size = None  # Store size when graph is hidden
-        self._restoring_size = False  # programmatic resize: don't persist
 
         # Remove minimize/maximize buttons, keep only close button
         self.setWindowFlags(
@@ -183,7 +182,6 @@ class TableViewerWindow(QMainWindow):
             self.splitter.setStretchFactor(0, 0)
             self.splitter.setStretchFactor(1, 1)
             self.splitter.setCollapsible(1, False)
-            self.splitter.splitterMoved.connect(lambda *_: self._remember_pane_width())
         else:
             self.graph_widget = None
 
@@ -472,23 +470,7 @@ class TableViewerWindow(QMainWindow):
 
     def _get_selected_data_cells(self):
         """Get list of selected data cells as (row, col) tuples"""
-        selected_cells = []
-        selected_ranges = self.viewer.table_widget.selectedRanges()
-
-        for sel_range in selected_ranges:
-            for row in range(sel_range.topRow(), sel_range.bottomRow() + 1):
-                for col in range(sel_range.leftColumn(), sel_range.rightColumn() + 1):
-                    item = self.viewer.table_widget.item(row, col)
-                    if item and item.data(Qt.UserRole) is not None:
-                        coords = item.data(Qt.UserRole)
-                        # Only include data cells (not axis cells)
-                        if not isinstance(coords[0], str):
-                            # Store as (data_row, data_col) tuples
-                            data_row = coords[0]
-                            data_col = coords[1] if len(coords) > 1 else 0
-                            selected_cells.append((data_row, data_col))
-
-        return selected_cells
+        return self.viewer.selected_data_cells()
 
     def _on_table_selection_changed(self):
         """Handle table selection changes - debounce graph update"""
@@ -541,7 +523,8 @@ class TableViewerWindow(QMainWindow):
             return
 
         if self._graph_visible:
-            # Hide graph
+            # Hide graph (remember the pane width the user left it at first)
+            self._remember_pane_width()
             self._graph_visible = False
 
             # Force graph widget to zero size (hidden widgets still affect splitter sizing)
@@ -561,13 +544,11 @@ class TableViewerWindow(QMainWindow):
 
             # Resize window back to table-only size
             if self._table_only_size:
-                self._restoring_size = True
                 self.resize(self._table_only_size)
-                self._restoring_size = False
                 # Windows applies the native minimum-size constraint async, so
                 # the resize above can be clamped to the stale minimum; repeat
                 # it once the event loop has applied the new constraint.
-                QTimer.singleShot(0, self._restore_table_only_size)
+                QTimer.singleShot(0, self, self._restore_table_only_size)
 
         else:
             # Show graph
@@ -594,7 +575,7 @@ class TableViewerWindow(QMainWindow):
             graph_width = max(
                 GRAPH_MIN_WIDTH, int(get_settings().get_graph_pane_width())
             )
-            new_width = table_width + graph_width
+            new_width = table_width + self.splitter.handleWidth() + graph_width
             new_height = self.height()
 
             # Limit to screen size
@@ -606,26 +587,22 @@ class TableViewerWindow(QMainWindow):
                 if new_height < GRAPH_MIN_HEIGHT:
                     new_height = min(GRAPH_MIN_HEIGHT, avail.height() - 40)
 
-            self._restoring_size = True
             self.resize(new_width, new_height)
-            self._restoring_size = False
 
             # Set splitter proportions - table keeps its size, graph gets the rest
             self.splitter.setSizes([table_width, graph_width])
 
             # Defer graph initialization to the next event-loop iteration so
-            # the splitter/resize layout is fully resolved before matplotlib's
-            # constrained_layout measures widget dimensions.  Using
-            # QTimer.singleShot(0, ...) is the safe alternative to the
-            # re-entrant QApplication.processEvents() anti-pattern.
-            QTimer.singleShot(0, self._init_graph_after_layout)
+            # the splitter/resize layout is fully resolved before the renderer
+            # measures its pane (QTimer.singleShot(0) instead of the re-entrant
+            # QApplication.processEvents() anti-pattern).
+            QTimer.singleShot(0, self, self._init_graph_after_layout)
 
     def _init_graph_after_layout(self):
         """Initialize graph after layout has settled (deferred from _toggle_graph).
 
         Called via QTimer.singleShot(0, ...) so that the splitter resize is
-        fully processed before matplotlib's constrained_layout measures the
-        canvas dimensions.
+        fully processed before the renderer measures its pane.
         """
         if not self._graph_visible or not self.graph_widget:
             return
@@ -639,8 +616,8 @@ class TableViewerWindow(QMainWindow):
     def _refresh_graph(self):
         """Refresh graph display after data changes (cell/axis edits).
 
-        Uses update_data() which rebuilds the 3D surface geometry (Z values)
-        in-place via _update_3d_surface(), preserving view angles and zoom.
+        Uses update_data(), which rebuilds geometry, colors and labels from the
+        current data + scaling while preserving the view angle and zoom.
         The graph widget holds a reference to the same data dict, so the
         new values are already visible to it — update_data re-reads them.
 
@@ -660,23 +637,18 @@ class TableViewerWindow(QMainWindow):
 
     def _restore_table_only_size(self):
         if not self._graph_visible and self._table_only_size:
-            self._restoring_size = True
             self.resize(self._table_only_size)
-            self._restoring_size = False
-
-    def resizeEvent(self, event):  # noqa: N802
-        super().resizeEvent(event)
-        # Only a user drag of the window corner (window-system event) updates
-        # the remembered pane width; programmatic resizes/tests don't.
-        if event.spontaneous():
-            self._remember_pane_width()
 
     def _remember_pane_width(self):
-        """Persist the graph pane width after a user resize (not programmatic)."""
+        """Persist the graph pane width the user sized it to.
+
+        Called when the graph is hidden and when the window closes — the only
+        moments the width can stop being visible — so user drags (window
+        corner or splitter) are captured without a write per resize event.
+        """
         if (
             self._graph_visible
             and self.graph_widget is not None
-            and not self._restoring_size
             and self.graph_widget.width() >= GRAPH_MIN_WIDTH
         ):
             from src.utils.settings import get_settings
@@ -787,15 +759,9 @@ class TableViewerWindow(QMainWindow):
 
             # Refresh display to show updated format/units
             self.viewer.display_table(self.table, self.data)
-            # Graph colors/labels depend on the scaling min/max/units (H2): the
-            # table refresh above does not emit data_updated, so rebuild here.
-            if self._graph_visible and self.graph_widget:
-                self.graph_widget.set_data(
-                    self.table,
-                    self.data,
-                    self.rom_definition,
-                    self._get_selected_data_cells(),
-                )
+            # Graph colors/labels depend on the scaling min/max/units (H2); the
+            # table refresh above emits no data_updated, so refresh explicitly.
+            self._schedule_graph_refresh()
 
             if success_count == len(all_updates):
                 QMessageBox.information(
@@ -878,6 +844,7 @@ class TableViewerWindow(QMainWindow):
         # Release the graph renderer (GPU canvas/buffers, or the mpl figure).
         # Without this the GPU backend keeps ~50-90 MB per closed window alive.
         if self.graph_widget:
+            self._remember_pane_width()
             self.graph_widget.shutdown()
         event.accept()
         # Schedule widget destruction for next event loop iteration
