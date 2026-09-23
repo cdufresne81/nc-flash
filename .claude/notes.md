@@ -43,9 +43,10 @@ Goal doc: `.claude/plans/graph-engine-pygfx-goal.md` (A1–A25, regression check
   before/after sheets `docs/screenshots/graph_compare_NN.png` (baseline script
   `tests/gui/test_graph_baseline.txt`); bench `tools/graph_eval/bench_graph.py`; PyInstaller build
   bundles wgpu_native DLL + shaders (built in scratch venv, not run).
-- Pending: manual M1–M6 (mouse feel, corner drag, clean-machine/no-GPU packaged run, Linux pkg,
-  hover, `+` on real ROM); no Settings-dialog UI for `display/graph_engine` yet (env var only);
-  hover; `+` on real ROM); no Settings-dialog UI for `display/graph_engine` yet (env var only).
+- Manual checks done by the user (Sep 23): all fine. Still untested: packaged build on a clean /
+  no-GPU machine, Linux package. Follow-ups (in PR #103): Settings UI + crash sentinel for the
+  classic engine (`display/graph_engine` is env/registry only), draw-time GPU error -> classic,
+  treat CPU adapters (WARP/llvmpipe) as no GPU.
 
 ## 🔢 claude/numeric-values-tables-of1s5u — #92 numeric-only table cells (Aug 11, 2026)
 
