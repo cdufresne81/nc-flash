@@ -309,6 +309,8 @@ defs are verbatim TF copies and untestable (no TG bin in repo).
 
 ## Recent Completed Work (Aug 24, 2026) - WiCAN legacy protocol-switch trim + Test Connection rewrite (#99)
 
+**SHIPPED Sep 23, 2026 as v2.15.0 (PR #100 admin-merged).** Bench pass on NCFRv6: user UI-tested full read/flash/dynamic flash/DTC read+clear/Test Connection; bench fast-read 214.7 s byte-identical to the user's same-day UI read (hw9 oracle now differs by 26,865 B because the ECU was reflashed — use the latest read as oracle); RAM scan OK; DTC read OK (1 transient N_Cr frame drop on first try, 2/2 retries OK). Hazard check: 2 Test Connection probes during a live trip → max CSV gap 120 ms, 0 dropped rows, never parked. Still open: the ~10 s logger gap after disconnect from the trailing SLCAN `C` in close() (separate change + bench pass).
+
 The firmware fork now has ONE mode and ONE CAN socket (the fixed coexistence SLCAN listener), so every
 host path that switched the adapter's protocol, rebooted it, or connected to a user-chosen port was dead
 code. Design by Fable (`.claude/plans/wican_legacy_trim_design.md`); implemented from it.
