@@ -19,7 +19,7 @@ lxml>=6.0.0,<7.0.0
 simpleeval>=1.0.0,<2.0.0
 
 # MCP server for AI assistant access
-mcp>=1.0.0,<2.0.0
+mcp>=1.26.0,<2.0.0
 
 # mDNS/Zeroconf auto-discovery of the WiCAN adapter (optional at runtime: the
 # app degrades to manual IP entry if it is missing)
