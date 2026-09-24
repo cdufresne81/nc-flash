@@ -4,6 +4,8 @@ All notable changes to NC Flash are documented here.
 
 ## [Unreleased]
 
+## [v2.16.0] - 2026-09-24
+
 **Small quality-of-life fixes.** Screenshots go straight to your clipboard, and the Settings window is easier to use.
 
 ### Changed
