@@ -34,8 +34,7 @@ ENV/
 .idea/
 # Machine-local Claude Code config (permission grants, MCP toggles), plus the
 # per-feature planning/design docs (AI working notes; the CHANGELOG + code are the
-# durable record). Shared .claude/ tooling — hooks, commands, notes — stays tracked.
-.claude/settings.json
+# durable record). Shared .claude/ tooling — hooks, commands, notes, settings.json — stays tracked.
 .claude/settings.local.json
 .claude/plans/
 *.swp
