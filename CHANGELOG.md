@@ -5,6 +5,7 @@ All notable changes to NC Flash are documented here.
 ## [Unreleased]
 
 ### Changed
+- **Refreshed the contributor guide for AI-assisted development.** Instructions were trimmed and updated. No change to the app itself.
 - **The built-in MCP server now uses the current Streamable HTTP transport.** When you start it from the app, AI assistants connect to `http://127.0.0.1:8765/mcp` (was `.../sse`). The bundled `.mcp.json` is updated, so Claude Code needs nothing from you. If you hand-configured another client against `/sse`, point it at `/mcp` with the HTTP transport type. The old SSE transport is still available from the command line (`--transport sse`) for this release only; the MCP specification has deprecated it.
 
 ### Fixed

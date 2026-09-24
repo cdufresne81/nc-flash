@@ -1,15 +1,15 @@
 # Claude Code Instructions
 
-# PRIME DIRECTIVE
-We work for an hospital and our work is critical, failure to succeed will result in the lost of live, failure is not an option.
+NC Flash edits and flashes Mazda MX-5 NC ECU ROMs. What we write ends up in a car ECU: a bad write can brick the ECU or damage an engine.
 
 ## General Rules
 
 - **"Question:" prefix** - If a prompt starts with "Question:", answer only. Take no actions (no file edits, no commands).
-- **No auto-commit** - NEVER run `git commit` or `git push` unless the user explicitly asks OR requests to "land the plane" (session completion).
-- **Incremental notes** - After completing code changes that add, update, or delete functionality, immediately update the "Recent Completed Work" section in `.claude/notes.md`. Only note meaningful changes (new features, behavior changes, significant fixes). Skip trivial changes (typos, formatting, minor refactors). Always check existing entries to avoid duplicates.
+- **Commit/push** - Commit only when the user asks. NEVER push or merge without the user's explicit OK. `master` is protected: work ships via branch + PR, admin-merged only after CI is green and the user says so.
+- **Before committing** - Run `/precommit` (black, flake8, pytest, CHANGELOG check). A PreToolUse hook (`.claude/hooks/check-changelog-staged.sh`) blocks `git commit` if CHANGELOG.md isn't staged. If the change adds or removes a user-facing feature, update `README.md` too.
 - **Changelog** - `CHANGELOG.md` MUST be updated before every commit. Add entries to the `## [Unreleased]` section using Added/Changed/Fixed/Removed subsections. When a version is tagged, the unreleased section becomes the GitHub release notes. Ensure version sections match actual git tags — never leave released work under Unreleased.
-- **NEVER commit or push** - Unless the user ask to land the plane or explicitely ask for it.
+- **PR descriptions, CHANGELOG entries and release notes** - Keep them concise and human-friendly. Write for a user or reviewer, not a developer mid-session: say what changed and why it matters in plain words. Leave out internal names, file paths, test counts and investigation history unless a reader needs them.
+- **Session notes** - `.claude/notes.md` holds ONLY open work and live decisions not already tracked in a GitHub issue. Read it at session start. When you leave something unfinished, add it; when an item is done, delete it (completed work goes in CHANGELOG, not notes). Pre-Sep-24-2026 history: `git show f4709f1:.claude/notes.md` (search it, don't read it end to end).
 - **Test coverage** - New features or changes to existing features must be tested. Create tests if none exist AND the behavior is logical and important to verify. Do not write tests for trivial or cosmetic changes.
 
 ## Architecture Rules (enforced; rationale in `docs/internal/ARCHITECTURE.md`)
@@ -25,27 +25,22 @@ Layering: utils ← core ← {ecu, ui, api, mcp}; main.py composes ui.
 - `src/ecu/` is brick-critical: behavior-preserving changes only, unless a hardware test per `docs/internal/WICAN_MANUAL_TEST.md` is run.
 - `tests/test_architecture.py` enforces the import rules — keep it green.
 
-## Session Notes
-
-Check `.claude/notes.md` at the start of each session for:
-- Pending tasks from previous sessions
-- Important context and decisions
-
-Update this file when ending a session with any important notes for next time.
-
 ## Key Documentation
 
 Reference these before modifying related functionality:
 - `docs/internal/ARCHITECTURE.md` - Layer map + the architecture rules with the incidents that motivated each; read before adding a cross-layer import, a mixin, a shared-state dict, or a duplicated pipeline. Enforced by `tests/test_architecture.py`
 - `docs/internal/LOGGING.md` - Logging configuration and exception hierarchy
 - `docs/internal/ROM_DEFINITION_FORMAT.md` - XML format for ROM definitions
+- `docs/internal/ROM_COMPARISON_TOOL.md` - Spec for the side-by-side ROM comparison tool; reference before touching compare/diff code
+- `docs/internal/WINDOWS_SETUP.md` - Windows dev environment setup
 - `docs/internal/UI_TESTING.md` - GUI test runner, screenshots, and test scripts
-- `docs/internal/CODE_AUDIT.md` - Full codebase audit findings (bugs, dead code, duplication, test gaps)
+- `docs/internal/CODE_AUDIT.md` - Codebase audit snapshot from 2026-04-03 (bugs, dead code, duplication, test gaps); predates the Jul 2026 architecture hardening, so verify a finding still holds before acting on it
 - `docs/internal/WICAN_TRANSPORT.md` - Design & build plan for WiCAN PRO wireless (WiFi/SLCAN) ECU transport; reference before touching the ECU transport/session/flash-connect layer
 - `docs/internal/WICAN_MANUAL_TEST.md` - Hardware-in-the-loop checklist for the WiCAN ROM read path (firmware version ping, bench-tool read + byte-compare, UI flow); run after touching the transport, firmware, or adapter-selector UI
 - `docs/internal/WICAN_PART_C_FINDINGS.md` - Investigation findings (CAN-wedge reboot root cause + clean-teardown fix, no-reboot protocol switch, unified read+write SD architecture); reference before implementing the firmware reboot fix or deciding the WiCAN WRITE-over-SD architecture
 - `docs/internal/WICAN_SLCAN_COEXISTENCE_PLAN.md` - Sequencing plan to replace the protocol-switch reboot with an always-on dedicated SLCAN port that coexists with the datalogger (FLASH_ACTIVE_BIT single-CAN interlock, FWD→FWB merge order, RPM-gated datalog/flash); reference before merging the datalogger firmware branch or building the no-reboot SLCAN port
 - `docs/internal/WICAN_DEADMAN_AUTORESUME.md` - Validated design for brick-safe datalog auto-resume when NC-Flash vanishes (lid close / crash / Wi-Fi drop): the HOST_BUS_CLAIM_BIT auth-window fence + firmware dead-man reaper, plus the missing #36 RX-forward fix. Reference before touching datalog pause/resume, the `/datalog` endpoint, the FLASH_ACTIVE_BIT/DATALOG_PARK_BIT interlock, or the host flash auth window
+- `docs/internal/WICAN_SLCAN_STRAND_INVESTIGATION.md` - Historical (path since removed): why the adapter got stranded in Bench SLCAN mode (#92), with bench evidence; reference only for the reasoning behind the single-mode trim
 
 **Rule:** When creating new documentation in `docs/`, add it to this list with a brief description of when to reference it.
 
@@ -53,68 +48,13 @@ Reference these before modifying related functionality:
 
 **Tool:** `tools/test_runner.py` - Automated GUI testing with screenshot capabilities
 
-**When to use:**
-- User asks to take a screenshot or view the UI
-- Debugging or verifying a visual/UI issue
-- Testing UI behavior after code changes
-- Creating documentation images
+Use it whenever you test, debug, or screenshot the UI. Full command reference: `docs/internal/UI_TESTING.md`.
 
-**Quick Commands:**
 ```bash
-# Take screenshot of a specific table
 python tools/test_runner.py --rom examples/lf9veb.bin --table "Table Name" --screenshot name
-
-# Run a GUI test script
 python tools/test_runner.py --script tests/gui/test_name.txt
-
-# Interactive mode for exploration
-python tools/test_runner.py --interactive
 ```
 
-**Screenshot output:** `docs/screenshots/`
-
-**Rules:**
-1. When asked to test or screenshot the UI, use `test_runner.py` - do NOT manually automate Qt
-2. For visual bug investigation, take screenshots to capture the problematic state
-3. Test scripts live in `tests/gui/*.txt` - create new ones for reproducible test cases
-4. See `docs/internal/UI_TESTING.md` for full command reference
-5. **Always screenshot the full window** (use `table` target, not `graph`) to capture full context — graph-only screenshots miss layout/sizing issues
-
-## Landing the Plane (Session Completion)
-
-When ending a work session, complete ALL steps below. Work is NOT complete until `git push` succeeds.
-
-**Checklist:**
-
-1. **Run quality gates** (if code changed):
-   ```bash
-   black src/ tests/ main.py
-   pytest
-   ```
-
-2. **Validate changelog** (if code changed):
-   Run `/precommit` to validate CHANGELOG.md is updated and staged, and run quality gates (black, flake8, pytest). A PreToolUse hook will also block `git commit` if CHANGELOG.md is not staged.
-
-3. **Commit and push**:
-   ```bash
-   git add -A
-   git commit -m "Description of changes"
-   git pull --rebase
-   git push
-   git status  # MUST show "up to date with origin"
-   ```
-
-4. **Verify** - All changes committed AND pushed
-
-5. **Update notes** in `.claude/notes.md`:
-   - Add any pending tasks or context
-   - Apply **Incremental notes** rule for any missed completed work
-   - Verify "Recent Completed Work" is complete (incremental notes should have captured most changes - only add missing items, no duplicates)
-   - Sanity check `README.md` against recent work - add new features, remove references to deleted functionality
-
-6. **Hand off** - Provide context summary for next session
-
-**Rules:**
-- Work is NOT complete until `git push` succeeds
-- NEVER stop before pushing - that leaves work stranded locally
-- If push fails, resolve and retry until it succeeds
+- Do NOT automate Qt by hand; use `test_runner.py`. Screenshots land in `docs/screenshots/`.
+- Put reproducible cases in `tests/gui/*.txt`.
+- **Always screenshot the full window** (`table` target, not `graph`): graph-only screenshots miss layout/sizing issues.
