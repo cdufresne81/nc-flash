@@ -307,6 +307,10 @@ heuristic could catch stale CONTIGUOUS defs too (the quiet 2D corruption — rig
 wrong values — has no header to validate; 17 Protect 2D tables were silently 4-off); (3) LFG1TG
 defs are verbatim TF copies and untestable (no TG bin in repo).
 
+## Recent Completed Work (Sep 24, 2026) - Small UI improvements (branch `feat/small-improvements`)
+- Trip Logs Directory setting moved ECU › WiCAN → General › Paths (registry key `general.paths.logs_dir`; persisted getter/setter unchanged, so saved value kept). Hint no longer says "WiCAN".
+- #104 item 3: `TableViewerWindow._take_screenshot` grabs once → clipboard → `_ask_save_screenshot()` (Save to File… / Close) → `_save_screenshot(pixmap)`. Tests in `tests/test_table_viewer_window.py::TestScreenshotToClipboard`. #104 items 1 (updater) and 2 (delete WiCAN logs) still open.
+
 ## Recent Completed Work (Aug 24, 2026) - WiCAN legacy protocol-switch trim + Test Connection rewrite (#99)
 
 **SHIPPED Sep 23, 2026 as v2.15.0 (PR #100 admin-merged).** Bench pass on NCFRv6: user UI-tested full read/flash/dynamic flash/DTC read+clear/Test Connection; bench fast-read 214.7 s byte-identical to the user's same-day UI read (hw9 oracle now differs by 26,865 B because the ECU was reflashed — use the latest read as oracle); RAM scan OK; DTC read OK (1 transient N_Cr frame drop on first try, 2/2 retries OK). Hazard check: 2 Test Connection probes during a live trip → max CSV gap 120 ms, 0 dropped rows, never parked. Still open: the ~10 s logger gap after disconnect from the trailing SLCAN `C` in close() (separate change + bench pass).

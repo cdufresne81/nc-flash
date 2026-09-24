@@ -488,7 +488,31 @@ class TableViewerWindow(QMainWindow):
         self.viewer.export_to_csv(self.rom_path)
 
     def _take_screenshot(self):
-        """Capture a screenshot of this table viewer window and save to user-chosen location."""
+        """Capture this window to the clipboard, then offer to also save it.
+
+        The grab happens before any dialog so the dialog is never in the shot,
+        and the clipboard stays populated whether or not the user saves.
+        """
+        pixmap = self.grab()
+        QApplication.clipboard().setPixmap(pixmap)
+        if self._ask_save_screenshot():
+            self._save_screenshot(pixmap)
+
+    def _ask_save_screenshot(self) -> bool:
+        """Confirm the clipboard copy and ask whether to also save to disk."""
+        box = QMessageBox(self)
+        box.setWindowTitle("Screenshot")
+        box.setIcon(QMessageBox.Information)
+        box.setText("Screenshot copied to clipboard.")
+        save_btn = box.addButton("Save to File…", QMessageBox.AcceptRole)
+        close_btn = box.addButton("Close", QMessageBox.RejectRole)
+        box.setDefaultButton(close_btn)
+        box.setEscapeButton(close_btn)
+        box.exec()
+        return box.clickedButton() is save_btn
+
+    def _save_screenshot(self, pixmap: QPixmap):
+        """Save an already-captured screenshot to a user-chosen location."""
         from datetime import datetime
 
         table_name = self.table.name.replace(" ", "_").replace("/", "-")
@@ -510,7 +534,6 @@ class TableViewerWindow(QMainWindow):
         if not file_path:
             return
 
-        pixmap = self.grab()
         if not pixmap.save(file_path):
             QMessageBox.critical(
                 self, "Error", f"Failed to save screenshot to:\n{file_path}"

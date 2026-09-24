@@ -423,3 +423,45 @@ def test_paste_ignores_scaling_min_max_clamp(
         assert win.viewer.current_data["values"][dr, dc] == pytest.approx(expected)
     finally:
         win.close()
+
+
+# ---------------------------------------------------------------------------
+# Screenshot → clipboard first, then optionally save (#104)
+# ---------------------------------------------------------------------------
+
+
+class TestScreenshotToClipboard:
+    def test_copies_to_clipboard_without_saving(self, window_2d):
+        QApplication.clipboard().clear()
+        with (
+            patch.object(window_2d, "_ask_save_screenshot", return_value=False),
+            patch("src.ui.table_viewer_window.QFileDialog") as dlg,
+        ):
+            window_2d._take_screenshot()
+        assert not QApplication.clipboard().pixmap().isNull()
+        dlg.getSaveFileName.assert_not_called()
+
+    def test_cancelled_save_keeps_clipboard(self, window_2d):
+        QApplication.clipboard().clear()
+        with (
+            patch.object(window_2d, "_ask_save_screenshot", return_value=True),
+            patch("src.ui.table_viewer_window.QFileDialog") as dlg,
+        ):
+            dlg.getSaveFileName.return_value = ("", "")
+            window_2d._take_screenshot()
+        dlg.getSaveFileName.assert_called_once()
+        assert not QApplication.clipboard().pixmap().isNull()
+
+    def test_save_writes_the_captured_image(self, window_2d, mock_settings, tmp_path):
+        mock_settings.get_screenshots_directory.return_value = str(tmp_path)
+        out = tmp_path / "shot.png"
+        with (
+            patch.object(window_2d, "_ask_save_screenshot", return_value=True),
+            patch("src.ui.table_viewer_window.QFileDialog") as dlg,
+            patch.object(window_2d, "grab", wraps=window_2d.grab) as grab,
+        ):
+            dlg.getSaveFileName.return_value = (str(out), "")
+            window_2d._take_screenshot()
+        assert out.exists() and out.stat().st_size > 0
+        assert grab.call_count == 1  # grabbed once, before any dialog
+        assert not QApplication.clipboard().pixmap().isNull()
