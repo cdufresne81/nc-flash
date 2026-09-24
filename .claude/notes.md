@@ -307,6 +307,13 @@ heuristic could catch stale CONTIGUOUS defs too (the quiet 2D corruption — rig
 wrong values — has no header to validate; 17 Protect 2D tables were silently 4-off); (3) LFG1TG
 defs are verbatim TF copies and untestable (no TG bin in repo).
 
+## Recent Completed Work (Sep 24, 2026) - MCP server SSE → Streamable HTTP (branch `feat/mcp-streamable-http`)
+- App-managed MCP server now launches with `--transport streamable-http` at `http://127.0.0.1:8765/mcp` (`McpMixin.MCP_URL`/`MCP_TRANSPORT`); `.mcp.json` is `"type": "http"`. FastMCP runs `stateless_http=True` so clients survive a server restart. `--transport sse` kept on the CLI for ONE release (spec deprecated it; min. removal ~Jul 2027) — drop it next release. `mcp>=1.26.0,<2.0.0`.
+- E2E tests `tests/test_mcp_transport.py`: real subprocess via the mixin's start path + official SDK client (init/list_tools/call get_workspace against a tmp workspace.json), restart, SSE CLI, `.mcp.json`↔`MCP_URL` agreement, DNS-rebinding 421. Verified live: `claude mcp get nc-flash` → Connected over http.
+- FIXED live-found wedge: mixin launched the server with `stderr=PIPE` never drained → after ~dozens of requests the pipe filled and the event loop blocked in `logging.emit` (py-spy confirmed: `terminate` → "Terminating session: None"). Pre-existing, but stateless HTTP logs ~3 lines/request so it triggers fast. Now stdout+stderr → `McpMixin.MCP_LOG_PATH` (~/.nc-flash/mcp-server.log, truncated per start). Regression test: 300 calls through the mixin-launched server.
+- Frozen build verified (local PyInstaller 6 build, Py 3.14 — release CI uses 3.12): mixin frozen branch → NCFlash.exe in NCFLASH_MCP_MODE = single process, no window (hwnd=0), workspace.json read from %APPDATA%, 9 tools, 300 calls, log to file, clean stop + port released. Live on the dev app: read tools, write 0→1→0 on lflmea P0505 (unsaved), and server restart w/o client reconnect all passed.
+- Deferred: SDK v2 / spec 2026-07-28 migration (FastMCP→MCPServer rename, dict-return validation, sync tools on worker threads → check `write_table` concurrency; needs adversarial review since write_table edits flashable ROM data).
+
 ## Recent Completed Work (Sep 24, 2026) - Small UI improvements (branch `feat/small-improvements`)
 - Trip Logs Directory setting moved ECU › WiCAN → General › Paths (registry key `general.paths.logs_dir`; persisted getter/setter unchanged, so saved value kept). Hint no longer says "WiCAN".
 - #104 item 3: `TableViewerWindow._take_screenshot` grabs once → clipboard → `_ask_save_screenshot()` (Save to File… / Close) → `_save_screenshot(pixmap)`. Tests in `tests/test_table_viewer_window.py::TestScreenshotToClipboard`. #104 items 1 (updater) and 2 (delete WiCAN logs) still open.

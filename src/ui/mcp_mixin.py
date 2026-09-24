@@ -50,7 +50,12 @@ logger = get_logger(__name__)
 class McpMixin:
     """MCP server and command API management for MainWindow."""
 
-    MCP_SSE_PORT = 8765
+    MCP_HTTP_PORT = 8765
+    MCP_TRANSPORT = "streamable-http"
+    # Must match the "nc-flash" entry in .mcp.json (test_mcp_transport checks it)
+    MCP_URL = f"http://127.0.0.1:{MCP_HTTP_PORT}/mcp"
+    # Server stdout+stderr go here (truncated on every start), never to a pipe
+    MCP_LOG_PATH = Path.home() / ".nc-flash" / "mcp-server.log"
 
     # ========== MCP Server Management ==========
 
@@ -59,7 +64,7 @@ class McpMixin:
         return self._mcp_process is not None and self._mcp_process.poll() is None
 
     def _start_mcp_server(self):
-        """Start the MCP server subprocess with SSE transport."""
+        """Start the MCP server subprocess with Streamable HTTP transport."""
         if self._is_mcp_running():
             return
         try:
@@ -68,14 +73,18 @@ class McpMixin:
             metadata_dir = self.settings.get_metadata_directory()
             mcp_args = [
                 "--transport",
-                "sse",
+                self.MCP_TRANSPORT,
                 "--port",
-                str(self.MCP_SSE_PORT),
+                str(self.MCP_HTTP_PORT),
                 "--metadata-dir",
                 metadata_dir,
             ]
             env = os.environ.copy()
-            kwargs = dict(cwd=str(get_app_root()), stderr=subprocess.PIPE)
+            # The server logs every request. Never give it a pipe: nothing
+            # drains it, so it fills and the server's event loop blocks
+            # inside logging, wedging MCP for every client.
+            self.MCP_LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
+            kwargs = dict(cwd=str(get_app_root()))
 
             if getattr(sys, "frozen", False):
                 # Frozen (PyInstaller) build: sys.executable is the app exe.
@@ -98,10 +107,14 @@ class McpMixin:
                 # Dev mode: run as a normal Python module.
                 cmd = [sys.executable, "-m", "src.mcp.server"] + mcp_args
 
-            self._mcp_process = subprocess.Popen(cmd, **kwargs)
+            with open(self.MCP_LOG_PATH, "wb") as log_file:
+                # The child inherits its own handle; ours closes right after.
+                self._mcp_process = subprocess.Popen(
+                    cmd, stdout=log_file, stderr=log_file, **kwargs
+                )
             logger.info(
                 f"MCP server started (PID {self._mcp_process.pid},"
-                f" SSE on http://127.0.0.1:{self.MCP_SSE_PORT}/sse)"
+                f" Streamable HTTP on {self.MCP_URL})"
             )
             self._update_mcp_ui(running=True)
             self._write_workspace_state()
@@ -141,10 +154,10 @@ class McpMixin:
     def _update_mcp_ui(self, running: bool):
         """Update menu, toolbar, and status bar to reflect MCP server state."""
         self.mcp_action.setChecked(running)
-        url = f"http://127.0.0.1:{self.MCP_SSE_PORT}/sse"
+        url = self.MCP_URL
         if running:
             self.mcp_action.setText(
-                f"&MCP Server (Running on port {self.MCP_SSE_PORT})"
+                f"&MCP Server (Running on port {self.MCP_HTTP_PORT})"
             )
             self._toolbar_mcp.setIcon(make_icon(self, "mcp_on"))
             self._toolbar_mcp.setToolTip(f"MCP Server running — {url}\nClick to stop")
@@ -156,7 +169,7 @@ class McpMixin:
 
     def _show_mcp_connection_info(self):
         """Show connection instructions after manually starting the MCP server."""
-        url = f"http://127.0.0.1:{self.MCP_SSE_PORT}/sse"
+        url = self.MCP_URL
 
         if getattr(sys, "frozen", False):
             # Compiled build: run-mcp.bat sits next to NCFlash.exe

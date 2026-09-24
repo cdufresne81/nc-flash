@@ -264,7 +264,7 @@ nc-flash/
 │   ├── api/                           # Command API (HTTP bridge for MCP)
 │   │   └── command_server.py          # HTTP server bridging to Qt thread
 │   ├── mcp/                           # MCP server for AI assistants
-│   │   ├── server.py                  # FastMCP server (STDIO + SSE)
+│   │   ├── server.py                  # FastMCP server (STDIO + Streamable HTTP)
 │   │   └── rom_context.py             # ROM loading, caching, tool logic
 │   └── utils/                         # Shared utilities
 │       ├── settings.py                # QSettings-based persistence

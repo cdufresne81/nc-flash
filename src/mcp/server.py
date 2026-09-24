@@ -2,15 +2,17 @@
 NC Flash MCP Server for NC Miata ECU ROM access.
 
 Exposes ROM inspection and editing tools via the Model Context Protocol.
-Supports STDIO transport (default, for CLI clients like Claude Code)
-and SSE transport (for app-managed server, any client connects via HTTP).
+Supports STDIO transport (default, for CLI clients launched per-session),
+Streamable HTTP (app-managed server, clients connect to /mcp), and the
+deprecated HTTP+SSE transport (/sse, kept for one release so existing
+client configs keep working).
 
 All tools delegate to the running NC Flash app via its command API HTTP
 bridge.  The app is the single source of truth for ROM definitions and
 table data.
 
 Usage:
-    python -m src.mcp.server [--transport stdio|sse] [--port PORT]
+    python -m src.mcp.server [--transport stdio|streamable-http|sse] [--port PORT]
 """
 
 import argparse
@@ -30,20 +32,25 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Default SSE port
-DEFAULT_SSE_PORT = 8765
+# Default port for the HTTP transports (streamable-http and sse)
+DEFAULT_HTTP_PORT = 8765
 
 # Module-level context, initialized in main()
 _ctx: Optional[RomContext] = None
 
 
-def _create_mcp(port: int = DEFAULT_SSE_PORT) -> FastMCP:
+def _create_mcp(port: int = DEFAULT_HTTP_PORT) -> FastMCP:
     """Create and configure the FastMCP server instance with all tools."""
     server = FastMCP(
         "ncflash",
         instructions="Access NC Miata ECU ROM files — inspect tables, values, compare ROMs, and edit live table values through NC Flash",
         host="127.0.0.1",
         port=port,
+        # No per-connection state is needed (every tool call is a one-shot
+        # request to the app bridge), and stateless mode lets clients keep
+        # working across a server restart instead of hitting "session not
+        # found". Only affects the streamable-http transport.
+        stateless_http=True,
     )
 
     def _get_ctx() -> RomContext:
@@ -209,15 +216,15 @@ def main():
     )
     parser.add_argument(
         "--transport",
-        choices=["stdio", "sse"],
+        choices=["stdio", "streamable-http", "sse"],
         default="stdio",
-        help="Transport protocol (default: stdio)",
+        help="Transport protocol (default: stdio; sse is deprecated)",
     )
     parser.add_argument(
         "--port",
         type=int,
-        default=DEFAULT_SSE_PORT,
-        help=f"Port for SSE transport (default: {DEFAULT_SSE_PORT})",
+        default=DEFAULT_HTTP_PORT,
+        help=f"Port for the HTTP transports (default: {DEFAULT_HTTP_PORT})",
     )
     args = parser.parse_args()
 
@@ -228,7 +235,7 @@ def main():
 
     logger.info(
         f"Starting NC Flash MCP server ({args.transport} transport"
-        f"{f', port {args.port}' if args.transport == 'sse' else ''})"
+        f"{f', port {args.port}' if args.transport != 'stdio' else ''})"
     )
     server.run(transport=args.transport)
 
