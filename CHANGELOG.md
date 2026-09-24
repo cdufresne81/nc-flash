@@ -4,10 +4,12 @@ All notable changes to NC Flash are documented here.
 
 ## [Unreleased]
 
+**Small quality-of-life fixes.** Screenshots go straight to your clipboard, and the Settings window is easier to use.
+
 ### Changed
-- Table screenshots (F12 / toolbar) now go straight to the clipboard, then offer **Save to File…** instead of opening a Save dialog first. Cancelling the save keeps the clipboard copy (#104).
-- **Trip Logs Directory** moved from *ECU › WiCAN* to *General › Paths*, next to the other folders. Your saved folder is kept.
-- The Settings window opens taller so *General › Paths* fits without a scroll bar (capped to the screen height).
+- **Screenshots go to the clipboard (#104).** Pressing F12 (or the camera button) in a table window copies the window straight to your clipboard, ready to paste into a forum post or chat. A small popup then offers **Save to File…** if you also want a copy on disk.
+- **Trip Logs Directory moved to *Settings ▸ General ▸ Paths*,** next to the other folders. Your chosen folder is kept.
+- **The Settings window opens taller,** so the Paths page fits without scrolling. It never opens taller than your screen.
 
 ## [v2.15.0] - 2026-09-23
 
