@@ -15,6 +15,7 @@ from PySide6.QtGui import QShortcut, QKeySequence
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
+    QApplication,
     QDialog,
     QDialogButtonBox,
     QFileDialog,
@@ -155,6 +156,18 @@ SETTINGS_REGISTRY = [
         setter="set_screenshots_directory",
         widget_options={"placeholder": "Folder for screenshots"},
         keywords=["screenshot", "capture", "image", "png"],
+    ),
+    SettingDescriptor(
+        key="general.paths.logs_dir",
+        label="Trip Logs Directory",
+        description="Local folder where trip logs (.csv) are downloaded",
+        category="General",
+        subcategory="Paths",
+        widget_type="path_dir",
+        getter="get_logs_directory",
+        setter="set_logs_directory",
+        widget_options={"placeholder": "Folder for trip logs"},
+        keywords=["wican", "logs", "directory", "folder", "csv", "datalog", "trip"],
     ),
     # -- Appearance > Table Display --
     SettingDescriptor(
@@ -398,18 +411,6 @@ SETTINGS_REGISTRY = [
         setter="set_wican_auto_download_logs",
         keywords=["wican", "logs", "datalog", "csv", "download", "trip", "auto"],
     ),
-    SettingDescriptor(
-        key="ecu.wican.logs_dir",
-        label="Trip Logs Directory",
-        description="Local folder where WiCAN trip logs (.csv) are downloaded",
-        category="ECU",
-        subcategory="WiCAN",
-        widget_type="path_dir",
-        getter="get_logs_directory",
-        setter="set_logs_directory",
-        widget_options={"placeholder": "Folder for WiCAN trip logs"},
-        keywords=["wican", "logs", "directory", "folder", "csv", "datalog", "trip"],
-    ),
     # -- ECU > Flash Security --
     SettingDescriptor(
         key="ecu.security.status",
@@ -602,7 +603,13 @@ class SettingsDialog(QDialog):
         super().__init__(parent)
         self.setWindowTitle("Settings")
         self.setMinimumSize(720, 560)
-        self.resize(820, 640)
+        # Tall enough for the longest page (General > Paths) without a scroll
+        # bar, but never taller than the screen it opens on.
+        height = 800
+        screen = (parent.screen() if parent else None) or QApplication.primaryScreen()
+        if screen is not None:
+            height = min(height, int(screen.availableGeometry().height() * 0.9))
+        self.resize(820, max(height, 560))
 
         self.settings = get_settings()
         self._widgets = {}  # key -> input widget

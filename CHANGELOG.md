@@ -4,6 +4,11 @@ All notable changes to NC Flash are documented here.
 
 ## [Unreleased]
 
+### Changed
+- Table screenshots (F12 / toolbar) now go straight to the clipboard, then offer **Save to File…** instead of opening a Save dialog first. Cancelling the save keeps the clipboard copy (#104).
+- **Trip Logs Directory** moved from *ECU › WiCAN* to *General › Paths*, next to the other folders. Your saved folder is kept.
+- The Settings window opens taller so *General › Paths* fits without a scroll bar (capped to the screen height).
+
 ## [v2.15.0] - 2026-09-23
 
 **WiCAN tidy-up.** Test Connection works again, and two settings that no longer did anything are gone. No adapter firmware update needed.
