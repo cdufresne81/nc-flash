@@ -162,10 +162,10 @@ once the ignition is off (manual `on` never does, so never leave it `on`).
    head several times in a row and confirm the device still answers and a full
    download still works (early-closed transfers must not leak SD file handles).
 
-Last runs: 2026-09-25. Steps 1–4 passed three times (step 3 before the head
-check existed: byte re-fetch, then name + size). Step 5 passed after the head
-check was added; steps 1–4 could not be re-run then (ECU silent). The head
-check sends the same `/download_csv` request as the full check, closed early.
+Last run: 2026-09-25 on firmware v1.24.0-4-g10d2ba0 — steps 1–5 pass (step 3
+proven by the head check in 0.6 s, no full re-fetch). The run leaves the logger
+in manual `off` while the ECU answers; restore `auto` with a reboot
+(`POST /system_reboot`) under the bench lock, then read it back.
 
 ## 4. Teardown
 
