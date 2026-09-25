@@ -48,6 +48,9 @@ def fake_settings(tmp_path):
     s.get_wican_host.return_value = "127.0.0.1"
     s.get_wican_device_id.return_value = ""  # no mDNS resolve in tests
     s.get_logs_directory.return_value = str(tmp_path / "logs")
+    # Delete-after-download is OFF by default (#112); a MagicMock would be truthy.
+    s.get_wican_delete_logs_after_download.return_value = False
+    s.get_wican_keep_newest_logs.return_value = 0
     return s
 
 
@@ -93,6 +96,7 @@ class TestWiCANLogSync:
         httpd.active = None
         httpd.advertised = {}
         httpd.status_error = False
+        httpd.posts = []
         t = threading.Thread(target=httpd.serve_forever, daemon=True)
         t.start()
         try:
@@ -331,6 +335,7 @@ class TestInventory:
         httpd.active = None
         httpd.advertised = {}
         httpd.status_error = False
+        httpd.posts = []
         t = threading.Thread(target=httpd.serve_forever, daemon=True)
         t.start()
         try:
@@ -356,3 +361,122 @@ class TestFormattingHelpers:
         assert estimate_download_text(100 * 1024) == "under 10 seconds"
         assert "seconds" in estimate_download_text(10 * 1024 * 1024)
         assert "minutes" in estimate_download_text(100 * 1024 * 1024)
+
+
+def _serve(handler_cls, files):
+    """Start a fake device with a custom handler; returns (httpd, thread)."""
+    httpd = ThreadingHTTPServer(("127.0.0.1", 0), handler_cls)
+    httpd.files = dict(files)
+    httpd.active = None
+    httpd.advertised = {}
+    httpd.status_error = False
+    httpd.posts = []
+    t = threading.Thread(target=httpd.serve_forever, daemon=True)
+    t.start()
+    return httpd, t
+
+
+def _stop(httpd, t):
+    httpd.shutdown()
+    httpd.server_close()
+    t.join(timeout=2)
+
+
+class TestDeleteAfterDownload:
+    """The opt-in delete pass (#112) as the owner runs it: real QThreads."""
+
+    @pytest.fixture
+    def delete_on(self, fake_settings):
+        fake_settings.get_wican_delete_logs_after_download.return_value = True
+        fake_settings.get_wican_keep_newest_logs.return_value = 0
+        return fake_settings
+
+    def test_setting_on_deletes_verified_trips(
+        self, qtbot, delete_on, qt_thread_guard, caplog
+    ):
+        files = {"b.csv": b"n" * 300, "a.csv": b"o" * 100}
+        with caplog.at_level("INFO"):
+            with _device(files) as (_, httpd):
+                sync = WiCANLogSync(delete_on, http_port=httpd.server_address[1])
+                with qtbot.waitSignal(sync.download_finished, timeout=10000) as blk:
+                    assert sync.start() is True
+                _wait_sync_done(qtbot, sync)
+                assert httpd.files == {}
+        result = blk.args[0]
+        assert sorted(result.cleanup.deleted) == ["a.csv", "b.csv"]
+        dest = Path(delete_on.get_logs_directory())
+        for name, data in files.items():
+            assert (dest / name).read_bytes() == data
+        assert "Deleted 2 trip log(s) from the WiCAN" in caplog.text
+
+    def test_setting_off_never_deletes(self, qtbot, fake_settings, qt_thread_guard):
+        with _device({"a.csv": b"x\n"}) as (_, httpd):
+            sync = WiCANLogSync(fake_settings, http_port=httpd.server_address[1])
+            with qtbot.waitSignal(sync.download_finished, timeout=10000) as blk:
+                assert sync.start() is True
+            _wait_sync_done(qtbot, sync)
+            assert httpd.posts == [] and "a.csv" in httpd.files
+        assert blk.args[0].cleanup is None
+
+    def test_cancelled_download_deletes_nothing(
+        self, qtbot, delete_on, qt_thread_guard
+    ):
+        # "b.csv" is served freely; "a.csv" is held until the cancel lands,
+        # so b is a verified download of a CANCELLED run — still not deleted.
+        gate = threading.Event()
+
+        class _GatedHandler(_Handler):
+            def do_GET(self):
+                if "file=a.csv" in self.path:
+                    gate.wait(timeout=10)
+                super().do_GET()
+
+        httpd, t = _serve(_GatedHandler, {"b.csv": b"b\n", "a.csv": b"a\n"})
+        try:
+            sync = WiCANLogSync(delete_on, http_port=httpd.server_address[1])
+            with qtbot.waitSignal(sync.download_finished, timeout=10000) as blk:
+                assert sync.start() is True
+                qtbot.waitUntil(
+                    lambda: (Path(delete_on.get_logs_directory()) / "b.csv").exists(),
+                    timeout=10000,
+                )
+                sync.cancel()
+                gate.set()
+            _wait_sync_done(qtbot, sync)
+            assert httpd.posts == []
+        finally:
+            gate.set()
+            _stop(httpd, t)
+        result = blk.args[0]
+        assert result.cancelled is True and result.cleanup is None
+
+    def test_failed_download_deletes_nothing(self, qtbot, delete_on, qt_thread_guard):
+        # b downloads fine, then a's transfer fails verification: the run
+        # fails, so b (verified) must stay on the card too.
+        files = {"b.csv": b"b\n", "a.csv": b"a\n"}
+        with _device(files, advertised={"a.csv": 99}) as (_, httpd):
+            sync = WiCANLogSync(delete_on, http_port=httpd.server_address[1])
+            assert sync.start() is True
+            _wait_sync_done(qtbot, sync)
+            assert httpd.posts == [] and set(httpd.files) == {"a.csv", "b.csv"}
+
+    def test_delete_pass_failure_does_not_fail_the_download(
+        self, qtbot, delete_on, qt_thread_guard, caplog
+    ):
+        class _NoFilesHandler(_Handler):
+            def _files_list(self, srv, qs):
+                self._json(500, {"error": "boom"})
+
+        httpd, t = _serve(_NoFilesHandler, {"a.csv": b"a\n"})
+        try:
+            with caplog.at_level("INFO"):
+                sync = WiCANLogSync(delete_on, http_port=httpd.server_address[1])
+                with qtbot.waitSignal(sync.download_finished, timeout=10000) as blk:
+                    assert sync.start() is True
+                _wait_sync_done(qtbot, sync)
+            assert httpd.posts == []
+        finally:
+            _stop(httpd, t)
+        assert [p.name for p in blk.args[0].downloaded] == ["a.csv"]
+        assert "Deleting trip logs from the WiCAN skipped" in caplog.text
+        assert "WiCAN trip-log check skipped" not in caplog.text

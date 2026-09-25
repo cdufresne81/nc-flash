@@ -25,6 +25,7 @@ from src.ui.trip_logs_window import ECU_BUSY_TIP, TripLogsWindow, _format_mtime
 class _FakeSync(QObject):
     running_changed = Signal(bool)
     progress_changed = Signal(int, int, str, float)
+    cleanup_status = Signal(str)
     inventory_ready = Signal(object)
     inventory_failed = Signal(str)
     checking_changed = Signal(bool)
@@ -43,6 +44,8 @@ def _window(qtbot, tmp_path, adapter="wican"):
     settings = MagicMock()
     settings.is_wican_adapter.return_value = adapter == "wican"
     settings.get_logs_directory.return_value = str(tmp_path / "logs")
+    settings.get_wican_delete_logs_after_download.return_value = False
+    settings.get_wican_keep_newest_logs.return_value = 5
     main_window = SimpleNamespace(settings=settings, wican_log_sync=sync)
     window = TripLogsWindow(main_window=main_window)
     qtbot.addWidget(window)

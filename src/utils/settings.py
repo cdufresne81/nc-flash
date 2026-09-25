@@ -322,6 +322,26 @@ class AppSettings:
     def set_wican_auto_download_logs(self, enabled: bool):
         self.settings.setValue("ecu/wican_auto_download_logs", bool(enabled))
 
+    def get_wican_delete_logs_after_download(self) -> bool:
+        """Whether a trip-log download then deletes the trips whose local copy
+        is proven from the WiCAN's SD card (issue #112). OFF by default:
+        deletion is irreversible."""
+        return self.settings.value(
+            "ecu/wican_delete_logs_after_download", False, type=bool
+        )
+
+    def set_wican_delete_logs_after_download(self, enabled: bool):
+        self.settings.setValue("ecu/wican_delete_logs_after_download", bool(enabled))
+
+    def get_wican_keep_newest_logs(self) -> int:
+        """How many of the newest trips always stay on the WiCAN's SD card
+        when delete-after-download is on (0 = keep none)."""
+        value = self.settings.value("ecu/wican_keep_newest_logs", 5, type=int)
+        return max(0, int(value))
+
+    def set_wican_keep_newest_logs(self, count: int):
+        self.settings.setValue("ecu/wican_keep_newest_logs", max(0, int(count)))
+
     def get_offer_open_logs_in_mlv(self) -> bool:
         """Whether a finished trip-log download asks to open the new logs in
         MegaLogViewerHD (only asked when MegaLogViewerHD is installed)."""

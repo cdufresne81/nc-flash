@@ -134,6 +134,39 @@ listener: on the coexistence port frames only reach a client through the
 firmware's RX-forward, which runs while the host holds the bus — an unreserved
 sniff sees silence on a healthy bus.
 
+## 3c. Trip-log delete after download (issue 112)
+
+Run after touching `delete_verified` / `delete_log` in `src/ecu/wican_logs.py`.
+**Never point a test at the user's real trips.** Create scratch trips with
+`POST /csv_logger?op=start` / `op=stop` — this needs the ECU sending data (a
+forced-on logger opens a file only when a record arrives). Drive the client
+through a subclass whose `list_logs()` hides every name that was on the card
+before the test, and whose `delete_log()` refuses those names.
+
+Restore the logger afterwards. The deployed firmware has only `op=start|stop`:
+from `on` or `auto`, send `op=stop` — manual `off` returns to `auto` by itself
+once the ignition is off (manual `on` never does, so never leave it `on`).
+
+1. With scratch trip B recording, `delete_log(B)` → expect
+   `HTTP 409 {"error":"file is being written"}`.
+2. `download_new` + `delete_verified(keep_newest=0)` while B records → closed
+   scratch trip A deleted, local A full size, B still listed.
+3. Stop B, download it (the "earlier run"), then `delete_verified(dest, (), 0)`
+   → B (a dated name) proven by the 64 KB head check (no full re-fetch) and
+   deleted; `rescued` empty.
+4. Every pre-existing trip still listed with the same name, size and mtime.
+5. Read-only, on real trips: copy their local files to a scratch dir and run
+   `_prove_dated_copy` for each (≈0.1 s each). Flip one byte inside the first
+   64 KB of one copy → the head check must reject it and the full check save
+   the device's version as `-2` (in the scratch dir). Then fetch a large trip's
+   head several times in a row and confirm the device still answers and a full
+   download still works (early-closed transfers must not leak SD file handles).
+
+Last runs: 2026-09-25. Steps 1–4 passed three times (step 3 before the head
+check existed: byte re-fetch, then name + size). Step 5 passed after the head
+check was added; steps 1–4 could not be re-run then (ECU silent). The head
+check sends the same `/download_csv` request as the full check, closed early.
+
 ## 4. Teardown
 
 - Confirm the datalogger resumed (the bench tools release the bus in a
