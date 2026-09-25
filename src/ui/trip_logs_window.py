@@ -88,6 +88,7 @@ class TripLogsWindow(QMainWindow):
         sync = main_window.wican_log_sync
         sync.running_changed.connect(self._on_sync_running)
         sync.progress_changed.connect(self._on_progress)
+        sync.cleanup_status.connect(self._on_cleanup_status)
         sync.inventory_ready.connect(self._on_inventory)
         sync.inventory_failed.connect(self._on_inventory_failed)
         # Refresh re-enables ONLY on this signal: at inventory_ready time
@@ -244,6 +245,11 @@ class TripLogsWindow(QMainWindow):
                 f"Downloading trip logs ({mb_total:.1f} MB)..."
             )
 
+    def _on_cleanup_status(self, text: str):
+        """Delete-after-download pass (issue 112): no byte total, so indeterminate."""
+        self._progress_bar.setRange(0, 0)
+        self._progress_label.setText(text)
+
     # --- actions --------------------------------------------------------------
 
     def _on_cancel(self):
@@ -267,10 +273,15 @@ class TripLogsWindow(QMainWindow):
         self._btn_download.setEnabled(
             is_wican and not sync.is_running and not self._ecu_busy
         )
+        settings = self._main_window.settings
+        tip = "Download every new trip log from the WiCAN's SD card"
+        if settings.get_wican_delete_logs_after_download():
+            tip += (
+                ", then delete the verified ones from the card (keeping the "
+                f"newest {settings.get_wican_keep_newest_logs()})"
+            )
         self._btn_download.setToolTip(
-            ECU_BUSY_TIP
-            if is_wican and self._ecu_busy
-            else "Download every new trip log from the WiCAN's SD card"
+            ECU_BUSY_TIP if is_wican and self._ecu_busy else tip
         )
         self._btn_refresh.setEnabled(
             is_wican and not sync.is_running and not sync.is_checking

@@ -23,6 +23,13 @@ Carried over from the old log on Sep 24, 2026. Verify an item is still open befo
   collaborator (4 copies of the QThread pattern); move the WiCAN probe-outcome classifier into
   `src/ecu` (`_grade_wican_test` and `_open_coexist_transport` word the same outcomes differently);
   `tools/_wican_link.py` entry helper so bench tools can't forget the bus reservation.
+- **Trip-log names with a space, `+`, `%` or non-ASCII never download** (pre-existing, found in
+  the #112 review): the download query-encodes the name (space → `+`) and the firmware's
+  `/download_csv` never decodes it → 404, and the run stops at that file. Only hand-renamed trips
+  hit it (firmware names are `[A-Za-z0-9._-]`). The #112 delete pass refuses such names.
+- **#112 follow-ups (not fixed, low):** the delete pass's three start-up GETs can't be aborted
+  (up to 30 s, longer than `shutdown()`'s 15 s wait); the backlog re-verify shows no bytes/ETA;
+  rescued trips aren't offered in the MegaLogViewerHD prompt.
 - **B2 spurious dirty flag** after undo back to the saved state: safe-side (extra save prompt, no
   data loss). A real fix needs per-document clean-state tracking across per-table undo stacks.
 - **Unconfirmed, from Jul 6**: retest-on-binary for B2/B5/B15 may already be done; decision D4

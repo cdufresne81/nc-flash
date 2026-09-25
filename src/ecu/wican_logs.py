@@ -27,11 +27,41 @@ Sync semantics (issue #83, confirmed):
 - **Skip the active trip file** — the file ``/csv_status`` reports as open is
   still growing; a naive download would store a truncated CSV. It is picked up
   on the next run once the trip closes.
-- **Never delete from the device** — downloads are copies; the firmware
-  rotates the SD itself.
 - Downloads are atomic (``.part`` + size verify, via
   :mod:`src.ecu.wican_http`); a partial transfer never looks complete, and an
   interrupted run keeps its completed files (idempotent re-run).
+
+Opt-in delete after download (issue #112, off by default). The firmware never
+cleans the card itself (its only rotation splits an oversized file), so
+:meth:`WiCANLogClient.delete_verified` removes trips whose local copy is
+PROVEN complete, through the SD file manager (``GET /files?op=list&path=logs``
+for a fresh type/size/active view, ``POST /files {"op":"delete",
+"path":"logs/<name>"}``). Deletion is irreversible, so "proven" is strict:
+
+- A trip downloaded in THIS run is proven by the exact remote → local pair
+  :meth:`~WiCANLogClient.download_new` recorded (size-verified transfer), and
+  only while the device still lists it with the same name, size and mtime.
+- A trip downloaded by an EARLIER run with a DATED name
+  (``YYYYMMDD_HHhMMmSSs[_N].csv``) is proven by a same-size local copy whose
+  first 64 KB match the device's (a partial fetch — a fraction of a second,
+  where a full re-fetch is minutes per backlog). The firmware only dates a
+  name when its clock reads 2020 or later, and adds ``_N`` while the name
+  exists on the card — but it CAN repeat a name once this pass deleted the
+  earlier file and the clock revisits that second (the web UI sets the
+  clock from the browser, a timezone change, DST fall-back; older firmware
+  has no ``_N`` loop). Such a trip's first rows (millisecond timestamps,
+  sensor values) differ from the old copy's; on a mismatch the trip goes
+  through the full check below, which saves it under a ``-N`` name.
+- Any OTHER earlier-run trip is proven only by fetching it again and
+  comparing it byte for byte with a local copy. Name + size is NOT proof: a
+  clockless device opens ``unknown_time_<ms>.csv`` with ``fopen("w")``, so
+  after a reboot a new trip can take an old trip's name, and possibly its
+  size. When the re-fetch matches no local copy, it IS such a trip — it is
+  saved locally under a free ``-N`` name first (never downloaded before).
+- Never deleted: the newest *keep_newest* trips, the trip being recorded,
+  anything not listed as a plain file of the expected size (a folder delete
+  is recursive), unsafe names, and everything after a cancelled or failed
+  download. A failed delete is logged and retried on the next run.
 
 Headless: standard library only, no PySide6.
 """
@@ -39,6 +69,8 @@ Headless: standard library only, no PySide6.
 from __future__ import annotations
 
 import logging
+import os
+import re
 import time
 import urllib.parse
 from dataclasses import dataclass, field, replace
@@ -50,8 +82,11 @@ from src.utils.transfer import transfer_summary
 from .wican_http import (
     DEFAULT_TIMEOUT_S,
     WiCANHttpError,
+    _remove_quietly,
     download_to_file,
+    fetch_head,
     get_json,
+    post_json,
     sanitize_basename,
 )
 
@@ -61,8 +96,36 @@ CSV_LIST_PATH = "/csv_list"
 CSV_DOWNLOAD_PATH = "/download_csv"
 CSV_STATUS_PATH = "/csv_status"
 
+#: The SD file manager endpoint (``sd_filemgr``); paths are relative to /sdcard.
+FILES_PATH = "/files"
+
+#: The csv_logger's folder, relative to /sdcard (the file manager's root).
+SD_LOGS_DIR = "logs"
+
 #: How many ``-N`` suffixes to probe before declaring the collision pathological.
 _MAX_COLLISION_SUFFIX = 100
+
+#: Chunk size for the byte-for-byte local comparison.
+_COMPARE_CHUNK = 64 * 1024
+
+#: How much of a dated trip is fetched to prove its local copy (the first
+#: rows: header, then millisecond timestamps and live sensor values).
+_HEAD_CHECK_BYTES = 64 * 1024
+
+#: Names the delete pass may touch: the characters the firmware itself uses.
+#: The download URL is query-encoded (a space becomes ``+``) and the firmware
+#: never decodes it, while the delete path is sent verbatim — for any other
+#: name the file downloaded and the file deleted could differ.
+_DELETABLE_NAME = re.compile(r"[A-Za-z0-9._-]+")
+
+#: A trip name the firmware dated from a SET clock (year >= 2020, the
+#: firmware's own validity bar), with its optional ``_N`` duplicate suffix.
+#: Name + size identifies such a trip; see the module docstring for the rare
+#: repeated-second case this accepts.
+_DATED_NAME = re.compile(
+    r"20[2-9]\d(0[1-9]|1[0-2])(0[1-9]|[12]\d|3[01])"
+    r"_([01]\d|2[0-3])h[0-5]\dm[0-5]\ds(_\d{1,2})?\.csv"
+)
 
 
 class WiCANLogsError(WiCANHttpError):
@@ -86,6 +149,13 @@ class LogSyncResult:
     skipped: list = field(default_factory=list)  # list[str] remote names
     bytes_downloaded: int = 0  # sum of the completed files' sizes
     elapsed_s: float = 0.0  # wall time spent transferring (first file → last)
+    #: The exact (TripLog, local Path) pair of every file completed THIS run —
+    #: the only proof :meth:`WiCANLogClient.delete_verified` accepts without
+    #: a byte-for-byte re-check.
+    verified: list = field(default_factory=list)
+    cancelled: bool = False  # the run stopped early on abort_cb
+    #: Set by the caller when the opt-in delete pass ran (see CleanupResult).
+    cleanup: Optional["CleanupResult"] = None
 
     @property
     def downloaded_oldest_first(self) -> list:
@@ -107,6 +177,18 @@ class SyncPlan:
     to_download: list = field(default_factory=list)  # list[(TripLog, Path)]
     skipped: list = field(default_factory=list)  # list[str] remote names
     total_bytes: int = 0
+
+
+@dataclass(frozen=True)
+class CleanupResult:
+    """Outcome of one :meth:`WiCANLogClient.delete_verified` pass."""
+
+    deleted: list = field(default_factory=list)  # list[str] names removed
+    failed: list = field(default_factory=list)  # list[(name, reason)]
+    #: Earlier-"downloaded" trips whose re-fetch matched NO local copy (a
+    #: clockless name reuse): saved locally under a free name before delete.
+    rescued: list = field(default_factory=list)  # list[Path]
+    cancelled: bool = False
 
 
 #: Per-file statuses produced by :meth:`WiCANLogClient.classify`.
@@ -291,10 +373,12 @@ class WiCANLogClient:
             )
 
         base = 0  # bytes of fully-downloaded files so far
+        cancelled = False
         run_start = last_done = time.monotonic()
         for log, target in sync_plan.to_download:
             if abort_cb is not None and abort_cb():
                 _log_abort()
+                cancelled = True
                 break
 
             per_file_cb = None
@@ -318,6 +402,7 @@ class WiCANLogClient:
                     # the user asked for this — return the partial result like
                     # a between-files abort (the .part is already cleaned up).
                     _log_abort()
+                    cancelled = True
                     break
                 raise
             last_done = time.monotonic()
@@ -327,11 +412,17 @@ class WiCANLogClient:
                 transfer_summary(log.size, last_done - file_start),
             )
             result.downloaded.append(path)
+            result.verified.append((log, path))
             base += log.size
 
         # Timed to the last COMPLETED file, so a cancelled partial transfer
         # does not drag the average down.
-        return replace(result, bytes_downloaded=base, elapsed_s=last_done - run_start)
+        return replace(
+            result,
+            bytes_downloaded=base,
+            elapsed_s=last_done - run_start,
+            cancelled=cancelled,
+        )
 
     @staticmethod
     def _file_progress(progress_cb, base: int, total: int, name: str):
@@ -358,25 +449,351 @@ class WiCANLogClient:
         planning pass (not yet on disk) — treated as occupied so two logs in
         one run can never resolve to the same target.
         """
-        plain = dest_dir / name
-        stem, dot, ext = name.rpartition(".")
-        if not dot:  # no extension — suffix the whole name
-            stem, ext = name, ""
-
-        candidate = plain
-        for n in range(2, _MAX_COLLISION_SUFFIX + 1):
+        for candidate in _candidate_paths(dest_dir, name):
             if candidate in reserved:
-                pass  # promised to another log this run — probe the next name
-            elif not candidate.exists():
+                continue  # promised to another log this run — probe the next name
+            if not candidate.exists():
                 return candidate
-            else:
-                try:
-                    if candidate.stat().st_size == size:
-                        return None  # same trip already downloaded
-                except OSError:
-                    pass  # race/unreadable — treat as occupied, probe the next
-            candidate = dest_dir / (f"{stem}-{n}.{ext}" if ext else f"{stem}-{n}")
-        raise WiCANLogsError(
-            f"More than {_MAX_COLLISION_SUFFIX} local name collisions for "
-            f"{name!r} — refusing to continue (corrupt local logs dir?)"
+            try:
+                if candidate.stat().st_size == size:
+                    return None  # same trip already downloaded
+            except OSError:
+                pass  # race/unreadable — treat as occupied, probe the next
+        raise _collision_error(name)
+
+    # --- opt-in delete after download (#112) ---------------------------------
+
+    def list_sd_logs(self) -> dict:
+        """Fresh file-manager view of the logs folder: ``{name: entry}``.
+
+        Each entry is the raw ``sd_filemgr`` item (``type``, ``size``,
+        ``mtime``, and ``active`` / ``locked`` flags when set). An unmounted
+        card lists empty, so nothing can be deleted from it.
+        """
+        url = self._url(FILES_PATH, {"op": "list", "path": SD_LOGS_DIR})
+        payload = get_json(url, timeout_s=self.timeout_s)
+        entries = payload.get("entries") if isinstance(payload, dict) else None
+        if not isinstance(entries, list):
+            raise WiCANLogsError(
+                f"/files list from {self.host}: malformed reply {payload!r}"
+            )
+        return {
+            str(e["name"]): e for e in entries if isinstance(e, dict) and e.get("name")
+        }
+
+    def delete_log(self, name: str) -> None:
+        """Delete ONE trip log file from the device's logs folder.
+
+        Always a single-file path (``logs/<name>``) built from a sanitized
+        basename: the file manager deletes folders recursively, so nothing
+        else may ever reach it. Raises on any refusal (``409`` for the file
+        being recorded, ``403`` reserved, ``404`` gone) or an unexpected reply.
+        """
+        name = sanitize_basename(name)
+        if not _DELETABLE_NAME.fullmatch(name):
+            raise WiCANLogsError(f"refusing to delete {name!r}: unsupported characters")
+        reply = post_json(
+            self._url(FILES_PATH),
+            {"op": "delete", "path": f"{SD_LOGS_DIR}/{name}"},
+            timeout_s=self.timeout_s,
         )
+        if not isinstance(reply, dict) or reply.get("ok") is not True:
+            raise WiCANLogsError(f"delete of {name} refused: {reply!r}")
+        if reply.get("deleted") != 1:
+            # The file-manager listing said it was one plain file; anything
+            # else means the device changed under us — make it loud.
+            logger.warning(
+                "Delete of %s removed %r entries", name, reply.get("deleted")
+            )
+
+    def delete_verified(
+        self,
+        dest_dir,
+        verified=(),
+        *,
+        keep_newest: int,
+        abort_cb=None,
+        status_cb=None,
+    ) -> CleanupResult:
+        """Delete from the device every trip whose local copy is proven.
+
+        *verified* is :attr:`LogSyncResult.verified` of the download run that
+        just finished (never call this after a cancelled or failed run — the
+        caller owns that rule). The *keep_newest* trips with the newest card
+        timestamps are always kept. On a WiCAN without a clock the timestamps
+        restart at every boot, so "newest" is only approximate there — it
+        decides what stays on the card, never what is proven. Proof rules:
+        see the module docstring.
+
+        ``status_cb`` (one arg: a short human line) reports each step;
+        ``abort_cb`` is polled between files and during re-fetches — trips
+        already deleted stay deleted (each was proven first).
+
+        Raises :class:`~src.ecu.wican_http.WiCANHttpError` only when the
+        fresh listings cannot be read (nothing is deleted then); a single
+        file's failure is recorded in ``failed`` and the pass moves on.
+        """
+        if keep_newest < 0:
+            raise ValueError(f"keep_newest must be >= 0, got {keep_newest}")
+        dest_dir = Path(dest_dir)
+
+        # Fresh views taken now, not at download time: the card may have
+        # changed (a new trip started, a name reused) since the plan.
+        logs = self.list_logs()
+        on_card = self.list_sd_logs()
+        active = self.active_log_basename()
+        this_run = {log.name: (log, path) for log, path in verified}
+
+        # Sorted here, not trusted from /csv_list: past its sort buffer the
+        # firmware emits the overflow unsorted. Stable, so ties keep the
+        # device order.
+        by_age = sorted(logs, key=lambda log: log.mtime, reverse=True)
+
+        deleted, failed, rescued = [], [], []
+        cancelled = False
+        # Oldest first: an interrupted pass has removed the oldest trips.
+        for log in reversed(by_age[keep_newest:]):
+            if abort_cb is not None and abort_cb():
+                cancelled = True
+                break
+
+            refusal = self._delete_refusal(log, on_card.get(log.name), active)
+            if refusal:
+                logger.debug("Keeping %s on the WiCAN: %s", log.name, refusal)
+                continue
+
+            local = None
+            if log.name in this_run:
+                done_log, path = this_run[log.name]
+                if done_log == log and _file_size(path) == log.size:
+                    local = path
+                else:
+                    logger.warning(
+                        "Keeping %s on the WiCAN: it changed since it was "
+                        "downloaded, or its local copy did",
+                        log.name,
+                    )
+                    continue
+            elif _DATED_NAME.fullmatch(log.name):
+                if status_cb is not None:
+                    status_cb(f"Checking {log.name} against its local copy...")
+                local = self._prove_dated_copy(dest_dir, log, abort_cb, rescued)
+            else:
+                if status_cb is not None:
+                    status_cb(f"Checking {log.name} against its local copy...")
+                local = self._prove_earlier_copy(dest_dir, log, abort_cb, rescued)
+            if local is None:
+                if abort_cb is not None and abort_cb():
+                    cancelled = True
+                    break
+                continue
+
+            if abort_cb is not None and abort_cb():
+                cancelled = True
+                break
+            if status_cb is not None:
+                status_cb(f"Deleting {log.name} from the WiCAN...")
+            try:
+                # Re-read the entry right before the POST: proving earlier
+                # trips can take minutes, and a rebooted clockless device may
+                # have reused this name for a new trip since the pass began.
+                fresh = self.list_sd_logs().get(log.name)
+                if self._delete_refusal(log, fresh, active) or not _same_entry(
+                    fresh, on_card[log.name]
+                ):
+                    logger.warning(
+                        "Keeping %s on the WiCAN: it changed during the delete pass",
+                        log.name,
+                    )
+                    continue
+                self.delete_log(log.name)
+            except WiCANHttpError as exc:
+                logger.warning("Could not delete %s from the WiCAN: %s", log.name, exc)
+                failed.append((log.name, str(exc)))
+                continue
+            logger.info(
+                "Deleted trip log %s from the WiCAN (local copy: %s)",
+                log.name,
+                local.name,
+            )
+            deleted.append(log.name)
+
+        return CleanupResult(
+            deleted=deleted, failed=failed, rescued=rescued, cancelled=cancelled
+        )
+
+    @staticmethod
+    def _delete_refusal(log: TripLog, entry, active) -> Optional[str]:
+        """Why *log* must stay on the card, or None when it may go.
+
+        *entry* is its fresh file-manager item (None when not listed there).
+        """
+        try:
+            name = sanitize_basename(log.name)
+        except WiCANHttpError:
+            return "unsafe name"
+        if not _DELETABLE_NAME.fullmatch(name):
+            return "name has characters the download cannot address exactly"
+        if active is not None and name == active:
+            return "being recorded"
+        if entry is None:
+            return "not in the file manager listing"
+        if entry.get("type") != "file":
+            return "not a plain file"
+        if entry.get("active") or entry.get("locked"):
+            return "active or locked on the device"
+        size = entry.get("size")
+        if not isinstance(size, (int, float)) or int(size) != log.size:
+            return "size differs between the two device listings"
+        return None
+
+    def _prove_dated_copy(
+        self, dest_dir: Path, log: TripLog, abort_cb, rescued: list
+    ) -> Optional[Path]:
+        """Prove an earlier-run DATED trip by its size and its first 64 KB.
+
+        Returns the matching local copy, or None (keep it on the card). When
+        the heads differ the device reused the name for another trip: the
+        full check (:meth:`_prove_earlier_copy`) takes over and saves it.
+        """
+        local = _same_size_copy(dest_dir, log)
+        if local is None:
+            return None
+        want = min(log.size, _HEAD_CHECK_BYTES)
+        try:
+            head = fetch_head(
+                self._url(CSV_DOWNLOAD_PATH, {"file": log.name}),
+                want,
+                timeout_s=self.timeout_s,
+            )
+            with open(local, "rb") as fh:
+                local_head = fh.read(want)
+        except (WiCANHttpError, OSError) as exc:
+            logger.warning(
+                "Keeping %s on the WiCAN: could not verify it (%s)", log.name, exc
+            )
+            return None
+        if len(head) == want and head == local_head:
+            return local
+        logger.info(
+            "%s on the WiCAN starts differently from its local copy — "
+            "checking the whole file",
+            log.name,
+        )
+        return self._prove_earlier_copy(dest_dir, log, abort_cb, rescued)
+
+    def _prove_earlier_copy(
+        self, dest_dir: Path, log: TripLog, abort_cb, rescued: list
+    ) -> Optional[Path]:
+        """Prove a trip downloaded by an earlier run by re-fetching it.
+
+        Returns the local file that matches it byte for byte, or None (keep
+        it on the card). When local same-size copies exist but none matches,
+        the re-fetched trip is a different trip that reused the name: it is
+        saved under a free ``-N`` name, appended to *rescued*, and returned.
+        No same-size local copy at all means it was never downloaded — None.
+        """
+        name = sanitize_basename(log.name)
+        copies = [
+            p for p in _candidate_paths(dest_dir, name) if _file_size(p) == log.size
+        ]
+        if not copies:
+            return None
+
+        # Hidden, per-trip temp name, cleaned up whatever happens. It never
+        # matches a real trip's candidate names.
+        temp = dest_dir / f".{name}.verify"
+        try:
+            download_to_file(
+                self._url(CSV_DOWNLOAD_PATH, {"file": log.name}),
+                temp,
+                expected_size=log.size,
+                timeout_s=self.timeout_s,
+                abort_cb=abort_cb,
+            )
+            for copy in copies:
+                if _same_bytes(temp, copy):
+                    return copy
+            target = _free_path(dest_dir, name)
+            os.replace(temp, target)
+        except (WiCANHttpError, OSError) as exc:
+            logger.warning(
+                "Keeping %s on the WiCAN: could not verify it (%s)", name, exc
+            )
+            return None
+        finally:
+            _remove_quietly(temp)
+
+        logger.warning(
+            "%s on the WiCAN is a different trip from the local file of the same "
+            "name and size (the device reused the name) — saved it as %s",
+            name,
+            target.name,
+        )
+        rescued.append(target)
+        return target
+
+
+def _candidate_paths(dest_dir: Path, name: str):
+    """Every local path a remote *name* may occupy: ``name``, ``stem-2.ext``…
+
+    THE one definition of the collision-suffix scheme, shared by the download
+    (:meth:`WiCANLogClient._resolve_target`) and the delete proof.
+    """
+    stem, dot, ext = name.rpartition(".")
+    if not dot:  # no extension — suffix the whole name
+        stem, ext = name, ""
+    yield dest_dir / name
+    for n in range(2, _MAX_COLLISION_SUFFIX):
+        yield dest_dir / (f"{stem}-{n}.{ext}" if ext else f"{stem}-{n}")
+
+
+def _collision_error(name: str) -> WiCANLogsError:
+    return WiCANLogsError(
+        f"More than {_MAX_COLLISION_SUFFIX} local name collisions for "
+        f"{name!r} — refusing to continue (corrupt local logs dir?)"
+    )
+
+
+def _free_path(dest_dir: Path, name: str) -> Path:
+    """The first candidate path for *name* with nothing on disk."""
+    for candidate in _candidate_paths(dest_dir, name):
+        if not candidate.exists():
+            return candidate
+    raise _collision_error(name)
+
+
+def _same_size_copy(dest_dir: Path, log: TripLog) -> Optional[Path]:
+    """The local copy of a DATED trip: the first candidate path of the
+    exact size (the same identity :meth:`WiCANLogClient.classify` uses)."""
+    for candidate in _candidate_paths(dest_dir, log.name):
+        if _file_size(candidate) == log.size:
+            return candidate
+    return None
+
+
+def _same_entry(a: dict, b: dict) -> bool:
+    """Two file-manager items describe the same, unchanged file."""
+    return all(a.get(k) == b.get(k) for k in ("type", "size", "mtime"))
+
+
+def _file_size(path: Path) -> Optional[int]:
+    """Size of a regular file, or None when missing / not a file / unreadable."""
+    try:
+        return path.stat().st_size if path.is_file() else None
+    except OSError:
+        return None
+
+
+def _same_bytes(a: Path, b: Path) -> bool:
+    """Byte-for-byte file equality. Deliberately not :func:`filecmp.cmp`,
+    whose cache keys on (size, mtime) and could return a stale answer when the
+    same temp path is reused within one mtime tick."""
+    with open(a, "rb") as fa, open(b, "rb") as fb:
+        while True:
+            ca = fa.read(_COMPARE_CHUNK)
+            cb = fb.read(_COMPARE_CHUNK)
+            if ca != cb:
+                return False
+            if not ca:
+                return True

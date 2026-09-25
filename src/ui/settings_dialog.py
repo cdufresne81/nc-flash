@@ -401,8 +401,7 @@ SETTINGS_REGISTRY = [
             "logs. When some are found you are asked first — with a size and "
             "time estimate — and a confirmed download runs in the Trip Logs "
             "window. Only active while the WiCAN adapter is selected; skipped "
-            "silently when the device is asleep or unreachable; never deletes "
-            "from the device."
+            "silently when the device is asleep or unreachable."
         ),
         category="ECU",
         subcategory="WiCAN",
@@ -425,6 +424,44 @@ SETTINGS_REGISTRY = [
         getter="get_offer_open_logs_in_mlv",
         setter="set_offer_open_logs_in_mlv",
         keywords=["wican", "logs", "megalogviewer", "mlv", "open", "trip"],
+    ),
+    SettingDescriptor(
+        key="ecu.wican.delete_logs_after_download",
+        label="Delete trip logs from the WiCAN after download",
+        description=(
+            "After a download, delete from the WiCAN's SD card the trips "
+            "whose local copy is proven complete. For trips downloaded "
+            "before this was turned on, a dated trip needs a local copy of "
+            "the same name and size whose start matches the device's (a "
+            "quick partial check); a trip from a WiCAN without a clock is "
+            "downloaded once more and compared byte for byte. Never deletes "
+            "the trip being "
+            "recorded, and deletes nothing when a download is cancelled or "
+            "fails. Deleted trips cannot be recovered from the device."
+        ),
+        category="ECU",
+        subcategory="WiCAN",
+        widget_type="checkbox",
+        getter="get_wican_delete_logs_after_download",
+        setter="set_wican_delete_logs_after_download",
+        keywords=["wican", "logs", "delete", "remove", "sd", "card", "trip", "space"],
+    ),
+    SettingDescriptor(
+        key="ecu.wican.keep_newest_logs",
+        label="Trips to keep on the WiCAN",
+        description=(
+            "When deleting after download, always leave this many of the "
+            "newest trips on the SD card (the one being recorded counts). "
+            "0 keeps none. On a WiCAN without a clock, which trips count as "
+            "newest is only approximate."
+        ),
+        category="ECU",
+        subcategory="WiCAN",
+        widget_type="spinbox",
+        getter="get_wican_keep_newest_logs",
+        setter="set_wican_keep_newest_logs",
+        widget_options={"min": 0, "max": 100, "suffix": " trips"},
+        keywords=["wican", "logs", "keep", "newest", "retention", "trip", "delete"],
     ),
     # -- ECU > Flash Security --
     SettingDescriptor(

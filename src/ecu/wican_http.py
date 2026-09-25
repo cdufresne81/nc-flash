@@ -6,6 +6,8 @@ session / ECU. Per the architecture rule "ONE pipeline copy", the transport
 boilerplate those clients share lives here and only here:
 
 - :func:`get_json` — GET a JSON endpoint with typed, contextual errors.
+- :func:`post_json` — POST a JSON body to a JSON endpoint (the SD file
+  manager's ``/files`` ops), same error contract.
 - :func:`download_to_file` — stream a file to disk **atomically**: write to a
   ``.part`` sibling, verify the received byte count against the size the
   device advertised, then ``os.replace`` into place. An interrupted WiFi
@@ -14,8 +16,9 @@ boilerplate those clients share lives here and only here:
   the destination directory (defense-in-depth; the firmware guards too, but a
   clean client never trusts a listing).
 
-Consumers: :mod:`src.ecu.wican_logs` (trip-log sync, issue #83) and the future
-SD file browser client (issue #84). The pre-existing flash-path clients
+Consumers: :mod:`src.ecu.wican_logs` (trip-log sync, issue #83, and its opt-in
+delete-after-download, issue #112) and the future SD file browser client
+(issue #84). The pre-existing flash-path clients
 (:mod:`src.ecu.wican_config`, :mod:`src.ecu.wican_sd_upload`) predate this
 module and stay untouched — migrating them is a behavior-preserving refactor
 gated on a hardware test per ``docs/internal/WICAN_MANUAL_TEST.md``.
@@ -25,6 +28,7 @@ Headless: standard library only (``urllib``/``json``/``socket``), no PySide6.
 
 from __future__ import annotations
 
+import http.client
 import json
 import logging
 import os
@@ -98,6 +102,72 @@ def get_json(url: str, *, timeout_s: float = DEFAULT_TIMEOUT_S):
         raise WiCANHttpError(
             f"GET {url}: device reply was not JSON: {raw[:200]!r}"
         ) from exc
+
+
+def post_json(url: str, body: dict, *, timeout_s: float = DEFAULT_TIMEOUT_S):
+    """POST *body* as JSON to *url* and return the parsed JSON reply.
+
+    Same error contract as :func:`get_json`: any transport failure, HTTP error
+    status, or non-JSON reply raises :class:`WiCANHttpError` naming the URL.
+    For an HTTP error the device's own error text (e.g. the file manager's
+    ``{"error":"file is being written"}``) is included in the message.
+    """
+    data = json.dumps(body).encode("utf-8")
+    req = urllib.request.Request(
+        url, data=data, method="POST", headers={"Content-Type": "application/json"}
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=timeout_s) as resp:
+            raw = resp.read().decode("utf-8", errors="replace")
+    except urllib.error.HTTPError as exc:
+        try:
+            detail = exc.read().decode("utf-8", errors="replace")[:200]
+        except OSError:
+            detail = ""
+        raise WiCANHttpError(
+            f"POST {url} failed: HTTP {exc.code} {detail}".rstrip()
+        ) from exc
+    except (
+        urllib.error.URLError,
+        http.client.HTTPException,
+        socket.error,
+        OSError,
+    ) as exc:
+        raise WiCANHttpError(f"POST {url} failed: {exc}") from exc
+
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise WiCANHttpError(
+            f"POST {url}: device reply was not JSON: {raw[:200]!r}"
+        ) from exc
+
+
+def fetch_head(url: str, max_bytes: int, *, timeout_s: float = DEFAULT_TIMEOUT_S):
+    """GET *url* and return only its first *max_bytes* (fewer at EOF).
+
+    The connection is closed as soon as enough has arrived — the device stops
+    serving the rest, exactly as when a download is cancelled. Same error
+    contract as :func:`get_json`.
+    """
+    buf = bytearray()
+    try:
+        with urllib.request.urlopen(url, timeout=timeout_s) as resp:
+            while len(buf) < max_bytes:
+                chunk = resp.read(max_bytes - len(buf))
+                if not chunk:
+                    break
+                buf += chunk
+    except urllib.error.HTTPError as exc:
+        raise WiCANHttpError(f"GET {url} failed: HTTP {exc.code}") from exc
+    except (
+        urllib.error.URLError,
+        http.client.HTTPException,
+        socket.error,
+        OSError,
+    ) as exc:
+        raise WiCANHttpError(f"GET {url} failed: {exc}") from exc
+    return bytes(buf)
 
 
 def download_to_file(

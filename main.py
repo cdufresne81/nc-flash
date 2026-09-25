@@ -1604,12 +1604,20 @@ class MainWindow(
             return
 
         plural = "s" if count != 1 else ""
+        delete_note = ""
+        if self.settings.get_wican_delete_logs_after_download():
+            delete_note = (
+                "Trips whose local copy is verified will then be deleted from "
+                "the WiCAN (keeping the newest "
+                f"{self.settings.get_wican_keep_newest_logs()}).\n\n"
+            )
         reply = QMessageBox.question(
             self,
             "New WiCAN Trip Logs",
             f"{count} new trip log{plural} on the WiCAN "
             f"({format_size(total_bytes)}).\n"
             f"Estimated download time: {estimate_download_text(total_bytes)}.\n\n"
+            f"{delete_note}"
             "Download now?",
             QMessageBox.Yes | QMessageBox.No,
             QMessageBox.Yes,

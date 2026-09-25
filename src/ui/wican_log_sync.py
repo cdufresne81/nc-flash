@@ -6,6 +6,12 @@ The download itself is pure HTTP against the WiCAN's port-80 csv_logger
 endpoints — fully decoupled from the CAN bus / SLCAN session / ECU: it never
 opens an ECU connection and works whether the car is on or off.
 
+When the opt-in "delete after download" setting is on (issue 112, off by default),
+the same worker follows a COMPLETED download with
+:meth:`~src.ecu.wican_logs.WiCANLogClient.delete_verified` — never after a
+cancelled or failed one. A failed delete pass is logged and never fails the
+download.
+
 Besides the download it owns the read-only device *inventory* (list + status
 + local classification, :meth:`WiCANLogSync.refresh_inventory`) used by the
 Trip Logs table and the startup new-log check
@@ -28,6 +34,7 @@ a worker QThread; the GUI thread is never blocked.
 import logging
 import math
 import time
+from dataclasses import replace
 from typing import Optional
 
 from PySide6.QtCore import QObject, QThread, Qt, QTimer, Signal
@@ -94,30 +101,56 @@ class _DeviceWorker(QObject):
 
 
 class _LogSyncWorker(_DeviceWorker):
-    """Runs one sync (resolve host → list → download-new) off the GUI thread."""
+    """Runs one sync (resolve host → list → download-new → opt-in delete)
+    off the GUI thread."""
 
     finished = Signal(object)  # LogSyncResult
     #: (bytes_done, bytes_total, filename currently transferring,
     #:  average rate since the run started in bytes/s — 0.0 while not yet known)
     progress = Signal(int, int, str, float)
+    #: A human line for the delete pass ("Deleting x.csv from the WiCAN...").
+    status = Signal(str)
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, keep_newest: Optional[int] = None, **kwargs):
+        """``keep_newest`` None = delete-after-download off (the default)."""
         super().__init__(*args, **kwargs)
+        self._keep_newest = keep_newest
         self._last_progress_emit = 0.0
         self._rate_meter = TransferRateMeter()  # one worker per run → fresh meter
 
     def run(self):
         try:
-            result = self._make_client().download_new(
+            client = self._make_client()
+            result = client.download_new(
                 self._dest_dir,
                 abort_cb=self._abort_requested,
                 progress_cb=self._on_progress,
             )
-            self.finished.emit(result)
         except Exception as e:
             # Device asleep/unreachable is a normal condition — the owner logs
-            # it quietly; nothing may raise out of a Qt worker slot.
+            # it quietly; nothing may raise out of a Qt worker slot. A failed
+            # download never reaches the delete pass.
             self.error.emit(str(e))
+            return
+        if self._keep_newest is not None and not result.cancelled:
+            result = self._delete_verified(client, result)
+        self.finished.emit(result)
+
+    def _delete_verified(self, client, result):
+        """The opt-in delete pass (issue 112). Its failure never fails the run: the
+        download already succeeded, and the next run simply retries."""
+        try:
+            cleanup = client.delete_verified(
+                self._dest_dir,
+                result.verified,
+                keep_newest=self._keep_newest,
+                abort_cb=self._abort_requested,
+                status_cb=self.status.emit,
+            )
+        except Exception as e:
+            logger.warning("Deleting trip logs from the WiCAN skipped: %s", e)
+            return result
+        return replace(result, cleanup=cleanup)
 
     def _on_progress(self, done: int, total: int, name: str):
         """Forward download progress as a signal, throttled to ~10 Hz.
@@ -165,6 +198,10 @@ class WiCANLogSync(QObject):
     #: during transfers. ``rate_bps`` is the average since the run started,
     #: 0.0 until enough of the transfer has been timed.
     progress_changed = Signal(int, int, str, float)
+
+    #: A human status line from the opt-in delete pass that follows the
+    #: download (only when delete-after-download is on).
+    cleanup_status = Signal(str)
 
     #: A sync run completed (fully or cancelled part-way) — the
     #: :class:`~src.ecu.wican_logs.LogSyncResult`, whose ``downloaded`` lists
@@ -245,11 +282,16 @@ class WiCANLogSync(QObject):
             return False
         host, device_id = config
 
+        keep_newest = None
+        if self._settings.get_wican_delete_logs_after_download():
+            keep_newest = self._settings.get_wican_keep_newest_logs()
+
         worker = _LogSyncWorker(
             host,
             device_id,
             self._settings.get_logs_directory(),
             http_port=self._http_port,
+            keep_newest=keep_newest,
         )
         thread = QThread(self)
         worker.moveToThread(thread)
@@ -262,6 +304,7 @@ class WiCANLogSync(QObject):
         worker.finished.connect(self._on_finished, Qt.QueuedConnection)
         worker.error.connect(self._on_error, Qt.QueuedConnection)
         worker.progress.connect(self._on_progress, Qt.QueuedConnection)
+        worker.status.connect(self.cleanup_status, Qt.QueuedConnection)
         thread.started.connect(worker.run)
         worker.finished.connect(thread.quit)
         worker.error.connect(thread.quit)
@@ -379,6 +422,23 @@ class WiCANLogSync(QObject):
             )
         else:
             logger.info("No new WiCAN trip logs")
+        cleanup = result.cleanup
+        if cleanup is not None and (cleanup.deleted or cleanup.failed):
+            notes = []
+            if cleanup.rescued:
+                notes.append(
+                    f"{len(cleanup.rescued)} saved first as a new trip "
+                    "(the device had reused a name)"
+                )
+            if cleanup.failed:
+                notes.append(
+                    f"{len(cleanup.failed)} could not be deleted, retried next time"
+                )
+            logger.info(
+                "Deleted %d trip log(s) from the WiCAN%s",
+                len(cleanup.deleted),
+                f" ({'; '.join(notes)})" if notes else "",
+            )
         self.download_finished.emit(result)
 
     def _on_error(self, message: str):
