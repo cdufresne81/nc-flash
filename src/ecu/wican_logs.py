@@ -39,10 +39,13 @@ Headless: standard library only, no PySide6.
 from __future__ import annotations
 
 import logging
+import time
 import urllib.parse
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Optional
+
+from src.utils.transfer import transfer_summary
 
 from .wican_http import (
     DEFAULT_TIMEOUT_S,
@@ -81,6 +84,14 @@ class LogSyncResult:
 
     downloaded: list = field(default_factory=list)  # list[Path], newest-first
     skipped: list = field(default_factory=list)  # list[str] remote names
+    bytes_downloaded: int = 0  # sum of the completed files' sizes
+    elapsed_s: float = 0.0  # wall time spent transferring (first file → last)
+
+    @property
+    def downloaded_oldest_first(self) -> list:
+        """The device lists newest-first, and that order is the only reliable
+        chronology (a clockless device has no trustworthy names or mtimes)."""
+        return list(reversed(self.downloaded))
 
 
 @dataclass(frozen=True)
@@ -280,6 +291,7 @@ class WiCANLogClient:
             )
 
         base = 0  # bytes of fully-downloaded files so far
+        run_start = last_done = time.monotonic()
         for log, target in sync_plan.to_download:
             if abort_cb is not None and abort_cb():
                 _log_abort()
@@ -290,6 +302,7 @@ class WiCANLogClient:
                 per_file_cb = self._file_progress(progress_cb, base, total, log.name)
 
             url = self._url(CSV_DOWNLOAD_PATH, {"file": log.name})
+            file_start = time.monotonic()
             try:
                 path = download_to_file(
                     url,
@@ -307,11 +320,18 @@ class WiCANLogClient:
                     _log_abort()
                     break
                 raise
-            logger.info("Downloaded trip log %s (%d bytes)", path.name, log.size)
+            last_done = time.monotonic()
+            logger.info(
+                "Downloaded trip log %s (%s)",
+                path.name,
+                transfer_summary(log.size, last_done - file_start),
+            )
             result.downloaded.append(path)
             base += log.size
 
-        return result
+        # Timed to the last COMPLETED file, so a cancelled partial transfer
+        # does not drag the average down.
+        return replace(result, bytes_downloaded=base, elapsed_s=last_done - run_start)
 
     @staticmethod
     def _file_progress(progress_cb, base: int, total: int, name: str):

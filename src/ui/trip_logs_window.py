@@ -44,7 +44,8 @@ from src.ecu.wican_logs import (
     STATUS_UNSAFE_NAME,
 )
 from src.ui import theme
-from src.ui.wican_log_sync import estimate_download_text, format_size
+from src.ui.wican_log_sync import estimate_download_text
+from src.utils.transfer import format_rate, format_size, format_time_left
 
 logger = logging.getLogger(__name__)
 
@@ -137,17 +138,22 @@ class TripLogsWindow(QMainWindow):
         actions.addStretch()
         root.addLayout(actions)
 
-        # Inline download progress (shown only while a sync runs).
+        # Inline download progress (shown only while a sync runs): the status
+        # text (file, MB, rate, time left) on its own line so it never
+        # squeezes the bar.
         self._progress_row = QWidget()
-        progress_layout = QHBoxLayout(self._progress_row)
+        progress_layout = QVBoxLayout(self._progress_row)
         progress_layout.setContentsMargins(0, 0, 0, 0)
-        self._progress_bar = QProgressBar()
-        progress_layout.addWidget(self._progress_bar, stretch=1)
+        progress_layout.setSpacing(4)
         self._progress_label = QLabel("")
         progress_layout.addWidget(self._progress_label)
+        bar_row = QHBoxLayout()
+        self._progress_bar = QProgressBar()
+        bar_row.addWidget(self._progress_bar, stretch=1)
         self._btn_cancel = QPushButton("Cancel")
         self._btn_cancel.clicked.connect(self._on_cancel)
-        progress_layout.addWidget(self._btn_cancel)
+        bar_row.addWidget(self._btn_cancel)
+        progress_layout.addLayout(bar_row)
         self._progress_row.setVisible(False)
         root.addWidget(self._progress_row)
 
@@ -217,7 +223,7 @@ class TripLogsWindow(QMainWindow):
             self.refresh()  # statuses flip to Downloaded
         self._update_action_states()
 
-    def _on_progress(self, done: int, total: int, name: str):
+    def _on_progress(self, done: int, total: int, name: str, rate_bps: float):
         """KiB units keep the range far under QProgressBar's int32 ceiling."""
         if total <= 0:
             return  # nothing to download: stays indeterminate until the end
@@ -227,9 +233,12 @@ class TripLogsWindow(QMainWindow):
         mb_total = total / (1024 * 1024)
         if name:
             mb_done = done / (1024 * 1024)
-            self._progress_label.setText(
-                f"Downloading {name}...  ({mb_done:.1f} of {mb_total:.1f} MB)"
-            )
+            text = f"Downloading {name}...  ({mb_done:.1f} of {mb_total:.1f} MB)"
+            if rate_bps > 0:
+                text += f"  ·  {format_rate(rate_bps)} avg"
+                if done < total:
+                    text += f"  ·  {format_time_left((total - done) / rate_bps)}"
+            self._progress_label.setText(text)
         else:
             self._progress_label.setText(
                 f"Downloading trip logs ({mb_total:.1f} MB)..."

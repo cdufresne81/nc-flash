@@ -11,6 +11,7 @@ NC Flash edits and flashes Mazda MX-5 NC ECU ROMs. What we write ends up in a ca
 - **PR descriptions, CHANGELOG entries and release notes** - Keep them concise and human-friendly. Write for a user or reviewer, not a developer mid-session: say what changed and why it matters in plain words. Leave out internal names, file paths, test counts and investigation history unless a reader needs them.
 - **Session notes** - `.claude/notes.md` holds ONLY open work and live decisions not already tracked in a GitHub issue. Read it at session start. When you leave something unfinished, add it; when an item is done, delete it (completed work goes in CHANGELOG, not notes). Pre-Sep-24-2026 history: `git show f4709f1:.claude/notes.md` (search it, don't read it end to end).
 - **Test coverage** - New features or changes to existing features must be tested. Create tests if none exist AND the behavior is logical and important to verify. Do not write tests for trivial or cosmetic changes.
+- **Graph tests are off locally** - `tests/test_graph_gpu.py` is slow and opens real windows, so plain `pytest` skips it (CI always runs it). Run it only after changing the table display or the graph engine (`src/ui/graph_*`, `gpu_runtime.py`, `table_viewer*`): `NCFLASH_GRAPH_TESTS=1 pytest tests/test_graph_gpu.py`.
 
 ## Architecture Rules (enforced; rationale in `docs/internal/ARCHITECTURE.md`)
 

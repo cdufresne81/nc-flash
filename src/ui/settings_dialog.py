@@ -411,6 +411,21 @@ SETTINGS_REGISTRY = [
         setter="set_wican_auto_download_logs",
         keywords=["wican", "logs", "datalog", "csv", "download", "trip", "auto"],
     ),
+    SettingDescriptor(
+        key="ecu.wican.offer_open_logs_in_mlv",
+        label="Offer to open downloaded logs in MegaLogViewerHD",
+        description=(
+            "When a trip-log download finishes, ask whether to open the new "
+            "logs in MegaLogViewerHD. Only asked when MegaLogViewerHD is "
+            "installed."
+        ),
+        category="ECU",
+        subcategory="WiCAN",
+        widget_type="checkbox",
+        getter="get_offer_open_logs_in_mlv",
+        setter="set_offer_open_logs_in_mlv",
+        keywords=["wican", "logs", "megalogviewer", "mlv", "open", "trip"],
+    ),
     # -- ECU > Flash Security --
     SettingDescriptor(
         key="ecu.security.status",

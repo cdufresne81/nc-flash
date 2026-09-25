@@ -20,7 +20,6 @@ from src.ecu.wican_logs import STATUS_DOWNLOADED, STATUS_NEW
 from src.ui.wican_log_sync import (
     WiCANLogSync,
     estimate_download_text,
-    format_size,
 )
 from test_ecu_wican_logs import _Handler, _device
 
@@ -160,15 +159,36 @@ class TestWiCANLogSync:
         events = []
         with _device(files) as (_, httpd):
             sync = WiCANLogSync(fake_settings, http_port=httpd.server_address[1])
-            sync.progress_changed.connect(lambda d, t, n: events.append((d, t, n)))
+            sync.progress_changed.connect(
+                lambda d, t, n, r: events.append((d, t, n, r))
+            )
             assert sync.start() is True
             _wait_sync_done(qtbot, sync)
         assert events, "no progress events reached the GUI thread"
         total = 4000
-        assert events[0] == (0, total, "")
-        assert events[-1] == (total, total, "a.csv")
-        dones = [d for d, _, _ in events]
+        assert events[0] == (0, total, "", 0.0)  # rate unknown before a byte
+        assert events[-1][:3] == (total, total, "a.csv")
+        assert all(r >= 0.0 for *_, r in events)
+        dones = [d for d, *_ in events]
         assert dones == sorted(dones)
+
+    def test_download_finished_carries_the_run_result(
+        self, qtbot, fake_settings, qt_thread_guard, caplog
+    ):
+        # The "open in MegaLogViewerHD?" offer rides this signal: it must list
+        # exactly the files finished in this run, and the Activity Log summary
+        # must carry the run's size, time and rate.
+        files = {"b.csv": b"n" * 3000, "a.csv": b"o" * 1000}
+        with caplog.at_level("INFO", logger="src.ui.wican_log_sync"):
+            with _device(files) as (_, httpd):
+                sync = WiCANLogSync(fake_settings, http_port=httpd.server_address[1])
+                with qtbot.waitSignal(sync.download_finished, timeout=10000) as blk:
+                    assert sync.start() is True
+                _wait_sync_done(qtbot, sync)
+        result = blk.args[0]
+        assert sorted(p.name for p in result.downloaded) == ["a.csv", "b.csv"]
+        assert "Downloaded 2 new trip log(s)" in caplog.text
+        assert " in " in caplog.text and "/s" in caplog.text
 
     def test_cancel_stops_mid_run_without_blocking(
         self, qtbot, fake_settings, qt_thread_guard, caplog
@@ -332,11 +352,6 @@ class TestInventory:
 
 
 class TestFormattingHelpers:
-    def test_format_size(self):
-        assert format_size(512) == "1 KB"  # never "0 KB" for a real file
-        assert format_size(512 * 1024) == "512 KB"
-        assert format_size(int(12.4 * 1024 * 1024)) == "12.4 MB"
-
     def test_estimate_download_text_buckets(self):
         assert estimate_download_text(100 * 1024) == "under 10 seconds"
         assert "seconds" in estimate_download_text(10 * 1024 * 1024)

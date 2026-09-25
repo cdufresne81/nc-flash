@@ -111,3 +111,30 @@ def isolated_settings(tmp_path, monkeypatch):
     s.settings = QSettings(str(tmp_path / "settings.ini"), QSettings.IniFormat)
     monkeypatch.setattr(settings_mod, "_settings", s)
     return s
+
+
+# --- graph-engine tests: off by default on local runs ----------------------
+
+
+def pytest_collection_modifyitems(config, items):
+    """Skip the slow, window-heavy graph tests (``@pytest.mark.graph``) locally.
+
+    Run them by hand after touching the table display or the graph engine:
+    ``NCFLASH_GRAPH_TESTS=1 pytest tests/test_graph_gpu.py``. CI always runs
+    them (GitHub Actions sets ``CI``; the lavapipe job sets
+    ``NCFLASH_REQUIRE_GPU``).
+    """
+    import os
+
+    if (
+        os.environ.get("CI")
+        or os.environ.get("NCFLASH_REQUIRE_GPU") == "1"
+        or os.environ.get("NCFLASH_GRAPH_TESTS") == "1"
+    ):
+        return
+    skip = pytest.mark.skip(
+        reason="graph tests are off locally (NCFLASH_GRAPH_TESTS=1)"
+    )
+    for item in items:
+        if item.get_closest_marker("graph"):
+            item.add_marker(skip)

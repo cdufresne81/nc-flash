@@ -32,6 +32,8 @@ from typing import Optional
 
 from PySide6.QtCore import QObject, QThread, Qt, QTimer, Signal
 
+from src.utils.transfer import TransferRateMeter, format_size, transfer_summary
+
 logger = logging.getLogger(__name__)
 
 #: Progress emits are throttled to this period (a 27 MB trip log arrives in
@@ -46,13 +48,6 @@ _AUTO_CHECK_DELAY_MS = 3000
 #: class hardware). Only feeds the human-facing time estimate — being
 #: conservative beats being optimistic; tune from real transfers if needed.
 _EST_DOWNLOAD_BYTES_PER_S = 400 * 1024
-
-
-def format_size(num_bytes: int) -> str:
-    """Human size for status lines and prompts: ``512 KB`` / ``12.4 MB``."""
-    if num_bytes >= 1024 * 1024:
-        return f"{num_bytes / (1024 * 1024):.1f} MB"
-    return f"{max(1, round(num_bytes / 1024))} KB"
 
 
 def estimate_download_text(total_bytes: int) -> str:
@@ -102,12 +97,14 @@ class _LogSyncWorker(_DeviceWorker):
     """Runs one sync (resolve host → list → download-new) off the GUI thread."""
 
     finished = Signal(object)  # LogSyncResult
-    #: (bytes_done, bytes_total, filename currently transferring)
-    progress = Signal(int, int, str)
+    #: (bytes_done, bytes_total, filename currently transferring,
+    #:  average rate since the run started in bytes/s — 0.0 while not yet known)
+    progress = Signal(int, int, str, float)
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self._last_progress_emit = 0.0
+        self._rate_meter = TransferRateMeter()  # one worker per run → fresh meter
 
     def run(self):
         try:
@@ -128,12 +125,13 @@ class _LogSyncWorker(_DeviceWorker):
         Boundary emits (run start, file completion) always pass so the display
         never misses the determinate total or the final 100%.
         """
+        rate = self._rate_meter.update(done)
         now = time.monotonic()
         boundary = done == 0 or done >= total
         if not boundary and now - self._last_progress_emit < _PROGRESS_MIN_INTERVAL_S:
             return
         self._last_progress_emit = now
-        self.progress.emit(done, total, name)
+        self.progress.emit(done, total, name, rate)
 
     @staticmethod
     def _abort_requested() -> bool:
@@ -161,10 +159,17 @@ class WiCANLogSync(QObject):
     #: the ECU window's operation locks).
     running_changed = Signal(bool)
 
-    #: Byte progress of the running sync: (bytes_done, bytes_total, filename).
-    #: Fires (0, total, "") as soon as the plan is known — a consumer can show
-    #: a determinate bar before the first byte — then ~10 Hz during transfers.
-    progress_changed = Signal(int, int, str)
+    #: Byte progress of the running sync: (bytes_done, bytes_total, filename,
+    #: rate_bps). Fires (0, total, "", 0.0) as soon as the plan is known — a
+    #: consumer can show a determinate bar before the first byte — then ~10 Hz
+    #: during transfers. ``rate_bps`` is the average since the run started,
+    #: 0.0 until enough of the transfer has been timed.
+    progress_changed = Signal(int, int, str, float)
+
+    #: A sync run completed (fully or cancelled part-way) — the
+    #: :class:`~src.ecu.wican_logs.LogSyncResult`, whose ``downloaded`` lists
+    #: the files finished in THIS run. Not emitted when the run failed.
+    download_finished = Signal(object)
 
     #: True while an inventory check runs (drives the Refresh button).
     #: The False emit comes from the check thread's QUEUED cleanup — i.e.
@@ -366,20 +371,22 @@ class WiCANLogSync(QObject):
     def _on_finished(self, result):
         if result.downloaded:
             logger.info(
-                "Downloaded %d new trip log(s) to %s (%d skipped)",
+                "Downloaded %d new trip log(s) to %s (%s; %d skipped)",
                 len(result.downloaded),
                 self._settings.get_logs_directory(),
+                transfer_summary(result.bytes_downloaded, result.elapsed_s),
                 len(result.skipped),
             )
         else:
             logger.info("No new WiCAN trip logs")
+        self.download_finished.emit(result)
 
     def _on_error(self, message: str):
         # Sleeping/unreachable device is normal (car off): quiet info, no dialog.
         logger.info("WiCAN trip-log check skipped: %s", message)
 
-    def _on_progress(self, done: int, total: int, name: str):
-        self.progress_changed.emit(done, total, name)
+    def _on_progress(self, done: int, total: int, name: str, rate_bps: float):
+        self.progress_changed.emit(done, total, name, rate_bps)
 
     @staticmethod
     def _dispose(thread, worker):

@@ -322,6 +322,14 @@ class AppSettings:
     def set_wican_auto_download_logs(self, enabled: bool):
         self.settings.setValue("ecu/wican_auto_download_logs", bool(enabled))
 
+    def get_offer_open_logs_in_mlv(self) -> bool:
+        """Whether a finished trip-log download asks to open the new logs in
+        MegaLogViewerHD (only asked when MegaLogViewerHD is installed)."""
+        return self.settings.value("ecu/offer_open_logs_in_mlv", True, type=bool)
+
+    def set_offer_open_logs_in_mlv(self, enabled: bool):
+        self.settings.setValue("ecu/offer_open_logs_in_mlv", bool(enabled))
+
 
 # Global settings instance
 _settings = None

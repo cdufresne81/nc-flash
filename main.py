@@ -202,6 +202,8 @@ class MainWindow(
         self.wican_log_sync = WiCANLogSync(self.settings, parent=self)
         # Startup check found new logs: ask before downloading anything.
         self.wican_log_sync.new_logs_available.connect(self._on_new_trip_logs_available)
+        # Finished download: offer to open the new logs in MegaLogViewerHD.
+        self.wican_log_sync.download_finished.connect(self._on_trip_logs_downloaded)
 
         # MCP server subprocess
         self._mcp_process = None
@@ -1589,7 +1591,8 @@ class MainWindow(
         download surface — so progress, cancel, and the ECU interlock behave
         exactly like a manual download.
         """
-        from src.ui.wican_log_sync import estimate_download_text, format_size
+        from src.ui.wican_log_sync import estimate_download_text
+        from src.utils.transfer import format_size
 
         if self.ecu_window is not None and self.ecu_window.is_busy:
             # Never interrupt (or race) a running ECU operation with a prompt
@@ -1616,6 +1619,19 @@ class MainWindow(
             return
         self._on_open_trip_logs_window()
         self.trip_logs_window.start_download()
+
+    def _on_trip_logs_downloaded(self, result):
+        """A trip-log download finished (or was cancelled part-way): offer to
+        open the files it completed in MegaLogViewerHD.
+
+        Handled here, not in the Trip Logs window, because closing that window
+        does not cancel the download — the offer must still appear.
+        """
+        from src.ui.mlv_launch import offer_to_open
+
+        # MLV concatenates the files in argument order.
+        parent = self.trip_logs_window or self
+        offer_to_open(parent, result.downloaded_oldest_first, self.settings)
 
     # ========== Table Selection and Window Management ==========
 

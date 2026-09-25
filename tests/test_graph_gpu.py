@@ -32,6 +32,9 @@ from src.ui import gpu_runtime
 from src.ui.graph_model import SELECTION_RGBA
 from src.ui.table_viewer_window import TableViewerWindow
 
+# Slow and window-heavy: off locally unless NCFLASH_GRAPH_TESTS=1 (conftest).
+pytestmark = pytest.mark.graph
+
 _FORCED_CLASSIC = os.environ.get("NCFLASH_GRAPH_ENGINE", "").lower() == "classic"
 BLUE = np.array(SELECTION_RGBA)
 

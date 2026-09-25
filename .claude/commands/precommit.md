@@ -9,15 +9,20 @@ You are running mandatory pre-commit checks. All steps must pass before committi
 
 ## Current State
 
-- Staged files: !`git diff --cached --name-only`
-- Python files staged: !`git diff --cached --name-only -- '*.py' | head -20 || echo "None"`
+- Staged files: !`git diff --cached --name-only 2>/dev/null || echo "ERROR: git diff failed"`
+- Python files staged: !`out=$(git diff --cached --name-only -- '*.py' 2>/dev/null) || out="ERROR: git diff failed"; echo "${out:-None}" | head -20`
 - Current CHANGELOG Unreleased section: !`python -c "
-import re
-with open('CHANGELOG.md', encoding='utf-8') as f:
-    text = f.read()
-match = re.search(r'## \[Unreleased\](.*?)(?=\n## \[v)', text, re.DOTALL)
-print(match.group(0).strip() if match else 'ERROR: No [Unreleased] section found!')
-"`
+import re, sys
+try:
+    with open('CHANGELOG.md', encoding='utf-8') as f:
+        text = f.read()
+    match = re.search(r'## \[Unreleased\].*?(?=\n## \[|\Z)', text, re.DOTALL)
+    out = match.group(0).strip() if match else 'ERROR: No [Unreleased] section found!'
+except Exception as e:
+    out = 'ERROR: could not read CHANGELOG.md: %r' % (e,)
+sys.stdout.buffer.write((out + '\n').encode('utf-8'))
+sys.stdout.flush()
+" 2>&1 || echo "ERROR: python failed to run the CHANGELOG snippet"`
 
 ## Step 1: Code Quality (if Python files are staged)
 
@@ -26,15 +31,17 @@ If there are Python files in the staged changes, run these checks. If no Python 
 ### 1a: Formatting
 
 ```bash
-black --check src/ tests/ main.py
+python -m black --check src/ tests/ main.py
 ```
 
-If black fails, fix with `black src/ tests/ main.py` and re-stage the affected files.
+If black fails, fix with `python -m black src/ tests/ main.py` and re-stage the affected files.
+
+Always invoke the tools as `python -m <tool>` so they come from the project's interpreter. A bare `black` on PATH may be a different, older install that reports false reformat hits.
 
 ### 1b: Linting
 
 ```bash
-flake8 src/ tests/ --count --select=E9,F63,F7,F82 --show-source --statistics
+python -m flake8 src/ tests/ --count --select=E9,F63,F7,F82 --show-source --statistics
 ```
 
 This catches syntax errors and undefined names. Must pass with zero errors.
@@ -42,7 +49,7 @@ This catches syntax errors and undefined names. Must pass with zero errors.
 ### 1c: Tests
 
 ```bash
-pytest
+python -m pytest
 ```
 
 All tests must pass. If tests fail, investigate and fix before proceeding.
