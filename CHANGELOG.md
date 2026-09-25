@@ -9,7 +9,7 @@ All notable changes to NC Flash are documented here.
 - **Download speed for trip logs (#109).** While logs download, the Trip Logs window shows the average download speed and roughly how long is left. It's an average because the WiCAN's Wi-Fi delivers data in bursts, so an instant reading would jump around constantly. The Activity Log shows each file's size, download time and average speed, plus a total for the whole download.
 
 ### Changed
-- **Refreshed the contributor guide for AI-assisted development.** Instructions were trimmed and updated. No change to the app itself.
+- **Refreshed the contributor guide for AI-assisted development.** Instructions were trimmed and updated, and the pre-commit check no longer crashes on Windows. No change to the app itself.
 - **The graph tests no longer run in a normal local test run.** They're slow and open real windows, so they're skipped unless you ask for them (`NCFLASH_GRAPH_TESTS=1`). CI still runs them on every change. No change to the app itself.
 - **The built-in MCP server now uses the current Streamable HTTP transport.** When you start it from the app, AI assistants connect to `http://127.0.0.1:8765/mcp` (was `.../sse`). The bundled `.mcp.json` is updated, so Claude Code needs nothing from you. If you hand-configured another client against `/sse`, point it at `/mcp` with the HTTP transport type. The old SSE transport is still available from the command line (`--transport sse`) for this release only; the MCP specification has deprecated it.
 
