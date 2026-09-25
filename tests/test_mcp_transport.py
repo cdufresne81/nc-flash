@@ -15,6 +15,7 @@ wrote, never the developer's real workspace.json.
 """
 
 import json
+import site
 import socket
 import subprocess
 import sys
@@ -63,6 +64,9 @@ def _wait_for_port(port: int, proc: subprocess.Popen, timeout: float = 30.0):
 @pytest.fixture
 def workspace_dir(tmp_path, monkeypatch):
     """Redirect get_user_data_dir() (inherited by the subprocess) to tmp_path."""
+    # On Windows the per-user site-packages also live under %APPDATA%; pin
+    # them so the server subprocess can still import a user-installed `mcp`.
+    monkeypatch.setenv("PYTHONUSERBASE", site.getuserbase())
     monkeypatch.setenv("APPDATA", str(tmp_path))
     monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
     data_dir = tmp_path / "NCFlash"
