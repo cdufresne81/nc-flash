@@ -24,7 +24,7 @@ from src.ui.trip_logs_window import ECU_BUSY_TIP, TripLogsWindow, _format_mtime
 
 class _FakeSync(QObject):
     running_changed = Signal(bool)
-    progress_changed = Signal(int, int, str)
+    progress_changed = Signal(int, int, str, float)
     inventory_ready = Signal(object)
     inventory_failed = Signal(str)
     checking_changed = Signal(bool)
@@ -131,11 +131,18 @@ def test_running_sync_shows_progress_row_and_locks_buttons(qtbot, tmp_path):
 
     # KiB units with an MB label, same math the ECU window's dialog had.
     two_mb, four_mb = 2 * 1024 * 1024, 4 * 1024 * 1024
-    sync.progress_changed.emit(two_mb, four_mb, "trip.csv")
+    sync.progress_changed.emit(two_mb, four_mb, "trip.csv", 0.0)
     assert window._progress_bar.maximum() == 4096
     assert window._progress_bar.value() == 2048
     assert "trip.csv" in window._progress_label.text()
     assert "2.0 of 4.0 MB" in window._progress_label.text()
+    assert "/s" not in window._progress_label.text()  # rate not known yet
+
+    # #109: once measured, the live rate and remaining time join the line.
+    sync.progress_changed.emit(two_mb, four_mb, "trip.csv", 400 * 1024.0)
+    text = window._progress_label.text()
+    assert "400 KB/s" in text
+    assert "~10 s left" in text  # 2 MB left at 400 KB/s ≈ 5.1 s → 10 s bucket
 
     sync.is_running = False
     sync.running_changed.emit(False)

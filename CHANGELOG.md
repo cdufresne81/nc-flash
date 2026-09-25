@@ -4,6 +4,10 @@ All notable changes to NC Flash are documented here.
 
 ## [Unreleased]
 
+### Added
+- **Open downloaded trip logs in MegaLogViewerHD (#109).** When a trip-log download finishes, NC Flash asks whether to open the new logs in MegaLogViewerHD. They open together in one window, oldest first, with a marker where each trip starts. Logs recorded with different channel lists open in separate windows so their columns never get mixed up. You're only asked if MegaLogViewerHD is installed. Tick *Don't ask again* to stop the question, and turn it back on in *Settings ▸ ECU ▸ WiCAN*.
+- **Download speed for trip logs (#109).** While logs download, the Trip Logs window shows the average download speed and roughly how long is left. It's an average because the WiCAN's Wi-Fi delivers data in bursts, so an instant reading would jump around constantly. The Activity Log shows each file's size, download time and average speed, plus a total for the whole download.
+
 ### Changed
 - **Refreshed the contributor guide for AI-assisted development.** Instructions were trimmed and updated. No change to the app itself.
 - **The built-in MCP server now uses the current Streamable HTTP transport.** When you start it from the app, AI assistants connect to `http://127.0.0.1:8765/mcp` (was `.../sse`). The bundled `.mcp.json` is updated, so Claude Code needs nothing from you. If you hand-configured another client against `/sse`, point it at `/mcp` with the HTTP transport type. The old SSE transport is still available from the command line (`--transport sse`) for this release only; the MCP specification has deprecated it.

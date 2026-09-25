@@ -10,6 +10,7 @@ name collisions, and quiet handling of empty/unreachable devices.
 """
 
 import json
+import re
 import socket
 import threading
 import urllib.parse
@@ -220,6 +221,33 @@ class TestDownloadNew:
         assert (tmp_path / "a.csv").read_bytes() == files["a.csv"]
         assert (tmp_path / "b.csv").read_bytes() == files["b.csv"]
         _no_part_residue(tmp_path)
+
+    def test_per_file_log_line_and_run_totals(self, tmp_path, caplog):
+        # #109: each completed file logs its size, time and speed; the result
+        # carries the run's byte/time totals for the summary line.
+        files = {"b.csv": b"n" * 3000, "a.csv": b"o" * 1000}
+        with caplog.at_level("INFO", logger="src.ecu.wican_logs"):
+            with _device(files) as (client, _):
+                result = client.download_new(tmp_path)
+        lines = [
+            r.getMessage()
+            for r in caplog.records
+            if "Downloaded trip" in r.getMessage()
+        ]
+        assert len(lines) == 2
+        assert re.fullmatch(
+            r"Downloaded trip log b\.csv \(3 KB in \d+\.\ds, \d+(\.\d)? [KM]B/s\)",
+            lines[0],
+        )
+        assert result.bytes_downloaded == 4000
+        assert result.elapsed_s > 0
+        # Device lists newest-first (b then a); MLV needs the reverse.
+        assert [p.name for p in result.downloaded_oldest_first] == ["a.csv", "b.csv"]
+
+    def test_nothing_downloaded_has_zero_totals(self, tmp_path):
+        with _device({}) as (client, _):
+            result = client.download_new(tmp_path)
+        assert (result.bytes_downloaded, result.elapsed_s) == (0, 0.0)
 
     def test_rerun_is_incremental(self, tmp_path):
         files = {"a.csv": b"data\n" * 5}
