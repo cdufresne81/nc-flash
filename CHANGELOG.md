@@ -4,21 +4,21 @@ All notable changes to NC Flash are documented here.
 
 ## [Unreleased]
 
+## [v2.17.0] - 2026-09-25
+
+**Trip logs are easier to manage.** Open new logs straight in MegaLogViewerHD, see how fast they download, and optionally clear old trips off the WiCAN.
+
 ### Added
-- **Open downloaded trip logs in MegaLogViewerHD (#109).** When a trip-log download finishes, NC Flash asks whether to open the new logs in MegaLogViewerHD. They open together in one window, oldest first, with a marker where each trip starts. Logs recorded with different channel lists open in separate windows so their columns never get mixed up. You're only asked if MegaLogViewerHD is installed. Tick *Don't ask again* to stop the question, and turn it back on in *Settings ▸ ECU ▸ WiCAN*.
-- **Optional: delete trip logs from the WiCAN after download (#112).** The WiCAN never clears old trips from its SD card, so they pile up. Turn on *Delete trip logs from the WiCAN after download* in *Settings ▸ ECU ▸ WiCAN* and NC Flash removes a trip from the card only once its copy on your computer is proven complete. The newest trips stay on the card (5 by default, adjustable). It's off by default. It never touches the trip being recorded, and nothing is deleted when a download is cancelled or fails. For trips you downloaded before turning it on, a trip named with its date and time is matched to your copy by name, size and a quick check of its first 64 KB. A trip from a WiCAN without a clock (`unknown_time_…`) is downloaded once more and compared byte for byte, because those names can repeat. If that check finds a different trip that reused an old name (it can happen on a WiCAN without a clock), NC Flash saves it under a new name before deleting it.
-- **Download speed for trip logs (#109).** While logs download, the Trip Logs window shows the average download speed and roughly how long is left. It's an average because the WiCAN's Wi-Fi delivers data in bursts, so an instant reading would jump around constantly. The Activity Log shows each file's size, download time and average speed, plus a total for the whole download.
+- **Open downloaded trip logs in MegaLogViewerHD (#109).** When a download finishes, NC Flash offers to open the new logs together, oldest first. Logs with different channel lists open in separate windows. You're only asked if MegaLogViewerHD is installed, and you can turn the question off in *Settings ▸ ECU ▸ WiCAN*.
+- **Delete trip logs from the WiCAN after download (#112).** Off by default; turn it on in *Settings ▸ ECU ▸ WiCAN*. A trip is removed from the SD card only once your copy is verified, and the newest 5 always stay (you can change the number). The trip being recorded is never touched, and nothing is deleted if a download is cancelled or fails.
+- **Download speed for trip logs (#109).** The Trip Logs window shows the average speed and time left. The Activity Log lists each file's size, time and speed.
 
 ### Changed
-- **The hardware test for deleting trip logs is written down (#112),** with the result of its last run on the WiCAN. No change to the app itself.
-- **Refreshed the contributor guide for AI-assisted development.** Instructions were trimmed and updated, and the pre-commit check no longer crashes on Windows. No change to the app itself.
-- **The graph tests no longer run in a normal local test run.** They're slow and open real windows, so they're skipped unless you ask for them (`NCFLASH_GRAPH_TESTS=1`). CI still runs them on every change. No change to the app itself.
-- **The built-in MCP server now uses the current Streamable HTTP transport.** When you start it from the app, AI assistants connect to `http://127.0.0.1:8765/mcp` (was `.../sse`). The bundled `.mcp.json` is updated, so Claude Code needs nothing from you. If you hand-configured another client against `/sse`, point it at `/mcp` with the HTTP transport type. The old SSE transport is still available from the command line (`--transport sse`) for this release only; the MCP specification has deprecated it.
+- **AI assistants connect to the MCP server at `/mcp` (was `/sse`).** The bundled `.mcp.json` is updated, so Claude Code needs nothing from you. If you set up another client by hand, point it at `http://127.0.0.1:8765/mcp` with the HTTP transport. The old SSE mode (`--transport sse`) still works in this release only.
 
 ### Fixed
-- **A download-timing test no longer fails at random on Windows.** No change to the app itself.
-- **The MCP server tests pass on Windows machines with per-user Python packages.** The tests moved the user-data folder to a temporary one, which also hid Python's per-user packages from the server they start, so it exited at once. No change to the app itself.
-- **The MCP server no longer freezes after a few dozen AI requests.** The app started it with its log output going nowhere, and once that filled up the server stopped answering every assistant until you turned it off and on. Its log now goes to `~/.nc-flash/mcp-server.log`, which starts fresh each time the server starts.
+- **The MCP server no longer freezes after a few dozen AI requests.** Its log now goes to `~/.nc-flash/mcp-server.log`.
+- **Behind the scenes:** test fixes for Windows, a refreshed contributor guide, and a written-down hardware test for trip-log deletion. No change to the app itself.
 
 ## [v2.16.0] - 2026-09-24
 
