@@ -4,6 +4,10 @@ All notable changes to NC Flash are documented here.
 
 ## [Unreleased]
 
+## [v2.19.0] - 2026-09-26
+
+**NC Flash now includes definitions for about 100 more NC ECU calibrations**, from speeps' RomDrop set, with a knock-retard bug fixed in all of them. Already installed? Copy the new definitions into your workspace by hand (see below).
+
 ### Added
 - **Definitions for about 100 more NC ECU calibrations, from speeps' RomDrop set (#120).** Included with speeps' permission. New installs get them automatically. **Existing installs don't yet** (automatic updates are planned, #121): copy the `.xml` files from the `_internal\examples\metadata` folder where NC Flash is installed into your workspace's `metadata` folder, and keep your own copy of any file you've edited.
 
