@@ -34,3 +34,18 @@ Carried over from the old log on Sep 24, 2026. Verify an item is still open befo
   data loss). A real fix needs per-document clean-state tracking across per-table undo stacks.
 - **Unconfirmed, from Jul 6**: retest-on-binary for B2/B5/B15 may already be done; decision D4
   (retire Option-A `WiCANFlasher`?) was still open.
+- **🔴 ECU window "Close anyway? → Yes" aborts a J2534 flash mid-write** (pre-existing, found in
+  the #104 updater review, confirmed by reading the code, not on hardware): `ecu_window.closeEvent` calls
+  `_current_manager.abort()` for ANY op (comment claims read-only only), and `flash_rom`'s ROM program
+  `transfer_data` honours `abort_check` → partly programmed ECU. The window may also be destroyed with
+  the flash QThread still running (`wait(3000)`). Needs its own change + WICAN_MANUAL_TEST-style bench pass.
+- **In-app updater (#104 item 1, branch `feature/104-in-app-updater`) follow-ups:**
+  - Never exercised: a real install over an existing copy (per-user AND all-users), incl. Inno's
+    relaunch of the new NCFlash.exe (`PYINSTALLER_RESET_ENVIRONMENT=1` is set before launch). Test now: build
+    this branch stamped `APP_VERSION = "2.16.9"`, install it, let it update itself to the real v2.17.0.
+  - Decision pending: `update_check._stream_to_file` duplicates `wican_http.download_to_file`'s read loop
+    ("one pipeline copy"). Merging touches `src/ecu` → bench test. `wican_http` likely has the same
+    blocking `read()` vs shutdown-wait problem the updater fixed with `read1` (untested).
+  - Low, unfixed: small TOCTOU between the last hash check and `os.startfile` in user-writable %TEMP%;
+    backport tags (e.g. v2.16.1 after v2.17.0) become GitHub "latest" (`make_latest` default);
+    installer.iss has no `[InstallDelete]`, so stale `_internal` files accumulate across upgrades.

@@ -4,6 +4,9 @@ All notable changes to NC Flash are documented here.
 
 ## [Unreleased]
 
+### Added
+- **Check for updates from inside NC Flash (#104).** *Help ▸ Check for Updates* tells you when a new version is out and shows what changed. On Windows, it downloads the installer and checks it against the fingerprint GitHub publishes. Then *Install Now* closes NC Flash (asking about unsaved changes first) and runs it. NC Flash also checks quietly at launch, at most once a day; turn that off in *Settings ▸ General ▸ Updates*, or skip a version you don't want. Installing is refused while the ECU Programming window is open or a trip-log download is running.
+
 ## [v2.17.0] - 2026-09-25
 
 **Trip logs are easier to manage.** Open new logs straight in MegaLogViewerHD, see how fast they download, and optionally clear old trips off the WiCAN.

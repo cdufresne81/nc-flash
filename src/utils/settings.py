@@ -261,6 +261,37 @@ class AppSettings:
         self.settings.setValue("tools/mcp_auto_start", enabled)
 
     # ------------------------------------------------------------------ #
+    # Update check settings
+    # ------------------------------------------------------------------ #
+
+    def get_check_updates_on_startup(self) -> bool:
+        """Whether NC Flash checks GitHub for a newer release at launch
+        (at most once a day). Help > Check for Updates works either way."""
+        return self.settings.value("updates/check_on_startup", True, type=bool)
+
+    def set_check_updates_on_startup(self, enabled: bool):
+        self.settings.setValue("updates/check_on_startup", bool(enabled))
+
+    def get_last_update_check(self) -> float:
+        """Unix time of the last update check attempt (0 = never)."""
+        # Stored as text: QSettings' float round-trip is float32 (~2 min off).
+        try:
+            return float(self.settings.value("updates/last_check", "0", type=str))
+        except ValueError:
+            return 0.0
+
+    def set_last_update_check(self, timestamp: float):
+        self.settings.setValue("updates/last_check", repr(float(timestamp)))
+
+    def get_skipped_update_version(self) -> str:
+        """A release version the user chose to skip ("" = none). The startup
+        check stays quiet about that version; a manual check still shows it."""
+        return self.settings.value("updates/skipped_version", "", type=str)
+
+    def set_skipped_update_version(self, version: str):
+        self.settings.setValue("updates/skipped_version", version or "")
+
+    # ------------------------------------------------------------------ #
     # ECU settings
     # ------------------------------------------------------------------ #
 

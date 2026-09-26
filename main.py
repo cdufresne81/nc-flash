@@ -38,6 +38,7 @@ from src.utils.paths import get_app_root, get_workspace_path
 from src.utils.settings import get_settings
 from src.utils.constants import (
     APP_NAME,
+    APP_VERSION,
     APP_VERSION_STRING,
     APP_DESCRIPTION,
     MAIN_WINDOW_X,
@@ -79,6 +80,7 @@ from src.ui.session_mixin import SessionMixin
 from src.ui.mcp_mixin import McpMixin
 from src.ui.flash_mixin import FlashMixin
 from src.ui.wican_log_sync import WiCANLogSync
+from src.ui.app_updater import UpdateController
 
 from src.ui.error_helpers import handle_rom_operation_error
 
@@ -205,6 +207,16 @@ class MainWindow(
         # Finished download: offer to open the new logs in MegaLogViewerHD.
         self.wican_log_sync.download_finished.connect(self._on_trip_logs_downloaded)
 
+        # In-app updater (GitHub issue 104). Installing closes the app, so it asks
+        # _update_install_blocker first and refuses while ECU work could run.
+        self.update_controller = UpdateController(
+            self.settings,
+            APP_VERSION,
+            install_blocker=self._update_install_blocker,
+            close_app=self.close,
+            dialog_parent=self,
+        )
+
         # MCP server subprocess
         self._mcp_process = None
 
@@ -242,6 +254,28 @@ class MainWindow(
         # while running (aborts between chunks; .part contract keeps it safe).
         if event.isAccepted():
             self.wican_log_sync.shutdown()
+            self.update_controller.shutdown()
+
+    def _update_install_blocker(self):
+        """Why the updater must not close the app right now, or None.
+
+        Closing during an ECU read or flash can brick the ECU, so any open ECU
+        Programming window blocks the install (not only a busy one: its close
+        path only asks "Close anyway?"). A running trip-log download blocks it
+        too, so the user decides when to stop it.
+        """
+        if self.ecu_window is not None:
+            return (
+                "The ECU Programming window is open. Wait until any ECU read "
+                "or flash has finished, then close that window. An update "
+                "must never interrupt an ECU operation."
+            )
+        if self.wican_log_sync.is_running:
+            return (
+                "A WiCAN trip-log download is running. Let it finish or cancel "
+                "it in the Trip Logs window first."
+            )
+        return None
 
     def _deferred_init(self):
         """
@@ -305,6 +339,10 @@ class MainWindow(
         # Startup WiCAN new-log check (settings-gated; prompts, never
         # downloads on its own — see _on_new_trip_logs_available).
         self.wican_log_sync.schedule_auto_check()
+
+        # Startup update check (release builds, at most once a day; quiet
+        # unless a new version exists).
+        self.update_controller.schedule_startup_check()
 
     def check_metadata_directory(self) -> bool:
         """
@@ -504,6 +542,11 @@ class MainWindow(
 
         # Help menu (Alt+H)
         help_menu = menubar.addMenu("&Help")
+
+        update_action = help_menu.addAction("Check for &Updates...")
+        update_action.triggered.connect(
+            lambda: self.update_controller.check_for_updates(manual=True)
+        )
 
         about_action = help_menu.addAction("About")
         about_action.triggered.connect(self.show_about)
