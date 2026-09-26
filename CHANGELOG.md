@@ -4,6 +4,9 @@ All notable changes to NC Flash are documented here.
 
 ## [Unreleased]
 
+### Added
+- **Definitions for about 100 more NC ECU calibrations, from speeps' RomDrop set.** Included with speeps' permission. New installs get them automatically. **Existing installs don't:** copy the `.xml` files from the `_internal\examples\metadata` folder where NC Flash is installed into your workspace's `metadata` folder, and keep your own copy of any file you've edited.
+
 ## [v2.18.0] - 2026-09-26
 
 **NC Flash can now update itself.** On Windows, future versions install from inside the app; no more downloading installers by hand.
