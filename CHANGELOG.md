@@ -10,6 +10,10 @@ All notable changes to NC Flash are documented here.
 ### Changed
 - **Definition files are easier to read.** Every bundled definition is laid out one element per line with indentation, so it's easier to edit and review by hand. Their content is unchanged.
 
+### Fixed
+- **"KR Accumulator - Exit Delay" is now a 1-byte value in every definition.** speeps' original files make it 4 bytes, so saving that table also overwrote the knock-retard increment rate right after it and knock retard stopped building up. This is the same bug fixed for LF9VEB in v2.14. **If you use speeps' original definitions** (for example, NC Flash pointed at your RomDrop `metadata` folder) and ever saved that table, check the 3 bytes after its address against your stock ROM.
+- **NC Flash starts faster with many definitions.** It now reads only the ROM ID part of each definition file at startup.
+
 ## [v2.18.0] - 2026-09-26
 
 **NC Flash can now update itself.** On Windows, future versions install from inside the app; no more downloading installers by hand.

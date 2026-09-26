@@ -112,12 +112,22 @@ class RomDetector:
             etree.XMLSyntaxError: If XML is malformed
             DefinitionParseError: If XML structure is unexpected
         """
-        parser = etree.XMLParser(resolve_entities=False, no_network=True)
-        tree = etree.parse(str(xml_path), parser)
-        root = tree.getroot()
-
-        # Find romid element
-        romid_elem = root.find(".//romid")
+        # Stop at the first </romid>: it sits at the top of the file, and parsing
+        # every table of ~100 definitions at startup took about a second.
+        # Syntax errors after <romid> surface when the definition is opened.
+        # Own the file handle so breaking out early can't leave it open (an
+        # open handle blocks the metadata writer's os.replace on Windows).
+        romid_elem = None
+        with open(xml_path, "rb") as f:
+            for _event, elem in etree.iterparse(
+                f,
+                events=("end",),
+                tag="romid",
+                resolve_entities=False,
+                no_network=True,
+            ):
+                romid_elem = elem
+                break
         if romid_elem is None:
             logger.debug(f"No <romid> element found in {xml_path.name}")
             return None

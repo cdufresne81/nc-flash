@@ -6,6 +6,23 @@ History before Sep 24, 2026: `git show f4709f1:.claude/notes.md` (search it, don
 
 ## Open items (not tracked in an issue)
 
+- **speeps definitions import (branch `feature/speeps-metadata-import`, Sep 26 2026)** — follow-ups:
+  - Decided: nc-flash-re = working copy where definitions are edited; NC Flash = released copy
+    (copies only, never hand-edited). User to seed nc-flash-re with the reformatted set;
+    until then nc-flash-re's `sync_ncflash_definitions.py` would bring back the old layout
+    and fail the lint.
+  - Existing installs don't get new/updated definitions (`workspace.py` copies once, into an empty
+    dir). Planned as its own PR: on first launch after an update, replace files the user never
+    edited (hash of any earlier bundled version, keep a backup), leave edited ones and notify.
+  - Lint baseline (`tools/metadata_lint_baseline.txt`): duplicate table names at different
+    addresses (MCP read/write by name reaches only the last copy) need real names; 378 uint16
+    cells at odd addresses + ~500 table overlaps in the two TCM definitions are unconfirmed
+    (check the TCM code).
+  - RomDetector now stops at `</romid>`: a file broken after it is listed, and opening a
+    matching ROM fails with a parse error instead of "no definition". Not a write hazard.
+  - Porting new tables to ~100 calibrations: wants a tool that finds each calibration's address
+    and reports ones it can't match.
+
 Carried over from the old log on Sep 24, 2026. Verify an item is still open before acting on it.
 
 - **MCP Streamable HTTP follow-ups (merged in PR #107):**

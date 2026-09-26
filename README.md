@@ -62,6 +62,7 @@ python main.py
 
 ### Core Features
 - Automatic ROM ID detection and XML definition matching
+- Definitions for about 100 NC ECU calibrations included (from speeps' RomDrop set, with permission)
 - Read NC Miata ECU ROM binary files
 - Read NC Miata TCM (transmission) ROMs via the V2 TCM definitions — read/inspect only; TCM flashing is not supported
 - View 1D, 2D, and 3D tables with proper axis labels
@@ -277,11 +278,14 @@ nc-flash/
 │       ├── logging_config.py          # Logging setup
 │       └── paths.py                   # Path resolution
 ├── tools/
+│   ├── metadata_lint.py               # Format and check the definition XMLs
 │   └── test_runner.py                 # GUI test automation
 ├── tests/                             # Unit and integration tests
 ├── examples/                          # Example ROM files
 │   ├── metadata/                      # ROM metadata XML files
-│   │   ├── lf9veb.xml                 # NC Miata ECU ROM definition (577 tables; byte copy of nc-flash-re xml/lf9veb.xml)
+│   │   ├── NOTICE.md                  # Origin of the bundled definitions (speeps' RomDrop set)
+│   │   ├── l*.xml                     # NC ECU definitions, one per calibration
+│   │   ├── lf9veb.xml                 # NC Flash's extended LF9VEB definition (master in nc-flash-re)
 │   │   └── *_v02.xml                  # V2 TCM definitions (LFG1TF000, LFG1TG000)
 │   ├── lf9veb.bin                     # Stock NC Miata ECU ROM binary
 │   └── LFG1TF000.bin                  # Example NC TCM ROM dump
