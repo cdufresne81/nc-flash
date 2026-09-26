@@ -340,9 +340,9 @@ class TestMalformedTableIsSkipped:
 
 
 class TestBundledLf9vebDefinition:
-    """The bundled lf9veb.xml is a byte copy of nc-flash-re/xml/lf9veb.xml (synced by
-    nc-flash-re/tools/sync_ncflash_definitions.py — never edit it here). These guard the
-    one way a definition can damage a ROM: a storage type wider than the real cell."""
+    """The bundled lf9veb.xml is the released copy of nc-flash-re/xml/lf9veb.xml (never
+    edit it here; it is in tools/metadata_lint.py's layout). These guard the one way a
+    definition can damage a ROM: a storage type wider than the real cell."""
 
     def test_kr_exit_delay_is_a_byte(self, sample_xml_path):
         # 0xBBBD1 is one uint8. Typed float, a save wrote 4 bytes over 0xBBBD1-0xBBBD4 and
@@ -357,7 +357,8 @@ class TestBundledLf9vebDefinition:
     def test_no_float_table_at_an_unaligned_address(self, sample_xml_path):
         # The SH-2 cannot fetch a float from an address that is not a multiple of 4, so a
         # float table there is always a mistyped narrower cell. lf9veb.xml only: the TCM
-        # definitions legitimately hold uint16 tables at odd addresses.
+        # definitions hold uint16 tables at odd addresses that are still unconfirmed
+        # (see tools/metadata_lint_baseline.txt).
         definition = load_definition(str(sample_xml_path))
         bad = [
             (t.name, t.address)

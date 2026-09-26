@@ -2,10 +2,10 @@
 <roms>
   <rom>
     <romid>
-      <xmlid>LF9VEB</xmlid>
+      <xmlid>LFABEB</xmlid>
       <internalidaddress>b8046</internalidaddress>
-      <internalidstring>LF9VEB</internalidstring>
-      <ecuid>LF9VEB</ecuid>
+      <internalidstring>LFABEB</internalidstring>
+      <ecuid>LFABEB</ecuid>
       <market/>
       <make>Mazda</make>
       <model>MX5</model>
@@ -30,7 +30,7 @@
     <scaling name="759208_SPD" units="" toexpr="x" frexpr="x" format="%0.2f" min="-16.000" max="16.000" inc="1" storagetype="float" endian="big"/>
     <scaling name="759676" units="" toexpr="x" frexpr="x" format="%0.2f" min="-95.730" max="95.730" inc="10" storagetype="float" endian="big"/>
     <scaling name="759520_SPD" units="" toexpr="x" frexpr="x" format="%0.2f" min="-16.000" max="16.000" inc="1" storagetype="float" endian="big"/>
-    <scaling name="762076" units="" toexpr="x" frexpr="x" format="%0.2f" min="20.000" max="70.000" inc="1" storagetype="float" endian="big"/>
+    <scaling name="762076" units="" toexpr="x" frexpr="x" format="%0.2f" min="0.000" max="70.000" inc="1" storagetype="float" endian="big"/>
     <scaling name="762016_SPD" units="" toexpr="x" frexpr="x" format="%0.2f" min="20.000" max="180.000" inc="10" storagetype="float" endian="big"/>
     <scaling name="762052" units="" toexpr="x" frexpr="x" format="%0.2f" min="1.000" max="6.000" inc="0.1" storagetype="float" endian="big"/>
     <scaling name="759988" units="" toexpr="x" frexpr="x" format="%0.2f" min="0.000" max="0.000" inc="1" storagetype="float" endian="big"/>
@@ -50,7 +50,7 @@
     <scaling name="763540" units="" toexpr="x" frexpr="x" format="%0.2f" min="100.000" max="100.000" inc="1" storagetype="float" endian="big"/>
     <scaling name="763480_SPD" units="" toexpr="x" frexpr="x" format="%0.2f" min="0.000" max="600.000" inc="10" storagetype="float" endian="big"/>
     <scaling name="763516" units="" toexpr="x" frexpr="x" format="%0.2f" min="1.000" max="6.000" inc="0.1" storagetype="float" endian="big"/>
-    <scaling name="763264" units="" toexpr="x" frexpr="x" format="%0.2f" min="20.000" max="70.000" inc="1" storagetype="float" endian="big"/>
+    <scaling name="763264" units="" toexpr="x" frexpr="x" format="%0.2f" min="0.000" max="70.000" inc="1" storagetype="float" endian="big"/>
     <scaling name="763204_SPD" units="" toexpr="x" frexpr="x" format="%0.2f" min="20.000" max="180.000" inc="10" storagetype="float" endian="big"/>
     <scaling name="763240" units="" toexpr="x" frexpr="x" format="%0.2f" min="1.000" max="6.000" inc="0.1" storagetype="float" endian="big"/>
     <scaling name="822932" units="" toexpr="x" frexpr="x" format="%0.2f" min="16.500" max="100.000" inc="1" storagetype="float" endian="big"/>
@@ -231,10 +231,10 @@
     <scaling name="828248" units="" toexpr="x" frexpr="x" format="%d" min="0.000" max="40.000" inc="1" storagetype="uint8" endian="big"/>
     <scaling name="828156" units="" toexpr="x" frexpr="x" format="%0.0f" min="500.000" max="5000.000" inc="100" storagetype="float" endian="big"/>
     <scaling name="828196" units="" toexpr="x" frexpr="x" format="%0.3f" min="0.125" max="0.875" inc="0.01" storagetype="float" endian="big"/>
-    <scaling name="884512" units="" toexpr="x" frexpr="x" format="%0.2f" min="3.260" max="106.000" inc="10" storagetype="float" endian="big"/>
+    <scaling name="884512" units="" toexpr="x" frexpr="x" format="%0.2f" min="3.260" max="100.000" inc="1" storagetype="float" endian="big"/>
     <scaling name="754552" units="" toexpr="x" frexpr="x" format="%0.2f" min="1000.000" max="60000.000" inc="0.1" storagetype="float" endian="big"/>
     <scaling name="754612" units="" toexpr="x" frexpr="x" format="%0.0f" min="0.000" max="71.190" inc="1" storagetype="float" endian="big"/>
-    <scaling name="885112" units="" toexpr="x" frexpr="x" format="%0.2f" min="3.260" max="106.000" inc="10" storagetype="float" endian="big"/>
+    <scaling name="885112" units="" toexpr="x" frexpr="x" format="%0.2f" min="3.260" max="100.000" inc="1" storagetype="float" endian="big"/>
     <scaling name="754552" units="" toexpr="x" frexpr="x" format="%0.2f" min="1000.000" max="60000.000" inc="0.1" storagetype="float" endian="big"/>
     <scaling name="754612" units="" toexpr="x" frexpr="x" format="%0.0f" min="0.000" max="71.190" inc="1" storagetype="float" endian="big"/>
     <scaling name="784744_SPD" units="" toexpr="x" frexpr="x" format="%0.0f" min="85.000" max="85.000" inc="1" storagetype="float" endian="big"/>
@@ -695,12 +695,12 @@
     <scaling name="993004" units="" toexpr="x" frexpr="x" format="%0.2f" min="0.000" max="30.000" inc="1" storagetype="float" endian="big"/>
     <scaling name="999056" units="" toexpr="x" frexpr="x" format="%0.1f" min="0.000" max="0.000" inc="1" storagetype="float" endian="big"/>
     <scaling name="791800" units="" toexpr="x" frexpr="x" format="%0.2f" min="4.100" max="4.100" inc="1" storagetype="float" endian="big"/>
-    <scaling name="791804" units="" toexpr="x" frexpr="x" format="%0.2f" min="3.815" max="3.815" inc="1" storagetype="float" endian="big"/>
-    <scaling name="791808" units="" toexpr="x" frexpr="x" format="%0.2f" min="2.260" max="2.260" inc="1" storagetype="float" endian="big"/>
-    <scaling name="791812" units="" toexpr="x" frexpr="x" format="%0.2f" min="1.640" max="1.640" inc="1" storagetype="float" endian="big"/>
-    <scaling name="791816" units="" toexpr="x" frexpr="x" format="%0.2f" min="1.177" max="1.177" inc="1" storagetype="float" endian="big"/>
-    <scaling name="791820" units="" toexpr="x" frexpr="x" format="%0.2f" min="1.000" max="1.000" inc="1" storagetype="float" endian="big"/>
-    <scaling name="791824" units="" toexpr="x" frexpr="x" format="%0.2f" min="0.787" max="0.787" inc="1" storagetype="float" endian="big"/>
+    <scaling name="791804" units="" toexpr="x" frexpr="x" format="%0.2f" min="3.136" max="3.136" inc="1" storagetype="float" endian="big"/>
+    <scaling name="791808" units="" toexpr="x" frexpr="x" format="%0.2f" min="1.888" max="1.888" inc="1" storagetype="float" endian="big"/>
+    <scaling name="791812" units="" toexpr="x" frexpr="x" format="%0.2f" min="1.330" max="1.330" inc="1" storagetype="float" endian="big"/>
+    <scaling name="791816" units="" toexpr="x" frexpr="x" format="%0.2f" min="1.000" max="1.000" inc="1" storagetype="float" endian="big"/>
+    <scaling name="791820" units="" toexpr="x" frexpr="x" format="%0.2f" min="0.814" max="0.814" inc="1" storagetype="float" endian="big"/>
+    <scaling name="791824" units="" toexpr="x" frexpr="x" format="%0.2f" min="0.814" max="0.814" inc="1" storagetype="float" endian="big"/>
     <scaling name="889188" units="" toexpr="x" frexpr="x" format="%0.0f" min="720.000" max="1150.000" inc="10" storagetype="float" endian="big"/>
     <scaling name="889156" units="" toexpr="x" frexpr="x" format="%0.1f" min="-40.000" max="100.000" inc="10" storagetype="float" endian="big"/>
     <scaling name="889252" units="" toexpr="x" frexpr="x" format="%0.0f" min="720.000" max="1750.000" inc="100" storagetype="float" endian="big"/>
@@ -824,7 +824,7 @@
     <scaling name="769004" units="" toexpr="x" frexpr="x" format="%0.0f" min="5250.000" max="5250.000" inc="1" storagetype="float" endian="big"/>
     <scaling name="769304" units="" toexpr="x" frexpr="x" format="%0.2f" min="2.800" max="5.625" inc="0.1" storagetype="float" endian="big"/>
     <scaling name="769252" units="" toexpr="x" frexpr="x" format="%0.0f" min="500.000" max="6500.000" inc="100" storagetype="float" endian="big"/>
-    <scaling name="768977" units="" toexpr="x" frexpr="x" format="%d" min="50.000" max="50.000" inc="1" storagetype="uint8" endian="big"/>
+    <scaling name="768977" units="" toexpr="x" frexpr="x" format="%d" min="0.000" max="0.000" inc="1" storagetype="uint8" endian="big"/>
     <scaling name="769028" units="" toexpr="x" frexpr="x" format="%0.2f" min="7777.000" max="7777.000" inc="1" storagetype="float" endian="big"/>
     <scaling name="769032" units="" toexpr="x" frexpr="x" format="%0.2f" min="11.250" max="11.250" inc="1" storagetype="float" endian="big"/>
     <scaling name="769096" units="" toexpr="x" frexpr="x" format="%0.2f" min="8.000" max="8.000" inc="1" storagetype="float" endian="big"/>
@@ -989,221 +989,6 @@
     </table>
     <table level="1" type="1D" category="DBW - Throttle Angle" swapxy="true" name="Throttle Angle - Max" address="bb19c" elements="1" scaling="766364"/>
     <table level="1" type="1D" category="DBW - Throttle Angle" swapxy="true" name="Throttle Angle - Conversion Multiplier" address="bafa0" elements="1" scaling="765856"/>
-    <!-- Torque Request - Driveline Damping Filter / Tip-In Shaping / Base; DBW - TP Desired Filter (added 2026-09-17, derived from ROM table descriptors) -->
-    <scaling name="815228" units="" toexpr="x" frexpr="x" format="%0.4f" min="-3.000" max="3.000" inc="0.0001" storagetype="float" endian="big"/>
-    <scaling name="815476" units="" toexpr="x" frexpr="x" format="%0.4f" min="-3.000" max="3.000" inc="0.0001" storagetype="float" endian="big"/>
-    <scaling name="815724" units="" toexpr="x" frexpr="x" format="%0.4f" min="-3.000" max="3.000" inc="0.0001" storagetype="float" endian="big"/>
-    <scaling name="815972" units="" toexpr="x" frexpr="x" format="%0.4f" min="-3.000" max="3.000" inc="0.0001" storagetype="float" endian="big"/>
-    <scaling name="816220" units="" toexpr="x" frexpr="x" format="%0.4f" min="-3.000" max="3.000" inc="0.0001" storagetype="float" endian="big"/>
-    <scaling name="815204" units="" toexpr="x" frexpr="x" format="%0.2f" min="0.000" max="1.000" inc="0.05" storagetype="float" endian="big"/>
-    <scaling name="815172" units="" toexpr="x" frexpr="x" format="%0.1f" min="0.000" max="20.000" inc="0.5" storagetype="float" endian="big"/>
-    <scaling name="815452" units="" toexpr="x" frexpr="x" format="%0.2f" min="0.000" max="1.000" inc="0.05" storagetype="float" endian="big"/>
-    <scaling name="815420" units="" toexpr="x" frexpr="x" format="%0.1f" min="0.000" max="20.000" inc="0.5" storagetype="float" endian="big"/>
-    <scaling name="815700" units="" toexpr="x" frexpr="x" format="%0.2f" min="0.000" max="1.000" inc="0.05" storagetype="float" endian="big"/>
-    <scaling name="815668" units="" toexpr="x" frexpr="x" format="%0.1f" min="0.000" max="20.000" inc="0.5" storagetype="float" endian="big"/>
-    <scaling name="815948" units="" toexpr="x" frexpr="x" format="%0.2f" min="0.000" max="1.000" inc="0.05" storagetype="float" endian="big"/>
-    <scaling name="815916" units="" toexpr="x" frexpr="x" format="%0.1f" min="0.000" max="20.000" inc="0.5" storagetype="float" endian="big"/>
-    <scaling name="816196" units="" toexpr="x" frexpr="x" format="%0.2f" min="0.000" max="1.000" inc="0.05" storagetype="float" endian="big"/>
-    <scaling name="816164" units="" toexpr="x" frexpr="x" format="%0.1f" min="0.000" max="20.000" inc="0.5" storagetype="float" endian="big"/>
-    <scaling name="816456" units="" toexpr="x" frexpr="x" format="%0.3f" min="0.000" max="2.000" inc="0.01" storagetype="float" endian="big"/>
-    <scaling name="816440" units="" toexpr="x" frexpr="x" format="%0.0f" min="0.000" max="10.000" inc="1" storagetype="float" endian="big"/>
-    <scaling name="816412" units="" toexpr="x" frexpr="x" format="%0.0f" min="0.000" max="10.000" inc="1" storagetype="float" endian="big"/>
-    <scaling name="809652" units="" toexpr="x" frexpr="x" format="%0.2f" min="0.000" max="2.000" inc="0.01" storagetype="float" endian="big"/>
-    <scaling name="809592" units="" toexpr="x" frexpr="x" format="%0.2f" min="0.000" max="3.000" inc="0.1" storagetype="float" endian="big"/>
-    <scaling name="809764" units="" toexpr="x" frexpr="x" format="%0.2f" min="0.000" max="2.000" inc="0.01" storagetype="float" endian="big"/>
-    <scaling name="809712" units="" toexpr="x" frexpr="x" format="%0.0f" min="0.000" max="8000.000" inc="100" storagetype="float" endian="big"/>
-    <scaling name="809265" units="" toexpr="x" frexpr="x" format="%d" min="0" max="1" inc="1" storagetype="uint8" endian="big"/>
-    <scaling name="809284" units="" toexpr="x" frexpr="x" format="%0.2f" min="0.200" max="1.000" inc="0.05" storagetype="float" endian="big"/>
-    <scaling name="809288" units="" toexpr="x" frexpr="x" format="%0.3f" min="0.000" max="2.000" inc="0.01" storagetype="float" endian="big"/>
-    <scaling name="809292" units="" toexpr="x" frexpr="x" format="%0.3f" min="0.000" max="2.000" inc="0.01" storagetype="float" endian="big"/>
-    <scaling name="809296" units="" toexpr="x" frexpr="x" format="%0.3f" min="0.000" max="2.000" inc="0.01" storagetype="float" endian="big"/>
-    <scaling name="787952" units="" toexpr="x" frexpr="x" format="%0.3f" min="0.000" max="2.000" inc="0.01" storagetype="float" endian="big"/>
-    <scaling name="787956" units="" toexpr="x" frexpr="x" format="%0.3f" min="0.000" max="2.000" inc="0.01" storagetype="float" endian="big"/>
-    <scaling name="787960" units="" toexpr="x" frexpr="x" format="%0.3f" min="0.000" max="2.000" inc="0.01" storagetype="float" endian="big"/>
-    <scaling name="821912" units="" toexpr="x" frexpr="x" format="%0.3f" min="0.000" max="2.000" inc="0.01" storagetype="float" endian="big"/>
-    <scaling name="821880" units="" toexpr="x" frexpr="x" format="%0.0f" min="0.000" max="10.000" inc="1" storagetype="float" endian="big"/>
-    <scaling name="821816" units="" toexpr="x" frexpr="x" format="%0.1f" min="0.000" max="3.000" inc="0.2" storagetype="float" endian="big"/>
-    <scaling name="809272" units="" toexpr="x" frexpr="x" format="%0.3f" min="0.000" max="10.000" inc="0.01" storagetype="float" endian="big"/>
-    <scaling name="809276" units="" toexpr="x" frexpr="x" format="%0.3f" min="0.000" max="10.000" inc="0.01" storagetype="float" endian="big"/>
-    <scaling name="809280" units="" toexpr="x" frexpr="x" format="%0.1f" min="0.000" max="1000.000" inc="1" storagetype="float" endian="big"/>
-    <scaling name="1014924" units="" toexpr="x" frexpr="x" format="%0.3f" min="0.000" max="10.000" inc="0.01" storagetype="float" endian="big"/>
-    <scaling name="1014928" units="" toexpr="x" frexpr="x" format="%0.1f" min="0.000" max="1000.000" inc="1" storagetype="float" endian="big"/>
-    <scaling name="1014936" units="" toexpr="x" frexpr="x" format="%0.1f" min="0.000" max="100.000" inc="0.5" storagetype="float" endian="big"/>
-    <scaling name="1014940" units="" toexpr="x" frexpr="x" format="%0.1f" min="0.000" max="100.000" inc="0.5" storagetype="float" endian="big"/>
-    <scaling name="813012" units="" toexpr="x" frexpr="x" format="%0.1f" min="-500.000" max="2000.000" inc="1" storagetype="float" endian="big"/>
-    <scaling name="812892" units="" toexpr="x" frexpr="x" format="%0.1f" min="0.000" max="200.000" inc="0.5" storagetype="float" endian="big"/>
-    <scaling name="812820" units="" toexpr="x" frexpr="x" format="%0.0f" min="0.000" max="8000.000" inc="100" storagetype="float" endian="big"/>
-    <scaling name="822668" units="" toexpr="x" frexpr="x" format="%0.3f" min="0.000" max="1.000" inc="0.01" storagetype="float" endian="big"/>
-    <scaling name="822604" units="" toexpr="x" frexpr="x" format="%0.1f" min="0.000" max="200.000" inc="0.5" storagetype="float" endian="big"/>
-    <scaling name="822568" units="" toexpr="x" frexpr="x" format="%0.3f" min="0.000" max="1.000" inc="0.01" storagetype="float" endian="big"/>
-    <scaling name="822532" units="" toexpr="x" frexpr="x" format="%0.0f" min="0.000" max="8000.000" inc="100" storagetype="float" endian="big"/>
-    <scaling name="822796" units="" toexpr="x" frexpr="x" format="%0.3f" min="0.000" max="1.000" inc="0.01" storagetype="float" endian="big"/>
-    <scaling name="822732" units="" toexpr="x" frexpr="x" format="%0.1f" min="0.000" max="200.000" inc="0.5" storagetype="float" endian="big"/>
-    <scaling name="822492" units="" toexpr="x" frexpr="x" format="%0.3f" min="0.000" max="1.000" inc="0.01" storagetype="float" endian="big"/>
-    <scaling name="822496" units="" toexpr="x" frexpr="x" format="%0.3f" min="0.000" max="1.000" inc="0.01" storagetype="float" endian="big"/>
-    <scaling name="822528" units="" toexpr="x" frexpr="x" format="%0.2f" min="0.000" max="100.000" inc="0.1" storagetype="float" endian="big"/>
-    <scaling name="1015256" units="" toexpr="x" frexpr="x" format="%0.3f" min="0.000" max="1.000" inc="0.01" storagetype="float" endian="big"/>
-    <scaling name="1015192" units="" toexpr="x" frexpr="x" format="%0.1f" min="0.000" max="200.000" inc="0.5" storagetype="float" endian="big"/>
-    <scaling name="1015156" units="" toexpr="x" frexpr="x" format="%0.3f" min="0.000" max="1.000" inc="0.01" storagetype="float" endian="big"/>
-    <scaling name="1015120" units="" toexpr="x" frexpr="x" format="%0.0f" min="0.000" max="8000.000" inc="100" storagetype="float" endian="big"/>
-    <scaling name="1015384" units="" toexpr="x" frexpr="x" format="%0.3f" min="0.000" max="1.000" inc="0.01" storagetype="float" endian="big"/>
-    <scaling name="1015320" units="" toexpr="x" frexpr="x" format="%0.1f" min="0.000" max="200.000" inc="0.5" storagetype="float" endian="big"/>
-    <table level="4" type="3D" category="Torque Request - Driveline Damping Filter" swapxy="true" name="Driveline Damping Filter - Coefficient b0 (Current Input)" address="c707c" elements="48" scaling="815228">
-      <table name="Damping Filter Selector (cal 0xC5944)" address="c7064" elements="6" scaling="815204" type="X Axis"/>
-      <table name="Damping Filter Input (0xFFFF7A3C)" address="c7044" elements="8" scaling="815172" type="Y Axis"/>
-    </table>
-    <table level="4" type="3D" category="Torque Request - Driveline Damping Filter" swapxy="true" name="Driveline Damping Filter - Coefficient b1 (Previous Input)" address="c7174" elements="48" scaling="815476">
-      <table name="Damping Filter Selector (cal 0xC5944)" address="c715c" elements="6" scaling="815452" type="X Axis"/>
-      <table name="Damping Filter Input (0xFFFF7A3C)" address="c713c" elements="8" scaling="815420" type="Y Axis"/>
-    </table>
-    <table level="4" type="3D" category="Torque Request - Driveline Damping Filter" swapxy="true" name="Driveline Damping Filter - Coefficient b2 (Input Two Passes Ago)" address="c726c" elements="48" scaling="815724">
-      <table name="Damping Filter Selector (cal 0xC5944)" address="c7254" elements="6" scaling="815700" type="X Axis"/>
-      <table name="Damping Filter Input (0xFFFF7A3C)" address="c7234" elements="8" scaling="815668" type="Y Axis"/>
-    </table>
-    <table level="4" type="3D" category="Torque Request - Driveline Damping Filter" swapxy="true" name="Driveline Damping Filter - Coefficient a1 (Previous Output) (stability: a2 &lt; 1, |a1| &lt; 1 + a2)" address="c7364" elements="48" scaling="815972">
-      <table name="Damping Filter Selector (cal 0xC5944)" address="c734c" elements="6" scaling="815948" type="X Axis"/>
-      <table name="Damping Filter Input (0xFFFF7A3C)" address="c732c" elements="8" scaling="815916" type="Y Axis"/>
-    </table>
-    <table level="4" type="3D" category="Torque Request - Driveline Damping Filter" swapxy="true" name="Driveline Damping Filter - Coefficient a2 (Output Two Passes Ago) (stability: a2 &lt; 1, |a1| &lt; 1 + a2)" address="c745c" elements="48" scaling="816220">
-      <table name="Damping Filter Selector (cal 0xC5944)" address="c7444" elements="6" scaling="816196" type="X Axis"/>
-      <table name="Damping Filter Input (0xFFFF7A3C)" address="c7424" elements="8" scaling="816164" type="Y Axis"/>
-    </table>
-    <table level="4" type="3D" category="Torque Request - Driveline Damping Filter" swapxy="true" name="Driveline Damping Filter - Gain | Input A (0xFFFF7A34) x Input B (0xFFFF7A2C)" address="c7548" elements="28" scaling="816456">
-      <table name="Damping Gain Input B (0xFFFF7A2C, 0-3)" address="c7538" elements="4" scaling="816440" type="X Axis"/>
-      <table name="Damping Gain Input A (0xFFFF7A34, 0-6)" address="c751c" elements="7" scaling="816412" type="Y Axis"/>
-    </table>
-    <table level="4" type="2D" category="Torque Request - Driveline Damping Filter" swapxy="true" name="Driveline Damping Filter - Gain Multiplier | Spark Retard Correction" address="c5ab4" elements="15" scaling="809652">
-      <table name="Spark Retard Correction (0xFFFF7DC0)" address="c5a78" elements="15" scaling="809592" type="Y Axis"/>
-    </table>
-    <table level="4" type="2D" category="Torque Request - Driveline Damping Filter" swapxy="true" name="Driveline Damping Filter - Gain Multiplier | RPM" address="c5b24" elements="13" scaling="809764">
-      <table name="RPM_C5AF0" address="c5af0" elements="13" scaling="809712" type="Y Axis"/>
-    </table>
-    <table level="1" type="1D" category="Torque Request - Driveline Damping Filter" swapxy="true" name="Driveline Damping Filter - Bypass (0 = filter active, 1 = off)" address="c5931" elements="1" scaling="809265"/>
-    <table level="1" type="1D" category="Torque Request - Driveline Damping Filter" swapxy="true" name="Driveline Damping Filter - Selector Input (row of the coefficient tables)" address="c5944" elements="1" scaling="809284"/>
-    <table level="1" type="1D" category="Torque Request - Driveline Damping Filter" swapxy="true" name="Driveline Damping Filter - Gain | Mode A" address="c5948" elements="1" scaling="809288"/>
-    <table level="1" type="1D" category="Torque Request - Driveline Damping Filter" swapxy="true" name="Driveline Damping Filter - Gain | Mode B" address="c594c" elements="1" scaling="809292"/>
-    <table level="1" type="1D" category="Torque Request - Driveline Damping Filter" swapxy="true" name="Driveline Damping Filter - Gain | Mode C" address="c5950" elements="1" scaling="809296"/>
-    <table level="1" type="1D" category="Torque Request - Driveline Damping Filter" swapxy="true" name="Driveline Damping Filter - Gain Multiplier | AC On" address="c05f0" elements="1" scaling="787952"/>
-    <table level="1" type="1D" category="Torque Request - Driveline Damping Filter" swapxy="true" name="Driveline Damping Filter - Gain Multiplier | High Det" address="c05f4" elements="1" scaling="787956"/>
-    <table level="1" type="1D" category="Torque Request - Driveline Damping Filter" swapxy="true" name="Driveline Damping Filter - Gain Multiplier | Flag 0xFFFF9036" address="c05f8" elements="1" scaling="787960"/>
-    <table level="4" type="3D" category="Torque Request - Driveline Damping Filter" swapxy="true" name="Driveline Damping (Arbitration Stage) - Gain | ZEROED" address="c8a98" elements="128" scaling="821912">
-      <table name="Arb Damping Input B" address="c8a78" elements="8" scaling="821880" type="X Axis"/>
-      <table name="Arb Damping Input A" address="c8a38" elements="16" scaling="821816" type="Y Axis"/>
-    </table>
-    <table level="1" type="1D" category="Torque Request - Tip-In Shaping" swapxy="true" name="Tip-In Shaping - VSS Reference Ramp Rate (per 5 ms)" address="c5938" elements="1" scaling="809272"/>
-    <table level="1" type="1D" category="Torque Request - Tip-In Shaping" swapxy="true" name="Tip-In Shaping - Ramp Step (per 5 ms) (pair with f7c8c)" address="c593c" elements="1" scaling="809276"/>
-    <table level="1" type="1D" category="Torque Request - Tip-In Shaping" swapxy="true" name="Tip-In Shaping - Correction Clamp (pair with f7c90)" address="c5940" elements="1" scaling="809280"/>
-    <table level="1" type="1D" category="Torque Request - Tip-In Shaping (Data Integrity)" swapxy="true" name="Tip-In Shaping (Data Integrity) - Ramp Step (per 5 ms) (pair with c593c)" address="f7c8c" elements="1" scaling="1014924"/>
-    <table level="1" type="1D" category="Torque Request - Tip-In Shaping (Data Integrity)" swapxy="true" name="Tip-In Shaping (Data Integrity) - Correction Clamp (pair with c5940)" address="f7c90" elements="1" scaling="1014928"/>
-    <table level="1" type="1D" category="Torque Request - Tip-In Shaping (Data Integrity)" swapxy="true" name="Tip-In Shaping (Data Integrity) - TP Window Max (%) (primary is a code literal at 0x9D54C)" address="f7c98" elements="1" scaling="1014936"/>
-    <table level="1" type="1D" category="Torque Request - Tip-In Shaping (Data Integrity)" swapxy="true" name="Tip-In Shaping (Data Integrity) - TP Window Min (%) (primary is a code literal at 0x9D550)" address="f7c9c" elements="1" scaling="1014940"/>
-    <table level="4" type="3D" category="Torque Request - Base" swapxy="true" name="Torque Request - Base BMEP (kPa) | RPM x Throttle Position (edit all 4 copies together)" address="c67d4" elements="540" scaling="813012">
-      <table name="Throttle Position (%)" address="c675c" elements="30" scaling="812892" type="X Axis"/>
-      <table name="RPM_C6714" address="c6714" elements="18" scaling="812820" type="Y Axis"/>
-    </table>
-    <!-- Torque Request - Base: three additional byte-identical copies of the c67d4 table that the code also reads (F1 review fix, 2026-09-17) -->
-    <scaling name="816760" units="" toexpr="x" frexpr="x" format="%0.1f" min="-500.000" max="2000.000" inc="1" storagetype="float" endian="big"/>
-    <scaling name="816640" units="" toexpr="x" frexpr="x" format="%0.1f" min="0.000" max="200.000" inc="0.5" storagetype="float" endian="big"/>
-    <scaling name="816568" units="" toexpr="x" frexpr="x" format="%0.0f" min="0.000" max="8000.000" inc="100" storagetype="float" endian="big"/>
-    <scaling name="1022228" units="" toexpr="x" frexpr="x" format="%0.1f" min="-500.000" max="2000.000" inc="1" storagetype="float" endian="big"/>
-    <scaling name="1022108" units="" toexpr="x" frexpr="x" format="%0.1f" min="0.000" max="200.000" inc="0.5" storagetype="float" endian="big"/>
-    <scaling name="1022036" units="" toexpr="x" frexpr="x" format="%0.0f" min="0.000" max="8000.000" inc="100" storagetype="float" endian="big"/>
-    <scaling name="1025976" units="" toexpr="x" frexpr="x" format="%0.1f" min="-500.000" max="2000.000" inc="1" storagetype="float" endian="big"/>
-    <scaling name="1025856" units="" toexpr="x" frexpr="x" format="%0.1f" min="0.000" max="200.000" inc="0.5" storagetype="float" endian="big"/>
-    <scaling name="1025784" units="" toexpr="x" frexpr="x" format="%0.0f" min="0.000" max="8000.000" inc="100" storagetype="float" endian="big"/>
-    <table level="4" type="3D" category="Torque Request - Base" swapxy="true" name="Torque Request - Base BMEP (kPa) | Copy read by the torque limiter (byte-identical, keep equal to c67d4)" address="c7678" elements="540" scaling="816760">
-      <table name="Throttle Position (%)" address="c7600" elements="30" scaling="816640" type="X Axis"/>
-      <table name="RPM_C75B8" address="c75b8" elements="18" scaling="816568" type="Y Axis"/>
-    </table>
-    <table level="4" type="3D" category="Torque Request - Base (Data Integrity)" swapxy="true" name="Torque Request - Base BMEP (kPa) | RPM x Throttle Position (Data Integrity A, keep equal to c67d4)" address="f9914" elements="540" scaling="1022228">
-      <table name="Throttle Position (%)" address="f989c" elements="30" scaling="1022108" type="X Axis"/>
-      <table name="RPM_F9854" address="f9854" elements="18" scaling="1022036" type="Y Axis"/>
-    </table>
-    <table level="4" type="3D" category="Torque Request - Base (Data Integrity)" swapxy="true" name="Torque Request - Base BMEP (kPa) | RPM x Throttle Position (Data Integrity B, keep equal to c67d4)" address="fa7b8" elements="540" scaling="1025976">
-      <table name="Throttle Position (%)" address="fa740" elements="30" scaling="1025856" type="X Axis"/>
-      <table name="RPM_FA6F8" address="fa6f8" elements="18" scaling="1025784" type="Y Axis"/>
-    </table>
-    <table level="4" type="2D" category="DBW - Throttle Position Desired Filter" swapxy="true" name="TP Desired Filter - Bias | Tip-In (TP Delta over Threshold) - NOT SELECTED in stock (0xC8CBC = 1)" address="c8d8c" elements="16" scaling="822668">
-      <table name="APP Effective (%) (0xFFFF6CCC)" address="c8d4c" elements="16" scaling="822604" type="Y Axis"/>
-    </table>
-    <table level="4" type="2D" category="DBW - Throttle Position Desired Filter" swapxy="true" name="TP Desired Filter - Bias | Tip-In (Target Load Delta over Threshold)" address="c8d28" elements="9" scaling="822568">
-      <table name="RPM_C8D04" address="c8d04" elements="9" scaling="822532" type="Y Axis"/>
-    </table>
-    <table level="4" type="2D" category="DBW - Throttle Position Desired Filter" swapxy="true" name="TP Desired Filter - Bias | Tip-Out (DISABLED)" address="c8e0c" elements="16" scaling="822796">
-      <table name="APP Effective (%) (0xFFFF6CCC)" address="c8dcc" elements="16" scaling="822732" type="Y Axis"/>
-    </table>
-    <table level="1" type="1D" category="DBW - Throttle Position Desired Filter" swapxy="true" name="TP Desired Filter - Bias | Fault or Cruise" address="c8cdc" elements="1" scaling="822492"/>
-    <table level="1" type="1D" category="DBW - Throttle Position Desired Filter" swapxy="true" name="TP Desired Filter - Bias | Default" address="c8ce0" elements="1" scaling="822496"/>
-    <table level="1" type="1D" category="DBW - Throttle Position Desired Filter" swapxy="true" name="TP Desired - Limp Maximum" address="c8d00" elements="1" scaling="822528"/>
-    <!-- DBW - Throttle Position Desired Filter: tip-in bias table select flag + tip-in/tip-out state thresholds (F5 review fix, 2026-09-17) -->
-    <scaling name="822460" units="" toexpr="x" frexpr="x" format="%d" min="0" max="1" inc="1" storagetype="uint8" endian="big"/>
-    <scaling name="822504" units="" toexpr="x" frexpr="x" format="%0.4f" min="-100.000" max="100.000" inc="0.001" storagetype="float" endian="big"/>
-    <scaling name="822508" units="" toexpr="x" frexpr="x" format="%0.4f" min="-100.000" max="100.000" inc="0.001" storagetype="float" endian="big"/>
-    <scaling name="822512" units="" toexpr="x" frexpr="x" format="%0.4f" min="-100.000" max="100.000" inc="0.001" storagetype="float" endian="big"/>
-    <scaling name="822516" units="" toexpr="x" frexpr="x" format="%0.4f" min="-100.000" max="100.000" inc="0.001" storagetype="float" endian="big"/>
-    <scaling name="822520" units="" toexpr="x" frexpr="x" format="%0.4f" min="-100.000" max="100.000" inc="0.001" storagetype="float" endian="big"/>
-    <scaling name="822524" units="" toexpr="x" frexpr="x" format="%0.4f" min="-100.000" max="100.000" inc="0.001" storagetype="float" endian="big"/>
-    <table level="1" type="1D" category="DBW - Throttle Position Desired Filter" swapxy="true" name="TP Desired Filter - Tip-In Bias Table Select (0 = TP-Delta table c8d8c, 1 = RPM table c8d28)" address="c8cbc" elements="1" scaling="822460"/>
-    <table level="1" type="1D" category="DBW - Throttle Position Desired Filter" swapxy="true" name="Tip-Out State Enter | TP Desired 25 ms Delta Below" address="c8ce8" elements="1" scaling="822504"/>
-    <table level="1" type="1D" category="DBW - Throttle Position Desired Filter" swapxy="true" name="Tip-Out State Hold | TP Desired 25 ms Delta Below" address="c8cec" elements="1" scaling="822508"/>
-    <table level="1" type="1D" category="DBW - Throttle Position Desired Filter" swapxy="true" name="Tip-Out State Hold | Raw-vs-Filtered TP Desired Delta Above" address="c8cf0" elements="1" scaling="822512"/>
-    <table level="1" type="1D" category="DBW - Throttle Position Desired Filter" swapxy="true" name="Tip-In State Enter | TP Desired 25 ms Delta Above (used only when 0xC8CBC = 0)" address="c8cf4" elements="1" scaling="822516"/>
-    <table level="1" type="1D" category="DBW - Throttle Position Desired Filter" swapxy="true" name="Tip-In State Hold | TP Desired 25 ms Delta Above (used only when 0xC8CBC = 0)" address="c8cf8" elements="1" scaling="822520"/>
-    <table level="1" type="1D" category="DBW - Throttle Position Desired Filter" swapxy="true" name="Tip-In State Hold | Raw-vs-Filtered TP Desired Delta Above" address="c8cfc" elements="1" scaling="822524"/>
-    <table level="4" type="2D" category="DBW - Throttle Position Desired Filter (Data Integrity)" swapxy="true" name="TP Desired Filter (Data Integrity) - Bias | Tip-In (TP Delta over Threshold)" address="f7dd8" elements="16" scaling="1015256">
-      <table name="APP Effective (%) (0xFFFF6CCC)" address="f7d98" elements="16" scaling="1015192" type="Y Axis"/>
-    </table>
-    <table level="4" type="2D" category="DBW - Throttle Position Desired Filter (Data Integrity)" swapxy="true" name="TP Desired Filter (Data Integrity) - Bias | Tip-In (Target Load Delta over Threshold)" address="f7d74" elements="9" scaling="1015156">
-      <table name="RPM_F7D50" address="f7d50" elements="9" scaling="1015120" type="Y Axis"/>
-    </table>
-    <table level="4" type="2D" category="DBW - Throttle Position Desired Filter (Data Integrity)" swapxy="true" name="TP Desired Filter (Data Integrity) - Bias | Tip-Out (DISABLED)" address="f7e58" elements="16" scaling="1015384">
-      <table name="APP Effective (%) (0xFFFF6CCC)" address="f7e18" elements="16" scaling="1015320" type="Y Axis"/>
-    </table>
-    <!-- DBW - Throttle Angle Desired (INACTIVE in stock): pedal-derived throttle-angle chain computed every 8 ms for the external throttle monitor frame but discarded at 0x1F112 while cal byte 0xBB198 = 1 (F9/F10 review additions, 2026-09-17) -->
-    <scaling name="766516" units="" toexpr="x" frexpr="x" format="%0.2f" min="0.000" max="90.000" inc="0.1" storagetype="float" endian="big"/>
-    <scaling name="766392" units="" toexpr="x" frexpr="x" format="%0.2f" min="0.000" max="100.000" inc="0.1" storagetype="float" endian="big"/>
-    <scaling name="766764" units="" toexpr="x" frexpr="x" format="%0.2f" min="0.000" max="90.000" inc="0.1" storagetype="float" endian="big"/>
-    <scaling name="766640" units="" toexpr="x" frexpr="x" format="%0.2f" min="0.000" max="100.000" inc="0.1" storagetype="float" endian="big"/>
-    <scaling name="766920" units="" toexpr="x" frexpr="x" format="%0.3f" min="0.000" max="1.000" inc="0.01" storagetype="float" endian="big"/>
-    <scaling name="766888" units="" toexpr="x" frexpr="x" format="%0.0f" min="0.000" max="8000.000" inc="100" storagetype="float" endian="big"/>
-    <scaling name="766984" units="" toexpr="x" frexpr="x" format="%0.3f" min="0.000" max="1.000" inc="0.01" storagetype="float" endian="big"/>
-    <scaling name="766952" units="" toexpr="x" frexpr="x" format="%0.0f" min="0.000" max="8000.000" inc="100" storagetype="float" endian="big"/>
-    <scaling name="767048" units="" toexpr="x" frexpr="x" format="%0.3f" min="0.000" max="1.000" inc="0.01" storagetype="float" endian="big"/>
-    <scaling name="767016" units="" toexpr="x" frexpr="x" format="%0.0f" min="0.000" max="8000.000" inc="100" storagetype="float" endian="big"/>
-    <scaling name="766372" units="" toexpr="x" frexpr="x" format="%0.1f" min="0.000" max="90.000" inc="0.5" storagetype="float" endian="big"/>
-    <scaling name="766384" units="" toexpr="x" frexpr="x" format="%0.2f" min="-20.000" max="20.000" inc="0.1" storagetype="float" endian="big"/>
-    <scaling name="766388" units="" toexpr="x" frexpr="x" format="%0.2f" min="-20.000" max="20.000" inc="0.1" storagetype="float" endian="big"/>
-    <scaling name="766376" units="" toexpr="x" frexpr="x" format="%0.3f" min="0.000" max="20.000" inc="0.01" storagetype="float" endian="big"/>
-    <scaling name="766380" units="" toexpr="x" frexpr="x" format="%0.3f" min="0.000" max="20.000" inc="0.01" storagetype="float" endian="big"/>
-    <scaling name="766368" units="" toexpr="x" frexpr="x" format="%d" min="0" max="1" inc="1" storagetype="uint8" endian="big"/>
-    <scaling name="766369" units="" toexpr="x" frexpr="x" format="%d" min="0" max="1" inc="1" storagetype="uint8" endian="big"/>
-    <!-- F10c review addition: chain enable gates, 2026-09-17 -->
-    <scaling name="766360" units="" toexpr="x" frexpr="x" format="%d" min="0" max="1" inc="1" storagetype="uint8" endian="big"/>
-    <scaling name="766361" units="" toexpr="x" frexpr="x" format="%d" min="0" max="1" inc="1" storagetype="uint8" endian="big"/>
-    <table level="1" type="1D" category="DBW - Throttle Angle Desired (INACTIVE in stock: computed every 8 ms, discarded while 0xBB198 = 1)" swapxy="true" name="Throttle Angle Desired - Chain Enable Gate (0xBB198: 1 = stock, chain discarded, frame angle from live throttle cells; 0 = chain output used)" address="bb198" elements="1" scaling="766360"/>
-    <table level="1" type="1D" category="DBW - Throttle Angle Desired (INACTIVE in stock: computed every 8 ms, discarded while 0xBB198 = 1)" swapxy="true" name="Throttle Angle Desired - Inner Gate (0xBB199, read at 0x1F130; 1 = stock)" address="bb199" elements="1" scaling="766361"/>
-    <table level="4" type="2D" category="DBW - Throttle Angle Desired (INACTIVE in stock: computed every 8 ms, discarded while 0xBB198 = 1)" swapxy="true" name="Throttle Angle Desired - APP to Angle A (deg)" address="bb234" elements="31" scaling="766516">
-      <table name="APP Effective (%) (0xFFFF56C4)" address="bb1b8" elements="31" scaling="766392" type="Y Axis"/>
-    </table>
-    <table level="4" type="2D" category="DBW - Throttle Angle Desired (INACTIVE in stock: computed every 8 ms, discarded while 0xBB198 = 1)" swapxy="true" name="Throttle Angle Desired - APP to Angle B (deg) (used when 0xFFFF6E20 != 0 and 0xBB1A0 != 0)" address="bb32c" elements="31" scaling="766764">
-      <table name="APP Effective (%) (0xFFFF56C4)" address="bb2b0" elements="31" scaling="766640" type="Y Axis"/>
-    </table>
-    <table level="4" type="2D" category="DBW - Throttle Angle Desired (INACTIVE in stock: computed every 8 ms, discarded while 0xBB198 = 1)" swapxy="true" name="Throttle Angle Desired - Rate Bias A (delta &gt; bb1b0) - ONES (all 1.0, no effect)" address="bb3c8" elements="8" scaling="766920">
-      <table name="RPM_BB3A8" address="bb3a8" elements="8" scaling="766888" type="Y Axis"/>
-    </table>
-    <table level="4" type="2D" category="DBW - Throttle Angle Desired (INACTIVE in stock: computed every 8 ms, discarded while 0xBB198 = 1)" swapxy="true" name="Throttle Angle Desired - Rate Bias B (delta &lt;= bb1b4) - ONES (all 1.0, no effect)" address="bb408" elements="8" scaling="766984">
-      <table name="RPM_BB3E8" address="bb3e8" elements="8" scaling="766952" type="Y Axis"/>
-    </table>
-    <table level="4" type="2D" category="DBW - Throttle Angle Desired (INACTIVE in stock: computed every 8 ms, discarded while 0xBB198 = 1)" swapxy="true" name="Throttle Angle Desired - Rate Bias C (bb1b4 &lt; delta &lt;= bb1b0) - ONES (all 1.0, no effect)" address="bb448" elements="8" scaling="767048">
-      <table name="RPM_BB428" address="bb428" elements="8" scaling="767016" type="Y Axis"/>
-    </table>
-    <table level="1" type="1D" category="DBW - Throttle Angle Desired (INACTIVE in stock: computed every 8 ms, discarded while 0xBB198 = 1)" swapxy="true" name="Throttle Angle Desired - Maximum (deg) (clamps this inactive chain only; the live clamp is 'Throttle Angle - Max' at bb19c)" address="bb1a4" elements="1" scaling="766372"/>
-    <table level="1" type="1D" category="DBW - Throttle Angle Desired (INACTIVE in stock: computed every 8 ms, discarded while 0xBB198 = 1)" swapxy="true" name="Throttle Angle Desired - Rate Bias Select Threshold High (deg)" address="bb1b0" elements="1" scaling="766384"/>
-    <table level="1" type="1D" category="DBW - Throttle Angle Desired (INACTIVE in stock: computed every 8 ms, discarded while 0xBB198 = 1)" swapxy="true" name="Throttle Angle Desired - Rate Bias Select Threshold Low (deg)" address="bb1b4" elements="1" scaling="766388"/>
-    <table level="1" type="1D" category="DBW - Throttle Angle Desired (INACTIVE in stock: computed every 8 ms, discarded while 0xBB198 = 1)" swapxy="true" name="Throttle Angle Desired - Delay Line Gain (samples per unit of 0xFFFF670C, x0.125)" address="bb1a8" elements="1" scaling="766376"/>
-    <table level="1" type="1D" category="DBW - Throttle Angle Desired (INACTIVE in stock: computed every 8 ms, discarded while 0xBB198 = 1)" swapxy="true" name="Throttle Angle Desired - Delay Line Offset (samples, subtracted: index = 0xFFFF670C x bb1a8 x 0.125 - bb1ac, floored at 0, capped at 12)" address="bb1ac" elements="1" scaling="766380"/>
-    <table level="1" type="1D" category="DBW - Throttle Angle Desired (INACTIVE in stock: computed every 8 ms, discarded while 0xBB198 = 1)" swapxy="true" name="Throttle Angle Desired - Source Mode (0 = filtered A, 1 = A or B by 0xFFFF6E20)" address="bb1a0" elements="1" scaling="766368"/>
-    <table level="1" type="1D" category="DBW - Throttle Angle Desired (INACTIVE in stock: computed every 8 ms, discarded while 0xBB198 = 1)" swapxy="true" name="Throttle Angle Desired - Delay Line Disable (1 = no delay, stock)" address="bb1a1" elements="1" scaling="766369"/>
     <table level="1" type="1D" category="DTC - Activation Flags" swapxy="true" name=" C0073 - CAN system communication error" address="e0974" elements="1" scaling="919924"/>
     <table level="1" type="1D" category="DTC - Activation Flags" swapxy="true" name=" C0101 - Communication error to TCM" address="e0975" elements="1" scaling="919925"/>
     <table level="1" type="1D" category="DTC - Activation Flags" swapxy="true" name=" C0121 - Communication error to ABS HU/CM or DSC HU/CM" address="e0976" elements="1" scaling="919926"/>
@@ -2171,27 +1956,6 @@
     <table level="1" type="1D" category="Spark Final - Cylinder Trims" swapxy="true" name="Spark Final Trim | Cylinder 4" address="cfbf4" elements="1" scaling="850932"/>
     <table level="1" type="2D" category="Spark Final - Advance Limit" swapxy="true" name="Spark Final - Max Advance Rate" address="cfc60" elements="13" scaling="851040">
       <table name="RPM_6DD8" address="cfc2c" elements="13" scaling="850988" type="Y Axis"/>
-    </table>
-    <!-- Auto-Blip on Downshift: custom patch in free space (calibration at 0xFCAC0).
-     Only present in autoblip-patched ROMs; reads as 0xFF/garbage on stock or
-     plain-Romdrop ROMs. Generator: nc-flash-re/tools/autoblip_patch.py -->
-    <scaling name="autoblip_enable" units="" toexpr="x" frexpr="x" format="%0.0f" min="0" max="1" inc="1" storagetype="uint8" endian="big"/>
-    <scaling name="autoblip_pct" units="%" toexpr="x" frexpr="x" format="%0.1f" min="0" max="100" inc="0.1" storagetype="float" endian="big"/>
-    <scaling name="autoblip_spd" units="km/h" toexpr="x" frexpr="x" format="%0.1f" min="0" max="300" inc="0.1" storagetype="float" endian="big"/>
-    <scaling name="autoblip_rpm" units="RPM" toexpr="x" frexpr="x" format="%0.0f" min="0" max="10000" inc="10" storagetype="float" endian="big"/>
-    <scaling name="autoblip_factor" units="" toexpr="x" frexpr="x" format="%0.3f" min="0" max="1" inc="0.001" storagetype="float" endian="big"/>
-    <scaling name="autoblip_cycles" units="cycles" toexpr="x" frexpr="x" format="%0.0f" min="0" max="255" inc="1" storagetype="uint8" endian="big"/>
-    <scaling name="autoblip_tp" units="%" toexpr="x" frexpr="x" format="%0.1f" min="0" max="100" inc="0.1" storagetype="float" endian="big"/>
-    <scaling name="autoblip_rpm_delta" units="RPM" toexpr="x" frexpr="x" format="%0.0f" min="0" max="5000" inc="10" storagetype="float" endian="big"/>
-    <table level="1" type="1D" category="Auto-Blip" swapxy="true" name="Auto-Blip - Enable" address="fcac0" elements="1" scaling="autoblip_enable"/>
-    <table level="1" type="1D" category="Auto-Blip" swapxy="true" name="Auto-Blip - APP Threshold" address="fcac4" elements="1" scaling="autoblip_pct"/>
-    <table level="1" type="1D" category="Auto-Blip" swapxy="true" name="Auto-Blip - Min VSS" address="fcac8" elements="1" scaling="autoblip_spd"/>
-    <table level="1" type="1D" category="Auto-Blip" swapxy="true" name="Auto-Blip - Min RPM" address="fcacc" elements="1" scaling="autoblip_rpm"/>
-    <table level="1" type="1D" category="Auto-Blip" swapxy="true" name="Auto-Blip - Max RPM Target" address="fcad0" elements="1" scaling="autoblip_rpm"/>
-    <table level="1" type="1D" category="Auto-Blip" swapxy="true" name="Auto-Blip - Decay Factor" address="fcad4" elements="1" scaling="autoblip_factor"/>
-    <table level="1" type="1D" category="Auto-Blip" swapxy="true" name="Auto-Blip - Max Duration" address="fcad8" elements="1" scaling="autoblip_cycles"/>
-    <table level="1" type="2D" category="Auto-Blip" swapxy="true" name="Auto-Blip - RPM Delta to TP Offset" address="fcafc" elements="8" scaling="autoblip_tp">
-      <table name="RPM Delta" address="fcadc" elements="8" scaling="autoblip_rpm_delta" type="Y Axis"/>
     </table>
   </rom>
 </roms>

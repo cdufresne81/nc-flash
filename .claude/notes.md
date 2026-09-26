@@ -4,7 +4,27 @@ Only open work and live decisions go here. Completed work goes in `CHANGELOG.md`
 here once it's done. Tracked work lives in GitHub issues (`gh issue list`) — don't duplicate it.
 History before Sep 24, 2026: `git show f4709f1:.claude/notes.md` (search it, don't read it end to end).
 
+## Next up (in order; delete the top line when it's done)
+
+1. Seed nc-flash-re with the reformatted definitions from `examples/metadata/` (PR #120) before
+   its `sync_ncflash_definitions.py` next runs, or the old layout comes back and fails the lint.
+2. Optional: tell speeps the definitions are being fixed and extended (speeps' email only OKs
+   including them).
+3. #121 deliver new/fixed definitions to existing installs.
+4. #124 tool to port a new table across all NC calibrations.
+5. #122 give duplicate-named tables real names.
+6. #123 check the TCM odd-address cells / overlaps against the TCM code.
+
 ## Open items (not tracked in an issue)
+
+- **ROM definitions (after PR #120, speeps import):**
+  - Decided: nc-flash-re is the working copy where definitions are edited; NC Flash holds the
+    released copy (copied in, never hand-edited). Check any change with
+    `python tools/metadata_lint.py check`.
+  - Optional: the KR table is proven 1 byte from ROM code at 0xBB8D9/0xBBCA9/0xBBBD1 only; the
+    other 5 addresses (30 files) rest on the odd-address argument + identical neighbours.
+  - RomDetector stops at `</romid>`: a file broken after it is listed, and opening a matching
+    ROM fails with a parse error instead of "no definition". Not a write hazard.
 
 Carried over from the old log on Sep 24, 2026. Verify an item is still open before acting on it.
 
