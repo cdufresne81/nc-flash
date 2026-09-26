@@ -247,3 +247,6 @@ jobs:
           release-assets/windows-installer/*.exe
           release-assets/linux-package/*.tar.gz
         body_path: release_notes.md
+        # A tag like v2.18.0-rc1 must not become "latest": the in-app updater
+        # only offers the latest final release.
+        prerelease: ${{ contains(github.ref_name, '-') }}

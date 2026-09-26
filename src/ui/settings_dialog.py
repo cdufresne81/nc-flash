@@ -275,6 +275,22 @@ SETTINGS_REGISTRY = [
         setter="set_auto_round",
         keywords=["round", "decimal", "interpolation", "smooth", "precision"],
     ),
+    # -- General > Updates --
+    SettingDescriptor(
+        key="general.updates.check_on_startup",
+        label="Check for updates at startup",
+        description=(
+            "Once a day at most, ask GitHub whether a newer NC Flash release "
+            "exists and offer to install it. Help > Check for Updates works "
+            "either way."
+        ),
+        category="General",
+        subcategory="Updates",
+        widget_type="checkbox",
+        getter="get_check_updates_on_startup",
+        setter="set_check_updates_on_startup",
+        keywords=["update", "upgrade", "release", "version", "github", "install"],
+    ),
     # -- Tools > MCP Server --
     SettingDescriptor(
         key="tools.mcp.auto_start",

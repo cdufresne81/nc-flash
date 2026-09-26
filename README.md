@@ -23,6 +23,8 @@ Download the `.exe` installer and run it.
 
 > **Note:** The installer is not code-signed, so Windows SmartScreen may show an "Unknown publisher" warning. Click **"More info"** then **"Run anyway"** to proceed. This is normal for open-source software without a paid signing certificate.
 
+Once installed, NC Flash can update itself: see **Help > Check for Updates**.
+
 ### Linux
 Download the `.tar.gz` archive, extract it, and run the `NCFlash` binary:
 ```bash
@@ -147,6 +149,7 @@ python main.py
 - Multi-window table viewers
 - Recent files list
 - Session restoration (automatically reopen last ROM)
+- Update check (Help > Check for Updates, and at most once a day at launch): shows the release notes and, on Windows, downloads the installer, verifies it, and installs it. Installing is refused while the ECU Programming window is open or a trip-log download is running. Turn the launch check off in Settings > General > Updates.
 - Per-session log files saved to `~/.nc-flash/logs/`
 - First-run setup wizard for metadata configuration
 - Configurable settings (font size, color maps, export paths)
