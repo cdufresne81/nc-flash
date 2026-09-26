@@ -39,10 +39,7 @@ Carried over from the old log on Sep 24, 2026. Verify an item is still open befo
   `_current_manager.abort()` for ANY op (comment claims read-only only), and `flash_rom`'s ROM program
   `transfer_data` honours `abort_check` → partly programmed ECU. The window may also be destroyed with
   the flash QThread still running (`wait(3000)`). Needs its own change + WICAN_MANUAL_TEST-style bench pass.
-- **In-app updater (#104 item 1, branch `feature/104-in-app-updater`) follow-ups:**
-  - Never exercised: a real install over an existing copy (per-user AND all-users), incl. Inno's
-    relaunch of the new NCFlash.exe (`PYINSTALLER_RESET_ENVIRONMENT=1` is set before launch). Test now: build
-    this branch stamped `APP_VERSION = "2.16.9"`, install it, let it update itself to the real v2.17.0.
+- **In-app updater (#104 item 1, shipped in v2.18.0) follow-ups:**
   - Decision pending: `update_check._stream_to_file` duplicates `wican_http.download_to_file`'s read loop
     ("one pipeline copy"). Merging touches `src/ecu` → bench test. `wican_http` likely has the same
     blocking `read()` vs shutdown-wait problem the updater fixed with `read1` (untested).

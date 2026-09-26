@@ -4,8 +4,12 @@ All notable changes to NC Flash are documented here.
 
 ## [Unreleased]
 
+## [v2.18.0] - 2026-09-26
+
+**NC Flash can now update itself.** On Windows, future versions install from inside the app; no more downloading installers by hand.
+
 ### Added
-- **Check for updates from inside NC Flash (#104).** *Help ▸ Check for Updates* tells you when a new version is out and shows what changed. On Windows, it downloads the installer and checks it against the fingerprint GitHub publishes. Then *Install Now* closes NC Flash (asking about unsaved changes first) and runs it. NC Flash also checks quietly at launch, at most once a day; turn that off in *Settings ▸ General ▸ Updates*, or skip a version you don't want. Installing is refused while the ECU Programming window is open or a trip-log download is running.
+- **Check for updates from inside NC Flash (#104).** *Help ▸ Check for Updates* tells you when a new version is out and shows what changed. On Windows, *Download & Install* fetches and verifies the installer, then *Install Now* closes NC Flash (asking about unsaved changes first) and runs it. NC Flash also checks quietly at launch, at most once a day; turn that off in *Settings ▸ General ▸ Updates*, or skip a version you don't want. Updates never install while the ECU Programming window is open or trip logs are downloading.
 
 ## [v2.17.0] - 2026-09-25
 
