@@ -4,6 +4,10 @@ All notable changes to NC Flash are documented here.
 
 ## [Unreleased]
 
+## [v2.20.0] - 2026-09-28
+
+**Save a ROM comparison as a CSV or Markdown report**, for sharing a tune's changes or reviewing them in a spreadsheet.
+
 ### Added
 - **Export a ROM comparison to CSV or Markdown (#126).** In the compare window, press `Ctrl+E` or click **Export…** to save every changed cell and axis value. CSV gives one row per change for sorting in a spreadsheet; Markdown gives a readable report grouped by table. Thanks to Luka Chassaing.
 
