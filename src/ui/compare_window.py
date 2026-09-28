@@ -6,6 +6,7 @@ Read-only view with synchronized scrolling and keyboard navigation.
 """
 
 import logging
+from pathlib import Path
 
 import numpy as np
 from PySide6.QtWidgets import (
@@ -26,6 +27,7 @@ from PySide6.QtWidgets import (
     QStyledItemDelegate,
     QMessageBox,
     QProgressDialog,
+    QFileDialog,
 )
 from PySide6.QtCore import Qt, QSettings, QSize
 from PySide6.QtGui import (
@@ -432,6 +434,11 @@ class CompareWindow(QMainWindow):
         self._toggle.toggled.connect(self._on_toggle_changed)
         tb.addWidget(self._toggle)
 
+        tb.addSeparator()
+        export_btn = tb.addAction("Export…")
+        export_btn.setToolTip("Export comparison to CSV or Markdown (Ctrl+E)")
+        export_btn.triggered.connect(self._export_comparison)
+
     def _make_rom_label(self, name: str, color: QColor) -> QWidget:
         """Create a ROM label widget with color swatch."""
         widget = QWidget()
@@ -777,6 +784,9 @@ class CompareWindow(QMainWindow):
         close = QShortcut(QKeySequence(Qt.Key_Escape), self)
         close.activated.connect(self.close)
 
+        export_shortcut = QShortcut(QKeySequence("Ctrl+E"), self)
+        export_shortcut.activated.connect(self._export_comparison)
+
     # ========== Navigation ==========
 
     def _select_table(self, index: int):
@@ -889,6 +899,73 @@ class CompareWindow(QMainWindow):
         # Re-display current table to apply dimming
         if self._current_index >= 0:
             self._select_table(self._current_index)
+
+    # ========== Export ==========
+
+    def _export_comparison(self):
+        """Export every modified table (all cells/axes that differ) to a
+        CSV or Markdown report, chosen by the file dialog's extension."""
+        if not self._modified_tables:
+            return
+
+        from ..core.comparison_export import (
+            export_comparison_csv,
+            export_comparison_markdown,
+        )
+
+        def _sanitize(name: str) -> str:
+            safe = "".join(
+                c if c.isalnum() or c in (" ", "-", "_") else "_" for c in name
+            )
+            return safe.replace(" ", "_")
+
+        default_dir = get_settings().get_export_directory() or str(Path.home())
+        default_name = (
+            f"compare_{_sanitize(self._name_a)}_vs_{_sanitize(self._name_b)}.csv"
+        )
+        default_path = str(Path(default_dir) / default_name)
+
+        file_path, selected_filter = QFileDialog.getSaveFileName(
+            self,
+            "Export Comparison",
+            default_path,
+            "CSV Files (*.csv);;Markdown Files (*.md);;All Files (*)",
+        )
+        if not file_path:
+            return
+
+        path = Path(file_path)
+        is_markdown = path.suffix.lower() == ".md" or "Markdown" in selected_filter
+        if not path.suffix:
+            path = path.with_suffix(".md" if is_markdown else ".csv")
+
+        try:
+            if is_markdown:
+                content = export_comparison_markdown(
+                    self._modified_tables,
+                    self._definition_a,
+                    self._definition_b,
+                    self._name_a,
+                    self._name_b,
+                )
+            else:
+                content = export_comparison_csv(
+                    self._modified_tables,
+                    self._definition_a,
+                    self._definition_b,
+                    self._name_a,
+                    self._name_b,
+                )
+            path.write_text(content, encoding="utf-8")
+            logger.info(f"Exported ROM comparison to {path}")
+            self.statusBar().showMessage(f"Exported comparison to {path}")
+        except Exception as e:
+            logger.error(f"Failed to export comparison: {e}")
+            QMessageBox.warning(
+                self,
+                "Export Failed",
+                f"Failed to export comparison:\n{type(e).__name__}: {e}",
+            )
 
     # ========== Copy Table Data ==========
 

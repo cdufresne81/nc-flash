@@ -131,6 +131,7 @@ python main.py
 - "Changed only" toggle dims unchanged cells for focus
 - Synchronized scrolling between original and modified panels
 - Keyboard navigation: `↑`/`↓` tables, `T` toggle, `Esc` close
+- Export the full comparison to CSV or Markdown (`Ctrl+E` or toolbar **Export…**) — every changed cell and axis breakpoint across all modified tables, one row per change
 
 ### Project Management
 - Create tuning projects with version-controlled ROM snapshots

@@ -4,6 +4,9 @@ All notable changes to NC Flash are documented here.
 
 ## [Unreleased]
 
+### Added
+- **Export a ROM comparison to CSV or Markdown (#126).** In the compare window, press `Ctrl+E` or click **Export…** to save every changed cell and axis value. CSV gives one row per change for sorting in a spreadsheet; Markdown gives a readable report grouped by table. Thanks to Luka Chassaing.
+
 ### Fixed
 - **Automated checks now run on pull requests from outside contributors.** They used to fail at setup before running a single test.
 

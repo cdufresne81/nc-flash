@@ -53,7 +53,7 @@ A read-only, side-by-side ROM comparison tool that lets users visually diff two 
 - Undo/redo
 - More than 2 ROMs
 - ~~Comparing ROMs with different definitions~~ — **Implemented:** Cross-definition comparison supported
-- Exporting comparison results
+- ~~Exporting comparison results~~ — **Implemented:** Export to CSV or Markdown (`Ctrl+E` / toolbar **Export…**), see `src/core/comparison_export.py`
 
 ## Architecture
 

@@ -610,3 +610,149 @@ class TestCloseEventClearsParentRef:
         parent = SimpleNamespace(compare_window=other)  # not this window
         self._close(parent)
         assert parent.compare_window is other
+
+
+# ---------------------------------------------------------------------------
+# Tests for _export_comparison (Ctrl+E / toolbar "Export…")
+# ---------------------------------------------------------------------------
+
+
+class TestExportComparison:
+    """_export_comparison touches Qt (statusBar(), QFileDialog, QMessageBox)
+    but not enough to need a fully-constructed window: a SimpleNamespace
+    standing in for `self`, with QFileDialog/QMessageBox patched, is the
+    same pattern TestCloseEventClearsParentRef already uses above.
+    """
+
+    @staticmethod
+    def _make_entry():
+        table = Table(
+            name="T1",
+            address="0x100",
+            type=TableType.ONE_D,
+            elements=1,
+            scaling="s",
+            category="Cat",
+        )
+        return {
+            "table_a": table,
+            "table_b": table,
+            "name": "T1",
+            "category": "Cat",
+            "data_a": {"values": np.array([1.0])},
+            "data_b": {"values": np.array([2.5])},
+            "changed_cells": {(0, 0)},
+            "changed_axes": {},
+            "change_count": 1,
+            "shape_mismatch": False,
+            "a_only": False,
+            "b_only": False,
+        }
+
+    @classmethod
+    def _make_fake(cls, modified_tables, definition=None):
+        from types import SimpleNamespace
+        from unittest.mock import MagicMock
+
+        status_bar = MagicMock()
+        fake = SimpleNamespace(
+            _modified_tables=modified_tables,
+            _definition_a=definition,
+            _definition_b=definition,
+            _name_a="Stock",
+            _name_b="Modified",
+            statusBar=MagicMock(return_value=status_bar),
+        )
+        return fake, status_bar
+
+    def test_no_modified_tables_returns_before_opening_dialog(self):
+        from unittest.mock import patch
+        from src.ui.compare_window import CompareWindow
+
+        fake, status_bar = self._make_fake([])
+        with patch("src.ui.compare_window.QFileDialog") as dlg:
+            CompareWindow._export_comparison(fake)
+        dlg.getSaveFileName.assert_not_called()
+        status_bar.showMessage.assert_not_called()
+
+    def test_cancelled_dialog_writes_nothing(self, isolated_settings, tmp_path):
+        from unittest.mock import patch
+        from src.ui.compare_window import CompareWindow
+
+        definition = RomDefinition(romid=_make_romid(), scalings={"s": _make_scaling()})
+        fake, status_bar = self._make_fake([self._make_entry()], definition)
+        with patch("src.ui.compare_window.QFileDialog") as dlg:
+            dlg.getSaveFileName.return_value = ("", "")
+            CompareWindow._export_comparison(fake)
+        dlg.getSaveFileName.assert_called_once()
+        status_bar.showMessage.assert_not_called()
+        assert list(tmp_path.iterdir()) == []
+
+    def test_csv_extension_writes_csv_content(self, isolated_settings, tmp_path):
+        from unittest.mock import patch
+        from src.ui.compare_window import CompareWindow
+
+        definition = RomDefinition(romid=_make_romid(), scalings={"s": _make_scaling()})
+        out = tmp_path / "report.csv"
+        fake, status_bar = self._make_fake([self._make_entry()], definition)
+        with patch("src.ui.compare_window.QFileDialog") as dlg:
+            dlg.getSaveFileName.return_value = (str(out), "CSV Files (*.csv)")
+            CompareWindow._export_comparison(fake)
+        assert out.exists()
+        content = out.read_text(encoding="utf-8")
+        assert content.startswith("Category,Table,Change Type")
+        assert "1.00,2.50,1.50" in content
+        status_bar.showMessage.assert_called_once()
+
+    def test_markdown_extension_writes_markdown_content(
+        self, isolated_settings, tmp_path
+    ):
+        from unittest.mock import patch
+        from src.ui.compare_window import CompareWindow
+
+        definition = RomDefinition(romid=_make_romid(), scalings={"s": _make_scaling()})
+        out = tmp_path / "report.md"
+        fake, status_bar = self._make_fake([self._make_entry()], definition)
+        with patch("src.ui.compare_window.QFileDialog") as dlg:
+            dlg.getSaveFileName.return_value = (str(out), "Markdown Files (*.md)")
+            CompareWindow._export_comparison(fake)
+        assert out.exists()
+        content = out.read_text(encoding="utf-8")
+        assert content.startswith("# ROM Comparison")
+        status_bar.showMessage.assert_called_once()
+
+    def test_no_extension_falls_back_to_selected_filter(
+        self, isolated_settings, tmp_path
+    ):
+        """If the user typed a bare name with no suffix, the chosen filter
+        (CSV vs Markdown) decides the format and the suffix is appended."""
+        from unittest.mock import patch
+        from src.ui.compare_window import CompareWindow
+
+        definition = RomDefinition(romid=_make_romid(), scalings={"s": _make_scaling()})
+        out = tmp_path / "report"
+        fake, status_bar = self._make_fake([self._make_entry()], definition)
+        with patch("src.ui.compare_window.QFileDialog") as dlg:
+            dlg.getSaveFileName.return_value = (str(out), "Markdown Files (*.md)")
+            CompareWindow._export_comparison(fake)
+        assert (tmp_path / "report.md").exists()
+
+    def test_write_failure_shows_warning_and_does_not_raise(
+        self, isolated_settings, tmp_path
+    ):
+        from unittest.mock import patch
+        from src.ui.compare_window import CompareWindow
+
+        definition = RomDefinition(romid=_make_romid(), scalings={"s": _make_scaling()})
+        # Parent directory does not exist -> Path.write_text raises for real.
+        out = tmp_path / "no_such_dir" / "report.csv"
+        fake, status_bar = self._make_fake([self._make_entry()], definition)
+        with (
+            patch("src.ui.compare_window.QFileDialog") as dlg,
+            patch("src.ui.compare_window.QMessageBox") as msgbox,
+        ):
+            dlg.getSaveFileName.return_value = (str(out), "CSV Files (*.csv)")
+            CompareWindow._export_comparison(fake)
+        msgbox.warning.assert_called_once()
+        status_bar.showMessage.assert_not_called()
+        assert not out.exists()
