@@ -4,6 +4,9 @@ All notable changes to NC Flash are documented here.
 
 ## [Unreleased]
 
+### Added
+- **Groundwork for joining the WiCAN's own Wi-Fi when it can't be found (#129).** Developer notes on how it could work, plus a small test script for Windows. Nothing changes in the app yet.
+
 ## [v2.20.0] - 2026-09-28
 
 **Save a ROM comparison as a CSV or Markdown report**, for sharing a tune's changes or reviewing them in a spreadsheet.
