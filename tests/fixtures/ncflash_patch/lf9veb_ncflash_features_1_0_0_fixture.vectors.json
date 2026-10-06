@@ -1,7 +1,7 @@
 {
- "patch_file": "lf9veb_autoblip_3_4_fixture.ncpatch.json",
- "patch_sha256": "8a8cafde28b03e0c5df65bd147b24cce0b27a1d06b392e9d310da0f14fe1333b",
- "reference_applier_sha256": "ec29a9e23ca4f3811a9160ea2667872ff9ecf3589c966b1d4a51bdd1bbfac306",
+ "patch_file": "lf9veb_ncflash_features_1_0_0_fixture.ncpatch.json",
+ "patch_sha256": "b1656c3fa7f7cc8df286537a5aca19f96742d7faf6ee9057ce6537ba0a784b6d",
+ "reference_applier_sha256": "88ccc70147312a53fe617eb48f6aa4935d52067222288e719df289a12ea359c0",
  "vectors": [
   {
    "name": "fresh romdrop",

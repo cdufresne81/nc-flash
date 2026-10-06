@@ -124,11 +124,11 @@ python main.py
 - Configurable J2534 DLL path (auto-detects Tactrix OpenPort via registry)
 
 ### NC Flash Patches
-- **Tools > Patches** lists the patches NC Flash ships (e.g. AutoBlip) for the open ROM: available, installed, or why not (wrong ROM ID, Romdrop not installed yet, another Romdrop version)
+- **Tools > Patches** shows the NC Flash feature pack for the open ROM (one pack per ROM ID: AutoBlip and later features, each with its own Enable, all shipped off): available, installed (with each feature on or off), or why not (wrong ROM ID, Romdrop not installed yet, another Romdrop version). A ROM holds one pack; test packs appear only after an opt-in
 - Every check runs before anything is written: the ROM ID, the Romdrop code, the bytes the patch replaces, a fingerprint of the ROM's code, the checksum table, and the tune checks the patch carries (integrity pairs, gear ratios, ...). The report says why a patch is refused
 - The patched ROM always goes to a new file; the open ROM is never changed. Checksums are recomputed and the file is read back
 - Patches ship disabled; the report ends with the steps to follow before enabling one
-- A patch's own tables (e.g. "AutoBlip - Enable") appear when NC Flash finds the patch installed, without editing your definition files
+- The pack's tables (e.g. "AutoBlip - Enable", grouped per feature under "NC Flash Features - ...") appear when NC Flash finds the pack installed, without editing your definition files; a table of yours inside the pack's area that the pack doesn't define is flagged as a possibly dead control
 - Bundled patch files are pinned by SHA-256: an altered file is never loaded
 - A Romdrop `.patch` file dropped on the window is recognised and pointed to Romdrop
 

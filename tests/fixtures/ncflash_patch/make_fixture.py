@@ -86,6 +86,8 @@ def autoblip_definitions(xml_path):
     for el in scalings + tables:
         el = etree.fromstring(etree.tostring(el))
         el.tail = None
+        if el.tag == "table":
+            el.set("category", "NC Flash Features - AutoBlip")
         parts.append(etree.tostring(el, encoding="unicode"))
     return "\n".join(parts)
 
@@ -107,17 +109,34 @@ def main(v1_path, xml_path):
     d = {
         "format": "ncflash-patch/2",
         "patch": {
-            "id": "autoblip",
-            "name": "AutoBlip",
-            "version": "3.4",
+            "id": "ncflash-features",
+            "name": "NC Flash features",
+            "version": "1.0.0",
             "channel": "test",
-            "source_sha256": v1["autoblip"]["source_sha256"],
             "notes": "TEST FIXTURE derived from ncflash-autoblip-patch/1 "
             + hashlib.sha256(v1_raw).hexdigest()[:16],
+            "features": [
+                {
+                    "id": "autoblip",
+                    "name": "AutoBlip",
+                    "version": "3.4",
+                    "source_sha256": v1["autoblip"]["source_sha256"],
+                    "enable": {"addr": "0x0FE600", "type": "uint8"},
+                    "requires": [],
+                    "next_steps": [
+                        "Flash this file, then drive with AutoBlip off (Enable = 0).",
+                        "Log the confirmed gear in every gear (5th at several speeds).",
+                        "Set every cell of TP Delta - Fault Threshold to 22.",
+                        "Then set AutoBlip - Enable = 1 and flash again.",
+                    ],
+                }
+            ],
         },
         "rom_id": "LF9VEB",
         "rom_id_addr": "0x0B8046",
-        "requires": {"romdrop_rev": v1["romdrop"]["rev"]},
+        "requires": {"romdrop_rev": v1["romdrop"]["rev"], "patches": []},
+        "conflicts": [],
+        "upgrade_from": [],
         "reference": {
             "factory_sha256": v1["factory_sha256"],
             "base_sha256": v1["r0_sha256"],
@@ -187,12 +206,6 @@ def main(v1_path, xml_path):
         },
         "installed_signature": {"kind": "code", "sha256": sig},
         "definitions": autoblip_definitions(xml_path),
-        "next_steps": [
-            "Flash this file, then drive with AutoBlip off (Enable = 0).",
-            "Log the confirmed gear in every gear (5th at several speeds).",
-            "Set every cell of TP Delta - Fault Threshold to 22.",
-            "Then set AutoBlip - Enable = 1 and flash again.",
-        ],
         "footprint": {
             "rom": [
                 [f"0x{a:06X}", f"0x{b:06X}"]
@@ -201,7 +214,7 @@ def main(v1_path, xml_path):
             ]
         },
     }
-    out = HERE / "lf9veb_autoblip_3_4_fixture.ncpatch.json"
+    out = HERE / "lf9veb_ncflash_features_1_0_0_fixture.ncpatch.json"
     out.write_text(json.dumps(d, indent=1) + "\n", encoding="utf-8", newline="\n")
     print(out, hashlib.sha256(out.read_bytes()).hexdigest())
 

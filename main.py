@@ -1240,22 +1240,32 @@ class MainWindow(
             return False
 
     def _overlay_patch_definitions(self, definition, rom_data):
-        """Add the tables of every bundled patch installed in this ROM.
+        """Add the tables of the NC Flash feature pack installed in this ROM.
 
         In memory only (the metadata file is never written); a table the
-        definition file already has wins. A failure here never blocks opening.
+        definition file already has wins. A table lying in a pack's area that
+        the pack doesn't define (e.g. the retired v1 Auto-Blip block of old
+        installs) is logged as a possibly dead control. A failure here never
+        blocks opening.
         """
-        from src.core.definition_overlay import overlay
+        from src.core.definition_overlay import overlay, stale_tables
         from src.ecu.bundled_patches import patches_for
         from src.ecu.ncflash_patch import detect
 
         try:
             for patch in patches_for(definition.romid.internalidstring):
+                tag = f"{patch.id} {patch.version}"
+                for line in stale_tables(
+                    definition, patch.footprint, patch.definitions, tag
+                ):
+                    logger.warning(
+                        f"The definition has a table {line} inside the "
+                        f"{patch.title} area: it may be a dead or stale control"
+                    )
                 if not patch.definitions:
                     continue
                 if detect(bytes(rom_data), patch).state != "installed":
                     continue
-                tag = f"{patch.id} {patch.version}"
                 definition, added, skipped = overlay(definition, patch.definitions, tag)
                 logger.info(
                     f"{patch.title} installed: {len(added)} table(s) added from the "

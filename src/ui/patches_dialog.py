@@ -29,6 +29,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from ..core.definition_overlay import stale_tables
 from ..ecu import ncflash_patch as N
 from ..ecu.exceptions import ROMValidationError
 from ..ecu.rom_utils import calculate_flash_start_index, get_cal_id, get_rom_id
@@ -44,7 +45,7 @@ _VERDICT_COLOR = {
 }
 _STATE_TEXT = {
     "installed": "Installed",
-    "previous": "Older version installed",
+    "previous": "Older pack installed",
     "available": "Available",
     "unavailable": "Not available",
 }
@@ -68,6 +69,28 @@ def describe_rom(data: bytes) -> tuple:
     return cal, f"ROM ID {cal}, {romdrop}"
 
 
+def next_steps(patch) -> list:
+    """(feature name, steps) groups: per feature, else the pack's, else a default."""
+    groups = []
+    for f in patch.features:
+        steps = [str(x) for x in f.get("next_steps", [])]
+        if steps:
+            groups.append((str(f.get("name") or f.get("id")), steps))
+    if not groups:
+        groups = [("", patch.next_steps or DEFAULT_NEXT_STEPS)]
+    return groups
+
+
+def feature_details(data: bytes, patch) -> str:
+    """'AutoBlip off; Antilag ON (needs X enabled)' for an installed pack."""
+    parts = []
+    for s in N.feature_states(data, patch):
+        state = {True: "ON", False: "off", None: "?"}[s.enabled]
+        need = f" (needs {', '.join(s.missing)} enabled)" if s.missing else ""
+        parts.append(f"{s.name} {state}{need}")
+    return "; ".join(parts)
+
+
 def flash_size_note(written_addrs: list) -> str:
     """How much of the ROM the first flash after applying rewrites."""
     if not written_addrs:
@@ -84,14 +107,27 @@ def flash_size_note(written_addrs: list) -> str:
 class PatchesDialog(QDialog):
     """Lists the bundled patches for the open ROM and applies one to a new file.
 
+    NC Flash ships one feature pack per ROM ID (release, or test after an
+    opt-in); a ROM holds one pack.
+
     Args:
         rom_path: the open ROM's file (None: no ROM open).
         save_document: called before the file is read; saves pending edits and
             returns False if the user cancelled or the save failed.
-        patches: the bundled patches (all ROM IDs); problems: catalogue issues.
+        patches: the bundled packs (all ROM IDs); problems: catalogue issues.
+        definition: the open ROM's loaded definition, to flag tables lying in a
+            pack's area that the pack doesn't define (stale controls).
     """
 
-    def __init__(self, rom_path, save_document, patches, problems=(), parent=None):
+    def __init__(
+        self,
+        rom_path,
+        save_document,
+        patches,
+        problems=(),
+        parent=None,
+        definition=None,
+    ):
         super().__init__(parent)
         self.setWindowTitle("Patches")
         self.setMinimumSize(760, 560)
@@ -99,6 +135,7 @@ class PatchesDialog(QDialog):
         self._save_document = save_document
         self._all = list(patches)
         self._problems = list(problems)
+        self._definition = definition
         self._data = None
         self._cal = None
         self._rows = []  # (patch, status) shown
@@ -191,24 +228,36 @@ class PatchesDialog(QDialog):
     def _refresh(self):
         self._rows = []
         if self._data is not None and self._cal:
-            for p in self._all:
-                if p.rom_id != self._cal:
-                    continue
-                if p.channel == "test" and not self._show_test.isChecked():
-                    continue
-                self._rows.append((p, N.detect(self._data, p)))
+            rows = [
+                (p, N.detect(self._data, p)) for p in self._all if p.rom_id == self._cal
+            ]
+            held = [r for r in rows if r[1].state in ("installed", "previous")]
+            test = [r for r in rows if r[0].channel == "test"]
+            if held:
+                # a ROM holds one pack: show what it holds, nothing next to it
+                self._rows = held
+            elif self._show_test.isChecked() and test:
+                # the test pack replaces the release pack, never sits next to it
+                self._rows = test
+            else:
+                self._rows = [r for r in rows if r[0].channel != "test"]
         self._list.setRowCount(0)
         for p, st in self._rows:
             row = self._list.rowCount()
             self._list.insertRow(row)
-            title = p.name + ("  [TEST]" if p.channel == "test" else "")
-            for col, text in enumerate(
-                [title, p.version, _STATE_TEXT[st.state], st.detail]
-            ):
+            title = p.summary + ("  [TEST]" if p.channel == "test" else "")
+            state = _STATE_TEXT[st.state]
+            detail = st.detail
+            if st.state == "installed":
+                detail = feature_details(self._data, p) or detail
+            elif st.state == "previous":
+                state = f"Older pack installed ({st.version})"
+                detail = "upgrade not supported yet: re-apply on a ROM without it"
+            for col, text in enumerate([title, p.version, state, detail]):
                 self._list.setItem(row, col, QTableWidgetItem(text))
         if self._data is not None and self._cal and not self._rows:
             self._verdict.setText(
-                f"No NC Flash patch is available for {self._cal} yet."
+                f"NC Flash features are not available for {self._cal} yet."
             )
         else:
             self._verdict.setText("")
@@ -269,10 +318,30 @@ class PatchesDialog(QDialog):
             res.report.add(
                 N.REFUSE, f"the check stopped with an error: {type(e).__name__}: {e}"
             )
+        for line in self._stale(patch):
+            res.report.add(
+                N.WARN,
+                f"the definition has a table {line} inside the {patch.title} area: "
+                "it may be a dead or stale control",
+            )
         self._last = (patch, consents, res)
         self._show_report(res)
         self._apply_btn.setEnabled(res.output is not None)
         return res
+
+    def _stale(self, patch) -> list:
+        if self._definition is None:
+            return []
+        try:
+            return stale_tables(
+                self._definition,
+                patch.footprint,
+                patch.definitions,
+                f"{patch.id} {patch.version}",
+            )
+        except Exception as e:  # a display aid only: never block a check
+            logger.warning(f"Stale-table check skipped: {e}")
+            return []
 
     def _on_check(self):
         patch, _ = self._selected()
@@ -328,14 +397,20 @@ class PatchesDialog(QDialog):
 
     def _confirm_open(self, out_path: Path, patch, res) -> bool:
         written = N.diff_addrs(res.output, self._data)
-        steps = patch.next_steps or DEFAULT_NEXT_STEPS
+        lines, i = [], 1
+        for feature, steps in next_steps(patch):
+            if feature:
+                lines.append(f"{feature}:")
+            for step in steps:
+                lines.append(f"{i}. {step}")
+                i += 1
         box = QMessageBox(self)
         box.setWindowTitle("Patch Applied")
         box.setIcon(QMessageBox.Information)
         box.setText(f"{patch.title} written to a new file:\n{out_path}")
         box.setInformativeText(
-            "Next steps:\n"
-            + "\n".join(f"{i}. {s}" for i, s in enumerate(steps, 1))
+            "Every feature ships disabled. Next steps:\n"
+            + "\n".join(lines)
             + "\n\n"
             + flash_size_note(written)
             + "\n\nOpen the new file now?"
@@ -420,6 +495,7 @@ def run_patches_dialog(parent, document, update_tab_title, open_rom_file):
         catalog.patches,
         catalog.problems,
         parent=parent,
+        definition=getattr(document, "rom_definition", None),
     )
     dlg.exec()
     if dlg.open_requested and dlg.patched_rom_path:

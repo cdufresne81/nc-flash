@@ -44,7 +44,9 @@ def test_test_patches_hidden_until_opted_in(r0_file):
     assert dlg._list.rowCount() == 0
     dlg._show_test.setChecked(True)
     assert dlg._list.rowCount() == 1
-    assert "[TEST]" in dlg._list.item(0, 0).text()
+    assert (
+        dlg._list.item(0, 0).text() == "NC Flash features 1.0.0 (AutoBlip 3.4)  [TEST]"
+    )
     assert dlg._list.item(0, 2).text() == "Available"
 
 
@@ -142,7 +144,7 @@ def test_run_dialog_asks_to_save_first(r0_file):
     seen = {}
 
     class Fake:
-        def __init__(self, rom_path, save_document, patches, problems, parent=None):
+        def __init__(self, rom_path, save_document, patches, problems, **kw):
             seen["save_result"] = save_document()
             self.open_requested, self.patched_rom_path = False, None
 
@@ -184,3 +186,48 @@ def test_installed_patch_adds_its_tables(monkeypatch):
     # not installed: definition unchanged
     same = MainWindow._overlay_patch_definitions(None, base, bytearray(_r0()))
     assert same is base
+
+
+def test_stale_table_in_the_pack_area_is_reported(r0_file):
+    base = load_definition(str(REPO / "examples" / "metadata" / "lf9veb.xml"))
+    dlg = D.PatchesDialog(str(r0_file), lambda: True, [_fixture()], definition=base)
+    dlg._show_test.setChecked(True)
+    _select_first(dlg)
+    dlg._on_check()
+    msgs = [f.message for f in dlg._last[2].report.rows if f.level == "WARN"]
+    stale = [m for m in msgs if "dead or stale control" in m]
+    if base.get_table_by_name("Auto-Blip - Enable") is not None:
+        assert stale and "Auto-Blip - Enable at 0xFCAC0" in stale[0]
+
+
+def test_installed_pack_shows_feature_states(tmp_path):
+    from src.ecu import ncflash_patch as N
+
+    p = tmp_path / "installed.bin"
+    p.write_bytes(N.apply_patch(_r0(), _fixture(), {"tyre_restore"}).output)
+    dlg = _dialog(p)
+    assert dlg._list.item(0, 3).text() == "AutoBlip off"
+
+
+def test_next_steps_grouped_per_feature():
+    groups = D.next_steps(_fixture())
+    assert groups[0][0] == "AutoBlip" and len(groups[0][1]) == 4
+
+
+def test_test_pack_replaces_the_release_pack(r0_file, tmp_path):
+    from src.ecu import ncflash_patch as N
+    from test_ncflash_patch import _patch, _raw
+
+    d = _raw()
+    d["patch"]["channel"] = "release"
+    release, test = _patch(d), _fixture()
+    dlg = D.PatchesDialog(str(r0_file), lambda: True, [release, test])
+    assert [p.channel for p, _ in dlg._rows] == ["release"]
+    dlg._show_test.setChecked(True)
+    assert [p.channel for p, _ in dlg._rows] == ["test"]
+    # a ROM holding the release pack shows only that pack, even with test opted in
+    held = tmp_path / "held.bin"
+    held.write_bytes(N.apply_patch(_r0(), release, {"tyre_restore"}).output)
+    dlg = D.PatchesDialog(str(held), lambda: True, [release, test])
+    dlg._show_test.setChecked(True)
+    assert len(dlg._rows) >= 1 and all(st.state == "installed" for _, st in dlg._rows)

@@ -106,3 +106,41 @@ def overlay(
     for line in skipped:
         logger.info(f"{tag} definitions: skipped {line}")
     return merged, added, skipped
+
+
+def _extent(table: Table, definition: RomDefinition) -> tuple:
+    scaling = definition.get_scaling(table.scaling)
+    width = scaling.bytes_per_element if scaling else 1
+    start = table.address_int
+    return start, start + max(table.elements, 1) * width - 1
+
+
+def stale_tables(definition: RomDefinition, spans, xml: str | None, tag: str) -> list:
+    """Tables of ``definition`` inside the patch area that the patch doesn't define.
+
+    ``spans``: the patch footprint, [(lo, hi)] inclusive. A table (or axis)
+    whose bytes fall in it and that is not one of the patch's own tables (same
+    name, address and scaling) is probably a dead or stale control, such as the
+    retired v1 Auto-Blip block in old installs. Returns "name at 0x…" lines.
+    """
+    own = set()
+    if xml:
+        _, tables = parse_fragment(xml, tag)
+        for t in tables:
+            for x in [t, *t.children]:
+                own.add((x.name.strip(), x.address_int, x.scaling))
+    prefix = f"{tag}:"
+    out = []
+    for t in definition.tables:
+        for x in [t, *t.children]:
+            lo, hi = _extent(x, definition)
+            if not any(lo <= b and a <= hi for a, b in spans):
+                continue
+            scaling = (
+                x.scaling[len(prefix) :] if x.scaling.startswith(prefix) else x.scaling
+            )
+            if (x.name.strip(), x.address_int, scaling) in own:
+                continue
+            label = t.name if x is t else f"{t.name} ({x.name})"
+            out.append(f"{label} at 0x{lo:X}")
+    return out

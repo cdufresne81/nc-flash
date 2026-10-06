@@ -733,8 +733,56 @@ class Patch:
     def consents(self) -> list:
         return list(self.data.get("consent", []))
 
+    @property
+    def features(self) -> list:
+        """The pack's features: [{id, name, version, enable: {addr, type}, ...}]."""
+        feats = self.data["patch"].get("features")
+        return (
+            [f for f in feats if isinstance(f, dict)] if isinstance(feats, list) else []
+        )
+
+    @property
+    def summary(self) -> str:
+        """'NC Flash features 1.0.0 (AutoBlip 3.4)' — the panel line."""
+        feats = ", ".join(
+            f"{f.get('name') or f.get('id')} {f.get('version', '')}".strip()
+            for f in self.features
+        )
+        return f"{self.title} ({feats})" if feats else self.title
+
     def ranges_of(self, *kinds) -> list:
         return [r for r in self.ranges if r.kind in kinds]
+
+
+@dataclass
+class FeatureState:
+    id: str
+    name: str
+    enabled: bool | None  # None: no enable flag, or unreadable
+    missing: list  # feature ids it requires that are not enabled
+
+
+def feature_states(d: bytes, patch: Patch) -> list:
+    """Each feature's Enable as the ROM holds it, and unmet feature requirements."""
+    states = []
+    for f in patch.features:
+        en = f.get("enable")
+        enabled = None
+        if isinstance(en, dict):
+            try:
+                enabled = _read(d, en["addr"], en["type"]) != 0
+            except (KeyError, TypeError, ValueError, struct.error, PatchFormatError):
+                enabled = None
+        states.append(
+            FeatureState(
+                str(f.get("id")), str(f.get("name") or f.get("id")), enabled, []
+            )
+        )
+    on = {s.id for s in states if s.enabled}
+    for s, f in zip(states, patch.features):
+        if s.enabled:
+            s.missing = [str(r) for r in (f.get("requires") or []) if str(r) not in on]
+    return states
 
 
 def _regions(lst) -> list:
@@ -954,10 +1002,6 @@ def consents_needed(d: bytes, patch: Patch) -> list:
     ]
 
 
-def _overlaps(a, b) -> bool:
-    return any(x1 <= y2 and x2 <= y1 for x1, y1 in a for x2, y2 in b)
-
-
 # ---------------------------------------------------------------- apply
 
 
@@ -975,9 +1019,9 @@ class ApplyResult:
 def apply_patch(d: bytes, patch: Patch, consent=(), installed=()) -> ApplyResult:
     """Steps 2-9 on bytes in memory; nothing is written.
 
-    ``consent``: the consent ids the user accepted. ``installed``: the other
-    bundled patches detected installed on this ROM; a footprint overlap with
-    one of them refuses. The output is set only on an OK or WARN verdict.
+    ``consent``: the consent ids the user accepted. ``installed``: the bundled
+    packs detected installed on this ROM; any other one refuses (a ROM holds one
+    pack). The output is set only on an OK or WARN verdict.
     """
     rep = Report()
     res = ApplyResult(rep, input_sha256=sha256_hex(d))
@@ -1053,11 +1097,13 @@ def apply_patch(d: bytes, patch: Patch, consent=(), installed=()) -> ApplyResult
                     f"{r.kind} {span}: at {_h(r.addr + i)} expected "
                     f"{r.old[i:i + 16].hex()} found {cur[i:i + 16].hex()} ({why})",
                 )
-    # NC Flash: never overwrite another installed patch
+    # NC Flash: a ROM holds one pack (release or test); switching is an upgrade
     for other in installed:
-        if other.id != patch.id and _overlaps(patch.footprint, other.footprint):
+        if other.sha256 != patch.sha256:
             rep.add(
-                REFUSE, f"{patch.title} would overwrite ROM space {other.title} uses"
+                REFUSE,
+                f"this ROM already holds {other.summary} ({other.channel}): a ROM holds "
+                "one NC Flash pack, and switching packs is an upgrade, not supported yet",
             )
     # 4 consent
     for c in patch.consents:

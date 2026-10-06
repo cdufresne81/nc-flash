@@ -24,7 +24,7 @@ FIXTURE = (
     / "tests"
     / "fixtures"
     / "ncflash_patch"
-    / "lf9veb_autoblip_3_4_fixture.ncpatch.json"
+    / "lf9veb_ncflash_features_1_0_0_fixture.ncpatch.json"
 )
 R0_SHA = "68b6ec4ed663273f30b0ce522a9885e11826db96c44f7d7c3e0be3820201c7c5"
 R1_SHA = "09036104c2cde71169e699ba4b6e7d785afc6b8d062d85a3b2d9f68f5f1caeec"
@@ -83,7 +83,6 @@ class TestGolden:
         assert res.verdict == "WARN"  # consent accepted, TP Delta advice
         assert hashlib.sha256(res.output).hexdigest() == R1_SHA
         assert _fixture().data["reference"]["result_sha256"] == R1_SHA
-        assert any(m.startswith("next: ") for m in _msgs(res, N.INFO))
 
     def test_tyre_restore_without_consent_is_refused(self):
         res = N.apply_patch(_r0(), _fixture())
@@ -224,12 +223,27 @@ class TestRefusals:
         assert res.verdict == "REFUSED" and res.output is None
         assert any("Enable ships 0" in m for m in _msgs(res, N.REFUSE))
 
-    def test_footprint_overlap_with_an_installed_patch(self):
+    def test_a_second_pack_is_refused(self):
         d = _raw()
-        d["patch"]["id"] = "other"
-        d["patch"]["name"] = "Other"
+        d["patch"]["channel"] = "release"  # another pack file, same ROM ID
         res = N.apply_patch(_r0(), _fixture(), TYRE, installed=[_patch(d)])
-        assert any("would overwrite ROM space" in m for m in _msgs(res, N.REFUSE))
+        assert any("a ROM holds one NC Flash pack" in m for m in _msgs(res, N.REFUSE))
+
+    def test_the_same_pack_listed_as_installed_is_not_a_second_pack(self):
+        res = N.apply_patch(_r0(), _fixture(), TYRE, installed=[_fixture()])
+        assert res.verdict == "WARN"
+
+    def test_empty_dependency_lists_are_accepted(self):
+        d = _raw()
+        assert d["requires"]["patches"] == [] and d["conflicts"] == []
+        assert d["upgrade_from"] == []
+        assert _patch(d).summary == "NC Flash features 1.0.0 (AutoBlip 3.4)"
+
+    def test_non_empty_upgrade_from_is_refused(self):
+        d = _raw()
+        d["upgrade_from"] = [{"version": "0.9.0"}]
+        with pytest.raises(N.PatchFormatError, match="not supported"):
+            _patch(d)
 
     def test_output_check_sees_the_written_image(self):
         d = _raw()
@@ -245,6 +259,34 @@ class TestRefusals:
         )
         res = N.apply_patch(_r0(), _patch(d), TYRE)
         assert any("enable in output" in m for m in _msgs(res, N.REFUSE))
+
+
+class TestFeatures:
+    def test_feature_states(self):
+        p = _fixture()
+        out = N.apply_patch(_r0(), p, TYRE).output
+        (st,) = N.feature_states(out, p)
+        assert (st.id, st.enabled, st.missing) == ("autoblip", False, [])
+        on = bytearray(out)
+        on[0xFE600] = 1
+        assert N.feature_states(bytes(on), p)[0].enabled is True
+
+    def test_missing_required_feature(self):
+        d = _raw()
+        d["patch"]["features"].append(
+            {
+                "id": "antilag",
+                "name": "Antilag",
+                "version": "0.1",
+                "enable": {"addr": "0x0FE601", "type": "uint8"},
+                "requires": ["autoblip"],
+            }
+        )
+        p = _patch(d)
+        rom = bytearray(N.apply_patch(_r0(), _fixture(), TYRE).output)
+        rom[0xFE601] = 1
+        states = {s.id: s for s in N.feature_states(bytes(rom), p)}
+        assert states["antilag"].missing == ["autoblip"]
 
 
 class TestTuneEdits:
@@ -470,8 +512,8 @@ class TestFiles:
 class TestCatalog:
     def _make(self, tmp_path, pins_override=None):
         root = tmp_path / "patches"
-        (root / "autoblip" / "3.4").mkdir(parents=True)
-        rel = "autoblip/3.4/lf9veb.ncpatch.json"
+        (root / "ncflash-features" / "1.0.0").mkdir(parents=True)
+        rel = "ncflash-features/1.0.0/lf9veb.ncpatch.json"
         raw = FIXTURE.read_bytes()
         (root / rel).write_bytes(raw)
         sha = hashlib.sha256(raw).hexdigest()
@@ -480,8 +522,8 @@ class TestCatalog:
                 "format": "ncflash-patch-index/1",
                 "patches": [
                     {
-                        "id": "autoblip",
-                        "version": "3.4",
+                        "id": "ncflash-features",
+                        "version": "1.0.0",
                         "channel": "test",
                         "rom_id": "LF9VEB",
                         "file": rel,
@@ -503,7 +545,7 @@ class TestCatalog:
 
     def test_unpinned_file_is_left_out(self, tmp_path):
         root, pins = self._make(
-            tmp_path, {"autoblip/3.4/lf9veb.ncpatch.json": "0" * 64}
+            tmp_path, {"ncflash-features/1.0.0/lf9veb.ncpatch.json": "0" * 64}
         )
         cat = N.load_catalog(root, pins)
         assert cat.patches == [] and cat.problems
