@@ -55,7 +55,13 @@ class TestWiCANConnect:
             assert session.adapter_kind == "wican"
             assert session.transport is transport
             mock_open.assert_called_once()
-            MockUDS.return_value.tester_present.assert_called_once()
+            # The connect probe uses the short budget: a silent ECU (ignition
+            # off) fails in seconds, not 60 s (#131).
+            from src.ecu.constants import TIMEOUT_PROBE
+
+            MockUDS.return_value.tester_present.assert_called_once_with(
+                timeout_ms=TIMEOUT_PROBE
+            )
 
     def test_connect_without_a_host_is_refused(self, _qapp):
         session = ECUSession(adapter_config={"kind": "wican"})
@@ -138,7 +144,7 @@ class TestWiCANBusReservation:
             datalog = MockDatalog.return_value
             datalog.acquire_bus.side_effect = lambda: calls.append("acquire_bus")
             datalog.release_bus.side_effect = lambda: calls.append("release_bus")
-            MockUDS.return_value.tester_present.side_effect = lambda: calls.append(
+            MockUDS.return_value.tester_present.side_effect = lambda **_: calls.append(
                 "tester_present"
             )
 
@@ -172,7 +178,7 @@ class TestWiCANBusReservation:
                 "acquire_bus"
             )
             transport.flush.side_effect = lambda: calls.append("flush")
-            MockUDS.return_value.tester_present.side_effect = lambda: calls.append(
+            MockUDS.return_value.tester_present.side_effect = lambda **_: calls.append(
                 "tester_present"
             )
 

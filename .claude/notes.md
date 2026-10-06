@@ -17,6 +17,11 @@ History before Sep 24, 2026: `git show f4709f1:.claude/notes.md` (search it, don
 
 ## Open items (not tracked in an issue)
 
+- **Bench-test #130/#131 on the Tactrix clone (J2534)** (owner: user). Only tested over
+  WiCAN so far. Check: ignition OFF → Connect fails in ~3 s, not 60 s; right after a ROM
+  read or RAM scan, Flash waits ~6.5 s then reads RPM and voltage (no false refusal);
+  pulling the cable mid-session → "ECU not answering" and buttons fail fast. Delete this
+  item once done (or open an issue if anything misbehaves).
 - **ROM definitions (after PR #120, speeps import):**
   - Decided: nc-flash-re is the working copy where definitions are edited; NC Flash holds the
     released copy (copied in, never hand-edited). Check any change with

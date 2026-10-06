@@ -465,12 +465,28 @@ class TestEnforceRpmGate:
 
         assert enforce_rpm_gate(self._uds(None)) is None
 
-    def test_read_exception_does_not_block(self):
+    def test_failed_read_blocks(self):
+        """A read that fails (no reply, corrupt frame) can't prove the engine is
+        off, so the flash must not start, override or not (#130)."""
         from src.ecu.flash_manager import enforce_rpm_gate
+        from src.ecu.exceptions import EngineRunningError, UDSTimeoutError
 
         uds = MagicMock()
-        uds.read_engine_rpm.side_effect = RuntimeError("boom")
-        assert enforce_rpm_gate(uds) is None
+        uds.read_engine_rpm.side_effect = UDSTimeoutError("no reply")
+        from src.ecu.exceptions import GuardReadError
+
+        with pytest.raises(
+            GuardReadError, match="Could not read the engine RPM"
+        ) as exc:
+            enforce_rpm_gate(uds, allow_override=True)
+        assert not isinstance(exc.value, EngineRunningError)
+
+    def test_gate_reads_rpm_strictly(self):
+        from src.ecu.flash_manager import enforce_rpm_gate
+
+        uds = self._uds(0.0)
+        enforce_rpm_gate(uds)
+        uds.read_engine_rpm.assert_called_once_with(strict=True, wait_session_exit=True)
 
     def test_no_uds_does_not_block(self):
         from src.ecu.flash_manager import enforce_rpm_gate

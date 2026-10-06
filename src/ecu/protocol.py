@@ -41,6 +41,7 @@ from .constants import (
     TIMEOUT_READ,
     TIMEOUT_RESET,
     TIMEOUT_RESPONSE_PENDING_MAX,
+    TIMEOUT_PROBE,
 )
 from .exceptions import (
     J2534Error,
@@ -202,7 +203,7 @@ class UDSConnection:
                     nrc_level,
                     f"UDS NRC: SID=0x{service_id:02X} NRC=0x{nrc:02X} ({desc})",
                 )
-                raise NegativeResponseError(nrc, desc)
+                raise NegativeResponseError(nrc, desc, service_id=resp_data[1])
 
             # Check for positive response
             if resp_data[0] == positive_sid:
@@ -228,32 +229,61 @@ class UDSConnection:
 
     # --- Diagnostic Services ---
 
-    def tester_present(self) -> None:
-        """Send Tester Present to keep the session alive."""
-        self.send_request(SID_TESTER_PRESENT, bytes([TESTER_PRESENT_SUB]))
+    def tester_present(self, timeout_ms: Optional[int] = None) -> None:
+        """Send Tester Present to keep the session alive.
+
+        Args:
+            timeout_ms: Total time to wait for the reply. ``None`` (keep-alives
+                during an operation) keeps the normal per-read timeout and the
+                long response-pending budget. The "is the ECU there?" probes pass
+                ``TIMEOUT_PROBE`` so a silent ECU (ignition off) fails in seconds.
+        """
+        if timeout_ms is None:
+            self.send_request(SID_TESTER_PRESENT, bytes([TESTER_PRESENT_SUB]))
+        else:
+            try:
+                self.send_request(
+                    SID_TESTER_PRESENT,
+                    bytes([TESTER_PRESENT_SUB]),
+                    timeout=timeout_ms,
+                    pending_max=timeout_ms,
+                )
+            except UDSTimeoutError as exc:
+                if exc.__context__ is not None:
+                    raise  # a corrupt frame, not silence: the hint would mislead
+                raise UDSTimeoutError(
+                    f"No reply from the ECU within {timeout_ms / 1000:.0f} s. Check "
+                    f"the ignition is ON and the adapter is connected. ({exc})"
+                ) from exc
         logger.debug("ECU >> Tester Present acknowledged")
 
     # --- OBD-II Live Data ---
 
-    def read_obd_pid(self, pid: int) -> bytes:
+    def read_obd_pid(self, pid: int, timeout_ms: Optional[int] = None) -> bytes:
         """
         Read a standard OBD-II PID via Service 0x01.
 
         Args:
             pid: OBD-II PID number (e.g., 0x0C for RPM, 0x42 for voltage)
+            timeout_ms: Total time to wait for the reply. ``None`` keeps the
+                normal per-read timeout and response-pending budget.
 
         Returns:
             Raw PID data bytes (after the PID echo byte)
         """
         from .constants import SID_OBD_CURRENT_DATA
 
+        budget = {}
+        if timeout_ms is not None:
+            budget = {"timeout": timeout_ms, "pending_max": timeout_ms}
         # On a post-op reconnect the ECU answers OBD reads with NRC 0x22
-        # (conditions not correct). These reads are best-effort (the callers
-        # swallow failures and return None), so quiet that expected NRC.
+        # (conditions not correct, still in a programming session). Expected,
+        # so keep it quiet; the callers decide what it means.
         response = self.send_request(
             SID_OBD_CURRENT_DATA,
             bytes([pid]),
             quiet_nrcs={NRC_CONDITIONS_NOT_CORRECT},
+            **budget,
         )
         # Response: [pid_echo, data...] (send_request strips the 0x41 positive SID)
         if not response or response[0] != pid:
@@ -262,40 +292,118 @@ class UDSConnection:
             raise UDSError(f"OBD PID 0x{pid:02X}: unexpected response format")
         return response[1:]
 
-    def read_battery_voltage(self) -> float | None:
+    def _read_pid_word(
+        self, pid: int, name: str, strict: bool, wait_session_exit: bool = False
+    ) -> Optional[int]:
+        """Read a 2-byte OBD PID as an unsigned int, or ``None`` if unavailable.
+
+        "Unavailable" means the ECU ANSWERED and declined this OBD request (a
+        negative response echoing SID 0x01): the PID is unsupported, or the ECU
+        is in a state that refuses OBD (NRC 0x11 from the bootloader after a
+        failed flash). That must never block a flash, or a recovery re-flash
+        would be impossible.
+
+        Anything else (no reply, a corrupt or malformed reply, a transport error,
+        a refusal of some other request) says nothing about the car. With
+        ``strict`` it raises, so a flash guard stops instead of silently
+        skipping its check. Without it (the live dashboard) it returns ``None``.
+
+        With ``wait_session_exit`` (the flash guards; never the UI-thread
+        dashboard), NRC 0x22 (the ECU still in a programming session after a
+        ROM read) gets one wait-and-retry so the check really runs. A second
+        0x22 raises with ``strict``: the check could not run, so the flash must
+        not silently skip it.
+        """
+        from .constants import (
+            PROGRAMMING_SESSION_EXIT_WAIT_MS,
+            SID_OBD_CURRENT_DATA,
+        )
+
+        for attempt in (1, 2):
+            try:
+                data = self.read_obd_pid(pid, timeout_ms=TIMEOUT_PROBE)
+                if len(data) < 2:
+                    raise UDSError(
+                        f"OBD PID 0x{pid:02X}: short reply ({len(data)} data bytes)"
+                    )
+                return (data[0] << 8) | data[1]
+            except NegativeResponseError as exc:
+                if exc.service_id not in (None, SID_OBD_CURRENT_DATA):
+                    # A refusal of some OTHER request (a late reply, another
+                    # tester) says nothing about this PID: not a decline.
+                    if strict:
+                        raise UDSError(
+                            f"OBD PID 0x{pid:02X}: got a refusal meant for SID "
+                            f"0x{exc.service_id:02X} ({exc})"
+                        ) from exc
+                    logger.debug(f"{name}: foreign-SID refusal ignored: {exc}")
+                    return None
+                if wait_session_exit and exc.nrc == NRC_CONDITIONS_NOT_CORRECT:
+                    if attempt == 2:
+                        if strict:
+                            raise UDSError(
+                                f"OBD PID 0x{pid:02X}: the ECU is still in a "
+                                "programming session after "
+                                f"{PROGRAMMING_SESSION_EXIT_WAIT_MS / 1000.0:.1f} s "
+                                f"({exc})"
+                            ) from exc
+                        return None
+                    logger.info(
+                        "%s: the ECU is still in a programming session (NRC 0x22); "
+                        "waiting %.1f s for it to return to normal, then reading "
+                        "again",
+                        name,
+                        PROGRAMMING_SESSION_EXIT_WAIT_MS / 1000.0,
+                    )
+                    time.sleep(PROGRAMMING_SESSION_EXIT_WAIT_MS / 1000.0)
+                    continue
+                logger.debug(
+                    f"{name} declined by the ECU (treated as unsupported): {exc}"
+                )
+                return None
+            except Exception as exc:
+                if strict:
+                    raise
+                logger.debug(f"{name} failed (treated as unavailable): {exc}")
+                return None
+        return None  # not reached: attempt 2 always returns or raises
+
+    def read_battery_voltage(
+        self, strict: bool = False, wait_session_exit: bool = False
+    ) -> float | None:
         """Read control module voltage via OBD-II PID 0x42.
 
-        Returns voltage in volts, or None if unsupported/failed.
+        Returns voltage in volts, or None if the ECU declined the request. With
+        ``strict=False`` a failed read also returns None; with ``strict=True``
+        it raises. ``wait_session_exit`` waits out a programming session (see
+        :meth:`_read_pid_word`).
         """
         from .constants import OBD_PID_CONTROL_MODULE_VOLTAGE
 
-        try:
-            data = self.read_obd_pid(OBD_PID_CONTROL_MODULE_VOLTAGE)
-            if len(data) >= 2:
-                return ((data[0] << 8) | data[1]) / 1000.0
-        except Exception as exc:
-            # Fail-open (a missing PID must not block a flash), but log at DEBUG
-            # so a real comms fault isn't misread as "PID unsupported" in a
-            # post-mortem (G6).
-            logger.debug(f"read_battery_voltage failed (treated as unsupported): {exc}")
-        return None
+        raw = self._read_pid_word(
+            OBD_PID_CONTROL_MODULE_VOLTAGE,
+            "read_battery_voltage",
+            strict,
+            wait_session_exit,
+        )
+        return None if raw is None else raw / 1000.0
 
-    def read_engine_rpm(self) -> float | None:
+    def read_engine_rpm(
+        self, strict: bool = False, wait_session_exit: bool = False
+    ) -> float | None:
         """Read engine RPM via OBD-II PID 0x0C.
 
-        Returns RPM, or None if unsupported/failed.
+        Returns RPM, or None if the ECU declined the request. With
+        ``strict=False`` a failed read also returns None; with ``strict=True``
+        it raises. ``wait_session_exit`` waits out a programming session (see
+        :meth:`_read_pid_word`).
         """
         from .constants import OBD_PID_ENGINE_RPM
 
-        try:
-            data = self.read_obd_pid(OBD_PID_ENGINE_RPM)
-            if len(data) >= 2:
-                return ((data[0] << 8) | data[1]) / 4.0
-        except Exception as exc:
-            # Fail-open (see read_battery_voltage) but log the real cause at
-            # DEBUG so the RPM gate's "PID unsupported?" isn't misleading (G6).
-            logger.debug(f"read_engine_rpm failed (treated as unsupported): {exc}")
-        return None
+        raw = self._read_pid_word(
+            OBD_PID_ENGINE_RPM, "read_engine_rpm", strict, wait_session_exit
+        )
+        return None if raw is None else raw / 4.0
 
     # --- Diagnostic Sessions ---
 

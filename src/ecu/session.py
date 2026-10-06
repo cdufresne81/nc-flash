@@ -28,7 +28,7 @@ from typing import Optional
 
 from PySide6.QtCore import QObject, Signal
 
-from .constants import DEFAULT_J2534_DLL
+from .constants import DEFAULT_J2534_DLL, TIMEOUT_PROBE
 
 logger = logging.getLogger(__name__)
 
@@ -209,7 +209,7 @@ class ECUSession(QObject):
         self._uds = UDSConnection(J2534Transport(self._device, self._channel_id))
 
         # Single Tester Present to verify ECU is alive
-        self._uds.tester_present()
+        self._uds.tester_present(timeout_ms=TIMEOUT_PROBE)
         logger.info("ECU session established (J2534)")
 
     def _connect_wican(self):
@@ -255,7 +255,7 @@ class ECUSession(QObject):
         # until the bus is quiet so the first UDS exchange starts clean.
         transport.flush()
         self._uds = UDSConnection(transport)
-        self._uds.tester_present()
+        self._uds.tester_present(timeout_ms=TIMEOUT_PROBE)
         logger.info(
             "ECU session established (WiCAN %s:%s)",
             self._wican_host,

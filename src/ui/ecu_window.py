@@ -40,6 +40,7 @@ from src.ecu.flash_manager import (
     FlashProgress,
     SECURE_MODULE_AVAILABLE,
 )
+from src.ecu.constants import TIMEOUT_PROBE
 from src.ecu.exceptions import ECUError, FlashAbortedError, ROMValidationError
 from src.ecu.rom_utils import get_cal_id
 from src.ecu.dtc import dedup_dtcs
@@ -50,6 +51,10 @@ logger = logging.getLogger(__name__)
 
 # Refresh interval for voltage/RPM polling (ms)
 CONDITION_POLL_INTERVAL = 5000
+# Consecutive polls the ECU may miss (ignition off, link gone) before the window
+# disconnects. The reads run on the UI thread, so polling a silent ECU would
+# freeze the window for each read's timeout, every poll.
+POLL_MISSES_BEFORE_DISCONNECT = 2
 
 
 # --- Workers ---
@@ -180,6 +185,9 @@ class ECUProgrammingWindow(QMainWindow):
         self._session_acquired = False
         self._current_operation = None
         self._ecu_busy = False  # True during any ECU operation
+        self._poll_misses = 0
+        self._conditions_pending = False  # connect-time load skipped (no reply)
+        self._guard_override = False  # operator overrode unreadable flash checks
         self._poll_timer = QTimer(self)
         self._poll_timer.setInterval(CONDITION_POLL_INTERVAL)
         self._poll_timer.timeout.connect(self._poll_conditions)
@@ -465,10 +473,8 @@ class ECUProgrammingWindow(QMainWindow):
     def _on_session_state(self, state: str):
         if state == ECUSessionState.CONNECTED.value:
             self._disconnect_reason = None  # clear any stale loss reason
-            self._conn_label.setText("Connected")
-            self._conn_label.setStyleSheet(
-                "font-weight: bold; font-size: 13px; color: #44aa44; border: none;"
-            )
+            self._poll_misses = 0
+            self._show_connected_label()
             self._btn_connect.setEnabled(False)
             self._btn_disconnect.setEnabled(True)
             self._read_conditions_async()
@@ -517,10 +523,18 @@ class ECUProgrammingWindow(QMainWindow):
             return
         uds = self._session.uds
         data = {}
+        self._conditions_pending = False
         try:
-            uds.tester_present()
-        except Exception:
-            pass
+            uds.tester_present(timeout_ms=TIMEOUT_PROBE)
+        except Exception as exc:
+            # ECU went silent right after connecting: skip the VIN/ROM-ID/DTC
+            # reads (each would wait out its full timeout) and let the poll
+            # confirm or recover; the poll reloads them once the ECU answers.
+            self._conditions_pending = True
+            self._on_poll_no_reply(exc)
+            if self._session and self._session.is_connected:
+                self._poll_timer.start()
+            return
         try:
             vin_data = uds.read_vin_block()
             if vin_data:
@@ -614,16 +628,25 @@ class ECUProgrammingWindow(QMainWindow):
             return
         if self._ecu_busy:
             return
+        # A trip-log download loads the WiCAN; a slow reply then is not a
+        # silent ECU, so don't count misses (or disconnect) meanwhile.
+        log_sync = getattr(self._main_window, "wican_log_sync", None)
+        if log_sync is not None and log_sync.is_running:
+            return
 
         uds = self._session.uds
         try:
-            voltage = uds.read_battery_voltage()
-        except Exception:
-            voltage = None
-        try:
-            rpm = uds.read_engine_rpm()
-        except Exception:
-            rpm = None
+            # strict: a silent ECU raises (after TIMEOUT_PROBE) instead of
+            # looking like "PID not supported"; one failed read skips the other.
+            voltage = uds.read_battery_voltage(strict=True)
+            rpm = uds.read_engine_rpm(strict=True)
+        except Exception as exc:
+            self._on_poll_no_reply(exc)
+            return
+        self._on_ecu_answered()
+        if self._conditions_pending:
+            self._read_conditions_async()  # also repaints voltage + RPM
+            return
 
         self._voltage = voltage
         self._rpm = rpm
@@ -636,6 +659,10 @@ class ECUProgrammingWindow(QMainWindow):
             else:
                 self._card_battery.set_value(f"{v:.1f}V", "#cc4444")
                 self._card_battery.set_subtitle("LOW — charge battery", "#cc4444")
+        else:
+            # Declined by the ECU; also clears a stale "No reply" after a miss.
+            self._card_battery.set_value("N/A", theme.TEXT_MUTED)
+            self._card_battery.set_subtitle("PID not supported")
 
         if self._rpm is not None:
             if self._rpm < 1.0:
@@ -644,8 +671,73 @@ class ECUProgrammingWindow(QMainWindow):
             else:
                 self._card_engine.set_value(f"{self._rpm:.0f} RPM", "#cc4444")
                 self._card_engine.set_subtitle("ENGINE RUNNING — turn off!", "#cc4444")
+        else:
+            self._card_engine.set_value("N/A", theme.TEXT_MUTED)
+            self._card_engine.set_subtitle("PID not supported")
 
         self._update_action_states()
+
+    def _on_poll_no_reply(self, exc: Exception):
+        """The ECU did not answer a dashboard read. Show it; after
+        ``POLL_MISSES_BEFORE_DISCONNECT`` misses in a row, disconnect so the
+        window stops polling (and freezing on) a silent ECU."""
+        self._poll_misses += 1
+        logger.warning(
+            "ECU did not answer the dashboard poll (%d/%d): %s",
+            self._poll_misses,
+            POLL_MISSES_BEFORE_DISCONNECT,
+            exc,
+        )
+        self._voltage = None
+        self._rpm = None
+        for card in (self._card_battery, self._card_engine):
+            card.set_value("—", "gray")
+            card.set_subtitle("No reply from ECU")
+        self._show_connected_label(answering=False)
+        if self._poll_misses >= POLL_MISSES_BEFORE_DISCONNECT:
+            self._poll_timer.stop()
+            self._disconnect_reason = (
+                "ECU stopped answering. Check the ignition is ON, then reconnect."
+            )
+            if self._session:
+                self._session.disconnect_ecu()
+        self._update_action_states()
+
+    def _on_ecu_answered(self):
+        """The ECU answered again: clear the miss count and the warning."""
+        if self._poll_misses:
+            self._poll_misses = 0
+            self._show_connected_label()
+
+    def _show_connected_label(self, answering: bool = True):
+        if answering:
+            text, color = "Connected", "#44aa44"
+        else:
+            text, color = "Connected — ECU not answering", theme.WARNING_AMBER
+        self._conn_label.setText(text)
+        self._conn_label.setStyleSheet(
+            f"font-weight: bold; font-size: 13px; color: {color}; border: none;"
+        )
+
+    def _ecu_answers(self) -> bool:
+        """Quick "is the ECU there?" check before a synchronous ECU action.
+
+        DTC read/clear run on the UI thread with the full UDS timeouts, so a
+        silent ECU (ignition off) would freeze the window for a minute. A
+        failed check counts as a missed poll and tells the user why.
+        Every ECU action in this window calls it first.
+        """
+        if not self._session or not self._session.uds:
+            QMessageBox.warning(self, "Not Connected", "Connect to the ECU first.")
+            return False
+        try:
+            self._session.uds.tester_present(timeout_ms=TIMEOUT_PROBE)
+        except Exception as exc:
+            self._on_poll_no_reply(exc)
+            QMessageBox.warning(self, "ECU Not Answering", str(exc))
+            return False
+        self._on_ecu_answered()
+        return True
 
     def _reset_cards(self):
         self._card_battery.set_value("—", "gray")
@@ -856,22 +948,37 @@ class ECUProgrammingWindow(QMainWindow):
         PID 0x0C read via :func:`enforce_rpm_gate` BEFORE the programming session
         — once a programming session is active, OBD RPM is unreadable, so this
         must run here. If the engine is running the flash is refused, with an
-        explicit, off-by-default override the operator must confirm. A None /
-        unreadable RPM does not block (transport-agnostic: J2534 and WiCAN).
+        explicit, off-by-default override the operator must confirm. An ECU that
+        declines the RPM request does not block. A read that fails (no reply,
+        corrupt reply) refuses the flash; only if the ECU still answers Tester
+        Present (a recovery case: answers the login but not OBD) is an explicit,
+        off-by-default override offered, which also lets the WiCAN battery
+        check proceed if it can't read either (``_guard_override``).
+        Transport-agnostic: J2534 and WiCAN.
         """
+        self._guard_override = False
         if not self._session or not self._session.uds:
             return True
         from src.ecu.flash_manager import enforce_rpm_gate
-        from src.ecu.exceptions import EngineRunningError
+        from src.ecu.exceptions import EngineRunningError, FlashError, GuardReadError
 
+        # The read can wait ~6.5 s if the ECU is still in a programming session.
+        QApplication.setOverrideCursor(Qt.WaitCursor)
         try:
             enforce_rpm_gate(self._session.uds)
+            error = None
+        except FlashError as exc:  # incl. EngineRunningError, GuardReadError
+            error = exc
+        finally:
+            QApplication.restoreOverrideCursor()
+
+        if error is None:
             return True
-        except EngineRunningError as exc:
+        if isinstance(error, EngineRunningError):
             reply = QMessageBox.warning(
                 self,
                 "Engine Running — Flash Blocked",
-                f"The engine is running ({exc.rpm:.0f} RPM).\n\n"
+                f"The engine is running ({error.rpm:.0f} RPM).\n\n"
                 "Flashing with the engine running risks bricking the ECU. Turn "
                 "the engine OFF (ignition ON, engine not started) and try again.\n\n"
                 "Override and flash anyway? (NOT recommended)",
@@ -881,10 +988,49 @@ class ECUProgrammingWindow(QMainWindow):
             if reply == QMessageBox.Yes:
                 logger.warning(
                     "Operator overrode the engine-running flash gate (%.0f RPM)",
-                    exc.rpm,
+                    error.rpm,
                 )
                 return True
             return False
+        if isinstance(error, GuardReadError):
+            return self._offer_guard_override(error)
+        QMessageBox.warning(self, "Flash Not Started", str(error))
+        return False
+
+    def _offer_guard_override(self, exc: Exception) -> bool:
+        """The RPM read failed. Refuse, unless the ECU still answers Tester
+        Present AND the operator explicitly overrides (default: No)."""
+        QApplication.setOverrideCursor(Qt.WaitCursor)
+        try:
+            self._session.uds.tester_present(timeout_ms=TIMEOUT_PROBE)
+            answers = True
+        except Exception:
+            answers = False
+        finally:
+            QApplication.restoreOverrideCursor()
+        if not answers:
+            QMessageBox.warning(self, "Flash Not Started", str(exc))
+            return False
+        reply = QMessageBox.warning(
+            self,
+            "Safety Checks Could Not Run",
+            f"{exc}\n\n"
+            "The ECU answers, but not the engine-RPM request. This is usually a "
+            "weak or busy link: choose No and retry first. It can also happen "
+            "when recovering an ECU after a failed flash.\n\n"
+            "Flash anyway WITHOUT the engine-off and battery checks? Only do this "
+            "if the engine is off and the battery is charged. (NOT recommended "
+            "otherwise.)",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No,
+        )
+        if reply != QMessageBox.Yes:
+            return False
+        logger.warning(
+            "Operator overrode the unreadable engine-RPM/battery checks: %s", exc
+        )
+        self._guard_override = True
+        return True
 
     def _confirm_wican_flash(self) -> bool:
         """Gate the WiCAN (WiFi) flash path before a write starts.
@@ -934,6 +1080,8 @@ class ECUProgrammingWindow(QMainWindow):
         self._update_action_states()
         started = False
         try:
+            if not self._ecu_answers():
+                return
             if not self._check_voltage_warning():
                 return
             if not self._check_rpm_gate():
@@ -994,6 +1142,8 @@ class ECUProgrammingWindow(QMainWindow):
         self._update_action_states()
         started = False
         try:
+            if not self._ecu_answers():
+                return
             if not self._check_voltage_warning():
                 return
             if not self._check_rpm_gate():
@@ -1038,7 +1188,7 @@ class ECUProgrammingWindow(QMainWindow):
     def _on_read_rom(self):
         self._ecu_busy = True
         self._update_action_states()
-        if not self._check_voltage_warning(operation="read"):
+        if not self._ecu_answers() or not self._check_voltage_warning(operation="read"):
             self._ecu_busy = False
             self._update_action_states()
             return
@@ -1047,7 +1197,7 @@ class ECUProgrammingWindow(QMainWindow):
     def _on_scan_ram(self):
         self._ecu_busy = True
         self._update_action_states()
-        if not self._check_voltage_warning(operation="read"):
+        if not self._ecu_answers() or not self._check_voltage_warning(operation="read"):
             self._ecu_busy = False
             self._update_action_states()
             return
@@ -1115,10 +1265,13 @@ class ECUProgrammingWindow(QMainWindow):
                 # on the SAME whole-session bus reservation (one bus owner, never a
                 # double-claim). None on the legacy reboot path -> the flasher makes
                 # its own and self-claims, exactly as before.
+                # The override covers this one flash only.
+                override, self._guard_override = self._guard_override, False
                 return WiCANSdFlasher(
                     transport,
                     source_name=source_name,
                     datalog=self._session.wican_datalog,
+                    allow_unread_voltage=override,
                 )
             if uds is None:
                 logger.error("WiCAN %s requested with no open connection", operation)
@@ -1459,6 +1612,8 @@ class ECUProgrammingWindow(QMainWindow):
         self._ecu_busy = True
         self._update_action_states()
         try:
+            if not self._ecu_answers():
+                return
             manager = FlashManager(self._get_dll_path())
             dtcs = manager.read_dtcs(uds=self._session.uds)
             unique = dedup_dtcs(dtcs)
@@ -1514,6 +1669,8 @@ class ECUProgrammingWindow(QMainWindow):
             self._update_action_states()
             return
         try:
+            if not self._ecu_answers():
+                return
             manager = FlashManager(self._get_dll_path())
             self._do_clear_dtcs(manager)
         except ECUError as e:

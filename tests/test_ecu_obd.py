@@ -105,3 +105,71 @@ class TestReadEngineRpm:
         uds.send_request = MagicMock(side_effect=Exception("NRC"))
         result = uds.read_engine_rpm()
         assert result is None
+
+
+class TestStrictFlashGuardReads:
+    """strict=True (the pre-flash guards): only an ECU that answers and declines
+    counts as "unavailable"; a read that fails raises so the flash stops (#130)."""
+
+    @staticmethod
+    def _uds_raising(exc):
+        uds = _make_uds(None)
+        uds.send_request = MagicMock(side_effect=exc)
+        return uds
+
+    @pytest.mark.parametrize("method", ["read_battery_voltage", "read_engine_rpm"])
+    @pytest.mark.parametrize("nrc", [0x11, 0x12, 0x22, 0x31])
+    def test_negative_response_is_unavailable_even_strict(self, method, nrc):
+        """The bootloader answers OBD with NRC 0x11 after a flash; a recovery
+        re-flash must still get past the guards."""
+        from src.ecu.exceptions import NegativeResponseError
+
+        uds = self._uds_raising(NegativeResponseError(nrc))
+        assert getattr(uds, method)(strict=True) is None
+
+    @pytest.mark.parametrize("method", ["read_battery_voltage", "read_engine_rpm"])
+    def test_timeout_raises_when_strict(self, method):
+        from src.ecu.exceptions import UDSTimeoutError
+
+        uds = self._uds_raising(UDSTimeoutError("no reply"))
+        with pytest.raises(UDSTimeoutError):
+            getattr(uds, method)(strict=True)
+
+    @pytest.mark.parametrize("method", ["read_battery_voltage", "read_engine_rpm"])
+    def test_transport_error_raises_when_strict(self, method):
+        """A corrupt frame on the WiCAN link (#94) surfaces as a transport error."""
+        from src.ecu.wican_transport import WiCANError
+
+        uds = self._uds_raising(WiCANError("Invalid SLCAN DLC 't'"))
+        with pytest.raises(WiCANError):
+            getattr(uds, method)(strict=True)
+
+    @pytest.mark.parametrize("method", ["read_battery_voltage", "read_engine_rpm"])
+    def test_timeout_still_none_for_dashboard(self, method):
+        from src.ecu.exceptions import UDSTimeoutError
+
+        uds = self._uds_raising(UDSTimeoutError("no reply"))
+        assert getattr(uds, method)() is None
+
+    def test_short_reply_raises_when_strict(self):
+        from src.ecu.exceptions import UDSError
+
+        uds = _make_uds(bytes([0x42, 0x30]))
+        with pytest.raises(UDSError, match="short reply"):
+            uds.read_battery_voltage(strict=True)
+
+    def test_reply_for_another_pid_raises_when_strict(self):
+        from src.ecu.exceptions import UDSError
+
+        uds = _make_uds(bytes([0x0D, 0x00, 0x00]))
+        with pytest.raises(UDSError):
+            uds.read_engine_rpm(strict=True)
+
+    def test_reads_use_the_short_probe_budget(self):
+        from src.ecu.constants import TIMEOUT_PROBE
+
+        uds = _make_uds(bytes([0x0C, 0x00, 0x00]))
+        uds.read_engine_rpm(strict=True)
+        _args, kwargs = uds.send_request.call_args
+        assert kwargs["timeout"] == TIMEOUT_PROBE
+        assert kwargs["pending_max"] == TIMEOUT_PROBE

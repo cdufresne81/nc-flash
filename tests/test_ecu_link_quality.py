@@ -19,8 +19,10 @@ class _FakeUds:
     def __init__(self, fail_indices=()):
         self._fail = set(fail_indices)
         self.calls = 0
+        self.timeouts = []
 
-    def tester_present(self):
+    def tester_present(self, timeout_ms=None):
+        self.timeouts.append(timeout_ms)
         i = self.calls
         self.calls += 1
         if i in self._fail:
@@ -102,3 +104,12 @@ class TestCheckLinkQuality:
         seen = []
         check_link_quality(uds, pings=5, progress_cb=lambda d, t: seen.append((d, t)))
         assert seen == [(1, 5), (2, 5), (3, 5), (4, 5), (5, 5)]
+
+
+def test_pings_use_the_short_probe_budget():
+    """A dropped ping fails after TIMEOUT_PROBE, not the 60 s pending budget (#131)."""
+    from src.ecu.constants import TIMEOUT_PROBE
+
+    uds = _FakeUds()
+    check_link_quality(uds, pings=3)
+    assert uds.timeouts == [TIMEOUT_PROBE] * 3

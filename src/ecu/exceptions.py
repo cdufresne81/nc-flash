@@ -5,6 +5,8 @@ All ECU-related exceptions derive from ECUError, which itself derives from
 the application's RomEditorError for unified error handling.
 """
 
+from typing import Optional
+
 from src.core.exceptions import RomEditorError
 
 
@@ -53,8 +55,12 @@ class UDSError(ECUError):
 class NegativeResponseError(UDSError):
     """Raised when the ECU returns a Negative Response Code (NRC)."""
 
-    def __init__(self, nrc: int, description: str = ""):
+    def __init__(
+        self, nrc: int, description: str = "", service_id: Optional[int] = None
+    ):
         self.nrc = nrc
+        # The SID the ECU echoed in its 0x7F reply: which request it refuses.
+        self.service_id = service_id
         self.description = description or f"NRC 0x{nrc:02X}"
         super().__init__(f"ECU negative response: {self.description} (0x{nrc:02X})")
 
@@ -96,6 +102,12 @@ class ROMValidationError(FlashError):
     """Raised when ROM data fails pre-flash validation."""
 
     pass
+
+
+class GuardReadError(FlashError):
+    """A pre-flash safety check (engine RPM, battery voltage) could not read
+    the car: no reply, a corrupt reply, or a refusal meant for another request.
+    The flash must not start unless the operator explicitly overrides."""
 
 
 class EngineRunningError(FlashError):
