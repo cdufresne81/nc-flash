@@ -4,6 +4,9 @@ All notable changes to NC Flash are documented here.
 
 ## [Unreleased]
 
+### Fixed
+- **A timing test no longer fails at random on Windows.** It sometimes failed the automated checks without anything being wrong.
+
 ## [v2.20.1] - 2026-10-05
 
 **Safer flashing and no more long freezes:** a flash won't start when its safety checks can't read the car, and an ECU that doesn't answer is reported in seconds instead of a minute.
