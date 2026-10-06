@@ -4,6 +4,10 @@ All notable changes to NC Flash are documented here.
 
 ## [Unreleased]
 
+### Fixed
+- **A flash no longer starts when the engine-RPM check, or the battery check on WiCAN, couldn't read the car (#130).** Before, a lost or garbled reply was treated as "not supported" and the flash went ahead without that check. Now it stops and asks you to retry. If the ECU still answers but not these checks (recovering an ECU after a failed flash), you get an explicit "flash anyway?" prompt, off by default; a low battery reading still blocks. An ECU that answers "not supported", for example one still in its bootloader, can still be re-flashed. Flashing right after a ROM read or RAM scan now waits a few seconds for the ECU to leave its programming session, so the checks read the car instead of being skipped.
+- **No more one-minute freeze when the ECU doesn't answer (#131).** With the ignition off, connecting now fails after about 3 seconds with a hint to check the ignition, instead of 60 seconds. Every ECU button in the ECU window (DTCs, read, RAM scan, flash) first checks that the ECU answers, and reports within about 3 seconds if it doesn't. If the ECU stops answering while connected, the window shows "ECU not answering", then disconnects.
+
 ## [v2.20.0] - 2026-09-28
 
 **Save a ROM comparison as a CSV or Markdown report**, for sharing a tune's changes or reviewing them in a spreadsheet.

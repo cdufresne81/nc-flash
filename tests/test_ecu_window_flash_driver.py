@@ -26,6 +26,7 @@ class _FakeWindow:
     def __init__(self, *, wican: bool, connected: bool = True):
         self._wican = wican
         self._session_acquired = False
+        self._guard_override = False
         if connected:
             self._session = MagicMock()
             self._session.is_connected = True
@@ -59,6 +60,7 @@ class TestWiCANWriteRouting:
             fake._session.transport,
             source_name=None,
             datalog=fake._session.wican_datalog,
+            allow_unread_voltage=False,
         )
 
     @pytest.mark.parametrize("operation", ["flash", "dynamic_flash"])
@@ -72,6 +74,7 @@ class TestWiCANWriteRouting:
             fake._session.transport,
             source_name="My Tune éà.bin",
             datalog=fake._session.wican_datalog,
+            allow_unread_voltage=False,
         )
 
     @pytest.mark.parametrize("operation", ["flash", "dynamic_flash"])
@@ -131,3 +134,15 @@ class TestWorkerFinishedHandlers:
         fake._on_flash_finished.assert_called_once_with(
             False, "THREAD", "WORKER", "boom"
         )
+
+
+@pytest.mark.parametrize("operation", ["flash", "dynamic_flash"])
+def test_operator_override_reaches_the_battery_guard(operation):
+    """The override given at the RPM gate (#130) lets the WiCAN battery check
+    proceed when it can't read either; off by default (asserted above)."""
+    fake = _FakeWindow(wican=True)
+    fake._guard_override = True
+    with patch("src.ecu.wican_sd_flash.WiCANSdFlasher") as MockFlasher:
+        _build(fake, operation)
+    assert MockFlasher.call_args.kwargs["allow_unread_voltage"] is True
+    assert fake._guard_override is False  # covers this one flash only

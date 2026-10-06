@@ -157,6 +157,15 @@ TIMEOUT_TRANSFER = 10000
 TIMEOUT_READ = 5000
 TIMEOUT_RESET = 15000
 TIMEOUT_RESPONSE_PENDING_MAX = 60000  # max wait for NRC 0x78 retries
+# "Is the ECU there?" probes (connect Tester Present, pre-flash OBD reads). A
+# live ECU answers in well under a second; a silent one (ignition off) must fail
+# in seconds, not after the 60 s response-pending budget above.
+TIMEOUT_PROBE = 3000
+# After a ROM read / RAM scan the ECU stays in its programming session and
+# refuses OBD with NRC 0x22. With no traffic it drops back to normal after its
+# session timeout (~5 s, bench-measured 2026-10-01); the pre-flash checks wait
+# this long once and read again rather than skip the check.
+PROGRAMMING_SESSION_EXIT_WAIT_MS = 6500
 
 # --- Flash Counter ---
 FLASH_COUNTER_CMD = bytes([SID_ROUTINE_CONTROL, 0x00, 0xB2, 0x00])

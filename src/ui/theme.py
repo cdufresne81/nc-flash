@@ -29,6 +29,9 @@ AXIS_HIGHLIGHT = ACCENT
 # Amber for warning states (e.g. the ECU window's unexpected-disconnect label).
 WARNING_AMBER = "#cc6600"
 
+# Muted text for an unavailable reading (e.g. an ECU status card showing N/A).
+TEXT_MUTED = "#888"
+
 # --- Table graph (GPU renderer) ----------------------------------------------
 # The graph pane is a dark "stage" inside the light app: a vertical gradient
 # with light text, so the per-cell table colors pop. sRGB hex; the GPU backend
