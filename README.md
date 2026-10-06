@@ -123,6 +123,15 @@ python main.py
 - Auto-saves unsaved changes before flashing
 - Configurable J2534 DLL path (auto-detects Tactrix OpenPort via registry)
 
+### NC Flash Patches
+- **Tools > Patches** lists the patches NC Flash ships (e.g. AutoBlip) for the open ROM: available, installed, or why not (wrong ROM ID, Romdrop not installed yet, another Romdrop version)
+- Every check runs before anything is written: the ROM ID, the Romdrop code, the bytes the patch replaces, a fingerprint of the ROM's code, the checksum table, and the tune checks the patch carries (integrity pairs, gear ratios, ...). The report says why a patch is refused
+- The patched ROM always goes to a new file; the open ROM is never changed. Checksums are recomputed and the file is read back
+- Patches ship disabled; the report ends with the steps to follow before enabling one
+- A patch's own tables (e.g. "AutoBlip - Enable") appear when NC Flash finds the patch installed, without editing your definition files
+- Bundled patch files are pinned by SHA-256: an altered file is never loaded
+- A Romdrop `.patch` file dropped on the window is recognised and pointed to Romdrop
+
 ### ROM Comparison
 - Side-by-side comparison of two ROMs (`Ctrl+Shift+D`)
 - Cross-definition comparison (e.g., NC1 vs NC2 ROMs)
@@ -252,6 +261,7 @@ nc-flash/
 │   │   ├── graph_model.py             # Engine-neutral graph math (colors, ticks)
 │   │   ├── gpu_runtime.py             # Engine choice + GPU probe (GUI thread)
 │   │   ├── patch_dialog.py            # ROM patching dialog
+│   │   ├── patches_dialog.py          # Tools > Patches (NC Flash patches)
 │   │   ├── table_browser.py           # Category tree browser
 │   │   ├── rom_document.py            # Single ROM tab widget
 │   │   ├── history_viewer.py          # Version history dialog

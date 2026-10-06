@@ -103,5 +103,6 @@ class TestDropExtensions:
         assert ".rom" in MainWindow._DROP_EXTENSIONS
 
     def test_no_unexpected_extensions(self):
-        # Should only accept .bin and .rom
-        assert MainWindow._DROP_EXTENSIONS == {".bin", ".rom"}
+        # .bin and .rom open; a dropped Romdrop .patch file gets the
+        # "install it with Romdrop" answer instead of "unknown ROM".
+        assert MainWindow._DROP_EXTENSIONS == {".bin", ".rom", ".patch"}

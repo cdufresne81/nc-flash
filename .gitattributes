@@ -1,0 +1,4 @@
+# Bundled NC Flash patches are sha256-pinned in src/ecu/bundled_patches.py:
+# keep their bytes exactly as committed (no CRLF conversion).
+patches/** -text
+tests/fixtures/ncflash_patch/*.json -text

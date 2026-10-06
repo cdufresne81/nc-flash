@@ -516,6 +516,10 @@ class MainWindow(
         patch_action = tools_menu.addAction("&Patch ROM...")
         patch_action.triggered.connect(self._on_patch_rom)
 
+        patches_action = tools_menu.addAction("Pa&tches...")
+        patches_action.setToolTip("NC Flash patches (e.g. AutoBlip) for the open ROM")
+        patches_action.triggered.connect(self._on_patches)
+
         tools_menu.addSeparator()
 
         self.mcp_action = tools_menu.addAction("&MCP Server")
@@ -933,7 +937,7 @@ class MainWindow(
     # ------------------------------------------------------------------
 
     #: File extensions accepted via drag-and-drop (matches File > Open dialog)
-    _DROP_EXTENSIONS = {".bin", ".rom"}
+    _DROP_EXTENSIONS = {".bin", ".rom", ".patch"}  # .patch: told to use Romdrop
 
     def _get_drop_file_paths(self, mime_data):
         """Extract file paths from drop MIME data, returning only valid ROM files.
@@ -1117,6 +1121,16 @@ class MainWindow(
                 )
                 return
 
+            if self._is_romdrop_patch_file(file_path):
+                QMessageBox.information(
+                    self,
+                    "Romdrop Patch File",
+                    "This is a Romdrop patch file, not a ROM.\n\n"
+                    "Install it on your factory ROM with Speeps' Romdrop tool "
+                    "(or Tools > Patch ROM...), then open the patched ROM.",
+                )
+                return
+
             rom_id, xml_path = self.rom_detector.detect_rom_id(file_path)
 
             if not rom_id or not xml_path:
@@ -1141,6 +1155,10 @@ class MainWindow(
             # Create ROM reader
             self.statusBar().showMessage(f"Loading ROM data...")
             rom_reader = RomReader(file_path, rom_definition)
+            rom_definition = self._overlay_patch_definitions(
+                rom_definition, rom_reader.rom_data
+            )
+            rom_reader.definition = rom_definition
 
             # Verify ROM ID (should always pass now, but kept as sanity check)
             if not rom_reader.verify_rom_id():
@@ -1208,6 +1226,57 @@ class MainWindow(
                 "Error",
                 f"Unexpected error opening ROM file:\n{type(e).__name__}: {e}",
             )
+
+    @staticmethod
+    def _is_romdrop_patch_file(file_path: str) -> bool:
+        """A Speeps Romdrop XOR file dropped or opened by mistake."""
+        from src.ecu.ncflash_patch import looks_like_romdrop_patch
+
+        try:
+            if os.path.getsize(file_path) != 0x100000:
+                return False
+            return looks_like_romdrop_patch(Path(file_path).read_bytes())
+        except OSError:
+            return False
+
+    def _overlay_patch_definitions(self, definition, rom_data):
+        """Add the tables of every bundled patch installed in this ROM.
+
+        In memory only (the metadata file is never written); a table the
+        definition file already has wins. A failure here never blocks opening.
+        """
+        from src.core.definition_overlay import overlay
+        from src.ecu.bundled_patches import patches_for
+        from src.ecu.ncflash_patch import detect
+
+        try:
+            for patch in patches_for(definition.romid.internalidstring):
+                if not patch.definitions:
+                    continue
+                if detect(bytes(rom_data), patch).state != "installed":
+                    continue
+                tag = f"{patch.id} {patch.version}"
+                definition, added, skipped = overlay(definition, patch.definitions, tag)
+                logger.info(
+                    f"{patch.title} installed: {len(added)} table(s) added from the "
+                    f"patch, {len(skipped)} already in the definition file"
+                )
+        except Exception as e:
+            logger.warning(
+                f"Patch definitions not added: {type(e).__name__}: {e}", exc_info=True
+            )
+        return definition
+
+    def _on_patches(self):
+        """Tools > Patches: bundled NC Flash patches for the open ROM."""
+        from src.ui.patches_dialog import run_patches_dialog
+
+        run_patches_dialog(
+            self,
+            self.get_current_document(),
+            self._update_tab_title,
+            self._open_rom_file,
+        )
 
     def _save(self):
         """Unified save: commit if project is open with changes, otherwise save ROM."""

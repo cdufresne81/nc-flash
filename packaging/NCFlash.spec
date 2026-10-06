@@ -22,6 +22,8 @@ bridge_dir = os.path.join(repo_root, 'dist', 'j2534_bridge_32')
 extra_datas = [
     (os.path.join(repo_root, 'colormaps'), 'colormaps'),
     (os.path.join(repo_root, 'examples'), 'examples'),
+    # NC Flash patches, sha256-pinned in src/ecu/bundled_patches.py
+    (os.path.join(repo_root, 'patches'), 'patches'),
 ]
 if sys.platform == 'win32':
     if not os.path.isdir(bridge_dir):

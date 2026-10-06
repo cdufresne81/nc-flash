@@ -32,6 +32,10 @@ WARNING_AMBER = "#cc6600"
 # Muted text for an unavailable reading (e.g. an ECU status card showing N/A).
 TEXT_MUTED = "#888"
 
+# Patch check verdicts / report rows: refused (nothing written) and passed.
+REFUSE_RED = "#c62828"
+PASS_GREEN = "#2e7d32"
+
 # --- Table graph (GPU renderer) ----------------------------------------------
 # The graph pane is a dark "stage" inside the light app: a vertical gradient
 # with light text, so the per-cell table colors pop. sRGB hex; the GPU backend
