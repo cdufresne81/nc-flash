@@ -1952,6 +1952,44 @@
     <table level="4" type="2D" category="Idle Speed" swapxy="true" name="Idle Speed | Not In-Gear" address="d91a4" elements="8" scaling="889252">
       <table name="ECT_6D4C" address="d9184" elements="8" scaling="889220" type="Y Axis"/>
     </table>
+    <!-- Idle Air Learn - Boot Minimum (added 2026-10-04, reviewed; evidence analysis/idle/2026-10-02_idle_learn_and_kam_wipe.md,
+         docs/subsystems/idle_speed_control.md "Idle-Air Learning (KAM)"). Derived for the MANUAL gearbox only.
+         At every key-on, 0x58810 raises learned idle-air cell 7 (KAM 0xFFFF2348 = MT, A/C off, low electrical load: the
+         normal idle cell) to max(cell, this value), written with its check words. On a normal key-on it runs AFTER the
+         keep-alive RAM wipe that follows every NC Flash reflash (task 17: 0x5D0C wipe, 0x5E60 re-init, 0x5E66 -> 0x11BA6 ->
+         0x58810), so after a flash the idle starts from this value instead of 0. Stock 0.0 = no effect.
+         Pick a value clearly BELOW the car's settled learned cell 7: above it, the value overrides the learn at every
+         key-on until the ECU learns down again. Read the learned value with the engine RUNNING after a warm idle (or log
+         0xFFFF2348 on the WiCAN): a key-on read shows max(learned, this value) and hides a learn that settled lower.
+         Re-check it after any idle or air calibration change. Must stay below the learn ceiling 0xDA430 (0.14795): the
+         learner zeroes a cell above it, and the next key-on raises it again.
+         Only cell 7 is raised; the other cells stay 0 after a wipe until the first learn seeds them. After a reflash,
+         idle warm with the A/C off and low electrical load until the first learn, BEFORE switching the A/C on: otherwise
+         the idle air steps down by this value when the A/C cell (0) takes over.
+         One reader (0x58810); the Level-2 monitor never reads it, so no Data Integrity copy exists. Inside checksum record
+         0xB7000-0xF3FFF: the flashing tool must fix the checksums (NC Flash does), or P0601 = throttle limp. Units of the
+         learned value not traced (the owner's car learned 0.0990 on 2026-10-04, still settling). -->
+    <scaling name="idle_air_learn_floor" units="learned idle air" toexpr="x" frexpr="x" format="%0.3f" min="0" max="0.14" inc="0.005" storagetype="float" endian="big"/>
+    <table level="4" type="1D" category="Idle Speed" swapxy="true" name="Idle Air Learn - Boot Minimum | MT, A/C Off, Low Electrical Load (cell 7)" address="da438" elements="1" scaling="idle_air_learn_floor"/>
+    <!-- Idle Air Learn - learn window and stability limit (added 2026-10-04, reviewed; evidence
+         analysis/idle/2026-10-02_idle_learn_and_kam_wipe.md section 6). Both read only by the idle-air learn chain; one
+         copy each, the Level-2 monitor never reads them (no Data Integrity copy). Inside checksum record 0xB7000-0xF3FFF.
+         Learn Window (0xDA429, byte): while the learn is eligible, 0x58BCE sums the idle-air correction 0xFFFF8108 for this
+         many passes (task 4, about 5 ms each), stores the mean, and the learner 0x58CA8 then moves half of it into the
+         learned cell (the full mean on the first learn after a wipe); the counter is reloaded by 0x59066 and set at boot
+         by 0x58786. Stock 20 = one learn step about every 100 ms. While idle closed loop runs, each step is bumpless
+         (0x59CA2 removes it from the correction), so the idle air does not change; a smaller window only makes the stored
+         cell follow the live correction more closely, storing more short-lived load (power steering, electrical) in KAM.
+         Values below 10 unsupported: 0 does not cleanly disable learning (the learner then runs every pass with a zero
+         mean, marks the groups learned and copies the current cell into its group). Editor range 10-100.
+         Stable-Idle RPM Error Limit (0xDA42C, float): 0x58918 averages |rpm - idle target| over 64 passes (byte 0xDA428)
+         and sets the stable flag 0xFFFF80D0 when the average is below this. The learn eligibility 0x589D4 requires that
+         flag ONLY once both learned-once flags are set (A/C-off 0xFFFF230C and A/C-on 0xFFFF230E, 0x58A14-0x58A3A): no
+         effect after a reflash, nor on a car whose A/C-on cells never learned. Higher = learns on a rougher idle. -->
+    <scaling name="idle_air_learn_window" units="passes (about 5 ms)" toexpr="x" frexpr="x" format="%0.0f" min="10" max="100" inc="1" storagetype="uint8" endian="big"/>
+    <scaling name="idle_air_learn_stable_rpm" units="rpm" toexpr="x" frexpr="x" format="%0.2f" min="10" max="100" inc="1" storagetype="float" endian="big"/>
+    <table level="4" type="1D" category="Idle Speed" swapxy="true" name="Idle Air Learn - Learn Window (passes per learn step)" address="da429" elements="1" scaling="idle_air_learn_window"/>
+    <table level="4" type="1D" category="Idle Speed" swapxy="true" name="Idle Air Learn - Stable-Idle RPM Error Limit (only once A/C-off and A/C-on groups have learned)" address="da42c" elements="1" scaling="idle_air_learn_stable_rpm"/>
     <table level="4" type="1D" category="Idle Status" swapxy="true" name="Idle Validation Switch - APP Threshold" address="bb544" elements="1" scaling="767300"/>
     <table level="4" type="1D" category="Idle Status" swapxy="true" name="Idle Validation Switch - APP Hysteresis" address="bb548" elements="1" scaling="767304"/>
     <table level="4" type="1D" category="Instrument Cluster - CEL Warning" swapxy="true" name="CEL Flash Pattern - Step Rate" address="f3e76" elements="1" scaling="999030"/>
