@@ -309,6 +309,15 @@ class TestLoad:
         with pytest.raises(N.PatchFormatError, match="not the pinned"):
             N.load_patch(FIXTURE.read_bytes(), "0" * 64)
 
+    def test_reference_block_is_optional(self):
+        d = _raw()
+        d.pop("reference")
+        res = N.apply_patch(_r0(), _patch(d), TYRE)
+        assert (
+            res.verdict == "WARN"
+            and "reference result None" in res.report.rows[0].message
+        )
+
     def test_no_pin_is_refused(self):
         with pytest.raises(N.PatchFormatError, match="no sha256 pin"):
             N.load_patch(FIXTURE.read_bytes(), None)
@@ -329,6 +338,13 @@ class TestLoad:
             ),
             (lambda d: d["requires"].update(patches=[{"id": "x"}]), "not supported"),
             (lambda d: d.update(installed_signature="abc"), "structure"),
+            (lambda d: d["code_pin"].pop("sha256"), "positive block_size and a sha256"),
+            (lambda d: d["consent"][0].pop("text"), "level / text missing"),
+            (lambda d: d["consent"][0].update(level="loud"), "level / text missing"),
+            (
+                lambda d: d["consent"][0].update(ranges=d["consent"][0]["ranges"][:1]),
+                "not listed in a consent entry",
+            ),
             (
                 lambda d: d["code_pin"]["regions"].append(["0x0B7000", "0x0B7001"]),
                 "share a block",
@@ -466,6 +482,14 @@ class TestChecks:
         r = list(self.RATIOS)
         r[i] = v
         assert self._gear(r)[0][0] == "refuse"
+
+    def test_gear_five_speed_with_an_empty_band_6_is_silent(self):
+        # a factory 5MT calibration: 6th = 5th and band 6 empty (lo = hi = 1.0)
+        r = list(self.RATIOS)
+        r[5] = r[4]
+        bands = list(self.BANDS)
+        bands[10], bands[11] = 1.0, 1.0
+        assert self._gear(r, bands) == []
 
     def test_gear_five_speed_warns(self):
         r = list(self.RATIOS)

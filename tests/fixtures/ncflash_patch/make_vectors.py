@@ -7,7 +7,10 @@ output sha256 of each case. tests/test_ncflash_patch_vectors.py replays every
 case through src/ecu/ncflash_patch.py and requires the same verdict and output.
 
     python tests/fixtures/ncflash_patch/make_vectors.py <patch.ncpatch.json> \
-        <nc-flash-re tools/ncflash_apply.py> <out vectors.json>
+        <nc-flash-re tools/ncflash_apply.py> <out vectors.json> [--lean]
+
+--lean (used for real pack files, whose ~100 checks make ~750 cases): the base
+cases run with and without consent, every mutation case with consent only.
 
 Mutations are data, so the test rebuilds every input without the reference
 applier: base r0 | factory | installed, then flip (xor 0x55 one byte), set (hex
@@ -58,6 +61,17 @@ def build(case: dict, installed: bytes | None) -> bytes:
         elif m["op"] == "truncate":
             del d[a:]
     return bytes(d)
+
+
+BASE_NAMES = {
+    "short file",
+    "romdrop code byte",
+    "romdrop data byte",
+    "code area not blank",
+    "rom id",
+    "checksum record shape",
+    "stale sum",
+}
 
 
 def cases(pt: dict) -> list:
@@ -130,7 +144,7 @@ def cases(pt: dict) -> list:
     return out
 
 
-def main(patch_path, ref_path, out_path):
+def main(patch_path, ref_path, out_path, lean=False):
     spec = importlib.util.spec_from_file_location("ncflash_apply_ref", ref_path)
     ref = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(ref)
@@ -142,7 +156,8 @@ def main(patch_path, ref_path, out_path):
     vectors = []
     for case in cases(pt):
         d = build(case, installed)
-        for cons in ([], consents):
+        both = not lean or "mutations" not in case or case["name"] in BASE_NAMES
+        for cons in ([], consents) if both else (consents,):
             rep, out = ref.apply_bytes(raw, pin, d, set(cons))
             vectors.append(
                 case
@@ -170,4 +185,4 @@ def main(patch_path, ref_path, out_path):
 
 
 if __name__ == "__main__":
-    main(*sys.argv[1:4])
+    main(*sys.argv[1:4], lean="--lean" in sys.argv[4:])

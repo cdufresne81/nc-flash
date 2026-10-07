@@ -1,0 +1,5931 @@
+{
+ "format": "ncflash-patch/2",
+ "patch": {
+  "id": "ncflash-features",
+  "name": "NC Flash features",
+  "version": "1.0.0",
+  "channel": "test",
+  "review": null,
+  "features": [
+   {
+    "id": "autoblip",
+    "name": "AutoBlip",
+    "version": "3.4",
+    "enable": {
+     "addr": "0x0FE600",
+     "type": "uint8"
+    },
+    "review": null,
+    "notes": "brake-held downshift blip (docs/modifications/autoblip_v3_4.md); ships with Enable 0; source tools/autoblip_v34.s sha256 b515ed424dca8989",
+    "requires": []
+   }
+  ],
+  "built_by": "tools/ncflash_patch.py emit (from tools/autoblip_dist.py reference / make-patch)"
+ },
+ "rom_id": "LF9VEB",
+ "rom_id_addr": "0x0B8046",
+ "requires": {
+  "romdrop_rev": "21053000",
+  "patches": []
+ },
+ "conflicts": [],
+ "reference": {
+  "factory_sha256": "bfd0965a0f51f60a951d8cd3ef8fe77e5a37fbc326ddb723edf0ede4b1640fbf",
+  "base_sha256": "68b6ec4ed663273f30b0ce522a9885e11826db96c44f7d7c3e0be3820201c7c5",
+  "base_tyre_sha256": "a1f70ed1f75f475b02a82277ca42db04169a4a2f48677472a2e2696c638de12b",
+  "result_sha256": "09036104c2cde71169e699ba4b6e7d785afc6b8d062d85a3b2d9f68f5f1caeec",
+  "romdrop_xor_sha256": "8539f52ce1ef3832978c6f95896db63bc4a88385e700ecbeafa55f07b1876d3a"
+ },
+ "installed_signature": {
+  "kind": "code",
+  "sha256": "324c225e62d1871557effb4125a37d5603f867ae5ce47168a63d6f38baeca1dc"
+ },
+ "previous": [],
+ "upgrade_from": [],
+ "footprint": {
+  "rom": [
+   [
+    "0x0FC850",
+    "0x0FCB7F"
+   ],
+   [
+    "0x0FCB80",
+    "0x0FCBFF"
+   ],
+   [
+    "0x0FD000",
+    "0x0FD7FF"
+   ],
+   [
+    "0x0FD800",
+    "0x0FE5FF"
+   ],
+   [
+    "0x0FE600",
+    "0x0FE67F"
+   ]
+  ],
+  "hooks": [
+   "0x0230CC",
+   "0x0230D4",
+   "0x09CD6C"
+  ],
+  "ram": [
+   [
+    "0xFFFFAB10",
+    "0xFFFFAB8F"
+   ]
+  ]
+ },
+ "ranges": [
+  {
+   "addr": "0x0140D1",
+   "kind": "romdrop",
+   "old": "0fbcd0",
+   "new": "0fbcd0"
+  },
+  {
+   "addr": "0x0230CC",
+   "kind": "hook",
+   "old": "00022468",
+   "new": "000fd820"
+  },
+  {
+   "addr": "0x0230D4",
+   "kind": "hook",
+   "old": "00022524",
+   "new": "000fd840"
+  },
+  {
+   "addr": "0x033782",
+   "kind": "romdrop",
+   "old": "00094f22d107601088018b06d106611021188b02d105410b00094f26000b0009",
+   "new": "00094f22d107601088018b06d106611021188b02d105410b00094f26000b0009"
+  },
+  {
+   "addr": "0x0337A4",
+   "kind": "romdrop",
+   "old": "ffff7112ffff69b5000fbb58",
+   "new": "ffff7112ffff69b5000fbb58"
+  },
+  {
+   "addr": "0x035CB8",
+   "kind": "romdrop",
+   "old": "d2",
+   "new": "d2"
+  },
+  {
+   "addr": "0x035CBC",
+   "kind": "romdrop",
+   "old": "0009",
+   "new": "0009"
+  },
+  {
+   "addr": "0x035CC0",
+   "kind": "romdrop",
+   "old": "0009",
+   "new": "0009"
+  },
+  {
+   "addr": "0x035D88",
+   "kind": "romdrop",
+   "old": "000fc360",
+   "new": "000fc360"
+  },
+  {
+   "addr": "0x036681",
+   "kind": "romdrop",
+   "old": "0fc2b0",
+   "new": "0fc2b0"
+  },
+  {
+   "addr": "0x036704",
+   "kind": "romdrop",
+   "old": "4f22d004400be400d10321014f26000b00090009000fb9d0ffff6b40",
+   "new": "4f22d004400be400d10321014f26000b00090009000fb9d0ffff6b40"
+  },
+  {
+   "addr": "0x037376",
+   "kind": "romdrop",
+   "old": "ac00",
+   "new": "ac00"
+  },
+  {
+   "addr": "0x03B909",
+   "kind": "romdrop",
+   "old": "0f3e70",
+   "new": "0f3e70"
+  },
+  {
+   "addr": "0x03BA4D",
+   "kind": "romdrop",
+   "old": "0fc6d4",
+   "new": "0fc6d4"
+  },
+  {
+   "addr": "0x03BC71",
+   "kind": "romdrop",
+   "old": "0f3e70",
+   "new": "0f3e70"
+  },
+  {
+   "addr": "0x03C0C9",
+   "kind": "romdrop",
+   "old": "0f3e70",
+   "new": "0f3e70"
+  },
+  {
+   "addr": "0x0429D0",
+   "kind": "romdrop",
+   "old": "4f22d103410b00094f26",
+   "new": "4f22d103410b00094f26"
+  },
+  {
+   "addr": "0x0429DB",
+   "kind": "romdrop",
+   "old": "0b00090009000fc514",
+   "new": "0b00090009000fc514"
+  },
+  {
+   "addr": "0x04470E",
+   "kind": "romdrop",
+   "old": "44",
+   "new": "44"
+  },
+  {
+   "addr": "0x04473E",
+   "kind": "romdrop",
+   "old": "44",
+   "new": "44"
+  },
+  {
+   "addr": "0x044961",
+   "kind": "romdrop",
+   "old": "0fbda0",
+   "new": "0fbda0"
+  },
+  {
+   "addr": "0x045B66",
+   "kind": "romdrop",
+   "old": "d303430b0009a01f4f2600090009000fbcd00009",
+   "new": "d303430b0009a01f4f2600090009000fbcd00009"
+  },
+  {
+   "addr": "0x045B7B",
+   "kind": "romdrop",
+   "old": "090009",
+   "new": "090009"
+  },
+  {
+   "addr": "0x046FC6",
+   "kind": "romdrop",
+   "old": "ac24",
+   "new": "ac24"
+  },
+  {
+   "addr": "0x04A314",
+   "kind": "romdrop",
+   "old": "44",
+   "new": "44"
+  },
+  {
+   "addr": "0x04A3F1",
+   "kind": "romdrop",
+   "old": "0fc160",
+   "new": "0fc160"
+  },
+  {
+   "addr": "0x04A3F5",
+   "kind": "romdrop",
+   "old": "0fc130",
+   "new": "0fc130"
+  },
+  {
+   "addr": "0x04A41C",
+   "kind": "romdrop",
+   "old": "44",
+   "new": "44"
+  },
+  {
+   "addr": "0x04A464",
+   "kind": "romdrop",
+   "old": "44",
+   "new": "44"
+  },
+  {
+   "addr": "0x04A49C",
+   "kind": "romdrop",
+   "old": "44",
+   "new": "44"
+  },
+  {
+   "addr": "0x04A4B9",
+   "kind": "romdrop",
+   "old": "0fc100",
+   "new": "0fc100"
+  },
+  {
+   "addr": "0x04A4D5",
+   "kind": "romdrop",
+   "old": "0fc160",
+   "new": "0fc160"
+  },
+  {
+   "addr": "0x04A4D9",
+   "kind": "romdrop",
+   "old": "0fc130",
+   "new": "0fc130"
+  },
+  {
+   "addr": "0x04A67C",
+   "kind": "romdrop",
+   "old": "44",
+   "new": "44"
+  },
+  {
+   "addr": "0x04A731",
+   "kind": "romdrop",
+   "old": "0fc190",
+   "new": "0fc190"
+  },
+  {
+   "addr": "0x04A735",
+   "kind": "romdrop",
+   "old": "0fc1c0",
+   "new": "0fc1c0"
+  },
+  {
+   "addr": "0x04A73D",
+   "kind": "romdrop",
+   "old": "0fc1f0",
+   "new": "0fc1f0"
+  },
+  {
+   "addr": "0x04A746",
+   "kind": "romdrop",
+   "old": "44",
+   "new": "44"
+  },
+  {
+   "addr": "0x04A836",
+   "kind": "romdrop",
+   "old": "44",
+   "new": "44"
+  },
+  {
+   "addr": "0x04A945",
+   "kind": "romdrop",
+   "old": "0fc220",
+   "new": "0fc220"
+  },
+  {
+   "addr": "0x04A9A5",
+   "kind": "romdrop",
+   "old": "0fc1f0",
+   "new": "0fc1f0"
+  },
+  {
+   "addr": "0x04C664",
+   "kind": "romdrop",
+   "old": "44",
+   "new": "44"
+  },
+  {
+   "addr": "0x04C6E9",
+   "kind": "romdrop",
+   "old": "0fc250",
+   "new": "0fc250"
+  },
+  {
+   "addr": "0x04FE16",
+   "kind": "romdrop",
+   "old": "44",
+   "new": "44"
+  },
+  {
+   "addr": "0x04FE28",
+   "kind": "romdrop",
+   "old": "44",
+   "new": "44"
+  },
+  {
+   "addr": "0x04FE34",
+   "kind": "romdrop",
+   "old": "44",
+   "new": "44"
+  },
+  {
+   "addr": "0x04FE50",
+   "kind": "romdrop",
+   "old": "44",
+   "new": "44"
+  },
+  {
+   "addr": "0x04FE62",
+   "kind": "romdrop",
+   "old": "44",
+   "new": "44"
+  },
+  {
+   "addr": "0x04FE6E",
+   "kind": "romdrop",
+   "old": "44",
+   "new": "44"
+  },
+  {
+   "addr": "0x04FF1D",
+   "kind": "romdrop",
+   "old": "0fbef0",
+   "new": "0fbef0"
+  },
+  {
+   "addr": "0x04FF21",
+   "kind": "romdrop",
+   "old": "0fbf20",
+   "new": "0fbf20"
+  },
+  {
+   "addr": "0x04FF25",
+   "kind": "romdrop",
+   "old": "0fbf50",
+   "new": "0fbf50"
+  },
+  {
+   "addr": "0x04FF29",
+   "kind": "romdrop",
+   "old": "0fbf80",
+   "new": "0fbf80"
+  },
+  {
+   "addr": "0x04FF2D",
+   "kind": "romdrop",
+   "old": "0fbfb0",
+   "new": "0fbfb0"
+  },
+  {
+   "addr": "0x04FF31",
+   "kind": "romdrop",
+   "old": "0fbfe0",
+   "new": "0fbfe0"
+  },
+  {
+   "addr": "0x04FF35",
+   "kind": "romdrop",
+   "old": "0fc010",
+   "new": "0fc010"
+  },
+  {
+   "addr": "0x04FF39",
+   "kind": "romdrop",
+   "old": "0fc040",
+   "new": "0fc040"
+  },
+  {
+   "addr": "0x05000E",
+   "kind": "romdrop",
+   "old": "44",
+   "new": "44"
+  },
+  {
+   "addr": "0x050018",
+   "kind": "romdrop",
+   "old": "44",
+   "new": "44"
+  },
+  {
+   "addr": "0x050024",
+   "kind": "romdrop",
+   "old": "44",
+   "new": "44"
+  },
+  {
+   "addr": "0x0501C5",
+   "kind": "romdrop",
+   "old": "0fc070",
+   "new": "0fc070"
+  },
+  {
+   "addr": "0x0501C9",
+   "kind": "romdrop",
+   "old": "0fc0a0",
+   "new": "0fc0a0"
+  },
+  {
+   "addr": "0x0501CD",
+   "kind": "romdrop",
+   "old": "0fc0d0",
+   "new": "0fc0d0"
+  },
+  {
+   "addr": "0x0538CE",
+   "kind": "romdrop",
+   "old": "0009000900090009",
+   "new": "0009000900090009"
+  },
+  {
+   "addr": "0x05393A",
+   "kind": "romdrop",
+   "old": "ac21",
+   "new": "ac21"
+  },
+  {
+   "addr": "0x05BD9D",
+   "kind": "romdrop",
+   "old": "0fbd1c",
+   "new": "0fbd1c"
+  },
+  {
+   "addr": "0x07EB96",
+   "kind": "romdrop",
+   "old": "00094f22d003400b00094f2600",
+   "new": "00094f22d003400b00094f2600"
+  },
+  {
+   "addr": "0x07EBA4",
+   "kind": "romdrop",
+   "old": "00090009000fc7bc",
+   "new": "00090009000fc7bc"
+  },
+  {
+   "addr": "0x08648A",
+   "kind": "tyre_restore",
+   "old": "410b000900090009a0",
+   "new": "60109338600c30308f"
+  },
+  {
+   "addr": "0x086515",
+   "kind": "tyre_restore",
+   "old": "0fc300",
+   "new": "0dfe14"
+  },
+  {
+   "addr": "0x086DB4",
+   "kind": "romdrop",
+   "old": "0009",
+   "new": "0009"
+  },
+  {
+   "addr": "0x09CD6C",
+   "kind": "hook",
+   "old": "0009cf82",
+   "new": "000fd800"
+  },
+  {
+   "addr": "0x0AC3C0",
+   "kind": "romdrop",
+   "old": "10",
+   "new": "10"
+  },
+  {
+   "addr": "0x0AC3C3",
+   "kind": "romdrop",
+   "old": "0f",
+   "new": "0f"
+  },
+  {
+   "addr": "0x0B6A68",
+   "kind": "romdrop",
+   "old": "f30cf42c",
+   "new": "f30cf42c"
+  },
+  {
+   "addr": "0x0B6A6D",
+   "kind": "romdrop",
+   "old": "30fe41f54c",
+   "new": "30fe41f54c"
+  },
+  {
+   "addr": "0x0B6B51",
+   "kind": "romdrop",
+   "old": "0fc654",
+   "new": "0fc654"
+  },
+  {
+   "addr": "0x0D4A84",
+   "kind": "romdrop_data",
+   "old": "01",
+   "new": "01"
+  },
+  {
+   "addr": "0x0ED360",
+   "kind": "romdrop_data",
+   "old": "000f0000000ed700000ed73c00070000000ed778000ed79400070000000ed7b0000ed7cc00070000000ed7e8000ed804000f0008000ed820000ed85c000ed87c00000000000f0008000eda5c000eda98000edab800000000000f000d000edc98000edcd4000edd0800000000000f000d000ee014000ee050000ee084000000000008000f000ee390000ee3b0000ee3ec00000000000f000f000ee5cc000ee608000ee644000000000008000f000ee9c8000ee9e8000eea2400000000000f000f000eec04000eec40000eec7c000000000008000f000ef000000ef020000ef05c00000000000f000f000ef23c000ef278000ef2b4000000000008000f000ef638000ef658000ef69400000000000f000f000ef874000ef8b0000ef8ec00000000000f000f000efc70000efcac000efce800000000000f000f000f006c000f00a8000f00e4000000000008000f000f0468000f0488000f04c400000000000f000f000f06a4000f06e0000f071c00000000000f000f000f0aa0000f0adc000f0b1800000000000b0000000f0e9c000f0ec8000b0000000f0ef4000f0f20000b0000000f0f4c000f0f78000b0000000f0fa4000f0fd0000b0000000f0ffc000f1028000b0000000f1054000f1080000b0000000f10ac000f10d8000b0000000f1104000f1130000f000f000f115c000f1198000f11d400000000000f000f000f1558000f1594000f15d00000000000120000000f1954000f199c00120000000f19e4000f1a2c001d0019000f1a74000f1ae8000f1b4c0000000000020000000f26a0000f26a8000f0005000f26b0000f26ec000f270000000000001d000f000f282c000f28a0000f28dc0000000052445f454e44",
+   "new": "000f0000000ed700000ed73c00070000000ed778000ed79400070000000ed7b0000ed7cc00070000000ed7e8000ed804000f0008000ed820000ed85c000ed87c00000000000f0008000eda5c000eda98000edab800000000000f000d000edc98000edcd4000edd0800000000000f000d000ee014000ee050000ee084000000000008000f000ee390000ee3b0000ee3ec00000000000f000f000ee5cc000ee608000ee644000000000008000f000ee9c8000ee9e8000eea2400000000000f000f000eec04000eec40000eec7c000000000008000f000ef000000ef020000ef05c00000000000f000f000ef23c000ef278000ef2b4000000000008000f000ef638000ef658000ef69400000000000f000f000ef874000ef8b0000ef8ec00000000000f000f000efc70000efcac000efce800000000000f000f000f006c000f00a8000f00e4000000000008000f000f0468000f0488000f04c400000000000f000f000f06a4000f06e0000f071c00000000000f000f000f0aa0000f0adc000f0b1800000000000b0000000f0e9c000f0ec8000b0000000f0ef4000f0f20000b0000000f0f4c000f0f78000b0000000f0fa4000f0fd0000b0000000f0ffc000f1028000b0000000f1054000f1080000b0000000f10ac000f10d8000b0000000f1104000f1130000f000f000f115c000f1198000f11d400000000000f000f000f1558000f1594000f15d00000000000120000000f1954000f199c00120000000f19e4000f1a2c001d0019000f1a74000f1ae8000f1b4c0000000000020000000f26a0000f26a8000f0005000f26b0000f26ec000f270000000000001d000f000f282c000f28a0000f28dc0000000052445f454e44"
+  },
+  {
+   "addr": "0x0ED7B0",
+   "kind": "romdrop_data",
+   "old": "c2200000c1a000000000000041a00000422000004270000042a0000042c800004282000042480000425c000041f000004120000000000000c2200000c1a000000000000041a00000422000004270000042a0000042c800004282000042480000425c000041f000004120000000000000",
+   "new": "c2200000c1a000000000000041a00000422000004270000042a0000042c800004282000042480000425c000041f000004120000000000000c2200000c1a000000000000041a00000422000004270000042a0000042c800004282000042480000425c000041f000004120000000000000"
+  },
+  {
+   "addr": "0x0F19E4",
+   "kind": "romdrop_data",
+   "old": "000000003f80000040000000404000004080000040a0000040c0000040e000004100000041100000412000004130000041400000415000004160000041700000418000004188000042480000425c0000425c0000426733334274666642800000428300004289cccd42dd000042e0000042e4000042e6000042ea000042ed999a42f0000042f1000042f7999a42fe0000",
+   "new": "000000003f80000040000000404000004080000040a0000040c0000040e000004100000041100000412000004130000041400000415000004160000041700000418000004188000042480000425c0000425c0000426733334274666642800000428300004289cccd42dd000042e0000042e4000042e6000042ea000042ed999a42f0000042f1000042f7999a42fe0000"
+  },
+  {
+   "addr": "0x0F3E7C",
+   "kind": "romdrop_data",
+   "old": "00030003",
+   "new": "00030003"
+  },
+  {
+   "addr": "0x0FB9D0",
+   "kind": "romdrop_data",
+   "old": "4f22d1196110601388018f02644dd117241bd1176110601388018b019121241bd1146110601388018f01e140241b9119611021188906d510d610d011400b0009a00b640dd10f6110601388018b05d50ed60ed00b400b0009640d60434f26000b00094000ac0b0009",
+   "new": "4f22d1196110601388018f02644dd117241bd1176110601388018b019121241bd1146110601388018f01e140241b9119611021188906d510d610d011400b0009a00b640dd10f6110601388018b05d50ed60ed00b400b0009640d60434f26000b00094000ac0b0009"
+  },
+  {
+   "addr": "0x0FBA3A",
+   "kind": "romdrop_data",
+   "old": "831100008000",
+   "new": "831100008000"
+  },
+  {
+   "addr": "0x0FBA42",
+   "kind": "romdrop_data",
+   "old": "8312",
+   "new": "8312"
+  },
+  {
+   "addr": "0x0FBA46",
+   "kind": "romdrop_data",
+   "old": "6916",
+   "new": "6916"
+  },
+  {
+   "addr": "0x0FBA4A",
+   "kind": "romdrop_data",
+   "old": "ab04000f3e78000fba90",
+   "new": "ab04000f3e78000fba90"
+  },
+  {
+   "addr": "0x0FBA56",
+   "kind": "romdrop_data",
+   "old": "5263",
+   "new": "5263"
+  },
+  {
+   "addr": "0x0FBA5A",
+   "kind": "romdrop_data",
+   "old": "ab0c000f3e80",
+   "new": "ab0c000f3e80"
+  },
+  {
+   "addr": "0x0FBA90",
+   "kind": "romdrop_data",
+   "old": "d10e6110611c21188f08644d615241012512d10b6210d109a003212071",
+   "new": "d10e6110611c21188f08644d615241012512d10b6210d109a003212071"
+  },
+  {
+   "addr": "0x0FBAAE",
+   "kind": "romdrop_data",
+   "old": "d2072210615221188b01616225126052c9016103412841096043000b201b",
+   "new": "d2072210615221188b01616225126052c9016103412841096043000b201b"
+  },
+  {
+   "addr": "0x0FBACE",
+   "kind": "romdrop_data",
+   "old": "ab00000f3e76",
+   "new": "ab00000f3e76"
+  },
+  {
+   "addr": "0x0FBB58",
+   "kind": "romdrop_data",
+   "old": "4f22d10f410b0009d10e410b0009d10e410b0009d10d410b0009d10d410b0009d10c410b0009d10c410b0009d10b410b0009d10b410b00094f26000b0009000900036db8000342420003478200034dd000034b76000370a0000353300003556c000fbbd0",
+   "new": "4f22d10f410b0009d10e410b0009d10e410b0009d10d410b0009d10d410b0009d10c410b0009d10c410b0009d10b410b0009d10b410b00094f26000b0009000900036db8000342420003478200034dd000034b76000370a0000353300003556c000fbbd0"
+  },
+  {
+   "addr": "0x0FBBD0",
+   "kind": "romdrop_data",
+   "old": "2f864f229153611021188b2294509550d02a400be601600c20088f18e20191486210622c914632108f0ce10095412510983e6483d122410be6016483e501d021400be6029135621071fb2120e201912e2120d41dd01d400b0009600c20088b1ad11b601088018b16922561237101671071076313730123707301e700237072076220632c710323388f0e212071f562107108a0092120910f6110611c920a31208d027101920822104f26000b68f6ac0c00c6ac0d00",
+   "new": "2f864f229153611021188b2294509550d02a400be601600c20088f18e20191486210622c914632108f0ce10095412510983e6483d122410be6016483e501d021400be6029135621071fb2120e201912e2120d41dd01d400b0009600c20088b1ad11b601088018b16922561237101671071076313730123707301e700237072076220632c710323388f0e212071f562107108a0092120910f6110611c920a31208d027101920822104f26000b68f6ac0c00c6ac0d00"
+  },
+  {
+   "addr": "0x0FBC86",
+   "kind": "romdrop_data",
+   "old": "ac00ac0a000900099c1e00099bd2000995020003736c00008432000f3e74",
+   "new": "ac00ac0a000900099c1e00099bd2000995020003736c00008432000f3e74"
+  },
+  {
+   "addr": "0x0FBCD0",
+   "kind": "romdrop_data",
+   "old": "4f2291116110611c415ad408d108410bf42dd108f218d108f118f122f01271fcf10a4f26000b0009ac080009000ed4e400002068000cc8a4",
+   "new": "4f2291116110611c415ad408d108410bf42dd108f218d108f118f122f01271fcf10a4f26000b0009ac080009000ed4e400002068000cc8a4"
+  },
+  {
+   "addr": "0x0FBD0A",
+   "kind": "romdrop_data",
+   "old": "74e4",
+   "new": "74e4"
+  },
+  {
+   "addr": "0x0FBD1C",
+   "kind": "romdrop_data",
+   "old": "4f22d504d604d105410b00094f26000b00090009000ed4d0000ed538000fbe30",
+   "new": "4f22d504d604d105410b00094f26000b00090009000ed4d0000ed538000fbe30"
+  },
+  {
+   "addr": "0x0FBDA0",
+   "kind": "romdrop_data",
+   "old": "4f22d404d504d605d105410b00094f26000b00090009aebc000ed360000ed4f0000fbe90",
+   "new": "4f22d404d504d605d105410b00094f26000b00090009aebc000ed360000ed4f0000fbe90"
+  },
+  {
+   "addr": "0x0FBE20",
+   "kind": "romdrop_data",
+   "old": "f541f652f06c000bf0400009",
+   "new": "f541f652f06c000bf0400009"
+  },
+  {
+   "addr": "0x0FBE30",
+   "kind": "romdrop_data",
+   "old": "2f862f962fa6",
+   "new": "2f862f962fa6"
+  },
+  {
+   "addr": "0x0FBE37",
+   "kind": "romdrop_data",
+   "old": "cb",
+   "new": "cb"
+  },
+  {
+   "addr": "0x0FBE39",
+   "kind": "romdrop_data",
+   "old": "db",
+   "new": "db"
+  },
+  {
+   "addr": "0x0FBE3B",
+   "kind": "romdrop_data",
+   "old": "eb4f226a536963fd4cd80f480bfc5cfe0c64a3f4dc480bf5ccfc0c91136110611c415af42dd109410b6493f60cf4ecd108410bf5cc4f26fef9fdf9fcf96af669f6000b68f6ac080009000020dc00002068000fbe202f862f962fa6",
+   "new": "eb4f226a536963fd4cd80f480bfc5cfe0c64a3f4dc480bf5ccfc0c91136110611c415af42dd109410b6493f60cf4ecd108410bf5cc4f26fef9fdf9fcf96af669f6000b68f6ac080009000020dc00002068000fbe202f862f962fa6"
+  },
+  {
+   "addr": "0x0FBE97",
+   "kind": "romdrop_data",
+   "old": "cb",
+   "new": "cb"
+  },
+  {
+   "addr": "0x0FBE99",
+   "kind": "romdrop_data",
+   "old": "db4f226a536963d80d480bfc4cfd0c64a3480bf4ccfc0c91116110611c415af42d480b6493f60cf4dcd106410bf5cc4f26fdf9fcf96af669f6000b68f6ac0800002068000fbe20",
+   "new": "db4f226a536963d80d480bfc4cfd0c64a3480bf4ccfc0c91116110611c415af42d480b6493f60cf4dcd106410bf5cc4f26fdf9fcf96af669f6000b68f6ac0800002068000fbe20"
+  },
+  {
+   "addr": "0x0FBEF0",
+   "kind": "romdrop_data",
+   "old": "4f22d404d504d605d105410b00094f26000b00090009b3a8000ed3e0000ed520000fbe30",
+   "new": "4f22d404d504d605d105410b00094f26000b00090009b3a8000ed3e0000ed520000fbe30"
+  },
+  {
+   "addr": "0x0FBF20",
+   "kind": "romdrop_data",
+   "old": "4f22d404d504d605d105410b00094f26000b00090009b3bc000ed3f4000ed520000fbe30",
+   "new": "4f22d404d504d605d105410b00094f26000b00090009b3bc000ed3f4000ed520000fbe30"
+  },
+  {
+   "addr": "0x0FBF50",
+   "kind": "romdrop_data",
+   "old": "4f22d404d504d605d105410b00094f26000b00090009b3f8000ed408000ed520000fbe30",
+   "new": "4f22d404d504d605d105410b00094f26000b00090009b3f8000ed408000ed520000fbe30"
+  },
+  {
+   "addr": "0x0FBF80",
+   "kind": "romdrop_data",
+   "old": "4f22d404d504d605d105410b00094f26000b00090009b40c000ed41c000ed520000fbe30",
+   "new": "4f22d404d504d605d105410b00094f26000b00090009b40c000ed41c000ed520000fbe30"
+  },
+  {
+   "addr": "0x0FBFB0",
+   "kind": "romdrop_data",
+   "old": "4f22d404d504d605d105410b00094f26000b0009000ed4300009b3d0000ed520000fbe30",
+   "new": "4f22d404d504d605d105410b00094f26000b0009000ed4300009b3d0000ed520000fbe30"
+  },
+  {
+   "addr": "0x0FBFE0",
+   "kind": "romdrop_data",
+   "old": "4f22d404d504d605d105410b00094f26000b00090009b3e4000ed444000ed520000fbe30",
+   "new": "4f22d404d504d605d105410b00094f26000b00090009b3e4000ed444000ed520000fbe30"
+  },
+  {
+   "addr": "0x0FC010",
+   "kind": "romdrop_data",
+   "old": "4f22d404d504d605d105410b00094f26000b00090009b420000ed458000ed520000fbe30",
+   "new": "4f22d404d504d605d105410b00094f26000b00090009b420000ed458000ed520000fbe30"
+  },
+  {
+   "addr": "0x0FC040",
+   "kind": "romdrop_data",
+   "old": "4f22d404d504d605d105410b00094f26000b00090009b434000ed46c000ed520000fbe30",
+   "new": "4f22d404d504d605d105410b00094f26000b00090009b434000ed46c000ed520000fbe30"
+  },
+  {
+   "addr": "0x0FC070",
+   "kind": "romdrop_data",
+   "old": "4f22d404d504d605d105410b00094f26000b00090009b4c4000ed494000ed52c000fbe30",
+   "new": "4f22d404d504d605d105410b00094f26000b00090009b4c4000ed494000ed52c000fbe30"
+  },
+  {
+   "addr": "0x0FC0A0",
+   "kind": "romdrop_data",
+   "old": "4f22d404d504d605d105410b00094f26000b00090009b4b0000ed480000ed52c000fbe30",
+   "new": "4f22d404d504d605d105410b00094f26000b00090009b4b0000ed480000ed52c000fbe30"
+  },
+  {
+   "addr": "0x0FC0D0",
+   "kind": "romdrop_data",
+   "old": "4f22d404d504d605d105410b00094f26000b00090009b4d8000ed4a8000ed52c000fbe30",
+   "new": "4f22d404d504d605d105410b00094f26000b00090009b4d8000ed4a8000ed52c000fbe30"
+  },
+  {
+   "addr": "0x0FC100",
+   "kind": "romdrop_data",
+   "old": "4f22d404d504d605d105410b00094f26000b00090009b17c000ed36c000ed4fc000fbe90",
+   "new": "4f22d404d504d605d105410b00094f26000b00090009b17c000ed36c000ed4fc000fbe90"
+  },
+  {
+   "addr": "0x0FC130",
+   "kind": "romdrop_data",
+   "old": "4f22d404d504d605d105410b00094f26000b00090009b188000ed378000ed4fc000fbe90",
+   "new": "4f22d404d504d605d105410b00094f26000b00090009b188000ed378000ed4fc000fbe90"
+  },
+  {
+   "addr": "0x0FC160",
+   "kind": "romdrop_data",
+   "old": "4f22d404d504d605d105410b00094f26000b00090009b194000ed384000ed4fc000fbe90",
+   "new": "4f22d404d504d605d105410b00094f26000b00090009b194000ed384000ed4fc000fbe90"
+  },
+  {
+   "addr": "0x0FC190",
+   "kind": "romdrop_data",
+   "old": "4f22d404d504d605d105410b00094f26000b00090009b25c000ed390000ed508000fbe30",
+   "new": "4f22d404d504d605d105410b00094f26000b00090009b25c000ed390000ed508000fbe30"
+  },
+  {
+   "addr": "0x0FC1C0",
+   "kind": "romdrop_data",
+   "old": "4f22d404d504d605d105410b00094f26000b00090009b270000ed3a4000ed508000fbe30",
+   "new": "4f22d404d504d605d105410b00094f26000b00090009b270000ed3a4000ed508000fbe30"
+  },
+  {
+   "addr": "0x0FC1F0",
+   "kind": "romdrop_data",
+   "old": "4f22d404d504d605d105410b00094f26000b00090009b2ac000ed3cc000ed508000fbe30",
+   "new": "4f22d404d504d605d105410b00094f26000b00090009b2ac000ed3cc000ed508000fbe30"
+  },
+  {
+   "addr": "0x0FC220",
+   "kind": "romdrop_data",
+   "old": "4f22d404d504d605d105410b00094f26000b00090009b298000ed3b8000ed508000fbe30",
+   "new": "4f22d404d504d605d105410b00094f26000b00090009b298000ed3b8000ed508000fbe30"
+  },
+  {
+   "addr": "0x0FC250",
+   "kind": "romdrop_data",
+   "old": "4f22d404d504d605d105410b00094f26000b0009000ed544000ed558000ed514000fbe30",
+   "new": "4f22d404d504d605d105410b00094f26000b0009000ed544000ed558000ed514000fbe30"
+  },
+  {
+   "addr": "0x0FC2B0",
+   "kind": "romdrop_data",
+   "old": "2f864f226143d805d405480bf418d405480bf40c4f26000b68f6000900002068000ed56c000ed578",
+   "new": "2f864f226143d805d405480bf418d405480bf40c4f26000b68f6000900002068000ed56c000ed578"
+  },
+  {
+   "addr": "0x0FC300",
+   "kind": "romdrop",
+   "old": "d10e6112621c425af22d62134229425af32dc70bf109f1324119611c415af32df132f309f133f110f120f209f212f108f123f13d025ad106000b2121000f3e843c23d70a41cb333340490fdb47778000",
+   "new": "d10e6112621c425af22d62134229425af32dc70bf109f1324119611c415af32df132f309f133f110f120f209f212f108f123f13d025ad106000b2121000f3e843c23d70a41cb333340490fdb47778000"
+  },
+  {
+   "addr": "0x0FC352",
+   "kind": "romdrop",
+   "old": "952c",
+   "new": "952c"
+  },
+  {
+   "addr": "0x0FC360",
+   "kind": "romdrop",
+   "old": "2f86",
+   "new": "2f86"
+  },
+  {
+   "addr": "0x0FC363",
+   "kind": "romdrop",
+   "old": "cb",
+   "new": "cb"
+  },
+  {
+   "addr": "0x0FC365",
+   "kind": "romdrop",
+   "old": "db",
+   "new": "db"
+  },
+  {
+   "addr": "0x0FC367",
+   "kind": "romdrop",
+   "old": "eb4f22fc4cd15c601088018f03fd5cc75ba001fe08fe9dd15a611021188b03d159611021188905d1586210622ce13f32168b0ed156621091972120e20071ea2120f4ccc753f608d053400bf5dca086600dd151601088028b179187601088058b07d14a621091802120e20071eaa00c2120917a6110611c21188f0471",
+   "new": "eb4f22fc4cd15c601088018f03fd5cc75ba001fe08fe9dd15a611021188b03d159611021188905d1586210622ce13f32168b0ed156621091972120e20071ea2120f4ccc753f608d053400bf5dca086600dd151601088028b179187601088058b07d14a621091802120e20071eaa00c2120917a6110611c21188f0471"
+  },
+  {
+   "addr": "0x0FC3E4",
+   "kind": "romdrop",
+   "old": "e2019175a002212092702210d13d611021188950916d611021188b05916a6210622c916832108b469161601088058b42d13a6010600c88038d2a88048d1288028b399155611021188b35985564839554d133410be6016483e501d032400be602a02900099144601088018f2ff4cc71e66210622cd12c6310633c613b716432178d03e1646133312c611c9236a0132210912e601088018f19f4cc71e66310633cd1216210622c33228f03e10061333128611c92222210911b601088018f06f4cc71e66110611c415af42df4e2d1136210910d2120c70ff608d00f400bf5dc600d4f26fef9fdf9fcf9000b68f6ac38ac23ac22ac0bac0a00",
+   "new": "e2019175a002212092702210d13d611021188950916d611021188b05916a6210622c916832108b469161601088058b42d13a6010600c88038d2a88048d1288028b399155611021188b35985564839554d133410be6016483e501d032400be602a02900099144601088018f2ff4cc71e66210622cd12c6310633c613b716432178d03e1646133312c611c9236a0132210912e601088018f19f4cc71e66310633cd1216210622c33228f03e10061333128611c92222210911b601088018f06f4cc71e66110611c415af42df4e2d1136210910d2120c70ff608d00f400bf5dc600d4f26fef9fdf9fcf9000b68f6ac38ac23ac22ac0bac0a00"
+  },
+  {
+   "addr": "0x0FC4DC",
+   "kind": "romdrop",
+   "old": "00c6ac08000f3ea43fcdfeda000f3ea7000f3e74",
+   "new": "00c6ac08000f3ea43fcdfeda000f3ea7000f3e74"
+  },
+  {
+   "addr": "0x0FC4F2",
+   "kind": "romdrop",
+   "old": "6b50000f3ea5c2c80000000024e8",
+   "new": "6b50000f3ea5c2c80000000024e8"
+  },
+  {
+   "addr": "0x0FC502",
+   "kind": "romdrop",
+   "old": "671700099bd200099502000f3ea6",
+   "new": "671700099bd200099502000f3ea6"
+  },
+  {
+   "addr": "0x0FC514",
+   "kind": "romdrop",
+   "old": "d13c611021188907d13b611021188b08d13a601088018b04d139f118d139000bf11ad139611021188905d138f118c738f208f2158b09d137f118d132f11ae100925522107201000b2210d133f218c733f308f2358b0fd132f318f1358b0b9146611021188f41e201d12ef118d125f11a913d000b2120c72cf108f1258b0ed12bf118d128f218f2158b089131611021188f04e201d11bf11a912a21209129601088058b22d1226010600c88038d0f88048b1bd114f118c71ff209f2158b02f208a002f120c71bf108d10e000bf11ad10df118c71af208f1258b03c717f208a002f121c716f108d107f11a000b0009ac20ac21ac23",
+   "new": "d13c611021188907d13b611021188b08d13a601088018b04d139f118d139000bf11ad139611021188905d138f118c738f208f2158b09d137f118d132f11ae100925522107201000b2210d133f218c733f308f2358b0fd132f318f1358b0b9146611021188f41e201d12ef118d125f11a913d000b2120c72cf108f1258b0ed12bf118d128f218f2158b089131611021188f04e201d11bf11a912a21209129601088058b22d1226010600c88038d0f88048b1bd114f118c71ff209f2158b02f208a002f120c71bf108d10e000bf11ad10df118c71af208f1258b03c717f208a002f121c716f108d107f11a000b0009ac20ac21ac23"
+  },
+  {
+   "addr": "0x0FC60A",
+   "kind": "romdrop",
+   "old": "523e",
+   "new": "523e"
+  },
+  {
+   "addr": "0x0FC60E",
+   "kind": "romdrop",
+   "old": "737f",
+   "new": "737f"
+  },
+  {
+   "addr": "0x0FC612",
+   "kind": "romdrop",
+   "old": "85c0000c4ccc",
+   "new": "85c0000c4ccc"
+  },
+  {
+   "addr": "0x0FC61A",
+   "kind": "romdrop",
+   "old": "7354",
+   "new": "7354"
+  },
+  {
+   "addr": "0x0FC61E",
+   "kind": "romdrop",
+   "old": "7126",
+   "new": "7126"
+  },
+  {
+   "addr": "0x0FC622",
+   "kind": "romdrop",
+   "old": "6ccc41200000000c4cd8",
+   "new": "6ccc41200000000c4cd8"
+  },
+  {
+   "addr": "0x0FC62E",
+   "kind": "romdrop",
+   "old": "6d2c41f00000000f3e9c",
+   "new": "6d2c41f00000000f3e9c"
+  },
+  {
+   "addr": "0x0FC63A",
+   "kind": "romdrop",
+   "old": "6d8440a00000000f3ea0",
+   "new": "6d8440a00000000f3ea0"
+  },
+  {
+   "addr": "0x0FC646",
+   "kind": "romdrop",
+   "old": "671745fa0000437a000044fa00002f862f96",
+   "new": "671745fa0000437a000044fa00002f862f96"
+  },
+  {
+   "addr": "0x0FC659",
+   "kind": "romdrop",
+   "old": "cb4f22fc4c9123f1189222f21ad212f528f15af51171fcf15a981b991bf198d10ef218f121f81ad40dd10ef418d10e410b0009f90af188f1058b00f91ad40bd00b400bf4cc4f26fcf969f6000b68f6ac30ac34ac28ac24",
+   "new": "cb4f22fc4c9123f1189222f21ad212f528f15af51171fcf15a981b991bf198d10ef218f121f81ad40dd10ef418d10e410b0009f90af188f1058b00f91ad40bd00b400bf4cc4f26fcf969f6000b68f6ac30ac34ac28ac24"
+  },
+  {
+   "addr": "0x0FC6B2",
+   "kind": "romdrop",
+   "old": "6628000f3e90000ed5a4",
+   "new": "6628000f3e90000ed5a4"
+  },
+  {
+   "addr": "0x0FC6BE",
+   "kind": "romdrop",
+   "old": "6d84000020dc0009c5bc000020c4",
+   "new": "6d84000020dc0009c5bc000020c4"
+  },
+  {
+   "addr": "0x0FC6D5",
+   "kind": "romdrop",
+   "old": "cb",
+   "new": "cb"
+  },
+  {
+   "addr": "0x0FC6D7",
+   "kind": "romdrop",
+   "old": "db4f22d126410b0009fc0cd125f118d125fd18fd12d124f218fd22c724f208fd23f20cf2139138c722f108fd158f03f12af10ca001f1d3f18d912ff11ad11d601088018b12d41cd118f418d11cf518d11c410b0009fd02d41bd110410bf4ccf60cf4ccd119410bf5dcfc0cd118601088018b0dd117f518c717f108d417d10af418d10f410bf513d106f118fc0cfc12f0cc4f26fdf9000bfcf9ac1cac1800002068",
+   "new": "db4f22d126410b0009fc0cd125f118d125fd18fd12d124f218fd22c724f208fd23f20cf2139138c722f108fd158f03f12af10ca001f1d3f18d912ff11ad11d601088018b12d41cd118f418d11cf518d11c410b0009fd02d41bd110410bf4ccf60cf4ccd119410bf5dcfc0cd118601088018b0dd117f518c717f108d417d10af418d10f410bf513d106f118fc0cfc12f0cc4f26fdf9000bfcf9ac1cac1800002068"
+  },
+  {
+   "addr": "0x0FC77A",
+   "kind": "romdrop",
+   "old": "6ef4000f3e70",
+   "new": "6ef4000f3e70"
+  },
+  {
+   "addr": "0x0FC782",
+   "kind": "romdrop",
+   "old": "6d8442f000003727c5ac000f3e88000ed584",
+   "new": "6d8442f000003727c5ac000f3e88000ed584"
+  },
+  {
+   "addr": "0x0FC796",
+   "kind": "romdrop",
+   "old": "50c8000020dc000ed598000fbe20000f3e89",
+   "new": "50c8000020dc000ed598000fbe20000f3e89"
+  },
+  {
+   "addr": "0x0FC7AA",
+   "kind": "romdrop",
+   "old": "54bc3f59999a000ed5b8",
+   "new": "54bc3f59999a000ed5b8"
+  },
+  {
+   "addr": "0x0FC7BD",
+   "kind": "romdrop",
+   "old": "cb4f22d116611021188b20d1156010880190238b1fd114fc18d114f118fc10f4ccc713f608d013400bf58d600c20088d10f29dd10cf118f1c3f121c70ef409f509f608d00f400bf412a004600d9005a001000990034f26000bfcf9008000",
+   "new": "cb4f22d116611021188b20d1156010880190238b1fd114fc18d114f118fc10f4ccc713f608d013400bf58d600c20088d10f29dd10cf118f1c3f121c70ef409f509f608d00f400bf412a004600d9005a001000990034f26000bfcf9008000"
+  },
+  {
+   "addr": "0x0FC81E",
+   "kind": "romdrop",
+   "old": "6dc8",
+   "new": "6dc8"
+  },
+  {
+   "addr": "0x0FC822",
+   "kind": "romdrop",
+   "old": "7642",
+   "new": "7642"
+  },
+  {
+   "addr": "0x0FC826",
+   "kind": "romdrop",
+   "old": "78b0",
+   "new": "78b0"
+  },
+  {
+   "addr": "0x0FC82A",
+   "kind": "romdrop",
+   "old": "797c3727c5ac0000249842c800003f480000c2c8000000002528",
+   "new": "797c3727c5ac0000249842c800003f480000c2c8000000002528"
+  },
+  {
+   "addr": "0x0FC850",
+   "kind": "erase",
+   "old": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+   "new": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+  },
+  {
+   "addr": "0x0FCB80",
+   "kind": "settings",
+   "old": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+   "new": "ff03ff0c00c8012c028affff4040000040a000004170000044bb800045bb800045cb20004316000043fa0000ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+  },
+  {
+   "addr": "0x0FD000",
+   "kind": "erase",
+   "old": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+   "new": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+  },
+  {
+   "addr": "0x0FD800",
+   "kind": "code",
+   "old": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+   "new": "d104601088018902d303432b0009d203422b0009000fe6000009cf82000fd860d104601088018902d303432b0009d203422b0009000fe60000022468000fdc44d104601088018902d303432b0009d203422b0009000fe60000022524000fe118d619d71ad11a6511655d6470644ce00434068b00e400e040017ce06b027c0714e04cfb7632108b01c71afb08d114f118d115f218f2158b00f21cd10ffa18d10ff018fa00fa20d10bf018f0a1fa0cd10ff118d10ff218f2158b00f21cd109f918f920a01900090009000fcb80ffffab10ffff4c54ffff54c0ffff5db8ffff5bfcffff2070ffff5e84000bb0d0000f4540000f45444479c000e02a007c20088935e038f076fa058b02f7a7e03cf797d1216111611de036027d622d31268b0107156213e02b007c20088b11f0acf0a0f9058907e101faa48b01f9948906e103a0040009e00332028b02e102e02b071460438803890be028017d62533218622de164410032128b02e100e02a0714d10a6010200802296173711c6010200803296033ca01202963036023ca01210022288905a0f30009ffff6350ffff7126604388018b16e40260538172d0a56001e1ff611c63134300303089083010e1068900e107e404e0098072a0010009e105e0140714f88d8471610ce00231028b19e00631068916601370fe4008d294f1267004f226d08cf808e008f076f802f812f823f8848b04e020f066f0858900f80ce00cf787604388028901a0680009857263533308633dd083600020088b58d082600020088b54e02b007c20088b508563600d3306894ff0acf0a0f9058b46f0bce00cf166f1058b41d073f208e014f166f2158b3bd071f308e018f166f3158901f3148b33e01cf166f1358901f1348b2df48cf431e024f166f4158901f4148b258463600c61034108310c4100e03231028900610333128b19e4036053817384737001807384716103e01d0714e101e02a0714e038f7a7e03cf797d15c6111e0360715f08de020f707e024f737a0070009e104a0010009e10760138072e404604388038901a0900009f0bce010f166e102f1058b2ee104d04b600020088b29d04a600020088b25857362533208622d8564600de1033202891cd040f308e028f466f480e105f4358b14d03bf208e014f166e106f2158901f2148b0be02b007ce10820088b06e024f076f3058b5df737a05b000960138072e0420714857361533108601d817fe0280755e404a04d0009604388038907880289118804890f23388910a00c0009e0018072e101e0420714857361533108601d817fe0280755e40060538172d11f6110611ce00131028b11e0063106890ed018f108e014f066f1058b0860138071d015f008f013e008f707a0030009e4006053817224488b15857261533108611d8562600d31028b0d8471610c8461600ce20230228900602331028b03e00631068900e40160432700d301432b000900090009cf82ffff6d2cffff6d84ffff707fffff5450ffffa1f4ffff6350000c14fcffff7116d737d638d1386511655de040017c71010714e100e0410714f08de050f707e06d007cc9012008890ed1306010600c70ffe10230128907e070017ed22d2212e074f076d22cf20ae400d12bf118c72df208f1258b24d12962118511302c6007620d8512600d320089038513600d32008b16f918d11e601020088b11d11d621185116007600d622d32008b09d11af018f091f013c71df108f012e401a0020009c71bf008e044f707fa0c6070600c88038906e100e0670714e0008178a1e60009e10ad20f602088018b09e11124488906e10be010f166f1a58b01a01a0009a1c80009ffffab10000fcb80ffff4c54ffff56f1ffff5698ffff569c000bb034ffff20b8ffff71263f80000042c800004479c000e110e2ff622cd34b603130208b43d34a603130208b3f853230208b3c853330208b39d346603020088b35d345603130208b31d344603130208b2dd343603130208b29853130208b26853230208b23853330208b20853430208b1dd33c603120088b19853120088b16853220088b13853320088b10853420088b0d853520088b0a853620088b07853720088b04853820088b01a0020009a1630009d32d603020088b46843120088b43843620088b40853230208b3d853a30208b3a853b30208b37d324603020088b33d323603130208b2fe02b007c20088b2be10d857362533208622d8564600dd31d30328b0060333202891ee114d21af328f3348b19e00cf876f8848b15e10fe020f166f1358b10e10ee028f166f180f1358b0ae112d211f228e014f166f2158901f2148b01a01c0009a1160009ffff5450ffffa1f4ffff553cffff20dcffff210cffff2124ffff6342ffff5448ffff5e33ffff20e4000005dcffff6d84ffff6d2ce008f476f422e010047c24488b13857362533208622de14b410032128b19c78cf508f542e401f3558903d18be40232128b0fe0100744c787f508f542e011047c7401f3558b00e4000744e115e00334068931e111d271d372e004042ee000003e30408b28e008042ee004003e30408b22e000042ee008003e30408b1ce010042e003e30408b17e014042e003e30408b12e018042e003e30408b0de058042ee028003e30408b07e004f126c763f208f1258b01a0020009a09f0009fb8df48cf431f08df4058b36d2577208e100e00731008907601340087004f526f5458905aff57101e03cfb26a010000960134008f6267020fb26f4658b087004f726f7b1f04cf061f702f561f753fb70f08dfb058902fb8da00f0009d243e004f126c748f208f2158904f2148902fb8da0030009f1b58900fb1ce050f7b7f08dfb058901a0680009d135f518f5b2c73cf108f513e054f757f05cf090d231e008f126f011e004f126f013c737f108f013e111f18df1058940c735f108f1058b3cc734f1086202f010ff0b63f63328d2276021600d33068930e180e0410714d1246211622d33268b376412e0700746d221f028e074f707643344286037600d340cc724f1086002303c2f06f0f9f011c71ef108f012d213e008f226e004f326f23ee000f526f5258900f25c2142d212f22ae181e0410714a00f0009a000000960138072e0420714857362533208602d817fe0280755e0042700d308432b0009000bb034000bafdc000f44cc000fe600000bafbaffff5698ffff569c000224683f80000042c800004248000038a00000478000004b0000003f87ae143f83d70a000001c2d744d645d1456511655de06d007cc9022008890ed1426010600c70ffe10230128907e078017ed23f2212e07cf076d23ef20ae400d13df118c740f208f1258b24d13b62118511302c6007620d8512600d320089038513600d32008b16f918d130601020088b11d12f621185116007600d622d32008b09d12cf018f091f013c730f108f012e401a0020009c72ef008fa0ce044f176f2acf2158900f21ce04cf727e041007cc9802008892de1112448892ce10be010f166f1a58b27e054f076f090d21ce018f126f011e014f126c71bf208f1258b1cf013c71cf108f013f18df1058915c71af108f1058b11c719f1086202f010ff0b63f63328d20f6021600d33068905a0270009a0710009a0520009e111a04f0009ffffab10000fcb80ffff4c54ffff56f2ffff56a8ffff56ac000bb034ffff20c0000bafdc000bafbe3f80000042c800004479c00038a00000478000004b000000d1596211622d33268b466412e0780746d256f028e07cf707643344286037600d340cc75af1086002303c2f06f0f9f011c757f108f012d24ee018f326e014f226f32ee010f526f5358900f35c2142d247f23ae041017c71020714a01d0009e041007cc90120088907e070027ed3412322e074f076d340f30ae200e041072460138072e0420714857362533208602d817fe0280755e0042700e041007cc90320088928d136f318e067007c20088b0de101e0670714e043017c71010714f08de058f707e05cf737e0600755e050f176e058f076f1058b00f717e05cf076f3058b00f737e060017d62533218e0620725e1c8e0640714e064017c611c2118893171ff0714e065047cd11e6210622ce068037c633c32368b00072422288901e308243bd1186210622ce069037c633c32368b00072422288901e301243bd1136210622ce06a037c633c32368b00072422288901e302243b841420088901e304243ba0190009a0d500090009ffff56a8ffff56ac000bafdcffff5698ffff569cffff6d84ffff553cffff5450ffffa1f44b00000038a00000d1666210622ce06c037c633c32368b00072422288901e310243bd161601020088901e320243bd15fe06e037d633d8510600d30368b0063038511600d30368b0063038512600d30368b0063038513600d30368b0063038514600d30368b0063038515600d30368b0063038516600d30368b0063038517600d30368b0063038518600d30368b006303e06e073523388901e340243bd144e2006010220b8412220b8414220b8416220b8418220b22288902e380633c243be0650744e066047ce200d13a6010220b8411220b8416220be3ff633c851230308b09851a30308b06851b30308b03d134851330308900e20122288901e301243be02b007c20088901e302243bd12b62108411220b22288901e304243bd12a601020088901e308243bd1286011e3ff633c30308901e310243be0660744e064017c611ce2c3622c31228b1de04cf076e010f166f1058b17d11d62118511302c6007620d8512600d320089048513600d32008900d117f118d117f018f011e048f176f0158b00f707e041017c6013c9036203e06d07246013c97f6103e0410714d307432b00090009ffff20dcffff210cffff6342ffff2124ffff5448ffff56f100022524ffffa1f4ffff5e33ffff20e4ffff2070000bb0d0ffff54c0ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+  },
+  {
+   "addr": "0x0FE600",
+   "kind": "cal",
+   "old": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+   "new": "00ffffff41a000000000000042c80000437a000043fa0000443b8000447a000044bb800044fa00000000000040a00000412000004170000041a0000041a0000041a0000041a00000ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+  },
+  {
+   "addr": "0x0FFC4C",
+   "kind": "romdrop_data",
+   "old": "21053000",
+   "new": "21053000"
+  }
+ ],
+ "code_pin": {
+  "regions": [
+   [
+    "0x002000",
+    "0x0B7FFF"
+   ],
+   [
+    "0x0FC300",
+    "0x0FC847"
+   ],
+   [
+    "0x0FF650",
+    "0x0FF7FF"
+   ]
+  ],
+  "exclude": [
+   [
+    "0x0140D1",
+    "0x0140D3"
+   ],
+   [
+    "0x0230CC",
+    "0x0230CF"
+   ],
+   [
+    "0x0230D4",
+    "0x0230D7"
+   ],
+   [
+    "0x033782",
+    "0x0337A1"
+   ],
+   [
+    "0x0337A4",
+    "0x0337AF"
+   ],
+   [
+    "0x035CB8",
+    "0x035CB8"
+   ],
+   [
+    "0x035CBC",
+    "0x035CBD"
+   ],
+   [
+    "0x035CC0",
+    "0x035CC1"
+   ],
+   [
+    "0x035D88",
+    "0x035D8B"
+   ],
+   [
+    "0x036681",
+    "0x036683"
+   ],
+   [
+    "0x036704",
+    "0x03671F"
+   ],
+   [
+    "0x03736C",
+    "0x03736F"
+   ],
+   [
+    "0x037376",
+    "0x037377"
+   ],
+   [
+    "0x03B909",
+    "0x03B90B"
+   ],
+   [
+    "0x03BA4D",
+    "0x03BA4F"
+   ],
+   [
+    "0x03BC71",
+    "0x03BC73"
+   ],
+   [
+    "0x03C0C9",
+    "0x03C0CB"
+   ],
+   [
+    "0x0429D0",
+    "0x0429D9"
+   ],
+   [
+    "0x0429DB",
+    "0x0429E3"
+   ],
+   [
+    "0x04470E",
+    "0x04470E"
+   ],
+   [
+    "0x04473E",
+    "0x04473E"
+   ],
+   [
+    "0x044961",
+    "0x044963"
+   ],
+   [
+    "0x045B66",
+    "0x045B79"
+   ],
+   [
+    "0x045B7B",
+    "0x045B7D"
+   ],
+   [
+    "0x046DC6",
+    "0x046DC7"
+   ],
+   [
+    "0x046DEE",
+    "0x046DEF"
+   ],
+   [
+    "0x046FC6",
+    "0x046FC7"
+   ],
+   [
+    "0x04A314",
+    "0x04A314"
+   ],
+   [
+    "0x04A3F1",
+    "0x04A3F3"
+   ],
+   [
+    "0x04A3F5",
+    "0x04A3F7"
+   ],
+   [
+    "0x04A41C",
+    "0x04A41C"
+   ],
+   [
+    "0x04A464",
+    "0x04A464"
+   ],
+   [
+    "0x04A49C",
+    "0x04A49C"
+   ],
+   [
+    "0x04A4B9",
+    "0x04A4BB"
+   ],
+   [
+    "0x04A4D5",
+    "0x04A4D7"
+   ],
+   [
+    "0x04A4D9",
+    "0x04A4DB"
+   ],
+   [
+    "0x04A67C",
+    "0x04A67C"
+   ],
+   [
+    "0x04A731",
+    "0x04A733"
+   ],
+   [
+    "0x04A735",
+    "0x04A737"
+   ],
+   [
+    "0x04A73D",
+    "0x04A73F"
+   ],
+   [
+    "0x04A746",
+    "0x04A746"
+   ],
+   [
+    "0x04A836",
+    "0x04A836"
+   ],
+   [
+    "0x04A945",
+    "0x04A947"
+   ],
+   [
+    "0x04A9A5",
+    "0x04A9A7"
+   ],
+   [
+    "0x04C664",
+    "0x04C664"
+   ],
+   [
+    "0x04C6E9",
+    "0x04C6EB"
+   ],
+   [
+    "0x04FE16",
+    "0x04FE16"
+   ],
+   [
+    "0x04FE28",
+    "0x04FE28"
+   ],
+   [
+    "0x04FE34",
+    "0x04FE34"
+   ],
+   [
+    "0x04FE50",
+    "0x04FE50"
+   ],
+   [
+    "0x04FE62",
+    "0x04FE62"
+   ],
+   [
+    "0x04FE6E",
+    "0x04FE6E"
+   ],
+   [
+    "0x04FF1D",
+    "0x04FF1F"
+   ],
+   [
+    "0x04FF21",
+    "0x04FF23"
+   ],
+   [
+    "0x04FF25",
+    "0x04FF27"
+   ],
+   [
+    "0x04FF29",
+    "0x04FF2B"
+   ],
+   [
+    "0x04FF2D",
+    "0x04FF2F"
+   ],
+   [
+    "0x04FF31",
+    "0x04FF33"
+   ],
+   [
+    "0x04FF35",
+    "0x04FF37"
+   ],
+   [
+    "0x04FF39",
+    "0x04FF3B"
+   ],
+   [
+    "0x05000E",
+    "0x05000E"
+   ],
+   [
+    "0x050018",
+    "0x050018"
+   ],
+   [
+    "0x050024",
+    "0x050024"
+   ],
+   [
+    "0x0501C5",
+    "0x0501C7"
+   ],
+   [
+    "0x0501C9",
+    "0x0501CB"
+   ],
+   [
+    "0x0501CD",
+    "0x0501CF"
+   ],
+   [
+    "0x0538CE",
+    "0x0538D5"
+   ],
+   [
+    "0x05393A",
+    "0x05393B"
+   ],
+   [
+    "0x05BD9D",
+    "0x05BD9F"
+   ],
+   [
+    "0x07EB96",
+    "0x07EBA2"
+   ],
+   [
+    "0x07EBA4",
+    "0x07EBAB"
+   ],
+   [
+    "0x08648A",
+    "0x086492"
+   ],
+   [
+    "0x086515",
+    "0x086517"
+   ],
+   [
+    "0x086DB4",
+    "0x086DB5"
+   ],
+   [
+    "0x09699A",
+    "0x09699B"
+   ],
+   [
+    "0x09CD6C",
+    "0x09CD6F"
+   ],
+   [
+    "0x0AC3C0",
+    "0x0AC3C0"
+   ],
+   [
+    "0x0AC3C3",
+    "0x0AC3C3"
+   ],
+   [
+    "0x0B6A68",
+    "0x0B6A6B"
+   ],
+   [
+    "0x0B6A6D",
+    "0x0B6A71"
+   ],
+   [
+    "0x0B6B51",
+    "0x0B6B53"
+   ],
+   [
+    "0x0FC300",
+    "0x0FC34F"
+   ],
+   [
+    "0x0FC352",
+    "0x0FC353"
+   ],
+   [
+    "0x0FC360",
+    "0x0FC361"
+   ],
+   [
+    "0x0FC363",
+    "0x0FC363"
+   ],
+   [
+    "0x0FC365",
+    "0x0FC365"
+   ],
+   [
+    "0x0FC367",
+    "0x0FC3E2"
+   ],
+   [
+    "0x0FC3E4",
+    "0x0FC4DA"
+   ],
+   [
+    "0x0FC4DC",
+    "0x0FC4EF"
+   ],
+   [
+    "0x0FC4F2",
+    "0x0FC4FF"
+   ],
+   [
+    "0x0FC502",
+    "0x0FC50F"
+   ],
+   [
+    "0x0FC514",
+    "0x0FC607"
+   ],
+   [
+    "0x0FC60A",
+    "0x0FC60B"
+   ],
+   [
+    "0x0FC60E",
+    "0x0FC60F"
+   ],
+   [
+    "0x0FC612",
+    "0x0FC617"
+   ],
+   [
+    "0x0FC61A",
+    "0x0FC61B"
+   ],
+   [
+    "0x0FC61E",
+    "0x0FC61F"
+   ],
+   [
+    "0x0FC622",
+    "0x0FC62B"
+   ],
+   [
+    "0x0FC62E",
+    "0x0FC637"
+   ],
+   [
+    "0x0FC63A",
+    "0x0FC643"
+   ],
+   [
+    "0x0FC646",
+    "0x0FC657"
+   ],
+   [
+    "0x0FC659",
+    "0x0FC6AF"
+   ],
+   [
+    "0x0FC6B2",
+    "0x0FC6BB"
+   ],
+   [
+    "0x0FC6BE",
+    "0x0FC6CB"
+   ],
+   [
+    "0x0FC6D5",
+    "0x0FC6D5"
+   ],
+   [
+    "0x0FC6D7",
+    "0x0FC777"
+   ],
+   [
+    "0x0FC77A",
+    "0x0FC77F"
+   ],
+   [
+    "0x0FC782",
+    "0x0FC793"
+   ],
+   [
+    "0x0FC796",
+    "0x0FC7A7"
+   ],
+   [
+    "0x0FC7AA",
+    "0x0FC7B3"
+   ],
+   [
+    "0x0FC7BD",
+    "0x0FC81A"
+   ],
+   [
+    "0x0FC81E",
+    "0x0FC81F"
+   ],
+   [
+    "0x0FC822",
+    "0x0FC823"
+   ],
+   [
+    "0x0FC826",
+    "0x0FC827"
+   ],
+   [
+    "0x0FC82A",
+    "0x0FC843"
+   ],
+   [
+    "0x0FF658",
+    "0x0FF65B"
+   ],
+   [
+    "0x0FF664",
+    "0x0FF667"
+   ],
+   [
+    "0x0FF670",
+    "0x0FF673"
+   ],
+   [
+    "0x0FF67C",
+    "0x0FF67F"
+   ],
+   [
+    "0x0FF688",
+    "0x0FF68B"
+   ],
+   [
+    "0x0FF694",
+    "0x0FF697"
+   ],
+   [
+    "0x0FF6A0",
+    "0x0FF6A3"
+   ],
+   [
+    "0x0FF6AC",
+    "0x0FF6AF"
+   ],
+   [
+    "0x0FF6B8",
+    "0x0FF6BB"
+   ],
+   [
+    "0x0FF6C4",
+    "0x0FF6C7"
+   ],
+   [
+    "0x0FF6D0",
+    "0x0FF6D3"
+   ],
+   [
+    "0x0FF6DC",
+    "0x0FF6DF"
+   ],
+   [
+    "0x0FF6E8",
+    "0x0FF6EB"
+   ],
+   [
+    "0x0FF6F4",
+    "0x0FF6F7"
+   ],
+   [
+    "0x0FF700",
+    "0x0FF703"
+   ],
+   [
+    "0x0FF70C",
+    "0x0FF70F"
+   ],
+   [
+    "0x0FF718",
+    "0x0FF71B"
+   ],
+   [
+    "0x0FF724",
+    "0x0FF727"
+   ],
+   [
+    "0x0FF730",
+    "0x0FF733"
+   ],
+   [
+    "0x0FF73C",
+    "0x0FF73F"
+   ],
+   [
+    "0x0FF748",
+    "0x0FF74B"
+   ],
+   [
+    "0x0FF754",
+    "0x0FF757"
+   ],
+   [
+    "0x0FF760",
+    "0x0FF763"
+   ],
+   [
+    "0x0FF76C",
+    "0x0FF76F"
+   ],
+   [
+    "0x0FF778",
+    "0x0FF77B"
+   ],
+   [
+    "0x0FF784",
+    "0x0FF787"
+   ],
+   [
+    "0x0FF790",
+    "0x0FF793"
+   ],
+   [
+    "0x0FF79C",
+    "0x0FF79F"
+   ],
+   [
+    "0x0FF7A8",
+    "0x0FF7AB"
+   ],
+   [
+    "0x0FF7B4",
+    "0x0FF7B7"
+   ],
+   [
+    "0x0FF7C0",
+    "0x0FF7C3"
+   ],
+   [
+    "0x0FF7CC",
+    "0x0FF7CF"
+   ],
+   [
+    "0x0FF7D8",
+    "0x0FF7DB"
+   ],
+   [
+    "0x0FF7E4",
+    "0x0FF7E7"
+   ],
+   [
+    "0x0FF7F0",
+    "0x0FF7F3"
+   ]
+  ],
+  "sha256": "d96adf9916762efa05ebf35c48746c470e2ad41c866201de75c61947cd678bd7",
+  "block_size": 4096,
+  "blocks": {
+   "0x002000": "b8a0de068c333426",
+   "0x003000": "68be7cc4131ef9cb",
+   "0x004000": "6645d7cf553ad818",
+   "0x005000": "64ca2064d703caf2",
+   "0x006000": "6375e228a79ff302",
+   "0x007000": "ffffed3cb02ae5f8",
+   "0x008000": "c9ea1b99a03a0244",
+   "0x009000": "aced54116f5e0d73",
+   "0x00A000": "6f6c566dbc8e8a64",
+   "0x00B000": "5a906c21d7de5bb5",
+   "0x00C000": "421ffb0841f4a90f",
+   "0x00D000": "dde3961ddb39644b",
+   "0x00E000": "75a9bb120ed5413c",
+   "0x00F000": "fcec1f94f92a78b3",
+   "0x010000": "a01eca3bc1df6c5d",
+   "0x011000": "81f428cf2d4936b3",
+   "0x012000": "e9f37b734c9e9dfd",
+   "0x013000": "cab9ff5d6940278c",
+   "0x014000": "65339d426678372a",
+   "0x015000": "8dc770717d6cb825",
+   "0x016000": "ddf9fc73d8370b6c",
+   "0x017000": "2c5a8ae400a8214c",
+   "0x018000": "d0646b489eb64c30",
+   "0x019000": "66cefc6ace632984",
+   "0x01A000": "c954aa060e75bbf2",
+   "0x01B000": "421c80b41a5e2f7d",
+   "0x01C000": "04160b38ce1e169a",
+   "0x01D000": "bb2bd182d831f564",
+   "0x01E000": "0ed158d56b32e7fb",
+   "0x01F000": "7ca84b5c3ec53205",
+   "0x020000": "dbc6f7efec008313",
+   "0x021000": "f47e108f258ec451",
+   "0x022000": "37853884d51c60fa",
+   "0x023000": "ff118a065ee03e32",
+   "0x024000": "7996ebacc4e478af",
+   "0x025000": "698e85d1eeb097c6",
+   "0x026000": "d9926034c240bf52",
+   "0x027000": "9f8646542c9fbaca",
+   "0x028000": "76351a1f8775cea3",
+   "0x029000": "bcbdf207d8b8d553",
+   "0x02A000": "80855d0f239c08e0",
+   "0x02B000": "5bd4326628fe235f",
+   "0x02C000": "bbcf900ef8720532",
+   "0x02D000": "0d933e3f2eb60741",
+   "0x02E000": "cb6ceef459fe66ed",
+   "0x02F000": "120879161be54051",
+   "0x030000": "6664237e473146c7",
+   "0x031000": "686dab5c838f0f6d",
+   "0x032000": "f7ab10ad5db64a68",
+   "0x033000": "44acd7c164cd59f8",
+   "0x034000": "54daad652c76e4ab",
+   "0x035000": "432b296c2f09f7cc",
+   "0x036000": "03b49000a6e86359",
+   "0x037000": "d178bad19214a7d5",
+   "0x038000": "d343292f29ddec9d",
+   "0x039000": "8e339e59c309a033",
+   "0x03A000": "78d74078db777789",
+   "0x03B000": "c9ac7ee2f18512de",
+   "0x03C000": "220296611f39f285",
+   "0x03D000": "f8d94f91053eb534",
+   "0x03E000": "80eaaabb861a5cb0",
+   "0x03F000": "2365833db131f7be",
+   "0x040000": "eaee66bb5efd4765",
+   "0x041000": "8180361062b9406a",
+   "0x042000": "109721afeeb3d789",
+   "0x043000": "fbeac185fbcc7917",
+   "0x044000": "6eae6994219514a0",
+   "0x045000": "ac95ff6dd51f6b38",
+   "0x046000": "5a04f9557983caf9",
+   "0x047000": "9b9d93c0316196fc",
+   "0x048000": "2b0ebdda51bc7379",
+   "0x049000": "4ad663d71970c0a1",
+   "0x04A000": "52c2e9f073899348",
+   "0x04B000": "438d5f608ec41fc5",
+   "0x04C000": "45f5e0cc48b37572",
+   "0x04D000": "c632e755cbb36e0e",
+   "0x04E000": "a0f36bb4224e5026",
+   "0x04F000": "e5af9a806f41eab6",
+   "0x050000": "5036db3837bda92b",
+   "0x051000": "2b206b8eae6f0e80",
+   "0x052000": "d065b94c614a092b",
+   "0x053000": "559f6316d3f3cdbb",
+   "0x054000": "3865866d88cb7488",
+   "0x055000": "c692604bfdf92218",
+   "0x056000": "a1304be2728ab8aa",
+   "0x057000": "4683d11dbaf2ca95",
+   "0x058000": "6358c7f3b30ed72d",
+   "0x059000": "4de63b5f099f513f",
+   "0x05A000": "03b5491e6fc97a23",
+   "0x05B000": "74311a1815c4809d",
+   "0x05C000": "173a538309ab76bd",
+   "0x05D000": "fc3d450937726ac8",
+   "0x05E000": "835fe41c89a1cad8",
+   "0x05F000": "d9d1224a3cf7b8f4",
+   "0x060000": "72d8ca71cce19939",
+   "0x061000": "a4d17164c2fe00f9",
+   "0x062000": "abb050d905da5d54",
+   "0x063000": "3ae688a2b5f74e06",
+   "0x064000": "0930f3e2f6492d38",
+   "0x065000": "67d9b0c236ca7507",
+   "0x066000": "ba08c4d56f0cc76d",
+   "0x067000": "fb98f7b981ee8a64",
+   "0x068000": "6516c9ea64fdca4f",
+   "0x069000": "07079a1f6c228611",
+   "0x06A000": "8a81fcd292d88cc7",
+   "0x06B000": "8f7a7e29fbbae24e",
+   "0x06C000": "4ee4a4dca2da51a3",
+   "0x06D000": "08de8fb0423f027c",
+   "0x06E000": "b5272102dc313604",
+   "0x06F000": "ccb964154dcdbdb9",
+   "0x070000": "d026b5db66963517",
+   "0x071000": "cc58bbbff2e3d766",
+   "0x072000": "8269a044d2ba4243",
+   "0x073000": "194fa4e13470eea6",
+   "0x074000": "a5ebae6f2f752a8c",
+   "0x075000": "89ada68c46fcfa89",
+   "0x076000": "d623ec9f99d51061",
+   "0x077000": "2098dacac2121d07",
+   "0x078000": "a3b37c9c4a3321a1",
+   "0x079000": "53a03151f3fc1ce7",
+   "0x07A000": "255d09edd9b669ed",
+   "0x07B000": "449485bc531c062c",
+   "0x07C000": "4bebb17a356ddb03",
+   "0x07D000": "0b98d2e7860d8e5d",
+   "0x07E000": "ad0c76da7f644d8a",
+   "0x07F000": "6d8fecbed837cf23",
+   "0x080000": "b3e6c23ee5097334",
+   "0x081000": "7874f43f2a277e30",
+   "0x082000": "d635c39e0cae1310",
+   "0x083000": "67bfaf6eea5afb5e",
+   "0x084000": "6b2edd922d42a6af",
+   "0x085000": "0ad2b1c2b1239b25",
+   "0x086000": "27bc66c3dcc620a9",
+   "0x087000": "eb9f271b9f5e992a",
+   "0x088000": "aedcf9a255484667",
+   "0x089000": "7f1880bb4c7d583f",
+   "0x08A000": "a9525a384c97352b",
+   "0x08B000": "bf3ea16cfa240f6a",
+   "0x08C000": "d1b6922d8b4bc82e",
+   "0x08D000": "c9a7f3731bc1e483",
+   "0x08E000": "5f9c4ad4f2a2ff25",
+   "0x08F000": "b42255c63e0aa0d8",
+   "0x090000": "d635a8e66c3c1f08",
+   "0x091000": "0385c2f4112f00f0",
+   "0x092000": "add177cffe348133",
+   "0x093000": "aec14c195e7937dd",
+   "0x094000": "2efc93c8c4442ed5",
+   "0x095000": "95a99283615c44cc",
+   "0x096000": "f197a242b5ced71f",
+   "0x097000": "982f82d09c3818e2",
+   "0x098000": "fbaecddef71ce124",
+   "0x099000": "6a570416fbc5e5fa",
+   "0x09A000": "e346a9bc661353ff",
+   "0x09B000": "cae9670ce48444a7",
+   "0x09C000": "a9658ab218af7753",
+   "0x09D000": "f4c52cb7cc8f14ce",
+   "0x09E000": "22dca436f239684e",
+   "0x09F000": "b3b0bfa21c217975",
+   "0x0A0000": "bb41877453987cbf",
+   "0x0A1000": "816a20d0e80116f3",
+   "0x0A2000": "4887c6554d5eaabb",
+   "0x0A3000": "eb5085aae9d282e8",
+   "0x0A4000": "f47a8ec3e9aff231",
+   "0x0A5000": "f47a8ec3e9aff231",
+   "0x0A6000": "f47a8ec3e9aff231",
+   "0x0A7000": "f47a8ec3e9aff231",
+   "0x0A8000": "f47a8ec3e9aff231",
+   "0x0A9000": "f47a8ec3e9aff231",
+   "0x0AA000": "f47a8ec3e9aff231",
+   "0x0AB000": "f47a8ec3e9aff231",
+   "0x0AC000": "cd3b24511ad1f0ac",
+   "0x0AD000": "76722d331acaa764",
+   "0x0AE000": "d4b5a152844fe7f5",
+   "0x0AF000": "f0fda1d8e4af9a02",
+   "0x0B0000": "5d238c267778f40b",
+   "0x0B1000": "08f9589fb5454522",
+   "0x0B2000": "bed39a9d87e2158b",
+   "0x0B3000": "4f352fd041a21e09",
+   "0x0B4000": "f3a05c9d7a2bd091",
+   "0x0B5000": "87e48a26b9d27dee",
+   "0x0B6000": "7ab9c7d727153092",
+   "0x0B7000": "f47a8ec3e9aff231",
+   "0x0FC000": "4c4bc5fbd1fcf860",
+   "0x0FF000": "051f9bfad023a5db"
+  }
+ },
+ "data_pin": {
+  "regions": [
+   [
+    "0x0B8000",
+    "0x0FFFFF"
+   ]
+  ],
+  "exclude": [
+   [
+    "0x0B8140",
+    "0x0B817F"
+   ],
+   [
+    "0x0B819C",
+    "0x0B81CB"
+   ],
+   [
+    "0x0B82B8",
+    "0x0B8327"
+   ],
+   [
+    "0x0B8378",
+    "0x0B83DB"
+   ],
+   [
+    "0x0B8438",
+    "0x0B8438"
+   ],
+   [
+    "0x0B8588",
+    "0x0B858B"
+   ],
+   [
+    "0x0B85A4",
+    "0x0B895F"
+   ],
+   [
+    "0x0B8F90",
+    "0x0BA1B3"
+   ],
+   [
+    "0x0BA544",
+    "0x0BA76B"
+   ],
+   [
+    "0x0BA7CC",
+    "0x0BA7CF"
+   ],
+   [
+    "0x0BA7D4",
+    "0x0BA7D7"
+   ],
+   [
+    "0x0BA830",
+    "0x0BA977"
+   ],
+   [
+    "0x0BAA48",
+    "0x0BAA8F"
+   ],
+   [
+    "0x0BAAD8",
+    "0x0BAF9B"
+   ],
+   [
+    "0x0BAFA0",
+    "0x0BAFA3"
+   ],
+   [
+    "0x0BB0D0",
+    "0x0BB0DB"
+   ],
+   [
+    "0x0BB198",
+    "0x0BB199"
+   ],
+   [
+    "0x0BB19C",
+    "0x0BB1A1"
+   ],
+   [
+    "0x0BB1A4",
+    "0x0BB3C7"
+   ],
+   [
+    "0x0BB3E8",
+    "0x0BB467"
+   ],
+   [
+    "0x0BB544",
+    "0x0BB54B"
+   ],
+   [
+    "0x0BB840",
+    "0x0BB843"
+   ],
+   [
+    "0x0BB848",
+    "0x0BB84B"
+   ],
+   [
+    "0x0BB850",
+    "0x0BB897"
+   ],
+   [
+    "0x0BB8CC",
+    "0x0BB8CF"
+   ],
+   [
+    "0x0BB950",
+    "0x0BBBCB"
+   ],
+   [
+    "0x0BBBCF",
+    "0x0BBBCF"
+   ],
+   [
+    "0x0BBBD1",
+    "0x0BBBD1"
+   ],
+   [
+    "0x0BBBD4",
+    "0x0BBBD7"
+   ],
+   [
+    "0x0BBBE4",
+    "0x0BBBE7"
+   ],
+   [
+    "0x0BBBEC",
+    "0x0BBBEF"
+   ],
+   [
+    "0x0BBC04",
+    "0x0BBC0B"
+   ],
+   [
+    "0x0BBC14",
+    "0x0BBD4B"
+   ],
+   [
+    "0x0BBE74",
+    "0x0BC13B"
+   ],
+   [
+    "0x0BC47C",
+    "0x0BC7FB"
+   ],
+   [
+    "0x0BC86C",
+    "0x0BC8DB"
+   ],
+   [
+    "0x0BC954",
+    "0x0BD543"
+   ],
+   [
+    "0x0BD75C",
+    "0x0BF283"
+   ],
+   [
+    "0x0BF4F4",
+    "0x0BF5C3"
+   ],
+   [
+    "0x0BF938",
+    "0x0BF93F"
+   ],
+   [
+    "0x0BF946",
+    "0x0BF949"
+   ],
+   [
+    "0x0BF960",
+    "0x0BF963"
+   ],
+   [
+    "0x0BF968",
+    "0x0BF96B"
+   ],
+   [
+    "0x0BF9C0",
+    "0x0BFB7F"
+   ],
+   [
+    "0x0BFDE4",
+    "0x0BFDE5"
+   ],
+   [
+    "0x0BFDE8",
+    "0x0BFDEF"
+   ],
+   [
+    "0x0BFDF4",
+    "0x0C011B"
+   ],
+   [
+    "0x0C012C",
+    "0x0C012F"
+   ],
+   [
+    "0x0C0150",
+    "0x0C019F"
+   ],
+   [
+    "0x0C0240",
+    "0x0C0287"
+   ],
+   [
+    "0x0C0318",
+    "0x0C036F"
+   ],
+   [
+    "0x0C0420",
+    "0x0C0457"
+   ],
+   [
+    "0x0C05F0",
+    "0x0C062B"
+   ],
+   [
+    "0x0C14DE",
+    "0x0C14DF"
+   ],
+   [
+    "0x0C14E8",
+    "0x0C14EF"
+   ],
+   [
+    "0x0C14F8",
+    "0x0C1513"
+   ],
+   [
+    "0x0C4BB8",
+    "0x0C4BB8"
+   ],
+   [
+    "0x0C4BBB",
+    "0x0C4BBB"
+   ],
+   [
+    "0x0C4BC9",
+    "0x0C4BCF"
+   ],
+   [
+    "0x0C4BD1",
+    "0x0C4BD1"
+   ],
+   [
+    "0x0C4C40",
+    "0x0C4C43"
+   ],
+   [
+    "0x0C4C48",
+    "0x0C4C4B"
+   ],
+   [
+    "0x0C4C58",
+    "0x0C4C5B"
+   ],
+   [
+    "0x0C4C78",
+    "0x0C4C7B"
+   ],
+   [
+    "0x0C4C80",
+    "0x0C4C83"
+   ],
+   [
+    "0x0C4C88",
+    "0x0C4C8B"
+   ],
+   [
+    "0x0C4C90",
+    "0x0C4C93"
+   ],
+   [
+    "0x0C4C98",
+    "0x0C4C9B"
+   ],
+   [
+    "0x0C4CD8",
+    "0x0C4CE3"
+   ],
+   [
+    "0x0C4DE0",
+    "0x0C4F9F"
+   ],
+   [
+    "0x0C50F0",
+    "0x0C523F"
+   ],
+   [
+    "0x0C52C4",
+    "0x0C52D3"
+   ],
+   [
+    "0x0C52DC",
+    "0x0C586F"
+   ],
+   [
+    "0x0C589C",
+    "0x0C589F"
+   ],
+   [
+    "0x0C5931",
+    "0x0C5931"
+   ],
+   [
+    "0x0C5938",
+    "0x0C5953"
+   ],
+   [
+    "0x0C59A8",
+    "0x0C59AF"
+   ],
+   [
+    "0x0C5A78",
+    "0x0C5B57"
+   ],
+   [
+    "0x0C5C90",
+    "0x0C5D1F"
+   ],
+   [
+    "0x0C6714",
+    "0x0C7EE7"
+   ],
+   [
+    "0x0C8A38",
+    "0x0C8C97"
+   ],
+   [
+    "0x0C8CBC",
+    "0x0C8CBC"
+   ],
+   [
+    "0x0C8CDC",
+    "0x0C8CE3"
+   ],
+   [
+    "0x0C8CE8",
+    "0x0C8F6B"
+   ],
+   [
+    "0x0C8FFC",
+    "0x0C9E0B"
+   ],
+   [
+    "0x0C9E9C",
+    "0x0C9E9F"
+   ],
+   [
+    "0x0C9EA4",
+    "0x0C9EA7"
+   ],
+   [
+    "0x0C9EAC",
+    "0x0C9EAF"
+   ],
+   [
+    "0x0C9EB4",
+    "0x0C9F23"
+   ],
+   [
+    "0x0C9F94",
+    "0x0CA003"
+   ],
+   [
+    "0x0CA074",
+    "0x0CA0E3"
+   ],
+   [
+    "0x0CA21C",
+    "0x0CA2F9"
+   ],
+   [
+    "0x0CA2FC",
+    "0x0CA3D9"
+   ],
+   [
+    "0x0CA548",
+    "0x0CA548"
+   ],
+   [
+    "0x0CA590",
+    "0x0CA593"
+   ],
+   [
+    "0x0CA634",
+    "0x0CA723"
+   ],
+   [
+    "0x0CA97C",
+    "0x0CAE03"
+   ],
+   [
+    "0x0CB388",
+    "0x0CBBFF"
+   ],
+   [
+    "0x0CBD68",
+    "0x0CBD6B"
+   ],
+   [
+    "0x0CBD80",
+    "0x0CBD87"
+   ],
+   [
+    "0x0CBDA8",
+    "0x0CBDB7"
+   ],
+   [
+    "0x0CBE68",
+    "0x0CBF1F"
+   ],
+   [
+    "0x0CBF98",
+    "0x0CBFCF"
+   ],
+   [
+    "0x0CC010",
+    "0x0CC09B"
+   ],
+   [
+    "0x0CC8A4",
+    "0x0CC8A7"
+   ],
+   [
+    "0x0CC8B0",
+    "0x0CCBD3"
+   ],
+   [
+    "0x0CCC48",
+    "0x0CD637"
+   ],
+   [
+    "0x0CD900",
+    "0x0CD913"
+   ],
+   [
+    "0x0CD9B8",
+    "0x0CDA5B"
+   ],
+   [
+    "0x0CDA6C",
+    "0x0CDC3B"
+   ],
+   [
+    "0x0CDE4C",
+    "0x0CDE83"
+   ],
+   [
+    "0x0CE230",
+    "0x0CE231"
+   ],
+   [
+    "0x0CE25C",
+    "0x0CE25F"
+   ],
+   [
+    "0x0CE264",
+    "0x0CE267"
+   ],
+   [
+    "0x0CE26C",
+    "0x0CE26F"
+   ],
+   [
+    "0x0CE274",
+    "0x0CE277"
+   ],
+   [
+    "0x0CE27C",
+    "0x0CE27F"
+   ],
+   [
+    "0x0CE284",
+    "0x0CE287"
+   ],
+   [
+    "0x0CE28C",
+    "0x0CE28F"
+   ],
+   [
+    "0x0CE294",
+    "0x0CE297"
+   ],
+   [
+    "0x0CE29C",
+    "0x0CE29F"
+   ],
+   [
+    "0x0CE2AC",
+    "0x0CE2B3"
+   ],
+   [
+    "0x0CE2BC",
+    "0x0CF803"
+   ],
+   [
+    "0x0CF808",
+    "0x0CF9C3"
+   ],
+   [
+    "0x0CFBE8",
+    "0x0CFBF7"
+   ],
+   [
+    "0x0CFC2C",
+    "0x0CFCE3"
+   ],
+   [
+    "0x0CFD84",
+    "0x0CFD87"
+   ],
+   [
+    "0x0CFF28",
+    "0x0D1EA7"
+   ],
+   [
+    "0x0D1F34",
+    "0x0D2D63"
+   ],
+   [
+    "0x0D3184",
+    "0x0D31F3"
+   ],
+   [
+    "0x0D3688",
+    "0x0D3E5F"
+   ],
+   [
+    "0x0D4A84",
+    "0x0D4A84"
+   ],
+   [
+    "0x0D4A88",
+    "0x0D4A93"
+   ],
+   [
+    "0x0D4B70",
+    "0x0D4BC7"
+   ],
+   [
+    "0x0D4C18",
+    "0x0D50DF"
+   ],
+   [
+    "0x0D6337",
+    "0x0D6337"
+   ],
+   [
+    "0x0D6348",
+    "0x0D634B"
+   ],
+   [
+    "0x0D6350",
+    "0x0D6353"
+   ],
+   [
+    "0x0D6358",
+    "0x0D635B"
+   ],
+   [
+    "0x0D6360",
+    "0x0D6363"
+   ],
+   [
+    "0x0D6368",
+    "0x0D636B"
+   ],
+   [
+    "0x0D6370",
+    "0x0D6373"
+   ],
+   [
+    "0x0D64F4",
+    "0x0D64FF"
+   ],
+   [
+    "0x0D6518",
+    "0x0D6607"
+   ],
+   [
+    "0x0D67B8",
+    "0x0D682F"
+   ],
+   [
+    "0x0D6AF0",
+    "0x0D6AF7"
+   ],
+   [
+    "0x0D6AFC",
+    "0x0D6AFF"
+   ],
+   [
+    "0x0D6B08",
+    "0x0D6BFB"
+   ],
+   [
+    "0x0D6DBC",
+    "0x0D717B"
+   ],
+   [
+    "0x0D7F20",
+    "0x0D83CF"
+   ],
+   [
+    "0x0D8894",
+    "0x0D8C4B"
+   ],
+   [
+    "0x0D9144",
+    "0x0D91C3"
+   ],
+   [
+    "0x0DA429",
+    "0x0DA429"
+   ],
+   [
+    "0x0DA42C",
+    "0x0DA42F"
+   ],
+   [
+    "0x0DA438",
+    "0x0DA43B"
+   ],
+   [
+    "0x0DA4CC",
+    "0x0DA4D3"
+   ],
+   [
+    "0x0DB758",
+    "0x0DB7D7"
+   ],
+   [
+    "0x0DB7E8",
+    "0x0DB927"
+   ],
+   [
+    "0x0DC3E4",
+    "0x0DC453"
+   ],
+   [
+    "0x0DD900",
+    "0x0DD903"
+   ],
+   [
+    "0x0E08FC",
+    "0x0E0972"
+   ],
+   [
+    "0x0E0974",
+    "0x0E0978"
+   ],
+   [
+    "0x0E149C",
+    "0x0E149C"
+   ],
+   [
+    "0x0ED360",
+    "0x0ED5D1"
+   ],
+   [
+    "0x0ED700",
+    "0x0F2FA7"
+   ],
+   [
+    "0x0F3E70",
+    "0x0F3E74"
+   ],
+   [
+    "0x0F3E76",
+    "0x0F3E76"
+   ],
+   [
+    "0x0F3E78",
+    "0x0F3E89"
+   ],
+   [
+    "0x0F3E90",
+    "0x0F3E93"
+   ],
+   [
+    "0x0F3E9C",
+    "0x0F3EA7"
+   ],
+   [
+    "0x0F44C0",
+    "0x0F44C3"
+   ],
+   [
+    "0x0F4504",
+    "0x0F450B"
+   ],
+   [
+    "0x0F456C",
+    "0x0F456F"
+   ],
+   [
+    "0x0F4E60",
+    "0x0F4EDF"
+   ],
+   [
+    "0x0F61EC",
+    "0x0F6967"
+   ],
+   [
+    "0x0F7C50",
+    "0x0F7C50"
+   ],
+   [
+    "0x0F7C52",
+    "0x0F7C52"
+   ],
+   [
+    "0x0F7C54",
+    "0x0F7C54"
+   ],
+   [
+    "0x0F7C58",
+    "0x0F7C7F"
+   ],
+   [
+    "0x0F7C84",
+    "0x0F7C87"
+   ],
+   [
+    "0x0F7C8C",
+    "0x0F7CB3"
+   ],
+   [
+    "0x0F7D50",
+    "0x0F7E97"
+   ],
+   [
+    "0x0F7F28",
+    "0x0F8047"
+   ],
+   [
+    "0x0F80A0",
+    "0x0F817F"
+   ],
+   [
+    "0x0F82B8",
+    "0x0F9157"
+   ],
+   [
+    "0x0F9854",
+    "0x0FB027"
+   ],
+   [
+    "0x0FB9D0",
+    "0x0FBA37"
+   ],
+   [
+    "0x0FBA3A",
+    "0x0FBA3F"
+   ],
+   [
+    "0x0FBA42",
+    "0x0FBA43"
+   ],
+   [
+    "0x0FBA46",
+    "0x0FBA47"
+   ],
+   [
+    "0x0FBA4A",
+    "0x0FBA53"
+   ],
+   [
+    "0x0FBA56",
+    "0x0FBA57"
+   ],
+   [
+    "0x0FBA5A",
+    "0x0FBA5F"
+   ],
+   [
+    "0x0FBA90",
+    "0x0FBAAC"
+   ],
+   [
+    "0x0FBAAE",
+    "0x0FBACB"
+   ],
+   [
+    "0x0FBACE",
+    "0x0FBAD3"
+   ],
+   [
+    "0x0FBB58",
+    "0x0FBBBB"
+   ],
+   [
+    "0x0FBBD0",
+    "0x0FBC84"
+   ],
+   [
+    "0x0FBC86",
+    "0x0FBCA3"
+   ],
+   [
+    "0x0FBCD0",
+    "0x0FBD07"
+   ],
+   [
+    "0x0FBD0A",
+    "0x0FBD0B"
+   ],
+   [
+    "0x0FBD1C",
+    "0x0FBD3B"
+   ],
+   [
+    "0x0FBDA0",
+    "0x0FBDC3"
+   ],
+   [
+    "0x0FBE20",
+    "0x0FBE2B"
+   ],
+   [
+    "0x0FBE30",
+    "0x0FBE35"
+   ],
+   [
+    "0x0FBE37",
+    "0x0FBE37"
+   ],
+   [
+    "0x0FBE39",
+    "0x0FBE39"
+   ],
+   [
+    "0x0FBE3B",
+    "0x0FBE95"
+   ],
+   [
+    "0x0FBE97",
+    "0x0FBE97"
+   ],
+   [
+    "0x0FBE99",
+    "0x0FBEDF"
+   ],
+   [
+    "0x0FBEF0",
+    "0x0FBF13"
+   ],
+   [
+    "0x0FBF20",
+    "0x0FBF43"
+   ],
+   [
+    "0x0FBF50",
+    "0x0FBF73"
+   ],
+   [
+    "0x0FBF80",
+    "0x0FBFA3"
+   ],
+   [
+    "0x0FBFB0",
+    "0x0FBFD3"
+   ],
+   [
+    "0x0FBFE0",
+    "0x0FC003"
+   ],
+   [
+    "0x0FC010",
+    "0x0FC033"
+   ],
+   [
+    "0x0FC040",
+    "0x0FC063"
+   ],
+   [
+    "0x0FC070",
+    "0x0FC093"
+   ],
+   [
+    "0x0FC0A0",
+    "0x0FC0C3"
+   ],
+   [
+    "0x0FC0D0",
+    "0x0FC0F3"
+   ],
+   [
+    "0x0FC100",
+    "0x0FC123"
+   ],
+   [
+    "0x0FC130",
+    "0x0FC153"
+   ],
+   [
+    "0x0FC160",
+    "0x0FC183"
+   ],
+   [
+    "0x0FC190",
+    "0x0FC1B3"
+   ],
+   [
+    "0x0FC1C0",
+    "0x0FC1E3"
+   ],
+   [
+    "0x0FC1F0",
+    "0x0FC213"
+   ],
+   [
+    "0x0FC220",
+    "0x0FC243"
+   ],
+   [
+    "0x0FC250",
+    "0x0FC273"
+   ],
+   [
+    "0x0FC2B0",
+    "0x0FC2D7"
+   ],
+   [
+    "0x0FC300",
+    "0x0FC847"
+   ],
+   [
+    "0x0FC850",
+    "0x0FCBFF"
+   ],
+   [
+    "0x0FD000",
+    "0x0FE67F"
+   ],
+   [
+    "0x0FF650",
+    "0x0FF7FF"
+   ],
+   [
+    "0x0FFB00",
+    "0x0FFB03"
+   ],
+   [
+    "0x0FFC4C",
+    "0x0FFC4F"
+   ]
+  ],
+  "level": "warn",
+  "sha256": "f21916a1232e0748a52a77d955ee28ce2554d20a9f11db72dfd897770deb7158",
+  "block_size": 4096,
+  "blocks": {
+   "0x0B8000": "99369a7f6009bc6f",
+   "0x0BA000": "291082daaacf6ebb",
+   "0x0BB000": "610c916eca4f6cab",
+   "0x0BC000": "ec76050309221892",
+   "0x0BD000": "bcac948dfc8ee8e4",
+   "0x0BF000": "c5786c2ec4006404",
+   "0x0C0000": "5d47de1fcc99300e",
+   "0x0C1000": "fc1bbecbcedcbd6f",
+   "0x0C2000": "0ca1375a41a27a2e",
+   "0x0C3000": "c952a9be2c1ef47d",
+   "0x0C4000": "397a51eb643a0b70",
+   "0x0C5000": "111cc83189e8cc34",
+   "0x0C6000": "c9e830a4ddad4db0",
+   "0x0C7000": "6afbd95a54cdd8a3",
+   "0x0C8000": "47ce01aa753781b5",
+   "0x0C9000": "0f8048dfc360e5cc",
+   "0x0CA000": "ddfb4109cb2c6bb9",
+   "0x0CB000": "47e13e5cd0ca751e",
+   "0x0CC000": "d0fc0019e55a0c08",
+   "0x0CD000": "c16636eecd4ffd0f",
+   "0x0CE000": "4bcc96cba486ea57",
+   "0x0CF000": "b91aad223e3522d3",
+   "0x0D1000": "431b370ee2596463",
+   "0x0D2000": "794bfd5759294b73",
+   "0x0D3000": "1b13a5cef29021de",
+   "0x0D4000": "777fd17b9a05c110",
+   "0x0D5000": "40fce0a9a995a57f",
+   "0x0D6000": "435f58bcd6c76e0c",
+   "0x0D7000": "9341b91aa443ec38",
+   "0x0D8000": "d0da21d16398280b",
+   "0x0D9000": "701f1b07aab2eba5",
+   "0x0DA000": "5c1b593a00505f36",
+   "0x0DB000": "6d45925ef91c0777",
+   "0x0DC000": "f6549030e70fc41c",
+   "0x0DD000": "8ab17cc5f6384a98",
+   "0x0DE000": "4ac12a454ac4be1c",
+   "0x0DF000": "4e0280fa824f827c",
+   "0x0E0000": "645a011e52ed4193",
+   "0x0E1000": "61269780402b7c4f",
+   "0x0E2000": "f47a8ec3e9aff231",
+   "0x0E3000": "f47a8ec3e9aff231",
+   "0x0E4000": "f47a8ec3e9aff231",
+   "0x0E5000": "f47a8ec3e9aff231",
+   "0x0E6000": "f47a8ec3e9aff231",
+   "0x0E7000": "f47a8ec3e9aff231",
+   "0x0E8000": "f47a8ec3e9aff231",
+   "0x0E9000": "f47a8ec3e9aff231",
+   "0x0EA000": "f47a8ec3e9aff231",
+   "0x0EB000": "f47a8ec3e9aff231",
+   "0x0EC000": "f47a8ec3e9aff231",
+   "0x0ED000": "dd41fe2fa2a099b9",
+   "0x0F2000": "fc351643198ac4ec",
+   "0x0F3000": "b75b99f7978b2721",
+   "0x0F4000": "30b23a1eebdbfc34",
+   "0x0F5000": "907397a8adfebacc",
+   "0x0F6000": "0ab09dd1a85dd62d",
+   "0x0F7000": "2b1bb99e8ee1a647",
+   "0x0F8000": "8ee7d7c2405de014",
+   "0x0F9000": "ffd3ddff07f37b2a",
+   "0x0FB000": "a87a0669d1ff22c2",
+   "0x0FC000": "acb7e98800540b36",
+   "0x0FE000": "3ce7d9e41461be50",
+   "0x0FF000": "f4dbe11b0e1c1fcd"
+  }
+ },
+ "exclude_sources": {
+  "xml/lf9veb.xml": "4dd8cd75bee17aec27299a391649cf2e260ebecee719c445b27ff78622546b8b",
+  "romdrop_rev_21053000/metadata/lf9veb.xml": "10545862f2e1ee8ce523ed8f1de424d85e0184bb9db0786c70f5f4fe2c180cd6"
+ },
+ "checks": [
+  {
+   "type": "bytes_is",
+   "addr": "0x0B8046",
+   "hex": "4c46395645423030",
+   "name": "ROM_ID: bytes at 0x0B8046",
+   "level": "refuse",
+   "covers": [
+    "ROM_ID"
+   ]
+  },
+  {
+   "type": "no_word_in",
+   "lo": "0xFD800",
+   "hi": "0xFE5FF",
+   "except_words": [
+    "0x001B78"
+   ],
+   "except_ranges": [],
+   "name": "L_CODE: no word of the ROM points into 0xFD800-0xFE5FF",
+   "level": "refuse",
+   "covers": [
+    "L_CODE"
+   ]
+  },
+  {
+   "type": "no_word_in",
+   "lo": "0xFE600",
+   "hi": "0xFE67F",
+   "except_words": [],
+   "except_ranges": [],
+   "name": "L_CAL3: no word of the ROM points into 0xFE600-0xFE67F",
+   "level": "refuse",
+   "covers": [
+    "L_CAL3"
+   ]
+  },
+  {
+   "type": "no_word_in",
+   "lo": "0xFCB80",
+   "hi": "0xFCBFF",
+   "except_words": [],
+   "except_ranges": [
+    [
+     "0x0FC850",
+     "0x0FCB7F"
+    ]
+   ],
+   "name": "L_SETTINGS: no word of the ROM points into 0xFCB80-0xFCBFF",
+   "level": "refuse",
+   "covers": [
+    "L_SETTINGS"
+   ]
+  },
+  {
+   "type": "no_word_in",
+   "lo": "0xFC850",
+   "hi": "0xFCB7F",
+   "except_words": [
+    "0x09CD6C"
+   ],
+   "except_ranges": [],
+   "name": "L_ERASE_STUB: no word of the ROM points into 0xFC850-0xFCB7F",
+   "level": "refuse",
+   "covers": [
+    "L_ERASE_STUB"
+   ]
+  },
+  {
+   "type": "no_word_in",
+   "lo": "0xFD000",
+   "hi": "0xFD7FF",
+   "except_words": [],
+   "except_ranges": [
+    [
+     "0x0FC850",
+     "0x0FCB7F"
+    ]
+   ],
+   "name": "L_ERASE_BODY: no word of the ROM points into 0xFD000-0xFD7FF",
+   "level": "refuse",
+   "covers": [
+    "L_ERASE_BODY"
+   ]
+  },
+  {
+   "type": "no_word_in",
+   "lo": "0xFFFFAB10",
+   "hi": "0xFFFFAB8F",
+   "except_words": [],
+   "except_ranges": [
+    [
+     "0x0FD000",
+     "0x0FD7FF"
+    ]
+   ],
+   "name": "L_RAM: no word of the ROM points into 0xFFFFAB10-0xFFFFAB8F",
+   "level": "refuse",
+   "covers": [
+    "L_RAM"
+   ]
+  },
+  {
+   "type": "pcrel_loader_only",
+   "lit": "0x09CD6C",
+   "site": "0x09CD1C",
+   "name": "H_SM: the literal 0x09CD6C is loaded only at 0x09CD1C",
+   "level": "refuse",
+   "covers": [
+    "H_SM"
+   ]
+  },
+  {
+   "type": "pcrel_loader_only",
+   "lit": "0x0230CC",
+   "site": "0x022F0A",
+   "name": "H_HD: the literal 0x0230CC is loaded only at 0x022F0A",
+   "level": "refuse",
+   "covers": [
+    "H_HD"
+   ]
+  },
+  {
+   "type": "word_only_at",
+   "value": "0x00022468",
+   "addrs": [
+    "0x0230CC"
+   ],
+   "name": "H_HD: the word 0x00022468 occurs only at 0x0230CC",
+   "level": "refuse",
+   "covers": [
+    "H_HD"
+   ]
+  },
+  {
+   "type": "pcrel_loader_only",
+   "lit": "0x0230D4",
+   "site": "0x022F16",
+   "name": "H_HE: the literal 0x0230D4 is loaded only at 0x022F16",
+   "level": "refuse",
+   "covers": [
+    "H_HE"
+   ]
+  },
+  {
+   "type": "word_only_at",
+   "value": "0x00022524",
+   "addrs": [
+    "0x0230D4"
+   ],
+   "name": "H_HE: the word 0x00022524 occurs only at 0x0230D4",
+   "level": "refuse",
+   "covers": [
+    "H_HE"
+   ]
+  },
+  {
+   "type": "f_desc",
+   "addr": "0x0C14FC",
+   "n": 6,
+   "name": "C_GEAR_RATIOS: 6 values of Gear Ratio - 1st (0x0C14FC) finite, > 0, strictly decreasing",
+   "level": "refuse",
+   "covers": [
+    "C_GEAR_RATIOS"
+   ]
+  },
+  {
+   "type": "bytes_is",
+   "addr": "0x0F4150",
+   "hex": "ffff5698",
+   "name": "RAM_D_WORD: u32 at 0x0F4150 = 0xFFFF5698 (not in any definition)",
+   "level": "refuse",
+   "covers": [
+    "RAM_D_WORD",
+    "MON_PTRS"
+   ]
+  },
+  {
+   "type": "bytes_is",
+   "addr": "0x0F4154",
+   "hex": "ffff56a8",
+   "name": "RAM_E_WORD: u32 at 0x0F4154 = 0xFFFF56A8 (not in any definition)",
+   "level": "refuse",
+   "covers": [
+    "RAM_E_WORD",
+    "MON_PTRS"
+   ]
+  },
+  {
+   "type": "bytes_is",
+   "addr": "0x0F41F0",
+   "hex": "ffff20b8",
+   "name": "RAM_KAM_PEDAL_D: u32 at 0x0F41F0 = 0xFFFF20B8 (not in any definition)",
+   "level": "refuse",
+   "covers": [
+    "RAM_KAM_PEDAL_D",
+    "MON_PTRS"
+   ]
+  },
+  {
+   "type": "bytes_is",
+   "addr": "0x0F41F4",
+   "hex": "ffff20c0",
+   "name": "RAM_KAM_PEDAL_E: u32 at 0x0F41F4 = 0xFFFF20C0 (not in any definition)",
+   "level": "refuse",
+   "covers": [
+    "RAM_KAM_PEDAL_E",
+    "MON_PTRS"
+   ]
+  },
+  {
+   "type": "f_finite",
+   "addr": "0x0BB0D0",
+   "name": "C_TP_CLOSED_DEF: TP Closed - Default (0x0BB0D0) finite",
+   "level": "refuse",
+   "covers": [
+    "C_TP_CLOSED_DEF"
+   ]
+  },
+  {
+   "type": "f_finite",
+   "addr": "0x0F4540",
+   "name": "C_20CC_OFS_A: not in any definition (0x0F4540) finite",
+   "level": "refuse",
+   "covers": [
+    "C_20CC_OFS_A"
+   ]
+  },
+  {
+   "type": "f_finite",
+   "addr": "0x0F4544",
+   "name": "C_20CC_OFS_B: not in any definition (0x0F4544) finite",
+   "level": "refuse",
+   "covers": [
+    "C_20CC_OFS_B"
+   ]
+  },
+  {
+   "type": "bytes_is",
+   "addr": "0x0F414C",
+   "hex": "ffff5450",
+   "name": "RAM_SEV_5450: u32 at 0x0F414C = 0xFFFF5450 (not in any definition)",
+   "level": "refuse",
+   "covers": [
+    "RAM_SEV_5450",
+    "MON_PTRS"
+   ]
+  },
+  {
+   "type": "bytes_is",
+   "addr": "0x0BAFB4",
+   "hex": "01",
+   "name": "C_PED_D_PATH: u8 at 0x0BAFB4 = 0x1 (not in any definition)",
+   "level": "refuse",
+   "covers": [
+    "C_PED_D_PATH"
+   ]
+  },
+  {
+   "type": "bytes_eq",
+   "a": "0x0BAFE0",
+   "b": "0x0F44CC",
+   "len": 4,
+   "name": "integrity pair not in any definition (0x0BAFE0) vs not in any definition (0x0F44CC), 4 B",
+   "level": "refuse",
+   "covers": [
+    "PAIR_D_GAIN",
+    "CENSUS_PAIRS"
+   ]
+  },
+  {
+   "type": "bytes_eq",
+   "a": "0x0BAFE4",
+   "b": "0x0F44D0",
+   "len": 4,
+   "name": "integrity pair not in any definition (0x0BAFE4) vs not in any definition (0x0F44D0), 4 B",
+   "level": "refuse",
+   "covers": [
+    "PAIR_D_OFS",
+    "CENSUS_PAIRS"
+   ]
+  },
+  {
+   "type": "bytes_eq",
+   "a": "0x0BAFDC",
+   "b": "0x0F44D4",
+   "len": 4,
+   "name": "integrity pair not in any definition (0x0BAFDC) vs not in any definition (0x0F44D4), 4 B",
+   "level": "refuse",
+   "covers": [
+    "PAIR_D_MAX",
+    "CENSUS_PAIRS"
+   ]
+  },
+  {
+   "type": "bytes_eq",
+   "a": "0x0BAFF0",
+   "b": "0x0F44E0",
+   "len": 4,
+   "name": "integrity pair not in any definition (0x0BAFF0) vs not in any definition (0x0F44E0), 4 B",
+   "level": "refuse",
+   "covers": [
+    "PAIR_E_GAIN",
+    "CENSUS_PAIRS"
+   ]
+  },
+  {
+   "type": "bytes_eq",
+   "a": "0x0BAFF4",
+   "b": "0x0F44E4",
+   "len": 4,
+   "name": "integrity pair not in any definition (0x0BAFF4) vs not in any definition (0x0F44E4), 4 B",
+   "level": "refuse",
+   "covers": [
+    "PAIR_E_OFS",
+    "CENSUS_PAIRS"
+   ]
+  },
+  {
+   "type": "bytes_eq",
+   "a": "0x0BAFEC",
+   "b": "0x0F44DC",
+   "len": 4,
+   "name": "integrity pair not in any definition (0x0BAFEC) vs not in any definition (0x0F44DC), 4 B",
+   "level": "refuse",
+   "covers": [
+    "PAIR_E_MAX",
+    "CENSUS_PAIRS"
+   ]
+  },
+  {
+   "type": "bytes_eq",
+   "a": "0x0BB034",
+   "b": "0x0F44F4",
+   "len": 4,
+   "name": "integrity pair not in any definition (0x0BB034) vs not in any definition (0x0F44F4), 4 B",
+   "level": "refuse",
+   "covers": [
+    "PAIR_STROKE",
+    "CENSUS_PAIRS"
+   ]
+  },
+  {
+   "type": "bytes_eq",
+   "a": "0x0BB038",
+   "b": "0x0F44F8",
+   "len": 4,
+   "name": "integrity pair not in any definition (0x0BB038) vs not in any definition (0x0F44F8), 4 B",
+   "level": "refuse",
+   "covers": [
+    "PAIR_APP_OFS",
+    "CENSUS_PAIRS"
+   ]
+  },
+  {
+   "type": "bytes_eq",
+   "a": "0x0BB024",
+   "b": "0x0F44C4",
+   "len": 4,
+   "name": "integrity pair not in any definition (0x0BB024) vs not in any definition (0x0F44C4), 4 B",
+   "level": "refuse",
+   "covers": [
+    "PAIR_20B8_DEF",
+    "CENSUS_PAIRS"
+   ]
+  },
+  {
+   "type": "bytes_eq",
+   "a": "0x0BB028",
+   "b": "0x0F44D8",
+   "len": 4,
+   "name": "integrity pair not in any definition (0x0BB028) vs not in any definition (0x0F44D8), 4 B",
+   "level": "refuse",
+   "covers": [
+    "PAIR_20C0_DEF",
+    "CENSUS_PAIRS"
+   ]
+  },
+  {
+   "type": "f_gt",
+   "addr": "0x0F3E9C",
+   "x": 50.0,
+   "name": "C_FLATSHIFT_APP: Flat Shift Activation - APP Threshold (0x0F3E9C) > 50",
+   "level": "refuse",
+   "covers": [
+    "C_FLATSHIFT_APP",
+    "apply:validate:flatshift"
+   ]
+  },
+  {
+   "type": "f_gt",
+   "addr": "0x0C4CD8",
+   "x": 3000.0,
+   "name": "C_FUEL_CUT_RPM: RPM Fuel Cut  (0x0C4CD8) > 3000",
+   "level": "refuse",
+   "covers": [
+    "C_FUEL_CUT_RPM"
+   ]
+  },
+  {
+   "type": "f_finite",
+   "addr": "0x0F629C",
+   "name": "C_TP_DELTA_THR: TP Delta - Fault Threshold (0x0F629C) finite",
+   "level": "refuse",
+   "covers": [
+    "C_TP_DELTA_THR"
+   ]
+  },
+  {
+   "type": "bytes_is",
+   "addr": "0x0BAFB4",
+   "hex": "010400ff00fff5c311ecf5c311eb00c80028ffffc1d69db241d69db24030d4fe0000000040abae1441c8000040cae979000000003e80000041c8000040cae979405f3b643e800000bf000000be99999a40a00000422000000000000040a00000411a04193ba3d70a412db22d3c23d70a412db22d412db22d3d03e4263e99999a414b333300000000420c000042c80000417000003f80000042480000",
+   "name": "PIN_CALS: pinned bytes 0x0BAFB4-0x0BB04F (profile sha afaac91960189267)",
+   "level": "refuse",
+   "covers": [
+    "PIN_CALS"
+   ]
+  },
+  {
+   "type": "bytes_is",
+   "addr": "0x0F44C4",
+   "hex": "412db22d0000000040cae9790000000041c80000412db22d41c8000040cae979405f3b643f09374c41700000420c0000414b333300000000000000003f800000",
+   "name": "PIN_CALS: pinned bytes 0x0F44C4-0x0F4503 (profile sha 87b9661aeb18c9c5)",
+   "level": "refuse",
+   "covers": [
+    "PIN_CALS"
+   ]
+  },
+  {
+   "type": "bytes_is",
+   "addr": "0x0BB06C",
+   "hex": "40a000003fae147b",
+   "name": "PIN_CALS: pinned bytes 0x0BB06C-0x0BB073 (profile sha cc7477b68a9c4329)",
+   "level": "refuse",
+   "covers": [
+    "PIN_CALS"
+   ]
+  },
+  {
+   "type": "bytes_eq",
+   "a": "0x0BAFA0",
+   "b": "0x0F7C7C",
+   "len": 4,
+   "name": "integrity pair Throttle Angle - Conversion Multiplier (pair with f7c7c) (0x0BAFA0) vs Throttle Angle (Data Integrity) - Conversion Multiplier (pair with bafa0) (0x0F7C7C), 4 B",
+   "level": "refuse",
+   "covers": [
+    "CENSUS_PAIRS"
+   ]
+  },
+  {
+   "type": "bytes_eq",
+   "a": "0x0BB198",
+   "b": "0x0F7C54",
+   "len": 1,
+   "name": "integrity pair Throttle Angle Desired - Chain Enable Gate (0xBB198: 1 = stock, chain discarded, frame angle from live throttle cells; 0 = chain output used) (role pair with f7c54) - DO NOT EDIT: 0 selects non-equivalent primary/monitor paths (0x0BB198) vs Throttle Angle Desired (Data Integrity) - Chain Enable Gate - DO NOT EDIT (role pair only: 1 = stock, monitor angle from TP commanded; 0 selects NON-equivalent primary/monitor paths) (pair with bb198) (0x0F7C54), 1 B",
+   "level": "refuse",
+   "covers": [
+    "CENSUS_PAIRS"
+   ]
+  },
+  {
+   "type": "bytes_eq",
+   "a": "0x0BB544",
+   "b": "0x0F4508",
+   "len": 4,
+   "name": "integrity pair Idle Validation Switch - APP Threshold (pair with f4508; ALSO recompute f4504 = this - 0xBB548) (0x0BB544) vs Idle Validation Switch (Data Integrity) - APP Exit Threshold (monitor idle flag clears at APP &gt;= this; keep equal to 0xBB544) (pair with bb544) (0x0F4508), 4 B",
+   "level": "refuse",
+   "covers": [
+    "CENSUS_PAIRS"
+   ]
+  },
+  {
+   "type": "bytes_eq",
+   "a": "0x0C05F0",
+   "b": "0x0F7CAC",
+   "len": 4,
+   "name": "integrity pair Driveline Damping Filter - Gain Multiplier | AC On (SHARED: also scales spark tip-in retard 0x4ED72) (pair with f7cac) (0x0C05F0) vs Driveline Damping Filter (Data Integrity) - Gain Multiplier | AC On (monitor copy of the filter use only) (pair with c05f0) (0x0F7CAC), 4 B",
+   "level": "refuse",
+   "covers": [
+    "CENSUS_PAIRS"
+   ]
+  },
+  {
+   "type": "bytes_eq",
+   "a": "0x0C05F4",
+   "b": "0x0F7CB0",
+   "len": 4,
+   "name": "integrity pair Driveline Damping Filter - Gain Multiplier | High Det (SHARED: also scales spark tip-in retard 0x4ED72) (pair with f7cb0) (0x0C05F4) vs Driveline Damping Filter (Data Integrity) - Gain Multiplier | High Det (monitor copy of the filter use only) (pair with c05f4) (0x0F7CB0), 4 B",
+   "level": "refuse",
+   "covers": [
+    "CENSUS_PAIRS"
+   ]
+  },
+  {
+   "type": "bytes_eq",
+   "a": "0x0C5931",
+   "b": "0x0F7C52",
+   "len": 1,
+   "name": "integrity pair Driveline Damping Filter - Bypass (0 = filter active, 1 = off) (pair with f7c52) (0x0C5931) vs Driveline Damping Filter (Data Integrity) - Bypass (0 = filter active, 1 = off) (pair with c5931) (0x0F7C52), 1 B",
+   "level": "refuse",
+   "covers": [
+    "CENSUS_PAIRS"
+   ]
+  },
+  {
+   "type": "bytes_eq",
+   "a": "0x0C5938",
+   "b": "0x0F7C84",
+   "len": 4,
+   "name": "integrity pair Tip-In Shaping - VSS Reference Ramp Rate (per 5 ms) (pair with f7c84) (0x0C5938) vs Tip-In Shaping (Data Integrity) - VSS Reference Ramp Rate (per 5 ms) (pair with c5938) (0x0F7C84), 4 B",
+   "level": "refuse",
+   "covers": [
+    "CENSUS_PAIRS"
+   ]
+  },
+  {
+   "type": "bytes_eq",
+   "a": "0x0C593C",
+   "b": "0x0F7C8C",
+   "len": 4,
+   "name": "integrity pair Tip-In Shaping - Ramp Step (per 5 ms) (pair with f7c8c) (0x0C593C) vs Tip-In Shaping (Data Integrity) - Ramp Step (per 5 ms) (pair with c593c) (0x0F7C8C), 4 B",
+   "level": "refuse",
+   "covers": [
+    "CENSUS_PAIRS"
+   ]
+  },
+  {
+   "type": "bytes_eq",
+   "a": "0x0C5940",
+   "b": "0x0F7C90",
+   "len": 4,
+   "name": "integrity pair Tip-In Shaping - Correction Clamp (pair with f7c90) (0x0C5940) vs Tip-In Shaping (Data Integrity) - Correction Clamp (pair with c5940) (0x0F7C90), 4 B",
+   "level": "refuse",
+   "covers": [
+    "CENSUS_PAIRS"
+   ]
+  },
+  {
+   "type": "bytes_eq",
+   "a": "0x0C5944",
+   "b": "0x0F7C94",
+   "len": 4,
+   "name": "integrity pair Driveline Damping Filter - Filter Q (row of the coefficient tables; damping ratio = 0.5 / Q) (pair with f7c94) (0x0C5944) vs Driveline Damping Filter (Data Integrity) - Filter Q (row of the coefficient tables; damping ratio = 0.5 / Q) (pair with c5944) (0x0F7C94), 4 B",
+   "level": "refuse",
+   "covers": [
+    "CENSUS_PAIRS"
+   ]
+  },
+  {
+   "type": "bytes_eq",
+   "a": "0x0C5948",
+   "b": "0x0F7CA0",
+   "len": 4,
+   "name": "integrity pair Driveline Damping Filter - Gain | Mode A (pair with f7ca0) (0x0C5948) vs Driveline Damping Filter (Data Integrity) - Gain | Mode A (pair with c5948) (0x0F7CA0), 4 B",
+   "level": "refuse",
+   "covers": [
+    "CENSUS_PAIRS"
+   ]
+  },
+  {
+   "type": "bytes_eq",
+   "a": "0x0C594C",
+   "b": "0x0F7CA4",
+   "len": 4,
+   "name": "integrity pair Driveline Damping Filter - Gain | Mode B (pair with f7ca4) (0x0C594C) vs Driveline Damping Filter (Data Integrity) - Gain | Mode B (pair with c594c) (0x0F7CA4), 4 B",
+   "level": "refuse",
+   "covers": [
+    "CENSUS_PAIRS"
+   ]
+  },
+  {
+   "type": "bytes_eq",
+   "a": "0x0C5950",
+   "b": "0x0F7CA8",
+   "len": 4,
+   "name": "integrity pair Driveline Damping Filter - Gain | Mode C (pair with f7ca8) (0x0C5950) vs Driveline Damping Filter (Data Integrity) - Gain | Mode C (pair with c5950) (0x0F7CA8), 4 B",
+   "level": "refuse",
+   "covers": [
+    "CENSUS_PAIRS"
+   ]
+  },
+  {
+   "type": "bytes_eq",
+   "a": "0x0C5AB4",
+   "b": "0x0F80DC",
+   "len": 60,
+   "name": "integrity pair Driveline Damping Filter - Gain Multiplier | Spark Retard Correction (pair with f80dc) (0x0C5AB4) vs Driveline Damping Filter (Data Integrity) - Gain Multiplier | Spark Retard Correction (pair with c5ab4) (0x0F80DC), 60 B",
+   "level": "refuse",
+   "covers": [
+    "CENSUS_PAIRS"
+   ]
+  },
+  {
+   "type": "bytes_eq",
+   "a": "0x0C5B24",
+   "b": "0x0F814C",
+   "len": 52,
+   "name": "integrity pair Driveline Damping Filter - Gain Multiplier | RPM (pair with f814c) (0x0C5B24) vs Driveline Damping Filter (Data Integrity) - Gain Multiplier | RPM (pair with c5b24) (0x0F814C), 52 B",
+   "level": "refuse",
+   "covers": [
+    "CENSUS_PAIRS"
+   ]
+  },
+  {
+   "type": "bytes_eq",
+   "a": "0x0C5CB4",
+   "b": "0x0F82DC",
+   "len": 36,
+   "name": "integrity pair TP Commanded Limit - Max (pair with f82dc) (0x0C5CB4) vs TP Commanded Limit (Data Integrity) - Max (pair with c5cb4) (0x0F82DC), 36 B",
+   "level": "refuse",
+   "covers": [
+    "CENSUS_PAIRS"
+   ]
+  },
+  {
+   "type": "bytes_eq",
+   "a": "0x0C5CFC",
+   "b": "0x0F8324",
+   "len": 36,
+   "name": "integrity pair TP Commanded Limit - Min (pair with f8324) (0x0C5CFC) vs TP Commanded Limit (Data Integrity) - Min (pair with c5cfc) (0x0F8324), 36 B",
+   "level": "refuse",
+   "covers": [
+    "CENSUS_PAIRS"
+   ]
+  },
+  {
+   "type": "bytes_eq",
+   "a": "0x0C707C",
+   "b": "0x0FA1BC",
+   "len": 192,
+   "name": "integrity pair Driveline Damping Filter - Coefficient b0 (Current Input) (pair with fa1bc) (0x0C707C) vs Driveline Damping Filter (Data Integrity) - Coefficient b0 (Current Input) (pair with c707c) (0x0FA1BC), 192 B",
+   "level": "refuse",
+   "covers": [
+    "CENSUS_PAIRS"
+   ]
+  },
+  {
+   "type": "bytes_eq",
+   "a": "0x0C7174",
+   "b": "0x0FA2B4",
+   "len": 192,
+   "name": "integrity pair Driveline Damping Filter - Coefficient b1 (Previous Input) (pair with fa2b4) (0x0C7174) vs Driveline Damping Filter (Data Integrity) - Coefficient b1 (Previous Input) (pair with c7174) (0x0FA2B4), 192 B",
+   "level": "refuse",
+   "covers": [
+    "CENSUS_PAIRS"
+   ]
+  },
+  {
+   "type": "bytes_eq",
+   "a": "0x0C726C",
+   "b": "0x0FA3AC",
+   "len": 192,
+   "name": "integrity pair Driveline Damping Filter - Coefficient b2 (Input Two Passes Ago) (pair with fa3ac) (0x0C726C) vs Driveline Damping Filter (Data Integrity) - Coefficient b2 (Input Two Passes Ago) (pair with c726c) (0x0FA3AC), 192 B",
+   "level": "refuse",
+   "covers": [
+    "CENSUS_PAIRS"
+   ]
+  },
+  {
+   "type": "bytes_eq",
+   "a": "0x0C7364",
+   "b": "0x0FA4A4",
+   "len": 192,
+   "name": "integrity pair Driveline Damping Filter - Coefficient a1 (Previous Output) (stability: a2 &lt; 1, |a1| &lt; 1 + a2) (pair with fa4a4) (0x0C7364) vs Driveline Damping Filter (Data Integrity) - Coefficient a1 (Previous Output) (stability: a2 &lt; 1, |a1| &lt; 1 + a2) (pair with c7364) (0x0FA4A4), 192 B",
+   "level": "refuse",
+   "covers": [
+    "CENSUS_PAIRS"
+   ]
+  },
+  {
+   "type": "bytes_eq",
+   "a": "0x0C745C",
+   "b": "0x0FA59C",
+   "len": 192,
+   "name": "integrity pair Driveline Damping Filter - Coefficient a2 (Output Two Passes Ago) (stability: a2 &lt; 1, |a1| &lt; 1 + a2) (pair with fa59c) (0x0C745C) vs Driveline Damping Filter (Data Integrity) - Coefficient a2 (Output Two Passes Ago) (stability: a2 &lt; 1, |a1| &lt; 1 + a2) (pair with c745c) (0x0FA59C), 192 B",
+   "level": "refuse",
+   "covers": [
+    "CENSUS_PAIRS"
+   ]
+  },
+  {
+   "type": "bytes_eq",
+   "a": "0x0C7548",
+   "b": "0x0FA688",
+   "len": 112,
+   "name": "integrity pair Driveline Damping Filter - Gain | Estimated Gear x Tip-In Size (pair with fa688) (0x0C7548) vs Driveline Damping Filter (Data Integrity) - Gain | Estimated Gear x Tip-In Size (pair with c7548) (0x0FA688), 112 B",
+   "level": "refuse",
+   "covers": [
+    "CENSUS_PAIRS"
+   ]
+  },
+  {
+   "type": "bytes_eq",
+   "a": "0x0C8CBC",
+   "b": "0x0F7C50",
+   "len": 1,
+   "name": "integrity pair TP Desired Filter - Tip-In Bias Table Select (0 = TP-Delta table c8d8c, 1 = RPM table c8d28) (pair with f7c50) (0x0C8CBC) vs TP Desired Filter (Data Integrity) - Tip-In Bias Table Select (0 = TP-Delta table f7dd8, 1 = RPM table f7d74) (pair with c8cbc) (0x0F7C50), 1 B",
+   "level": "refuse",
+   "covers": [
+    "CENSUS_PAIRS"
+   ]
+  },
+  {
+   "type": "bytes_eq",
+   "a": "0x0C8CDC",
+   "b": "0x0F7C58",
+   "len": 4,
+   "name": "integrity pair TP Desired Filter - Bias | Fault or Cruise (pair with f7c58) (0x0C8CDC) vs TP Desired Filter (Data Integrity) - Bias | Fault or Cruise (pair with c8cdc) (0x0F7C58), 4 B",
+   "level": "refuse",
+   "covers": [
+    "CENSUS_PAIRS"
+   ]
+  },
+  {
+   "type": "bytes_eq",
+   "a": "0x0C8CE0",
+   "b": "0x0F7C5C",
+   "len": 4,
+   "name": "integrity pair TP Desired Filter - Bias | Default (pair with f7c5c) (0x0C8CE0) vs TP Desired Filter (Data Integrity) - Bias | Default (pair with c8ce0) (0x0F7C5C), 4 B",
+   "level": "refuse",
+   "covers": [
+    "CENSUS_PAIRS"
+   ]
+  },
+  {
+   "type": "bytes_eq",
+   "a": "0x0C8CE8",
+   "b": "0x0F7C60",
+   "len": 4,
+   "name": "integrity pair Tip-Out State Enter | TP Desired 25 ms Delta Below (pair with f7c60) (0x0C8CE8) vs Tip-Out State Enter (Data Integrity) | TP Desired 25 ms Delta Below (pair with c8ce8) (0x0F7C60), 4 B",
+   "level": "refuse",
+   "covers": [
+    "CENSUS_PAIRS"
+   ]
+  },
+  {
+   "type": "bytes_eq",
+   "a": "0x0C8CEC",
+   "b": "0x0F7C64",
+   "len": 4,
+   "name": "integrity pair Tip-Out State Hold | TP Desired 25 ms Delta Below (pair with f7c64) (0x0C8CEC) vs Tip-Out State Hold (Data Integrity) | TP Desired 25 ms Delta Below (pair with c8cec) (0x0F7C64), 4 B",
+   "level": "refuse",
+   "covers": [
+    "CENSUS_PAIRS"
+   ]
+  },
+  {
+   "type": "bytes_eq",
+   "a": "0x0C8CF0",
+   "b": "0x0F7C68",
+   "len": 4,
+   "name": "integrity pair Tip-Out State Hold | Raw-vs-Filtered TP Desired Delta Above (pair with f7c68) (0x0C8CF0) vs Tip-Out State Hold (Data Integrity) | Raw-vs-Filtered TP Desired Delta Above (pair with c8cf0) (0x0F7C68), 4 B",
+   "level": "refuse",
+   "covers": [
+    "CENSUS_PAIRS"
+   ]
+  },
+  {
+   "type": "bytes_eq",
+   "a": "0x0C8CF4",
+   "b": "0x0F7C6C",
+   "len": 4,
+   "name": "integrity pair Tip-In State Enter | TP Desired 25 ms Delta Above (used only when 0xC8CBC = 0) (pair with f7c6c) (0x0C8CF4) vs Tip-In State Enter (Data Integrity) | TP Desired 25 ms Delta Above (used only when 0xF7C50 = 0) (pair with c8cf4) (0x0F7C6C), 4 B",
+   "level": "refuse",
+   "covers": [
+    "CENSUS_PAIRS"
+   ]
+  },
+  {
+   "type": "bytes_eq",
+   "a": "0x0C8CF8",
+   "b": "0x0F7C70",
+   "len": 4,
+   "name": "integrity pair Tip-In State Hold | TP Desired 25 ms Delta Above (used only when 0xC8CBC = 0) (pair with f7c70) (0x0C8CF8) vs Tip-In State Hold (Data Integrity) | TP Desired 25 ms Delta Above (used only when 0xF7C50 = 0) (pair with c8cf8) (0x0F7C70), 4 B",
+   "level": "refuse",
+   "covers": [
+    "CENSUS_PAIRS"
+   ]
+  },
+  {
+   "type": "bytes_eq",
+   "a": "0x0C8CFC",
+   "b": "0x0F7C74",
+   "len": 4,
+   "name": "integrity pair Tip-In State Hold | Raw-vs-Filtered TP Desired Delta Above (pair with f7c74) (0x0C8CFC) vs Tip-In State Hold (Data Integrity) | Raw-vs-Filtered TP Desired Delta Above (pair with c8cfc) (0x0F7C74), 4 B",
+   "level": "refuse",
+   "covers": [
+    "CENSUS_PAIRS"
+   ]
+  },
+  {
+   "type": "bytes_eq",
+   "a": "0x0C8D00",
+   "b": "0x0F7C78",
+   "len": 4,
+   "name": "integrity pair TP Desired - Limp Maximum (pair with f7c78) (0x0C8D00) vs TP Desired (Data Integrity) - Limp Maximum (pair with c8d00) (0x0F7C78), 4 B",
+   "level": "refuse",
+   "covers": [
+    "CENSUS_PAIRS"
+   ]
+  },
+  {
+   "type": "bytes_eq",
+   "a": "0x0C8D28",
+   "b": "0x0F7D74",
+   "len": 36,
+   "name": "integrity pair TP Desired Filter - Bias | Tip-In (Target Load Delta over Threshold) (pair with f7d74) (0x0C8D28) vs TP Desired Filter (Data Integrity) - Bias | Tip-In (Target Load Delta over Threshold) (pair with c8d28) (0x0F7D74), 36 B",
+   "level": "refuse",
+   "covers": [
+    "CENSUS_PAIRS"
+   ]
+  },
+  {
+   "type": "bytes_eq",
+   "a": "0x0C8D8C",
+   "b": "0x0F7DD8",
+   "len": 64,
+   "name": "integrity pair TP Desired Filter - Bias | Tip-In (TP Delta over Threshold) - NOT SELECTED in stock (0xC8CBC = 1) (pair with f7dd8) (0x0C8D8C) vs TP Desired Filter (Data Integrity) - Bias | Tip-In (TP Delta over Threshold) (pair with c8d8c) (0x0F7DD8), 64 B",
+   "level": "refuse",
+   "covers": [
+    "CENSUS_PAIRS"
+   ]
+  },
+  {
+   "type": "bytes_eq",
+   "a": "0x0C8E0C",
+   "b": "0x0F7E58",
+   "len": 64,
+   "name": "integrity pair TP Desired Filter - Bias | Tip-Out (DISABLED) (pair with f7e58) (0x0C8E0C) vs TP Desired Filter (Data Integrity) - Bias | Tip-Out (DISABLED) (pair with c8e0c) (0x0F7E58), 64 B",
+   "level": "refuse",
+   "covers": [
+    "CENSUS_PAIRS"
+   ]
+  },
+  {
+   "type": "bytes_eq",
+   "a": "0x0C8E94",
+   "b": "0x0F7F70",
+   "len": 72,
+   "name": "integrity pair APP to TP Desired - Max (pair with f7f70) (0x0C8E94) vs APP to TP Desired (Data Integrity) - Max (pair with c8e94) (0x0F7F70), 72 B",
+   "level": "refuse",
+   "covers": [
+    "CENSUS_PAIRS"
+   ]
+  },
+  {
+   "type": "bytes_eq",
+   "a": "0x0C8F24",
+   "b": "0x0F8000",
+   "len": 72,
+   "name": "integrity pair APP to TP Desired - Min (pair with f8000) (0x0C8F24) vs APP to TP Desired (Data Integrity) - Min (pair with c8f24) (0x0F8000), 72 B",
+   "level": "refuse",
+   "covers": [
+    "CENSUS_PAIRS"
+   ]
+  },
+  {
+   "type": "bytes_eq",
+   "a": "0x0C8FFC",
+   "b": "0x0F8348",
+   "len": 720,
+   "name": "integrity pair APP to TP Desired - 1st Gear (pair with f8348) (0x0C8FFC) vs APP to TP Desired (Data Integrity) - 1st Gear (pair with c8ffc) (0x0F8348), 720 B",
+   "level": "refuse",
+   "covers": [
+    "CENSUS_PAIRS"
+   ]
+  },
+  {
+   "type": "bytes_eq",
+   "a": "0x0C92CC",
+   "b": "0x0F8618",
+   "len": 720,
+   "name": "integrity pair APP to TP Desired - 2nd Gear (pair with f8618) (0x0C92CC) vs APP to TP Desired (Data Integrity) - 2nd Gear (pair with c92cc) (0x0F8618), 720 B",
+   "level": "refuse",
+   "covers": [
+    "CENSUS_PAIRS"
+   ]
+  },
+  {
+   "type": "bytes_eq",
+   "a": "0x0C959C",
+   "b": "0x0F88E8",
+   "len": 720,
+   "name": "integrity pair APP to TP Desired - 3rd Gear (pair with f88e8) (0x0C959C) vs APP to TP Desired (Data Integrity) - 3rd Gear (pair with c959c) (0x0F88E8), 720 B",
+   "level": "refuse",
+   "covers": [
+    "CENSUS_PAIRS"
+   ]
+  },
+  {
+   "type": "bytes_eq",
+   "a": "0x0C986C",
+   "b": "0x0F8BB8",
+   "len": 720,
+   "name": "integrity pair APP to TP Desired - 4th, 5th, 6th Gear (pair with f8bb8) (0x0C986C) vs APP to TP Desired (Data Integrity) - 4th, 5th, 6th Gear (pair with c986c) (0x0F8BB8), 720 B",
+   "level": "refuse",
+   "covers": [
+    "CENSUS_PAIRS"
+   ]
+  },
+  {
+   "type": "bytes_eq",
+   "a": "0x0C9B3C",
+   "b": "0x0F8E88",
+   "len": 720,
+   "name": "integrity pair APP to TP Desired - Neutral (pair with f8e88) (0x0C9B3C) vs APP to TP Desired (Data Integrity) - Neutral (pair with c9b3c) (0x0F8E88), 720 B",
+   "level": "refuse",
+   "covers": [
+    "CENSUS_PAIRS"
+   ]
+  },
+  {
+   "type": "bytes_eq",
+   "a": "0x0D9164",
+   "b": "0x0F4E80",
+   "len": 32,
+   "name": "integrity pair Idle Speed | In-Gear (pair with f4e80) (0x0D9164) vs Idle Speed (Data Integrity) | In-Gear (pair with d9164) (0x0F4E80), 32 B",
+   "level": "refuse",
+   "covers": [
+    "CENSUS_PAIRS"
+   ]
+  },
+  {
+   "type": "bytes_eq",
+   "a": "0x0D91A4",
+   "b": "0x0F4EC0",
+   "len": 32,
+   "name": "integrity pair Idle Speed | Not In-Gear (pair with f4ec0) (0x0D91A4) vs Idle Speed (Data Integrity) | Not In-Gear (pair with d91a4) (0x0F4EC0), 32 B",
+   "level": "refuse",
+   "covers": [
+    "CENSUS_PAIRS"
+   ]
+  },
+  {
+   "type": "fsub",
+   "a": "0x0F4504",
+   "b": "0x0BB544",
+   "c": "0x0BB548",
+   "name": "monitor band copy Idle Validation Switch (Data Integrity) - APP Enter Threshold (monitor idle flag sets after 4 counts at APP &lt;= this; keep equal to 0xBB544 - 0xBB548) (pair with bb548) (0x0F4504) = Idle Validation Switch - APP Threshold (pair with f4508; ALSO recompute f4504 = this - 0xBB548) - Idle Validation Switch - APP Hysteresis (NOT an equal pair: monitor f4504 = 0xBB544 - this; edit f4504 too)",
+   "level": "refuse",
+   "covers": [
+    "CENSUS_PAIRS"
+   ]
+  },
+  {
+   "type": "bytes_eq",
+   "a": "0x09D54C",
+   "b": "0x0F7C98",
+   "len": 4,
+   "name": "integrity pair not in any definition (0x09D54C) vs Tip-In Shaping (Data Integrity) - TP Window Max (%) - DO NOT EDIT (primary is code literal 0x9D54C, not exposed) (0x0F7C98), 4 B",
+   "level": "refuse",
+   "covers": [
+    "CENSUS_PAIRS"
+   ]
+  },
+  {
+   "type": "bytes_eq",
+   "a": "0x09D550",
+   "b": "0x0F7C9C",
+   "len": 4,
+   "name": "integrity pair not in any definition (0x09D550) vs Tip-In Shaping (Data Integrity) - TP Window Min (%) - DO NOT EDIT (primary is code literal 0x9D550, not exposed) (0x0F7C9C), 4 B",
+   "level": "refuse",
+   "covers": [
+    "CENSUS_PAIRS"
+   ]
+  },
+  {
+   "type": "bytes_eq",
+   "a": "0x0BB03C",
+   "b": "0x0F44F0",
+   "len": 4,
+   "name": "integrity pair not in any definition (0x0BB03C) vs not in any definition (0x0F44F0), 4 B",
+   "level": "refuse",
+   "covers": [
+    "CENSUS_PAIRS"
+   ]
+  },
+  {
+   "type": "bytes_is",
+   "addr": "0x0B8000",
+   "hex": "4c46395645",
+   "name": "ID header 0x0B8000-0x0B8004 as in the reference (ROM ID copy / spec code LFN6020)",
+   "level": "refuse",
+   "covers": [
+    "apply:preflight:header"
+   ]
+  },
+  {
+   "type": "bytes_is",
+   "addr": "0x0B8060",
+   "hex": "204c464e36303230ffffffffffffffffffffffffffffffffffffffffffffffff",
+   "name": "ID header 0x0B8060-0x0B807F as in the reference (ROM ID copy / spec code LFN6020)",
+   "level": "refuse",
+   "covers": [
+    "apply:preflight:header"
+   ]
+  },
+  {
+   "type": "u8_eq",
+   "addr": "0x0DFE02",
+   "value": 2,
+   "level": "warn",
+   "name": "OBD standard byte 0x0DFE02 = the factory value 2 (emissions-related edit?)",
+   "covers": [
+    "apply:preflight:obd_std"
+   ]
+  },
+  {
+   "type": "f_range",
+   "addr": "0x0C14F8",
+   "n": 7,
+   "min": 0.30000001192092896,
+   "max": 8.0,
+   "name": "gear block 0x0C14F8 (final drive + 6 ratios) holds gear ratios",
+   "level": "refuse",
+   "covers": [
+    "apply:preflight:gear_block"
+   ]
+  },
+  {
+   "type": "bytes_is",
+   "addr": "0x0C14F8",
+   "hex": "40833333407428f64010a3d73fd1eb853f96a7f03f8000003f4978d5",
+   "level": "warn",
+   "name": "gear ratios 0x0C14F8 = factory (tuned or swapped diff / gearbox?)",
+   "covers": [
+    "apply:preflight:gear_hex"
+   ]
+  },
+  {
+   "type": "f_range",
+   "addr": "0x0CA54C",
+   "n": 1,
+   "min": 500.0,
+   "max": 6000.0,
+   "name": "factory displacement cell 0x0CA54C holds a displacement",
+   "level": "refuse",
+   "covers": [
+    "apply:preflight:disp"
+   ]
+  },
+  {
+   "type": "f_close",
+   "a": "0x0CA54C",
+   "value": 1998.0,
+   "tol": 0.5,
+   "level": "warn",
+   "name": "factory displacement cell 0x0CA54C = 1998 (engine swap or tune?)",
+   "covers": [
+    "apply:preflight:disp_factory"
+   ]
+  },
+  {
+   "type": "f_close",
+   "a": "0x0F3E70",
+   "b": "0x0CA54C",
+   "tol": 0.5,
+   "skip_if_blank": true,
+   "level": "warn",
+   "name": "Romdrop displacement 0x0F3E70 = the factory cell 0x0CA54C",
+   "covers": [
+    "apply:preflight:disp_romdrop"
+   ]
+  },
+  {
+   "type": "blank_blocks",
+   "block": 1024,
+   "expect": [
+    "0x000000",
+    "0x000400",
+    "0x000800",
+    "0x000C00",
+    "0x001000",
+    "0x001400",
+    "0x001800",
+    "0x001C00"
+   ],
+   "min": 1,
+   "level": "warn",
+   "name": "boot block 0x0-0x1FFF not blank where the factory image has data",
+   "covers": [
+    "apply:preflight:boot_blank"
+   ]
+  },
+  {
+   "type": "blank_blocks",
+   "block": 1024,
+   "expect": [
+    "0x002000",
+    "0x002400",
+    "0x002800",
+    "0x002C00",
+    "0x003000",
+    "0x003400",
+    "0x003800",
+    "0x003C00",
+    "0x004000",
+    "0x004400",
+    "0x004800",
+    "0x004C00",
+    "0x005000",
+    "0x005400",
+    "0x005800",
+    "0x005C00",
+    "0x006000",
+    "0x006400",
+    "0x006800",
+    "0x006C00",
+    "0x007000",
+    "0x007400",
+    "0x007800",
+    "0x007C00",
+    "0x008000",
+    "0x008400",
+    "0x008800",
+    "0x008C00",
+    "0x009000",
+    "0x009400",
+    "0x009800",
+    "0x009C00",
+    "0x00A000",
+    "0x00A400",
+    "0x00A800",
+    "0x00AC00",
+    "0x00B000",
+    "0x00B400",
+    "0x00B800",
+    "0x00BC00",
+    "0x00C000",
+    "0x00C400",
+    "0x00C800",
+    "0x00CC00",
+    "0x00D000",
+    "0x00D400",
+    "0x00D800",
+    "0x00DC00",
+    "0x00E000",
+    "0x00E400",
+    "0x00E800",
+    "0x00EC00",
+    "0x00F000",
+    "0x00F400",
+    "0x00F800",
+    "0x00FC00",
+    "0x010000",
+    "0x010400",
+    "0x010800",
+    "0x010C00",
+    "0x011000",
+    "0x011400",
+    "0x011800",
+    "0x011C00",
+    "0x012000",
+    "0x012400",
+    "0x012800",
+    "0x012C00",
+    "0x013000",
+    "0x013400",
+    "0x013800",
+    "0x013C00",
+    "0x014000",
+    "0x014400",
+    "0x014800",
+    "0x014C00",
+    "0x015000",
+    "0x015400",
+    "0x015800",
+    "0x015C00",
+    "0x016000",
+    "0x016400",
+    "0x016800",
+    "0x016C00",
+    "0x017000",
+    "0x017400",
+    "0x017800",
+    "0x017C00",
+    "0x018000",
+    "0x018400",
+    "0x018800",
+    "0x018C00",
+    "0x019000",
+    "0x019400",
+    "0x019800",
+    "0x019C00",
+    "0x01A000",
+    "0x01A400",
+    "0x01A800",
+    "0x01AC00",
+    "0x01B000",
+    "0x01B400",
+    "0x01B800",
+    "0x01BC00",
+    "0x01C000",
+    "0x01C400",
+    "0x01C800",
+    "0x01CC00",
+    "0x01D000",
+    "0x01D400",
+    "0x01D800",
+    "0x01DC00",
+    "0x01E000",
+    "0x01E400",
+    "0x01E800",
+    "0x01EC00",
+    "0x01F000",
+    "0x01F400",
+    "0x01F800",
+    "0x01FC00",
+    "0x020000",
+    "0x020400",
+    "0x020800",
+    "0x020C00",
+    "0x021000",
+    "0x021400",
+    "0x021800",
+    "0x021C00",
+    "0x022000",
+    "0x022400",
+    "0x022800",
+    "0x022C00",
+    "0x023000",
+    "0x023400",
+    "0x023800",
+    "0x023C00",
+    "0x024000",
+    "0x024400",
+    "0x024800",
+    "0x024C00",
+    "0x025000",
+    "0x025400",
+    "0x025800",
+    "0x025C00",
+    "0x026000",
+    "0x026400",
+    "0x026800",
+    "0x026C00",
+    "0x027000",
+    "0x027400",
+    "0x027800",
+    "0x027C00",
+    "0x028000",
+    "0x028400",
+    "0x028800",
+    "0x028C00",
+    "0x029000",
+    "0x029400",
+    "0x029800",
+    "0x029C00",
+    "0x02A000",
+    "0x02A400",
+    "0x02A800",
+    "0x02AC00",
+    "0x02B000",
+    "0x02B400",
+    "0x02B800",
+    "0x02BC00",
+    "0x02C000",
+    "0x02C400",
+    "0x02C800",
+    "0x02CC00",
+    "0x02D000",
+    "0x02D400",
+    "0x02D800",
+    "0x02DC00",
+    "0x02E000",
+    "0x02E400",
+    "0x02E800",
+    "0x02EC00",
+    "0x02F000",
+    "0x02F400",
+    "0x02F800",
+    "0x02FC00",
+    "0x030000",
+    "0x030400",
+    "0x030800",
+    "0x030C00",
+    "0x031000",
+    "0x031400",
+    "0x031800",
+    "0x031C00",
+    "0x032000",
+    "0x032400",
+    "0x032800",
+    "0x032C00",
+    "0x033000",
+    "0x033400",
+    "0x033800",
+    "0x033C00",
+    "0x034000",
+    "0x034400",
+    "0x034800",
+    "0x034C00",
+    "0x035000",
+    "0x035400",
+    "0x035800",
+    "0x035C00",
+    "0x036000",
+    "0x036400",
+    "0x036800",
+    "0x036C00",
+    "0x037000",
+    "0x037400",
+    "0x037800",
+    "0x037C00",
+    "0x038000",
+    "0x038400",
+    "0x038800",
+    "0x038C00",
+    "0x039000",
+    "0x039400",
+    "0x039800",
+    "0x039C00",
+    "0x03A000",
+    "0x03A400",
+    "0x03A800",
+    "0x03AC00",
+    "0x03B000",
+    "0x03B400",
+    "0x03B800",
+    "0x03BC00",
+    "0x03C000",
+    "0x03C400",
+    "0x03C800",
+    "0x03CC00",
+    "0x03D000",
+    "0x03D400",
+    "0x03D800",
+    "0x03DC00",
+    "0x03E000",
+    "0x03E400",
+    "0x03E800",
+    "0x03EC00",
+    "0x03F000",
+    "0x03F400",
+    "0x03F800",
+    "0x03FC00",
+    "0x040000",
+    "0x040400",
+    "0x040800",
+    "0x040C00",
+    "0x041000",
+    "0x041400",
+    "0x041800",
+    "0x041C00",
+    "0x042000",
+    "0x042400",
+    "0x042800",
+    "0x042C00",
+    "0x043000",
+    "0x043400",
+    "0x043800",
+    "0x043C00",
+    "0x044000",
+    "0x044400",
+    "0x044800",
+    "0x044C00",
+    "0x045000",
+    "0x045400",
+    "0x045800",
+    "0x045C00",
+    "0x046000",
+    "0x046400",
+    "0x046800",
+    "0x046C00",
+    "0x047000",
+    "0x047400",
+    "0x047800",
+    "0x047C00",
+    "0x048000",
+    "0x048400",
+    "0x048800",
+    "0x048C00",
+    "0x049000",
+    "0x049400",
+    "0x049800",
+    "0x049C00",
+    "0x04A000",
+    "0x04A400",
+    "0x04A800",
+    "0x04AC00",
+    "0x04B000",
+    "0x04B400",
+    "0x04B800",
+    "0x04BC00",
+    "0x04C000",
+    "0x04C400",
+    "0x04C800",
+    "0x04CC00",
+    "0x04D000",
+    "0x04D400",
+    "0x04D800",
+    "0x04DC00",
+    "0x04E000",
+    "0x04E400",
+    "0x04E800",
+    "0x04EC00",
+    "0x04F000",
+    "0x04F400",
+    "0x04F800",
+    "0x04FC00",
+    "0x050000",
+    "0x050400",
+    "0x050800",
+    "0x050C00",
+    "0x051000",
+    "0x051400",
+    "0x051800",
+    "0x051C00",
+    "0x052000",
+    "0x052400",
+    "0x052800",
+    "0x052C00",
+    "0x053000",
+    "0x053400",
+    "0x053800",
+    "0x053C00",
+    "0x054000",
+    "0x054400",
+    "0x054800",
+    "0x054C00",
+    "0x055000",
+    "0x055400",
+    "0x055800",
+    "0x055C00",
+    "0x056000",
+    "0x056400",
+    "0x056800",
+    "0x056C00",
+    "0x057000",
+    "0x057400",
+    "0x057800",
+    "0x057C00",
+    "0x058000",
+    "0x058400",
+    "0x058800",
+    "0x058C00",
+    "0x059000",
+    "0x059400",
+    "0x059800",
+    "0x059C00",
+    "0x05A000",
+    "0x05A400",
+    "0x05A800",
+    "0x05AC00",
+    "0x05B000",
+    "0x05B400",
+    "0x05B800",
+    "0x05BC00",
+    "0x05C000",
+    "0x05C400",
+    "0x05C800",
+    "0x05CC00",
+    "0x05D000",
+    "0x05D400",
+    "0x05D800",
+    "0x05DC00",
+    "0x05E000",
+    "0x05E400",
+    "0x05E800",
+    "0x05EC00",
+    "0x05F000",
+    "0x05F400",
+    "0x05F800",
+    "0x05FC00",
+    "0x060000",
+    "0x060400",
+    "0x060800",
+    "0x060C00",
+    "0x061000",
+    "0x061400",
+    "0x061800",
+    "0x061C00",
+    "0x062000",
+    "0x062400",
+    "0x062800",
+    "0x062C00",
+    "0x063000",
+    "0x063400",
+    "0x063800",
+    "0x063C00",
+    "0x064000",
+    "0x064400",
+    "0x064800",
+    "0x064C00",
+    "0x065000",
+    "0x065400",
+    "0x065800",
+    "0x065C00",
+    "0x066000",
+    "0x066400",
+    "0x066800",
+    "0x066C00",
+    "0x067000",
+    "0x067400",
+    "0x067800",
+    "0x067C00",
+    "0x068000",
+    "0x068400",
+    "0x068800",
+    "0x068C00",
+    "0x069000",
+    "0x069400",
+    "0x069800",
+    "0x069C00",
+    "0x06A000",
+    "0x06A400",
+    "0x06A800",
+    "0x06AC00",
+    "0x06B000",
+    "0x06B400",
+    "0x06B800",
+    "0x06BC00",
+    "0x06C000",
+    "0x06C400",
+    "0x06C800",
+    "0x06CC00",
+    "0x06D000",
+    "0x06D400",
+    "0x06D800",
+    "0x06DC00",
+    "0x06E000",
+    "0x06E400",
+    "0x06E800",
+    "0x06EC00",
+    "0x06F000",
+    "0x06F400",
+    "0x06F800",
+    "0x06FC00",
+    "0x070000",
+    "0x070400",
+    "0x070800",
+    "0x070C00",
+    "0x071000",
+    "0x071400",
+    "0x071800",
+    "0x071C00",
+    "0x072000",
+    "0x072400",
+    "0x072800",
+    "0x072C00",
+    "0x073000",
+    "0x073400",
+    "0x073800",
+    "0x073C00",
+    "0x074000",
+    "0x074400",
+    "0x074800",
+    "0x074C00",
+    "0x075000",
+    "0x075400",
+    "0x075800",
+    "0x075C00",
+    "0x076000",
+    "0x076400",
+    "0x076800",
+    "0x076C00",
+    "0x077000",
+    "0x077400",
+    "0x077800",
+    "0x077C00",
+    "0x078000",
+    "0x078400",
+    "0x078800",
+    "0x078C00",
+    "0x079000",
+    "0x079400",
+    "0x079800",
+    "0x079C00",
+    "0x07A000",
+    "0x07A400",
+    "0x07A800",
+    "0x07AC00",
+    "0x07B000",
+    "0x07B400",
+    "0x07B800",
+    "0x07BC00",
+    "0x07C000",
+    "0x07C400",
+    "0x07C800",
+    "0x07CC00",
+    "0x07D000",
+    "0x07D400",
+    "0x07D800",
+    "0x07DC00",
+    "0x07E000",
+    "0x07E400",
+    "0x07E800",
+    "0x07EC00",
+    "0x07F000",
+    "0x07F400",
+    "0x07F800",
+    "0x07FC00",
+    "0x080000",
+    "0x080400",
+    "0x080800",
+    "0x080C00",
+    "0x081000",
+    "0x081400",
+    "0x081800",
+    "0x081C00",
+    "0x082000",
+    "0x082400",
+    "0x082800",
+    "0x082C00",
+    "0x083000",
+    "0x083400",
+    "0x083800",
+    "0x083C00",
+    "0x084000",
+    "0x084400",
+    "0x084800",
+    "0x084C00",
+    "0x085000",
+    "0x085400",
+    "0x085800",
+    "0x085C00",
+    "0x086000",
+    "0x086400",
+    "0x086800",
+    "0x086C00",
+    "0x087000",
+    "0x087400",
+    "0x087800",
+    "0x087C00",
+    "0x088000",
+    "0x088400",
+    "0x088800",
+    "0x088C00",
+    "0x089000",
+    "0x089400",
+    "0x089800",
+    "0x089C00",
+    "0x08A000",
+    "0x08A400",
+    "0x08A800",
+    "0x08AC00",
+    "0x08B000",
+    "0x08B400",
+    "0x08B800",
+    "0x08BC00",
+    "0x08C000",
+    "0x08C400",
+    "0x08C800",
+    "0x08CC00",
+    "0x08D000",
+    "0x08D400",
+    "0x08D800",
+    "0x08DC00",
+    "0x08E000",
+    "0x08E400",
+    "0x08E800",
+    "0x08EC00",
+    "0x08F000",
+    "0x08F400",
+    "0x08F800",
+    "0x08FC00",
+    "0x090000",
+    "0x090400",
+    "0x090800",
+    "0x090C00",
+    "0x091000",
+    "0x091400",
+    "0x091800",
+    "0x091C00",
+    "0x092000",
+    "0x092400",
+    "0x092800",
+    "0x092C00",
+    "0x093000",
+    "0x093400",
+    "0x093800",
+    "0x093C00",
+    "0x094000",
+    "0x094400",
+    "0x094800",
+    "0x094C00",
+    "0x095000",
+    "0x095400",
+    "0x095800",
+    "0x095C00",
+    "0x096000",
+    "0x096400",
+    "0x096800",
+    "0x096C00",
+    "0x097000",
+    "0x097400",
+    "0x097800",
+    "0x097C00",
+    "0x098000",
+    "0x098400",
+    "0x098800",
+    "0x098C00",
+    "0x099000",
+    "0x099400",
+    "0x099800",
+    "0x099C00",
+    "0x09A000",
+    "0x09A400",
+    "0x09A800",
+    "0x09AC00",
+    "0x09B000",
+    "0x09B400",
+    "0x09B800",
+    "0x09BC00",
+    "0x09C000",
+    "0x09C400",
+    "0x09C800",
+    "0x09CC00",
+    "0x09D000",
+    "0x09D400",
+    "0x09D800",
+    "0x09DC00",
+    "0x09E000",
+    "0x09E400",
+    "0x09E800",
+    "0x09EC00",
+    "0x09F000",
+    "0x09F400",
+    "0x09F800",
+    "0x09FC00",
+    "0x0A0000",
+    "0x0A0400",
+    "0x0A0800",
+    "0x0A0C00",
+    "0x0A1000",
+    "0x0A1400",
+    "0x0A1800",
+    "0x0A1C00",
+    "0x0A2000",
+    "0x0A2400",
+    "0x0A2800",
+    "0x0A2C00",
+    "0x0A3000",
+    "0x0AC000",
+    "0x0AC400",
+    "0x0AC800",
+    "0x0ACC00",
+    "0x0AD000",
+    "0x0AD400",
+    "0x0AE000",
+    "0x0AE400",
+    "0x0AE800",
+    "0x0AEC00",
+    "0x0AF000",
+    "0x0AF400",
+    "0x0AF800",
+    "0x0AFC00",
+    "0x0B0000",
+    "0x0B0400",
+    "0x0B0800",
+    "0x0B0C00",
+    "0x0B1000",
+    "0x0B1400",
+    "0x0B1800",
+    "0x0B1C00",
+    "0x0B2000",
+    "0x0B2400",
+    "0x0B2800",
+    "0x0B2C00",
+    "0x0B3000",
+    "0x0B3400",
+    "0x0B3800",
+    "0x0B3C00",
+    "0x0B4000",
+    "0x0B4400",
+    "0x0B4800",
+    "0x0B4C00",
+    "0x0B5000",
+    "0x0B5400",
+    "0x0B5800",
+    "0x0B5C00",
+    "0x0B6000",
+    "0x0B6400",
+    "0x0B6800",
+    "0x0B6C00",
+    "0x0B8000",
+    "0x0B8400",
+    "0x0B8800",
+    "0x0B8C00",
+    "0x0B9000",
+    "0x0B9400",
+    "0x0B9800",
+    "0x0B9C00",
+    "0x0BA000",
+    "0x0BA400",
+    "0x0BA800",
+    "0x0BAC00",
+    "0x0BB000",
+    "0x0BB400",
+    "0x0BB800",
+    "0x0BBC00",
+    "0x0BC000",
+    "0x0BC400",
+    "0x0BC800",
+    "0x0BCC00",
+    "0x0BD000",
+    "0x0BD400",
+    "0x0BD800",
+    "0x0BDC00",
+    "0x0BE000",
+    "0x0BE400",
+    "0x0BE800",
+    "0x0BEC00",
+    "0x0BF000",
+    "0x0BF400",
+    "0x0BF800",
+    "0x0BFC00",
+    "0x0C0000",
+    "0x0C0400",
+    "0x0C0800",
+    "0x0C0C00",
+    "0x0C1000",
+    "0x0C1400",
+    "0x0C1800",
+    "0x0C1C00",
+    "0x0C2000",
+    "0x0C2400",
+    "0x0C2800",
+    "0x0C2C00",
+    "0x0C3000",
+    "0x0C3400",
+    "0x0C3800",
+    "0x0C3C00",
+    "0x0C4000",
+    "0x0C4400",
+    "0x0C4800",
+    "0x0C4C00",
+    "0x0C5000",
+    "0x0C5400",
+    "0x0C5800",
+    "0x0C5C00",
+    "0x0C6000",
+    "0x0C6400",
+    "0x0C6800",
+    "0x0C6C00",
+    "0x0C7000",
+    "0x0C7400",
+    "0x0C7800",
+    "0x0C7C00",
+    "0x0C8000",
+    "0x0C8400",
+    "0x0C8800",
+    "0x0C8C00",
+    "0x0C9000",
+    "0x0C9400",
+    "0x0C9800",
+    "0x0C9C00",
+    "0x0CA000",
+    "0x0CA400",
+    "0x0CA800",
+    "0x0CAC00",
+    "0x0CB000",
+    "0x0CB400",
+    "0x0CB800",
+    "0x0CBC00",
+    "0x0CC000",
+    "0x0CC400",
+    "0x0CC800",
+    "0x0CCC00",
+    "0x0CD000",
+    "0x0CD400",
+    "0x0CD800",
+    "0x0CDC00",
+    "0x0CE000",
+    "0x0CE400",
+    "0x0CE800",
+    "0x0CEC00",
+    "0x0CF000",
+    "0x0CF400",
+    "0x0CF800",
+    "0x0CFC00",
+    "0x0D0000",
+    "0x0D0400",
+    "0x0D0800",
+    "0x0D0C00",
+    "0x0D1000",
+    "0x0D1400",
+    "0x0D1800",
+    "0x0D1C00",
+    "0x0D2000",
+    "0x0D2400",
+    "0x0D2800",
+    "0x0D2C00",
+    "0x0D3000",
+    "0x0D3400",
+    "0x0D3800",
+    "0x0D3C00",
+    "0x0D4000",
+    "0x0D4400",
+    "0x0D4800",
+    "0x0D4C00",
+    "0x0D5000",
+    "0x0D5400",
+    "0x0D5800",
+    "0x0D5C00",
+    "0x0D6000",
+    "0x0D6400",
+    "0x0D6800",
+    "0x0D6C00",
+    "0x0D7000",
+    "0x0D7400",
+    "0x0D7800",
+    "0x0D7C00",
+    "0x0D8000",
+    "0x0D8400",
+    "0x0D8800",
+    "0x0D8C00",
+    "0x0D9000",
+    "0x0D9400",
+    "0x0D9800",
+    "0x0D9C00",
+    "0x0DA000",
+    "0x0DA400",
+    "0x0DA800",
+    "0x0DAC00",
+    "0x0DB000",
+    "0x0DB400",
+    "0x0DB800",
+    "0x0DBC00",
+    "0x0DC000",
+    "0x0DC400",
+    "0x0DC800",
+    "0x0DCC00",
+    "0x0DD000",
+    "0x0DD400",
+    "0x0DD800",
+    "0x0DDC00",
+    "0x0DE000",
+    "0x0DE400",
+    "0x0DE800",
+    "0x0DEC00",
+    "0x0DF000",
+    "0x0DF400",
+    "0x0DF800",
+    "0x0DFC00",
+    "0x0E0000",
+    "0x0E0400",
+    "0x0E0800",
+    "0x0E0C00",
+    "0x0E1000",
+    "0x0E1400",
+    "0x0F4000",
+    "0x0F4400",
+    "0x0F4800",
+    "0x0F4C00",
+    "0x0F5000",
+    "0x0F5400",
+    "0x0F5800",
+    "0x0F5C00",
+    "0x0F6000",
+    "0x0F6400",
+    "0x0F6800",
+    "0x0F6C00",
+    "0x0F7000",
+    "0x0F7400",
+    "0x0F7800",
+    "0x0F7C00",
+    "0x0F8000",
+    "0x0F8400",
+    "0x0F8800",
+    "0x0F8C00",
+    "0x0F9000",
+    "0x0F9400",
+    "0x0F9800",
+    "0x0F9C00",
+    "0x0FA000",
+    "0x0FA400",
+    "0x0FA800",
+    "0x0FAC00",
+    "0x0FB000",
+    "0x0FB400",
+    "0x0FB800",
+    "0x0FF400",
+    "0x0FF800",
+    "0x0FFC00"
+   ],
+   "min": 1,
+   "level": "warn",
+   "name": "1 KB blocks above 0x2000 not blank where the factory image has data (interrupted read, or a table zeroed by a tune?)",
+   "covers": [
+    "apply:preflight:blank"
+   ]
+  },
+  {
+   "type": "blank_blocks",
+   "block": 1024,
+   "expect": [
+    "0x002000",
+    "0x002400",
+    "0x002800",
+    "0x002C00",
+    "0x003000",
+    "0x003400",
+    "0x003800",
+    "0x003C00",
+    "0x004000",
+    "0x004400",
+    "0x004800",
+    "0x004C00",
+    "0x005000",
+    "0x005400",
+    "0x005800",
+    "0x005C00",
+    "0x006000",
+    "0x006400",
+    "0x006800",
+    "0x006C00",
+    "0x007000",
+    "0x007400",
+    "0x007800",
+    "0x007C00",
+    "0x008000",
+    "0x008400",
+    "0x008800",
+    "0x008C00",
+    "0x009000",
+    "0x009400",
+    "0x009800",
+    "0x009C00",
+    "0x00A000",
+    "0x00A400",
+    "0x00A800",
+    "0x00AC00",
+    "0x00B000",
+    "0x00B400",
+    "0x00B800",
+    "0x00BC00",
+    "0x00C000",
+    "0x00C400",
+    "0x00C800",
+    "0x00CC00",
+    "0x00D000",
+    "0x00D400",
+    "0x00D800",
+    "0x00DC00",
+    "0x00E000",
+    "0x00E400",
+    "0x00E800",
+    "0x00EC00",
+    "0x00F000",
+    "0x00F400",
+    "0x00F800",
+    "0x00FC00",
+    "0x010000",
+    "0x010400",
+    "0x010800",
+    "0x010C00",
+    "0x011000",
+    "0x011400",
+    "0x011800",
+    "0x011C00",
+    "0x012000",
+    "0x012400",
+    "0x012800",
+    "0x012C00",
+    "0x013000",
+    "0x013400",
+    "0x013800",
+    "0x013C00",
+    "0x014000",
+    "0x014400",
+    "0x014800",
+    "0x014C00",
+    "0x015000",
+    "0x015400",
+    "0x015800",
+    "0x015C00",
+    "0x016000",
+    "0x016400",
+    "0x016800",
+    "0x016C00",
+    "0x017000",
+    "0x017400",
+    "0x017800",
+    "0x017C00",
+    "0x018000",
+    "0x018400",
+    "0x018800",
+    "0x018C00",
+    "0x019000",
+    "0x019400",
+    "0x019800",
+    "0x019C00",
+    "0x01A000",
+    "0x01A400",
+    "0x01A800",
+    "0x01AC00",
+    "0x01B000",
+    "0x01B400",
+    "0x01B800",
+    "0x01BC00",
+    "0x01C000",
+    "0x01C400",
+    "0x01C800",
+    "0x01CC00",
+    "0x01D000",
+    "0x01D400",
+    "0x01D800",
+    "0x01DC00",
+    "0x01E000",
+    "0x01E400",
+    "0x01E800",
+    "0x01EC00",
+    "0x01F000",
+    "0x01F400",
+    "0x01F800",
+    "0x01FC00",
+    "0x020000",
+    "0x020400",
+    "0x020800",
+    "0x020C00",
+    "0x021000",
+    "0x021400",
+    "0x021800",
+    "0x021C00",
+    "0x022000",
+    "0x022400",
+    "0x022800",
+    "0x022C00",
+    "0x023000",
+    "0x023400",
+    "0x023800",
+    "0x023C00",
+    "0x024000",
+    "0x024400",
+    "0x024800",
+    "0x024C00",
+    "0x025000",
+    "0x025400",
+    "0x025800",
+    "0x025C00",
+    "0x026000",
+    "0x026400",
+    "0x026800",
+    "0x026C00",
+    "0x027000",
+    "0x027400",
+    "0x027800",
+    "0x027C00",
+    "0x028000",
+    "0x028400",
+    "0x028800",
+    "0x028C00",
+    "0x029000",
+    "0x029400",
+    "0x029800",
+    "0x029C00",
+    "0x02A000",
+    "0x02A400",
+    "0x02A800",
+    "0x02AC00",
+    "0x02B000",
+    "0x02B400",
+    "0x02B800",
+    "0x02BC00",
+    "0x02C000",
+    "0x02C400",
+    "0x02C800",
+    "0x02CC00",
+    "0x02D000",
+    "0x02D400",
+    "0x02D800",
+    "0x02DC00",
+    "0x02E000",
+    "0x02E400",
+    "0x02E800",
+    "0x02EC00",
+    "0x02F000",
+    "0x02F400",
+    "0x02F800",
+    "0x02FC00",
+    "0x030000",
+    "0x030400",
+    "0x030800",
+    "0x030C00",
+    "0x031000",
+    "0x031400",
+    "0x031800",
+    "0x031C00",
+    "0x032000",
+    "0x032400",
+    "0x032800",
+    "0x032C00",
+    "0x033000",
+    "0x033400",
+    "0x033800",
+    "0x033C00",
+    "0x034000",
+    "0x034400",
+    "0x034800",
+    "0x034C00",
+    "0x035000",
+    "0x035400",
+    "0x035800",
+    "0x035C00",
+    "0x036000",
+    "0x036400",
+    "0x036800",
+    "0x036C00",
+    "0x037000",
+    "0x037400",
+    "0x037800",
+    "0x037C00",
+    "0x038000",
+    "0x038400",
+    "0x038800",
+    "0x038C00",
+    "0x039000",
+    "0x039400",
+    "0x039800",
+    "0x039C00",
+    "0x03A000",
+    "0x03A400",
+    "0x03A800",
+    "0x03AC00",
+    "0x03B000",
+    "0x03B400",
+    "0x03B800",
+    "0x03BC00",
+    "0x03C000",
+    "0x03C400",
+    "0x03C800",
+    "0x03CC00",
+    "0x03D000",
+    "0x03D400",
+    "0x03D800",
+    "0x03DC00",
+    "0x03E000",
+    "0x03E400",
+    "0x03E800",
+    "0x03EC00",
+    "0x03F000",
+    "0x03F400",
+    "0x03F800",
+    "0x03FC00",
+    "0x040000",
+    "0x040400",
+    "0x040800",
+    "0x040C00",
+    "0x041000",
+    "0x041400",
+    "0x041800",
+    "0x041C00",
+    "0x042000",
+    "0x042400",
+    "0x042800",
+    "0x042C00",
+    "0x043000",
+    "0x043400",
+    "0x043800",
+    "0x043C00",
+    "0x044000",
+    "0x044400",
+    "0x044800",
+    "0x044C00",
+    "0x045000",
+    "0x045400",
+    "0x045800",
+    "0x045C00",
+    "0x046000",
+    "0x046400",
+    "0x046800",
+    "0x046C00",
+    "0x047000",
+    "0x047400",
+    "0x047800",
+    "0x047C00",
+    "0x048000",
+    "0x048400",
+    "0x048800",
+    "0x048C00",
+    "0x049000",
+    "0x049400",
+    "0x049800",
+    "0x049C00",
+    "0x04A000",
+    "0x04A400",
+    "0x04A800",
+    "0x04AC00",
+    "0x04B000",
+    "0x04B400",
+    "0x04B800",
+    "0x04BC00",
+    "0x04C000",
+    "0x04C400",
+    "0x04C800",
+    "0x04CC00",
+    "0x04D000",
+    "0x04D400",
+    "0x04D800",
+    "0x04DC00",
+    "0x04E000",
+    "0x04E400",
+    "0x04E800",
+    "0x04EC00",
+    "0x04F000",
+    "0x04F400",
+    "0x04F800",
+    "0x04FC00",
+    "0x050000",
+    "0x050400",
+    "0x050800",
+    "0x050C00",
+    "0x051000",
+    "0x051400",
+    "0x051800",
+    "0x051C00",
+    "0x052000",
+    "0x052400",
+    "0x052800",
+    "0x052C00",
+    "0x053000",
+    "0x053400",
+    "0x053800",
+    "0x053C00",
+    "0x054000",
+    "0x054400",
+    "0x054800",
+    "0x054C00",
+    "0x055000",
+    "0x055400",
+    "0x055800",
+    "0x055C00",
+    "0x056000",
+    "0x056400",
+    "0x056800",
+    "0x056C00",
+    "0x057000",
+    "0x057400",
+    "0x057800",
+    "0x057C00",
+    "0x058000",
+    "0x058400",
+    "0x058800",
+    "0x058C00",
+    "0x059000",
+    "0x059400",
+    "0x059800",
+    "0x059C00",
+    "0x05A000",
+    "0x05A400",
+    "0x05A800",
+    "0x05AC00",
+    "0x05B000",
+    "0x05B400",
+    "0x05B800",
+    "0x05BC00",
+    "0x05C000",
+    "0x05C400",
+    "0x05C800",
+    "0x05CC00",
+    "0x05D000",
+    "0x05D400",
+    "0x05D800",
+    "0x05DC00",
+    "0x05E000",
+    "0x05E400",
+    "0x05E800",
+    "0x05EC00",
+    "0x05F000",
+    "0x05F400",
+    "0x05F800",
+    "0x05FC00",
+    "0x060000",
+    "0x060400",
+    "0x060800",
+    "0x060C00",
+    "0x061000",
+    "0x061400",
+    "0x061800",
+    "0x061C00",
+    "0x062000",
+    "0x062400",
+    "0x062800",
+    "0x062C00",
+    "0x063000",
+    "0x063400",
+    "0x063800",
+    "0x063C00",
+    "0x064000",
+    "0x064400",
+    "0x064800",
+    "0x064C00",
+    "0x065000",
+    "0x065400",
+    "0x065800",
+    "0x065C00",
+    "0x066000",
+    "0x066400",
+    "0x066800",
+    "0x066C00",
+    "0x067000",
+    "0x067400",
+    "0x067800",
+    "0x067C00",
+    "0x068000",
+    "0x068400",
+    "0x068800",
+    "0x068C00",
+    "0x069000",
+    "0x069400",
+    "0x069800",
+    "0x069C00",
+    "0x06A000",
+    "0x06A400",
+    "0x06A800",
+    "0x06AC00",
+    "0x06B000",
+    "0x06B400",
+    "0x06B800",
+    "0x06BC00",
+    "0x06C000",
+    "0x06C400",
+    "0x06C800",
+    "0x06CC00",
+    "0x06D000",
+    "0x06D400",
+    "0x06D800",
+    "0x06DC00",
+    "0x06E000",
+    "0x06E400",
+    "0x06E800",
+    "0x06EC00",
+    "0x06F000",
+    "0x06F400",
+    "0x06F800",
+    "0x06FC00",
+    "0x070000",
+    "0x070400",
+    "0x070800",
+    "0x070C00",
+    "0x071000",
+    "0x071400",
+    "0x071800",
+    "0x071C00",
+    "0x072000",
+    "0x072400",
+    "0x072800",
+    "0x072C00",
+    "0x073000",
+    "0x073400",
+    "0x073800",
+    "0x073C00",
+    "0x074000",
+    "0x074400",
+    "0x074800",
+    "0x074C00",
+    "0x075000",
+    "0x075400",
+    "0x075800",
+    "0x075C00",
+    "0x076000",
+    "0x076400",
+    "0x076800",
+    "0x076C00",
+    "0x077000",
+    "0x077400",
+    "0x077800",
+    "0x077C00",
+    "0x078000",
+    "0x078400",
+    "0x078800",
+    "0x078C00",
+    "0x079000",
+    "0x079400",
+    "0x079800",
+    "0x079C00",
+    "0x07A000",
+    "0x07A400",
+    "0x07A800",
+    "0x07AC00",
+    "0x07B000",
+    "0x07B400",
+    "0x07B800",
+    "0x07BC00",
+    "0x07C000",
+    "0x07C400",
+    "0x07C800",
+    "0x07CC00",
+    "0x07D000",
+    "0x07D400",
+    "0x07D800",
+    "0x07DC00",
+    "0x07E000",
+    "0x07E400",
+    "0x07E800",
+    "0x07EC00",
+    "0x07F000",
+    "0x07F400",
+    "0x07F800",
+    "0x07FC00",
+    "0x080000",
+    "0x080400",
+    "0x080800",
+    "0x080C00",
+    "0x081000",
+    "0x081400",
+    "0x081800",
+    "0x081C00",
+    "0x082000",
+    "0x082400",
+    "0x082800",
+    "0x082C00",
+    "0x083000",
+    "0x083400",
+    "0x083800",
+    "0x083C00",
+    "0x084000",
+    "0x084400",
+    "0x084800",
+    "0x084C00",
+    "0x085000",
+    "0x085400",
+    "0x085800",
+    "0x085C00",
+    "0x086000",
+    "0x086400",
+    "0x086800",
+    "0x086C00",
+    "0x087000",
+    "0x087400",
+    "0x087800",
+    "0x087C00",
+    "0x088000",
+    "0x088400",
+    "0x088800",
+    "0x088C00",
+    "0x089000",
+    "0x089400",
+    "0x089800",
+    "0x089C00",
+    "0x08A000",
+    "0x08A400",
+    "0x08A800",
+    "0x08AC00",
+    "0x08B000",
+    "0x08B400",
+    "0x08B800",
+    "0x08BC00",
+    "0x08C000",
+    "0x08C400",
+    "0x08C800",
+    "0x08CC00",
+    "0x08D000",
+    "0x08D400",
+    "0x08D800",
+    "0x08DC00",
+    "0x08E000",
+    "0x08E400",
+    "0x08E800",
+    "0x08EC00",
+    "0x08F000",
+    "0x08F400",
+    "0x08F800",
+    "0x08FC00",
+    "0x090000",
+    "0x090400",
+    "0x090800",
+    "0x090C00",
+    "0x091000",
+    "0x091400",
+    "0x091800",
+    "0x091C00",
+    "0x092000",
+    "0x092400",
+    "0x092800",
+    "0x092C00",
+    "0x093000",
+    "0x093400",
+    "0x093800",
+    "0x093C00",
+    "0x094000",
+    "0x094400",
+    "0x094800",
+    "0x094C00",
+    "0x095000",
+    "0x095400",
+    "0x095800",
+    "0x095C00",
+    "0x096000",
+    "0x096400",
+    "0x096800",
+    "0x096C00",
+    "0x097000",
+    "0x097400",
+    "0x097800",
+    "0x097C00",
+    "0x098000",
+    "0x098400",
+    "0x098800",
+    "0x098C00",
+    "0x099000",
+    "0x099400",
+    "0x099800",
+    "0x099C00",
+    "0x09A000",
+    "0x09A400",
+    "0x09A800",
+    "0x09AC00",
+    "0x09B000",
+    "0x09B400",
+    "0x09B800",
+    "0x09BC00",
+    "0x09C000",
+    "0x09C400",
+    "0x09C800",
+    "0x09CC00",
+    "0x09D000",
+    "0x09D400",
+    "0x09D800",
+    "0x09DC00",
+    "0x09E000",
+    "0x09E400",
+    "0x09E800",
+    "0x09EC00",
+    "0x09F000",
+    "0x09F400",
+    "0x09F800",
+    "0x09FC00",
+    "0x0A0000",
+    "0x0A0400",
+    "0x0A0800",
+    "0x0A0C00",
+    "0x0A1000",
+    "0x0A1400",
+    "0x0A1800",
+    "0x0A1C00",
+    "0x0A2000",
+    "0x0A2400",
+    "0x0A2800",
+    "0x0A2C00",
+    "0x0A3000",
+    "0x0AC000",
+    "0x0AC400",
+    "0x0AC800",
+    "0x0ACC00",
+    "0x0AD000",
+    "0x0AD400",
+    "0x0AE000",
+    "0x0AE400",
+    "0x0AE800",
+    "0x0AEC00",
+    "0x0AF000",
+    "0x0AF400",
+    "0x0AF800",
+    "0x0AFC00",
+    "0x0B0000",
+    "0x0B0400",
+    "0x0B0800",
+    "0x0B0C00",
+    "0x0B1000",
+    "0x0B1400",
+    "0x0B1800",
+    "0x0B1C00",
+    "0x0B2000",
+    "0x0B2400",
+    "0x0B2800",
+    "0x0B2C00",
+    "0x0B3000",
+    "0x0B3400",
+    "0x0B3800",
+    "0x0B3C00",
+    "0x0B4000",
+    "0x0B4400",
+    "0x0B4800",
+    "0x0B4C00",
+    "0x0B5000",
+    "0x0B5400",
+    "0x0B5800",
+    "0x0B5C00",
+    "0x0B6000",
+    "0x0B6400",
+    "0x0B6800",
+    "0x0B6C00",
+    "0x0B8000",
+    "0x0B8400",
+    "0x0B8800",
+    "0x0B8C00",
+    "0x0B9000",
+    "0x0B9400",
+    "0x0B9800",
+    "0x0B9C00",
+    "0x0BA000",
+    "0x0BA400",
+    "0x0BA800",
+    "0x0BAC00",
+    "0x0BB000",
+    "0x0BB400",
+    "0x0BB800",
+    "0x0BBC00",
+    "0x0BC000",
+    "0x0BC400",
+    "0x0BC800",
+    "0x0BCC00",
+    "0x0BD000",
+    "0x0BD400",
+    "0x0BD800",
+    "0x0BDC00",
+    "0x0BE000",
+    "0x0BE400",
+    "0x0BE800",
+    "0x0BEC00",
+    "0x0BF000",
+    "0x0BF400",
+    "0x0BF800",
+    "0x0BFC00",
+    "0x0C0000",
+    "0x0C0400",
+    "0x0C0800",
+    "0x0C0C00",
+    "0x0C1000",
+    "0x0C1400",
+    "0x0C1800",
+    "0x0C1C00",
+    "0x0C2000",
+    "0x0C2400",
+    "0x0C2800",
+    "0x0C2C00",
+    "0x0C3000",
+    "0x0C3400",
+    "0x0C3800",
+    "0x0C3C00",
+    "0x0C4000",
+    "0x0C4400",
+    "0x0C4800",
+    "0x0C4C00",
+    "0x0C5000",
+    "0x0C5400",
+    "0x0C5800",
+    "0x0C5C00",
+    "0x0C6000",
+    "0x0C6400",
+    "0x0C6800",
+    "0x0C6C00",
+    "0x0C7000",
+    "0x0C7400",
+    "0x0C7800",
+    "0x0C7C00",
+    "0x0C8000",
+    "0x0C8400",
+    "0x0C8800",
+    "0x0C8C00",
+    "0x0C9000",
+    "0x0C9400",
+    "0x0C9800",
+    "0x0C9C00",
+    "0x0CA000",
+    "0x0CA400",
+    "0x0CA800",
+    "0x0CAC00",
+    "0x0CB000",
+    "0x0CB400",
+    "0x0CB800",
+    "0x0CBC00",
+    "0x0CC000",
+    "0x0CC400",
+    "0x0CC800",
+    "0x0CCC00",
+    "0x0CD000",
+    "0x0CD400",
+    "0x0CD800",
+    "0x0CDC00",
+    "0x0CE000",
+    "0x0CE400",
+    "0x0CE800",
+    "0x0CEC00",
+    "0x0CF000",
+    "0x0CF400",
+    "0x0CF800",
+    "0x0CFC00",
+    "0x0D0000",
+    "0x0D0400",
+    "0x0D0800",
+    "0x0D0C00",
+    "0x0D1000",
+    "0x0D1400",
+    "0x0D1800",
+    "0x0D1C00",
+    "0x0D2000",
+    "0x0D2400",
+    "0x0D2800",
+    "0x0D2C00",
+    "0x0D3000",
+    "0x0D3400",
+    "0x0D3800",
+    "0x0D3C00",
+    "0x0D4000",
+    "0x0D4400",
+    "0x0D4800",
+    "0x0D4C00",
+    "0x0D5000",
+    "0x0D5400",
+    "0x0D5800",
+    "0x0D5C00",
+    "0x0D6000",
+    "0x0D6400",
+    "0x0D6800",
+    "0x0D6C00",
+    "0x0D7000",
+    "0x0D7400",
+    "0x0D7800",
+    "0x0D7C00",
+    "0x0D8000",
+    "0x0D8400",
+    "0x0D8800",
+    "0x0D8C00",
+    "0x0D9000",
+    "0x0D9400",
+    "0x0D9800",
+    "0x0D9C00",
+    "0x0DA000",
+    "0x0DA400",
+    "0x0DA800",
+    "0x0DAC00",
+    "0x0DB000",
+    "0x0DB400",
+    "0x0DB800",
+    "0x0DBC00",
+    "0x0DC000",
+    "0x0DC400",
+    "0x0DC800",
+    "0x0DCC00",
+    "0x0DD000",
+    "0x0DD400",
+    "0x0DD800",
+    "0x0DDC00",
+    "0x0DE000",
+    "0x0DE400",
+    "0x0DE800",
+    "0x0DEC00",
+    "0x0DF000",
+    "0x0DF400",
+    "0x0DF800",
+    "0x0DFC00",
+    "0x0E0000",
+    "0x0E0400",
+    "0x0E0800",
+    "0x0E0C00",
+    "0x0E1000",
+    "0x0E1400",
+    "0x0F4000",
+    "0x0F4400",
+    "0x0F4800",
+    "0x0F4C00",
+    "0x0F5000",
+    "0x0F5400",
+    "0x0F5800",
+    "0x0F5C00",
+    "0x0F6000",
+    "0x0F6400",
+    "0x0F6800",
+    "0x0F6C00",
+    "0x0F7000",
+    "0x0F7400",
+    "0x0F7800",
+    "0x0F7C00",
+    "0x0F8000",
+    "0x0F8400",
+    "0x0F8800",
+    "0x0F8C00",
+    "0x0F9000",
+    "0x0F9400",
+    "0x0F9800",
+    "0x0F9C00",
+    "0x0FA000",
+    "0x0FA400",
+    "0x0FA800",
+    "0x0FAC00",
+    "0x0FB000",
+    "0x0FB400",
+    "0x0FB800",
+    "0x0FF400",
+    "0x0FF800",
+    "0x0FFC00"
+   ],
+   "min": 3,
+   "name": "fewer than 3 x 1 KB blocks above 0x2000 blank where the factory image has data",
+   "level": "refuse",
+   "covers": [
+    "apply:preflight:blank3"
+   ]
+  },
+  {
+   "type": "table_finite",
+   "addr": "0x0F629C",
+   "nx": 15,
+   "ny": 29,
+   "name": "TP Delta - Fault Threshold 0x0F629C (15x29) every cell finite",
+   "level": "refuse",
+   "covers": [
+    "apply:tp_delta"
+   ]
+  },
+  {
+   "type": "f_any_le",
+   "addr": "0x0F6228",
+   "n": 29,
+   "x": 7.819999694824219,
+   "name": "TP Delta - Fault Threshold throttle axis 0x0F6228: a point at or below 7.82 %",
+   "level": "refuse",
+   "covers": [
+    "apply:tp_delta"
+   ]
+  },
+  {
+   "type": "table_all_eq",
+   "addr": "0x0F629C",
+   "nx": 15,
+   "ny": 29,
+   "value": 22.0,
+   "level": "warn",
+   "name": "TP Delta - Fault Threshold 0x0F629C (15x29)",
+   "advice": "AutoBlip ships disabled; when you enable it, set every cell of this table to 22, or it may rarely or never start (exit 7). This loosens the ECU's throttle-plausibility check at low throttle",
+   "covers": [
+    "apply:tp_delta"
+   ]
+  },
+  {
+   "type": "gear",
+   "ratios": "0x0C14FC",
+   "bands": "0x0C1524",
+   "five_speed_ratio": 1.1,
+   "margin_warn": 0.05,
+   "from_gear": 2,
+   "level": "refuse",
+   "name": "gear ratios 0x0C14FC and detector bands 0x0C1524",
+   "covers": [
+    "apply:gear"
+   ]
+  },
+  {
+   "type": "bytes_eq",
+   "a": "0x0C589C",
+   "b": "0x0F456C",
+   "len": 4,
+   "level": "warn",
+   "name": "integrity pair CEL Flash Pattern - High ECT Activation Threshold (0x0C589C) vs its monitor copy CEL Flash Pattern (Data Integrity) - High ECT Activation Threshold (monitor copy of the OEM ECT flag 0xFFFF5263, also read by the idle code 0x5A71A) (pair with c589c) (0x0F456C), 4 B",
+   "advice": "a hysteresis pair; the owner's LF9VEB car runs with it broken with no known fault. Keep both halves equal when you edit it",
+   "covers": [
+    "apply:EXTRA_PAIRS"
+   ]
+  },
+  {
+   "type": "setting_le_cal",
+   "setting": {
+    "addr": "0x0FCBA0",
+    "type": "float"
+   },
+   "cal": {
+    "addr": "0x0C4CD8",
+    "type": "float"
+   },
+   "margin": 300.0,
+   "on": "output",
+   "name": "AutoBlip - Max Target RPM (0x0FCBA0) <= fuel cut RPM Fuel Cut  (0x0C4CD8) - 300",
+   "level": "refuse",
+   "covers": [
+    "apply:validate:fuel_cut"
+   ]
+  },
+  {
+   "type": "bytes_is",
+   "addr": "0x0B8120",
+   "hex": "0102030405060708090a0b0c0d0e0f1011121415161718191a1b1c1d1e1f2021",
+   "name": "checksum rotating slot map 0x0B8120 as in the reference (an index outside the stock records makes the rotating checksum monitor fail forever: P0601 + limp)",
+   "level": "refuse",
+   "covers": [
+    "apply:checksum_slot_map"
+   ]
+  }
+ ],
+ "consent": [
+  {
+   "id": "tyre_restore",
+   "ranges": [
+    "0x08648A",
+    "0x086515"
+   ],
+   "level": "warn",
+   "text": "the tyre gate 0x086438-0x086537 is restored to OEM: the gear and speed readings switch to the ECU's own tyre value (the OEM path), so throttle feel per gear (the per-gear pedal map), the DSC / torque gear input and the tyre byte sent on CAN 0x4F1 can change, and the NC Flash / Romdrop tyre-size setting stops having any effect; on a car that reads speed from the VSS pulse instead of ABS, speed and speedo can change by a large factor (about x0.5 to x1.9, depending on the ECU's stored tyre value), which moves every speed-gated function. Read 0xFFFF9224 / 9226 and the speed mode on the car first, start from a fresh ECU read, and do a logged shake-down drive (analysis/autoblip/2026-10-04_lfh9ef_review.md F1, analysis/autoblip/2026-10-06_distribution_reviews.md A2)"
+  }
+ ],
+ "post": [
+  {
+   "type": "u8_eq",
+   "addr": "0x0FE600",
+   "value": 0,
+   "level": "refuse",
+   "name": "AutoBlip - Enable ships 0"
+  },
+  {
+   "type": "f_gt",
+   "addr": "0x0FE604",
+   "x": 0.0,
+   "level": "refuse",
+   "name": "AutoBlip - Max Synthetic Pedal % > 0"
+  },
+  {
+   "type": "f_le",
+   "addr": "0x0FE604",
+   "x": 25.0,
+   "level": "refuse",
+   "name": "AutoBlip - Max Synthetic Pedal % <= 25"
+  }
+ ],
+ "checksums": {
+  "table": "0x0FF650",
+  "records": 35,
+  "algorithm": "ncflash-sum32-v1"
+ },
+ "definitions": "<scaling name=\"autoblip_enable\" units=\"0/1\" toexpr=\"x\" frexpr=\"x\" format=\"%0.0f\" min=\"0\" max=\"1\" inc=\"1\" storagetype=\"uint8\" endian=\"big\"\n></scaling\n>\n<scaling name=\"autoblip_pct\" units=\"% pedal\" toexpr=\"x\" frexpr=\"x\" format=\"%0.1f\" min=\"0\" max=\"25\" inc=\"0.5\" storagetype=\"float\" endian=\"big\"\n></scaling\n>\n<scaling name=\"autoblip_err_axis\" units=\"rpm error\" toexpr=\"x\" frexpr=\"x\" format=\"%0.0f\" min=\"0\" max=\"4000\" inc=\"10\" storagetype=\"float\" endian=\"big\"\n></scaling\n>\n<scaling name=\"autoblip_gear\" units=\"gear\" toexpr=\"x\" frexpr=\"x\" format=\"%0.0f\" min=\"2\" max=\"6\" inc=\"1\" storagetype=\"uint8\" endian=\"big\"\n></scaling\n>\n<scaling name=\"autoblip_post_ms\" units=\"ms\" toexpr=\"x*10\" frexpr=\"x/10\" format=\"%0.0f\" min=\"50\" max=\"250\" inc=\"10\" storagetype=\"uint8\" endian=\"big\"\n></scaling\n>\n<scaling name=\"autoblip_arm_ms\" units=\"ms\" toexpr=\"x\" frexpr=\"x\" format=\"%0.0f\" min=\"50\" max=\"2000\" inc=\"10\" storagetype=\"uint16\" endian=\"big\"\n></scaling\n>\n<scaling name=\"autoblip_window_ms\" units=\"ms\" toexpr=\"x\" frexpr=\"x\" format=\"%0.0f\" min=\"50\" max=\"1000\" inc=\"10\" storagetype=\"uint16\" endian=\"big\"\n></scaling\n>\n<scaling name=\"autoblip_max_ms\" units=\"ms\" toexpr=\"x\" frexpr=\"x\" format=\"%0.0f\" min=\"100\" max=\"1500\" inc=\"10\" storagetype=\"uint16\" endian=\"big\"\n></scaling\n>\n<scaling name=\"autoblip_app\" units=\"%\" toexpr=\"x\" frexpr=\"x\" format=\"%0.1f\" min=\"0\" max=\"10\" inc=\"0.1\" storagetype=\"float\" endian=\"big\"\n></scaling\n>\n<scaling name=\"autoblip_kph\" units=\"km/h\" toexpr=\"x\" frexpr=\"x\" format=\"%0.1f\" min=\"5\" max=\"100\" inc=\"0.5\" storagetype=\"float\" endian=\"big\"\n></scaling\n>\n<scaling name=\"autoblip_rpm\" units=\"rpm\" toexpr=\"x\" frexpr=\"x\" format=\"%0.0f\" min=\"1000\" max=\"7000\" inc=\"50\" storagetype=\"float\" endian=\"big\"\n></scaling\n>\n<scaling name=\"autoblip_rpm_tgt\" units=\"rpm\" toexpr=\"x\" frexpr=\"x\" format=\"%0.0f\" min=\"1000\" max=\"6900\" inc=\"50\" storagetype=\"float\" endian=\"big\"\n></scaling\n>\n<scaling name=\"autoblip_rpm_delta\" units=\"rpm\" toexpr=\"x\" frexpr=\"x\" format=\"%0.0f\" min=\"0\" max=\"2000\" inc=\"10\" storagetype=\"float\" endian=\"big\"\n></scaling\n>\n<scaling name=\"autoblip_overshoot\" units=\"rpm\" toexpr=\"x\" frexpr=\"x\" format=\"%0.0f\" min=\"100\" max=\"1500\" inc=\"10\" storagetype=\"float\" endian=\"big\"\n></scaling\n>\n<table level=\"1\" type=\"1D\" category=\"NC Flash Features - AutoBlip\" swapxy=\"true\" name=\"AutoBlip - Enable\" address=\"fe600\" elements=\"1\" scaling=\"autoblip_enable\"\n></table\n>\n<table level=\"1\" type=\"1D\" category=\"NC Flash Features - AutoBlip\" swapxy=\"true\" name=\"AutoBlip - Max Synthetic Pedal %\" address=\"fe604\" elements=\"1\" scaling=\"autoblip_pct\"\n></table\n>\n<table level=\"1\" type=\"2D\" category=\"NC Flash Features - AutoBlip\" swapxy=\"true\" name=\"AutoBlip - Synthetic Pedal vs RPM Error\" address=\"fe628\" elements=\"8\" scaling=\"autoblip_pct\"\n><table name=\"RPM Error (Target - Actual)\" address=\"fe608\" elements=\"8\" scaling=\"autoblip_err_axis\" type=\"Y Axis\"\n></table\n></table\n>\n<table level=\"1\" type=\"1D\" category=\"NC Flash Features - AutoBlip\" swapxy=\"true\" name=\"AutoBlip - Min From-Gear\" address=\"fcb81\" elements=\"1\" scaling=\"autoblip_gear\"\n></table\n>\n<table level=\"1\" type=\"1D\" category=\"NC Flash Features - AutoBlip\" swapxy=\"true\" name=\"AutoBlip - Delay After Clutch-In\" address=\"fcb83\" elements=\"1\" scaling=\"autoblip_post_ms\"\n></table\n>\n<table level=\"1\" type=\"1D\" category=\"NC Flash Features - AutoBlip\" swapxy=\"true\" name=\"AutoBlip - Arm Time (Clutch Released In Gear)\" address=\"fcb84\" elements=\"1\" scaling=\"autoblip_arm_ms\"\n></table\n>\n<table level=\"1\" type=\"1D\" category=\"NC Flash Features - AutoBlip\" swapxy=\"true\" name=\"AutoBlip - Entry Window After Clutch-In\" address=\"fcb86\" elements=\"1\" scaling=\"autoblip_window_ms\"\n></table\n>\n<table level=\"1\" type=\"1D\" category=\"NC Flash Features - AutoBlip\" swapxy=\"true\" name=\"AutoBlip - Max Blip Duration\" address=\"fcb88\" elements=\"1\" scaling=\"autoblip_max_ms\"\n></table\n>\n<table level=\"1\" type=\"1D\" category=\"NC Flash Features - AutoBlip\" swapxy=\"true\" name=\"AutoBlip - APP Entry Max (Real Pedal)\" address=\"fcb8c\" elements=\"1\" scaling=\"autoblip_app\"\n></table\n>\n<table level=\"1\" type=\"1D\" category=\"NC Flash Features - AutoBlip\" swapxy=\"true\" name=\"AutoBlip - APP Cancel (Real Pedal)\" address=\"fcb90\" elements=\"1\" scaling=\"autoblip_app\"\n></table\n>\n<table level=\"1\" type=\"1D\" category=\"NC Flash Features - AutoBlip\" swapxy=\"true\" name=\"AutoBlip - Min Speed\" address=\"fcb94\" elements=\"1\" scaling=\"autoblip_kph\"\n></table\n>\n<table level=\"1\" type=\"1D\" category=\"NC Flash Features - AutoBlip\" swapxy=\"true\" name=\"AutoBlip - Min RPM\" address=\"fcb98\" elements=\"1\" scaling=\"autoblip_rpm\"\n></table\n>\n<table level=\"1\" type=\"1D\" category=\"NC Flash Features - AutoBlip\" swapxy=\"true\" name=\"AutoBlip - Max RPM At Entry\" address=\"fcb9c\" elements=\"1\" scaling=\"autoblip_rpm_tgt\"\n></table\n>\n<table level=\"1\" type=\"1D\" category=\"NC Flash Features - AutoBlip\" swapxy=\"true\" name=\"AutoBlip - Max Target RPM\" address=\"fcba0\" elements=\"1\" scaling=\"autoblip_rpm_tgt\"\n></table\n>\n<table level=\"1\" type=\"1D\" category=\"NC Flash Features - AutoBlip\" swapxy=\"true\" name=\"AutoBlip - Min RPM Gap To Start\" address=\"fcba4\" elements=\"1\" scaling=\"autoblip_rpm_delta\"\n></table\n>\n<table level=\"1\" type=\"1D\" category=\"NC Flash Features - AutoBlip\" swapxy=\"true\" name=\"AutoBlip - Overshoot Abort Above Target\" address=\"fcba8\" elements=\"1\" scaling=\"autoblip_overshoot\"\n></table\n>",
+ "definitions_source": {
+  "file": "xml/lf9veb.xml",
+  "sha256": "4dd8cd75bee17aec27299a391649cf2e260ebecee719c445b27ff78622546b8b"
+ },
+ "next_steps": [
+  "Flash this file with AutoBlip - Enable = 0 (as written) and drive normally.",
+  "Log the confirmed gear in every gear (5th at several speeds): it must read the real gear everywhere.",
+  "Set every cell of \"TP Delta - Fault Threshold\" to 22 (else the blip may rarely or never start).",
+  "Then set \"AutoBlip - Enable\" = 1 and flash again."
+ ]
+}

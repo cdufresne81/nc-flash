@@ -573,7 +573,10 @@ def c_gear(d, c) -> list:
         ]
     out = []
     five = r[4] / r[5] < c["five_speed_ratio"]
-    if five:
+    # a factory 5MT calibration has 6th = 5th AND an empty 6th band (lo_6 >= hi_6):
+    # gear 6 can never be reported, so the 5-speed WARN fires only while band 6 is
+    # live (port census 2026-10-06); the checked gears still stop at 5th
+    if five and bands[5][0] < bands[5][1]:
         out.append(
             (
                 "warn",
@@ -796,19 +799,23 @@ def _regions(lst) -> list:
 
 
 def _pin(p: dict) -> Pin:
-    regions = _regions(p["regions"])
     block_size = num(p["block_size"])
-    if block_size <= 0:
-        raise PatchFormatError("pin block_size must be positive")
-    if blocks_shared(regions, block_size):
-        raise PatchFormatError("two regions of a pin share a block")
+    if (
+        block_size <= 0
+        or not isinstance(p.get("sha256"), str)
+        or len(p["sha256"]) != 64
+    ):
+        raise PatchFormatError("a pin needs a positive block_size and a sha256")
     level = p.get("level", "refuse")
     if level not in LEVELS:
         raise PatchFormatError(f"pin level {level!r} unknown")
+    regions = _regions(p["regions"])
+    if blocks_shared(regions, block_size):
+        raise PatchFormatError("two regions of a pin share a block")
     return Pin(
         tuple(regions),
         tuple(_regions(p["exclude"])),
-        p.get("sha256"),
+        p["sha256"],
         block_size,
         {num(k): v for k, v in p["blocks"].items()},
         level,
@@ -863,12 +870,18 @@ def _parse(pt: dict, raw_sha: str) -> Patch:
             raise PatchFormatError(
                 f"check {c.get('name')!r}: unknown image {c.get('on')!r}"
             )
+    listed = set()
     for c in pt.get("consent", []):
+        if c.get("level", "warn") not in LEVELS or not isinstance(c.get("text"), str):
+            raise PatchFormatError(f"consent {c.get('id')}: level / text missing")
         for a in c["ranges"]:
             if not any(x.addr == num(a) and x.kind == c["id"] for x in rngs):
                 raise PatchFormatError(
                     f"consent {c['id']}: {a} is not a range of that kind"
                 )
+            listed.add(num(a))
+    if any(x.kind == "tyre_restore" and x.addr not in listed for x in rngs):
+        raise PatchFormatError("a tyre_restore range is not listed in a consent entry")
     req = pt.get("requires") or {}
     if req.get("patches") or pt.get("conflicts") or pt.get("upgrade_from"):
         raise PatchFormatError(
@@ -886,8 +899,6 @@ def _parse(pt: dict, raw_sha: str) -> Patch:
     meta = pt.get("patch")
     if not isinstance(meta, dict):
         raise PatchFormatError("patch: missing")
-    if not isinstance(pt["reference"]["result_sha256"], str):
-        raise PatchFormatError("reference.result_sha256 missing")
     return Patch(
         data=pt,
         sha256=raw_sha,
@@ -1031,7 +1042,7 @@ def apply_patch(d: bytes, patch: Patch, consent=(), installed=()) -> ApplyResult
         INFO,
         f"patch {pv.get('name')} {pv.get('version')} ({pv.get('channel')}) for "
         f"{patch.rom_id}: {len(patch.ranges)} ranges, {len(pt['checks'])} checks, "
-        f"reference result {pt['reference']['result_sha256'][:16]}",
+        f"reference result {str((pt.get('reference') or {}).get('result_sha256'))[:16]}",
     )
     if pv.get("channel") == "test":
         rep.add(INFO, "TEST patch (not a reviewed release)")

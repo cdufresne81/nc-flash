@@ -231,3 +231,17 @@ def test_test_pack_replaces_the_release_pack(r0_file, tmp_path):
     dlg = D.PatchesDialog(str(held), lambda: True, [release, test])
     dlg._show_test.setChecked(True)
     assert len(dlg._rows) >= 1 and all(st.state == "installed" for _, st in dlg._rows)
+
+
+def test_bundled_test_pack_shows_only_after_opt_in(r0_file):
+    cat = bundled_patches.bundled_catalog()
+    assert cat.problems == [] and len(cat.patches) == 3
+    base = load_definition(str(REPO / "examples" / "metadata" / "lf9veb.xml"))
+    dlg = D.PatchesDialog(str(r0_file), lambda: True, cat.patches, definition=base)
+    assert dlg._list.rowCount() == 0  # channel test: hidden by default
+    dlg._show_test.setChecked(True)
+    assert dlg._list.rowCount() == 1
+    assert (
+        dlg._list.item(0, 0).text() == "NC Flash features 1.0.0 (AutoBlip 3.4)  [TEST]"
+    )
+    assert dlg._list.item(0, 2).text() == "Available"

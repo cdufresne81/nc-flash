@@ -1,4 +1,50 @@
 {
  "format": "ncflash-patch-index/1",
- "patches": []
+ "patches": [
+  {
+   "id": "ncflash-features",
+   "version": "1.0.0",
+   "channel": "test",
+   "rom_id": "LF9VEB",
+   "file": "ncflash-features/1.0.0/lf9veb.ncpatch.json",
+   "sha256": "18deb93a66c54576830d822f50332f50d296cd2cfdfb83e2beba5048857e6c14",
+   "features": [
+    {
+     "id": "autoblip",
+     "version": "3.4"
+    }
+   ],
+   "notes": "NC Flash features 1.0.0 = AutoBlip 3.4 (brake-held downshift blip (docs/modifications/autoblip_v3_4.md); ships with Enable 0; source tools/autoblip_v34.s sha256 b515ed424dca8989)"
+  },
+  {
+   "id": "ncflash-features",
+   "version": "1.0.0",
+   "channel": "test",
+   "rom_id": "LFG2EP",
+   "file": "ncflash-features/1.0.0/lfg2ep.ncpatch.json",
+   "sha256": "9e01a1e3ce48290467678af3b3aa1ec534a3329c08fad38fc3407c08b5851fda",
+   "features": [
+    {
+     "id": "autoblip",
+     "version": "3.4"
+    }
+   ],
+   "notes": "NC Flash features 1.0.0 = AutoBlip 3.4 (brake-held downshift blip (docs/modifications/autoblip_v3_4.md); ships with Enable 0; source tools/autoblip_v34.s sha256 b515ed424dca8989)"
+  },
+  {
+   "id": "ncflash-features",
+   "version": "1.0.0",
+   "channel": "test",
+   "rom_id": "LFH9EF",
+   "file": "ncflash-features/1.0.0/lfh9ef.ncpatch.json",
+   "sha256": "a099b06800dfb7310afafff1129671f97326e5feee4fa437d8d1db409e4c0f08",
+   "features": [
+    {
+     "id": "autoblip",
+     "version": "3.4"
+    }
+   ],
+   "notes": "NC Flash features 1.0.0 = AutoBlip 3.4 (brake-held downshift blip (docs/modifications/autoblip_v3_4.md); ships with Enable 0; source tools/autoblip_v34.s sha256 b515ed424dca8989)"
+  }
+ ]
 }
