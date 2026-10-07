@@ -1732,6 +1732,30 @@
     <table level="4" type="2D" category="Idle Speed" swapxy="true" name="Idle Speed | Not In-Gear" address="d8728" elements="8" scaling="886568">
       <table name="ECT_6D4C" address="d8708" elements="8" scaling="886536" type="Y Axis"/>
     </table>
+    <!-- Idle Air Learn - boot minimum, learn window, stable-idle limit (ported 2026-10-07 from the reviewed LF9VEB entries
+         by nc-flash-re tools/port_idle_learn_defs.py; evidence: nc-flash-re analysis/idle/2026-10-02_idle_learn_and_kam_wipe.md).
+         Cluster at 0xD99A4 in this ROM. The boot-minimum code (0x572D0) is byte-identical to LF9VEB; the learned-cell index
+         code and the readers of every cluster field do the same as LF9VEB (compared with addresses masked; two readers
+         differ only in instruction order or unreachable padding).
+         Boot Minimum: at every key-on the ECU raises learned idle-air cell 7 (A/C off, low electrical load; float at
+         RAM 0xFFFF2348) to max(cell, this value). Every NC Flash reflash wipes the learned cells, so this sets where the idle
+         starts after a flash. Stock 0.0 = no effect. Keep it below the car's settled learned value (read that RAM
+         address with the engine running after a warm idle; above it, this value overrides the learn at every key-on)
+         and below the learn ceiling at 0xD99AC (0.14795: the learner zeroes a cell above it, so a larger value erases
+         cell 7 at every key-on). Only cell 7 is raised: after a flash, idle warm with the A/C off until the first learn.
+         Automatic: cell 7 is used only while the AT drive-engaged flag is 0 (Park / Neutral); in Drive the ECU uses
+         cells 0-3, which this value does not touch (inferred from the cell-index code, not verified on a car).
+         Learn Window: passes (about 5 ms each) averaged per learn step, stock 20 = one step about every 100 ms. Below 10
+         unsupported (0 does not cleanly disable learning).
+         Stable-Idle RPM Error Limit: average |rpm - idle target| below which the idle counts as stable; used only once
+         both the A/C-off and A/C-on cell groups have learned, so no effect after a reflash.
+         The Level-2 monitor never reads these (no Data Integrity copy). NC Flash fixes the checksums at flash. -->
+    <scaling name="idle_air_learn_floor" units="learned idle air" toexpr="x" frexpr="x" format="%0.3f" min="0" max="0.14" inc="0.005" storagetype="float" endian="big"/>
+    <scaling name="idle_air_learn_window" units="passes (about 5 ms)" toexpr="x" frexpr="x" format="%0.0f" min="10" max="100" inc="1" storagetype="uint8" endian="big"/>
+    <scaling name="idle_air_learn_stable_rpm" units="rpm" toexpr="x" frexpr="x" format="%0.2f" min="10" max="100" inc="1" storagetype="float" endian="big"/>
+    <table level="4" type="1D" category="Idle Speed" swapxy="true" name="Idle Air Learn - Boot Minimum | A/C Off, Low Electrical Load (cell 7; AT: Park/Neutral only, unverified)" address="d99b4" elements="1" scaling="idle_air_learn_floor"/>
+    <table level="4" type="1D" category="Idle Speed" swapxy="true" name="Idle Air Learn - Learn Window (passes per learn step)" address="d99a5" elements="1" scaling="idle_air_learn_window"/>
+    <table level="4" type="1D" category="Idle Speed" swapxy="true" name="Idle Air Learn - Stable-Idle RPM Error Limit (only once A/C-off and A/C-on groups have learned)" address="d99a8" elements="1" scaling="idle_air_learn_stable_rpm"/>
     <table level="4" type="1D" category="Idle Status" swapxy="true" name="Idle Validation Switch - APP Threshold" address="bb24c" elements="1" scaling="766540"/>
     <table level="4" type="1D" category="Idle Status" swapxy="true" name="Idle Validation Switch - APP Hysteresis" address="bb250" elements="1" scaling="766544"/>
     <table level="4" type="1D" category="Instrument Cluster - CEL Warning" swapxy="true" name="CEL Flash Pattern - Step Rate" address="f3e76" elements="1" scaling="999030"/>
