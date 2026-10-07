@@ -4,6 +4,9 @@ All notable changes to NC Flash are documented here.
 
 ## [Unreleased]
 
+### Added
+- **LF9VEB: three idle-learn settings in the "Idle Speed" category, so the idle stops rolling after a reflash (#132).** Every reflash wipes the ECU's learned idle air, and the idle hunts at stops until the ECU relearns it. **Idle Air Learn - Boot Minimum** sets a starting value for the normal idle cell at every key-on (manual gearbox, A/C off): stock 0.0 does nothing. About 0.08 is a safe start: it removed the hunting at stops on the test car, which learned 0.099. It must stay below the car's own learned value, or it overrides the learn at every key-on. Automatic gearboxes: not verified. Keep it below 0.14: above about 0.148 the ECU discards the value, and NC Flash does not stop you from typing it. Also added, for advanced use: **Learn Window** (how often the learn updates) and **Stable-Idle RPM Error Limit**; comments in `lf9veb.xml` explain both. Existing installs: copy `lf9veb.xml` into your workspace by hand (#121).
+
 ## [v2.20.1] - 2026-10-05
 
 **Safer flashing and no more long freezes:** a flash won't start when its safety checks can't read the car, and an ECU that doesn't answer is reported in seconds instead of a minute.
