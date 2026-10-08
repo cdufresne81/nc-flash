@@ -1022,3 +1022,16 @@ class TestLogsPlumbing:
         assert settings.get_wican_keep_newest_logs() == 2
         settings.set_wican_keep_newest_logs(-3)
         assert settings.get_wican_keep_newest_logs() == 0
+
+    def test_staged_rom_cleanup_defaults_on_keeps_at_least_one(self, _settings):
+        # #139: on by default (nothing else ever clears the card); the ROM just
+        # flashed always stays, so the floor is 1.
+        settings, store = _settings
+        assert settings.get_wican_trim_staged_roms() is True
+        assert settings.get_wican_keep_staged_roms() == 5
+        settings.set_wican_trim_staged_roms(False)
+        settings.set_wican_keep_staged_roms(0)
+        assert settings.get_wican_trim_staged_roms() is False
+        assert settings.get_wican_keep_staged_roms() == 1
+        store["ecu/wican_keep_staged_roms"] = 0  # a hand-edited store
+        assert settings.get_wican_keep_staged_roms() == 1

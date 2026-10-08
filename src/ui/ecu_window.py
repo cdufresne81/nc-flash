@@ -1267,10 +1267,17 @@ class ECUProgrammingWindow(QMainWindow):
                 # its own and self-claims, exactly as before.
                 # The override covers this one flash only.
                 override, self._guard_override = self._guard_override, False
+                settings = self._main_window.settings
+                keep_staged_roms = (
+                    settings.get_wican_keep_staged_roms()
+                    if settings.get_wican_trim_staged_roms()
+                    else None
+                )
                 return WiCANSdFlasher(
                     transport,
                     source_name=source_name,
                     datalog=self._session.wican_datalog,
+                    keep_staged_roms=keep_staged_roms,
                     allow_unread_voltage=override,
                 )
             if uds is None:

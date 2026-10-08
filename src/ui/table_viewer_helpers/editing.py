@@ -5,12 +5,15 @@ Handles cell editing, validation, and value conversion for TableViewer.
 """
 
 import logging
+import math
 from typing import TYPE_CHECKING, Optional, Tuple
 
+import numpy as np
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QBrush
 from ...core.rom_definition import TableType, AxisType
-from ...utils.formatting import parse_numeric_text
+from ...core.storage_types import raw_fits_storage
+from ...utils.formatting import parse_cell_text
 from .context import TableViewerContext
 
 if TYPE_CHECKING:
@@ -53,7 +56,7 @@ class TableEditHelper:
         data_row, data_col = data_indices
 
         # Parse the new value - non-numeric text is rejected outright
-        new_value = parse_numeric_text(item.text())
+        new_value = parse_cell_text(item.text(), self.display.get_value_format())
         if new_value is None:
             # Invalid input - revert to old value
             logger.debug(
@@ -68,9 +71,11 @@ class TableEditHelper:
             old_value = float(values[data_row])
         else:
             old_value = float(values[data_row, data_col])
+        new_value = self.fit_to_array(values, new_value)
 
         # Skip if no change
         if abs(new_value - old_value) < 1e-10:
+            self._revert_cell(row, col, data_row, data_col)
             return
 
         # Convert display values to raw values
@@ -137,19 +142,50 @@ class TableEditHelper:
         """Convert display value to raw binary value using scaling"""
         if not self.ctx.rom_definition or not self.ctx.current_table:
             return display_value
+        return self._scaled_to_raw(display_value, self.ctx.current_table.scaling)
 
-        scaling = self.ctx.rom_definition.get_scaling(self.ctx.current_table.scaling)
+    def _scaled_to_raw(self, display_value: float, scaling_name) -> Optional[float]:
+        """Display -> raw via a scaling, or None if the value cannot be stored.
+
+        None covers both a failed conversion and a raw value outside the
+        storage type (e.g. 300 into uint8). Every caller treats None as
+        "leave this cell alone", so a bulk paste skips the cell up front
+        rather than the ROM writer rejecting half of the change later.
+        """
+        scaling = self.ctx.rom_definition.get_scaling(scaling_name)
         if not scaling:
             return display_value
 
         try:
             from ...core.rom_reader import ScalingConverter
 
-            converter = ScalingConverter(scaling)
-            return converter.from_display(display_value)
+            raw = float(ScalingConverter(scaling).from_display(display_value))
         except Exception as e:
             logger.error(f"Error converting to raw: {e}")
             return None
+        # A NaN display value is a cell's current content (unprogrammed
+        # 0xFFFFFFFF patch area), never a new one: parsing rejects NaN. Let
+        # it through so those cells stay editable, as before.
+        if math.isfinite(display_value) and not raw_fits_storage(
+            raw, scaling.storagetype
+        ):
+            logger.debug(
+                f"Rejected {display_value} (raw {raw}): "
+                f"does not fit {scaling.storagetype}"
+            )
+            return None
+        return raw
+
+    def fit_to_array(self, array, value: float) -> float:
+        """The value an array will actually hold once ``value`` is stored.
+
+        Identity-scaled integer tables load as int arrays, which truncate on
+        assignment (3.7 -> 3) while the cell text and the ROM writer round
+        (-> 4). Rounding here keeps memory, screen, undo and ROM in step.
+        """
+        if np.issubdtype(array.dtype, np.integer):
+            return float(round(value))
+        return value
 
     def update_cell_value(self, data_row: int, data_col: int, new_value: float):
         """
@@ -239,7 +275,9 @@ class TableEditHelper:
             return
 
         # Parse the new value - non-numeric text is rejected outright
-        new_value = parse_numeric_text(item.text())
+        new_value = parse_cell_text(
+            item.text(), self.display.get_axis_format(axis_type)
+        )
         if new_value is None:
             # Invalid input - revert to old value
             logger.debug(
@@ -248,56 +286,72 @@ class TableEditHelper:
             self._revert_axis_cell(row, col, axis_type, data_idx)
             return
 
-        # Get the old value from current_data
-        axis_key = "x_axis" if axis_type == AxisType.X_AXIS else "y_axis"
-        axis_data = self.ctx.current_data.get(axis_key)
-        if axis_data is None:
+        change = self.apply_axis_value(item, axis_type_str, data_idx, new_value)
+        if change is None:
+            # Unchanged or not encodable - show the stored value again
+            self._revert_axis_cell(row, col, axis_type, data_idx)
             return
+
+        # Emit the axis change signal with the Table object
+        self.ctx.viewer.axis_changed.emit(self.ctx.current_table, *change)
+
+        logger.debug(
+            f"Axis changed: {self.ctx.current_table.name}[{axis_type_str}][{data_idx}] {change[2]} -> {new_value}"
+        )
+
+    def apply_axis_value(
+        self, item, axis_type_str: str, data_idx: int, new_value: float
+    ) -> Optional[tuple]:
+        """Store a new display value in an axis cell and redraw it.
+
+        Shared by typed axis edits and clipboard paste. Emits nothing: the
+        caller signals the returned change (singly or in a bulk).
+
+        Returns:
+            (axis_type_str, data_idx, old_value, new_value, old_raw, new_raw),
+            or None when the value is unchanged or cannot be encoded (the
+            data and cell are then left untouched).
+        """
+        axis_type = AxisType.X_AXIS if axis_type_str == "x_axis" else AxisType.Y_AXIS
+        axis_table = self.ctx.current_table.get_axis(axis_type)
+        if not axis_table:
+            return None
+
+        axis_data = self.ctx.current_data.get(axis_type_str)
+        if axis_data is None:
+            return None
 
         old_value = float(axis_data[data_idx])
-
-        # Skip if no change
+        new_value = self.fit_to_array(axis_data, new_value)
         if abs(new_value - old_value) < 1e-10:
-            return
+            return None
 
         # Convert display values to raw values
         old_raw = self._axis_display_to_raw(old_value, axis_table)
         new_raw = self._axis_display_to_raw(new_value, axis_table)
-
         if old_raw is None or new_raw is None:
-            self._revert_axis_cell(row, col, axis_type, data_idx)
-            return
+            return None
 
         # Update the internal axis data
-        self.ctx.current_data[axis_key][data_idx] = new_value
+        axis_data[data_idx] = new_value
 
         # Update cell display with proper formatting
         self.ctx.editing_in_progress = True
         try:
             axis_fmt = self.display.get_axis_format(axis_type)
             item.setText(self.display.format_value(new_value, axis_fmt))
-
-            # Update cell color based on new value
-            color = self.display.get_axis_color(
-                new_value, self.ctx.current_data[axis_key], axis_type
-            )
+            color = self.display.get_axis_color(new_value, axis_data, axis_type)
             item.setBackground(QBrush(color))
         finally:
             self.ctx.editing_in_progress = False
 
-        # Emit the axis change signal with the Table object
-        self.ctx.viewer.axis_changed.emit(
-            self.ctx.current_table,
+        return (
             axis_type_str,
             data_idx,
             old_value,
             new_value,
-            old_raw,
-            new_raw,
-        )
-
-        logger.debug(
-            f"Axis changed: {self.ctx.current_table.name}[{axis_type_str}][{data_idx}] {old_value} -> {new_value}"
+            float(old_raw),
+            float(new_raw),
         )
 
     def _revert_axis_cell(self, row: int, col: int, axis_type: AxisType, data_idx: int):
@@ -322,19 +376,7 @@ class TableEditHelper:
         """Convert axis display value to raw binary value using scaling"""
         if not self.ctx.rom_definition or not axis_table:
             return display_value
-
-        scaling = self.ctx.rom_definition.get_scaling(axis_table.scaling)
-        if not scaling:
-            return display_value
-
-        try:
-            from ...core.rom_reader import ScalingConverter
-
-            converter = ScalingConverter(scaling)
-            return converter.from_display(display_value)
-        except Exception as e:
-            logger.error(f"Error converting axis to raw: {e}")
-            return None
+        return self._scaled_to_raw(display_value, axis_table.scaling)
 
     def update_axis_cell_value(self, axis_type: str, data_idx: int, new_value: float):
         """

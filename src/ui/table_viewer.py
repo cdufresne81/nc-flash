@@ -471,6 +471,10 @@ class TableViewer(QWidget):
         xs, ys = self._axis_highlight
         return data_idx in (xs if axis == "x_axis" else ys)
 
+    def cell_format(self, coords) -> str:
+        """Format spec for a cell given its Qt.UserRole coords (for the editor)."""
+        return self._display.get_cell_format(coords)
+
     def show_diff_highlights(self) -> bool:
         """Check if diff highlights should be shown"""
         return self._diff_mode and self._show_diff_highlights
