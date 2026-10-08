@@ -146,8 +146,7 @@ def pytest_collection_modifyitems(config, items):
 def pytest_sessionfinish(session, exitstatus):
     import sys
     session.config._ncflash_exitstatus = int(exitstatus)
-    print(f"
-PROBE sessionfinish exitstatus={int(exitstatus)} testsfailed={session.testsfailed}", file=sys.stderr, flush=True)
+    print(f"PROBE sessionfinish exitstatus={int(exitstatus)} testsfailed={session.testsfailed}", file=sys.stderr, flush=True)
 
 
 @pytest.hookimpl(trylast=True)
