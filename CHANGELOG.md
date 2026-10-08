@@ -4,6 +4,9 @@ All notable changes to NC Flash are documented here.
 
 ## [Unreleased]
 
+### Added
+- **Driveline damping and tip-in shaping tables in every engine definition.** These tables set how the ECU smooths the torque request after a pedal change (less driveline shuffle, softer or sharper tip-in). They're added to all 103 engine definitions at each ROM's own addresses, read from that ROM's code, along with their Data Integrity copies. Always edit a table and its Data Integrity copy together: the names say which addresses pair up, and where the factory values already differ between the two.
+
 ## [v2.21.0] - 2026-10-07
 
 **Smoother idle after a reflash:** every engine definition now has a setting that stops the idle from hunting at stops while the ECU relearns.
