@@ -65,7 +65,9 @@ from .flash_manager import FlashManager, FlashProgress, FlashState, ProgressCall
 from .rom_utils import find_first_difference
 from .wican_config import WiCANDatalogClient
 from .wican_flash import WiCANFlasher
+from .wican_sd_files import WiCANSdFiles
 from .wican_sd_package import FlashPackage, build_flash_package
+from .wican_sd_roms import trim_staged_roms
 from .wican_sd_upload import WiCANSdUploader
 from .wican_transport import WiCANError, _FAST_READ_VERSION_PREFIX
 
@@ -84,6 +86,10 @@ FASTWRITE_MIN_FW_REV = 5
 
 #: Default HTTP port for the SD-upload endpoint.
 DEFAULT_HTTP_PORT = 80
+
+#: Per-request timeout for the post-flash staged-ROM cleanup: short, so a Wi-Fi
+#: drop after a good flash costs seconds, not a long wait per file.
+CLEANUP_TIMEOUT_S = 5.0
 
 #: (``PRE_SESSION_SETTLE_S`` is defined in constants.py — shared with the
 #: refcounted bus reservation in WiCANDatalogClient — and imported above.)
@@ -126,6 +132,8 @@ class WiCANSdFlasher:
         datalog: Optional[WiCANDatalogClient] = None,
         rom_id: Optional[str] = None,
         source_name: Optional[str] = None,
+        keep_staged_roms: Optional[int] = None,
+        sd_files: Optional[WiCANSdFiles] = None,
         min_voltage: float = BATTERY_VOLTAGE_WARNING,
         **flasher_kwargs,
     ):
@@ -140,6 +148,12 @@ class WiCANSdFlasher:
             source_name: The ROM file's name as shown in NC Flash; when given, the
                 staged SD filename is derived from it (sanitised to safe ASCII) so
                 a timestamped cal-ID isn't the only clue to the file's content.
+            keep_staged_roms: After a successful flash, keep only this many of
+                the newest staged ROMs on the SD card (the one just flashed
+                counts); None leaves the card alone. See
+                :mod:`src.ecu.wican_sd_roms`.
+            sd_files: Inject the SD file-manager client (tests); otherwise one
+                is built from ``transport.host``.
             min_voltage: Battery flash floor (passed to the safeguard flasher).
             flasher_kwargs: Forwarded to the composed :class:`WiCANFlasher`
                 pre-flight gate (e.g. ``link_pings``, ``max_p95_ms``).
@@ -157,6 +171,12 @@ class WiCANSdFlasher:
                 )
             uploader = WiCANSdUploader(host, http_port=http_port)
         self._uploader = uploader
+        self._keep_staged_roms = keep_staged_roms
+        if sd_files is None and host:
+            sd_files = WiCANSdFiles(
+                host, http_port=http_port, timeout_s=CLEANUP_TIMEOUT_S
+            )
+        self._sd_files = sd_files
         # No-reboot coexistence (#36.C): advisory REST pause/resume of the WiCAN
         # datalogger around the flash. Optional + fully soft-degrading — if the
         # transport exposes no host (injected-uploader test paths) it's a no-op,
@@ -205,7 +225,7 @@ class WiCANSdFlasher:
         # never resume into any host-driven ECU contact). Soft-degrading.
         with self._datalog_fence():
             self._safeguards._gate()
-            self._stage_and_flash(
+            staged = self._stage_and_flash(
                 rom_data,
                 "full",
                 archive_data=None,
@@ -214,6 +234,7 @@ class WiCANSdFlasher:
             )
             if verify:
                 self._verify_readback(rom_data, progress_cb)
+        self._trim_staged_roms(staged, progress_cb)
 
     def dynamic_flash(
         self,
@@ -230,16 +251,17 @@ class WiCANSdFlasher:
         firmware-confirmed (``NCFWDONE``).
         """
         with self._datalog_fence():
-            self._dynamic_flash_inner(
+            staged = self._dynamic_flash_inner(
                 rom_data, archive_path, progress_cb=progress_cb, verify=verify
             )
+        self._trim_staged_roms(staged, progress_cb)
 
     def _dynamic_flash_inner(
         self, rom_data, archive_path, *, progress_cb, verify
-    ) -> None:
+    ) -> str:
         self._safeguards._gate()
         archive_data = Path(archive_path).read_bytes()
-        self._stage_and_flash(
+        staged = self._stage_and_flash(
             rom_data,
             "dynamic",
             archive_data=archive_data,
@@ -248,6 +270,7 @@ class WiCANSdFlasher:
         )
         if verify:
             self._verify_readback(rom_data, progress_cb)
+        return staged
 
     # --- internals ----------------------------------------------------------
 
@@ -270,7 +293,8 @@ class WiCANSdFlasher:
 
     def _stage_and_flash(
         self, rom_data, flash_type, *, archive_data, archive_path, progress_cb
-    ) -> None:
+    ) -> str:
+        """Package, upload, flash and archive; returns the staged image name."""
         # 1. Package host-side (all secrets/compute stay here).
         self._notify(
             progress_cb, FlashState.PREPARING_SBL, "Preparing SD flash package…", 1.0
@@ -309,6 +333,31 @@ class WiCANSdFlasher:
                 Path(archive_path).write_bytes(pkg.corrected_rom)
             except Exception as exc:  # pragma: no cover - non-fatal
                 logger.warning("Archive save failed (non-fatal): %s", exc)
+        return pkg.staged_filename
+
+    def _trim_staged_roms(self, staged_filename: str, progress_cb) -> None:
+        """Best effort: drop old staged ROMs from the SD card after a GOOD flash.
+
+        Called only once the flash (and any read-back) succeeded and the fence
+        is released, so a failed flash leaves the card exactly as it was. Never
+        raises: a cleanup problem must not turn a good flash into an error.
+        """
+        if self._keep_staged_roms is None or self._sd_files is None:
+            return
+        try:
+            # Inside the try: even a failing progress callback must not turn the
+            # good flash into an error (and invite a needless re-flash).
+            self._notify(
+                progress_cb,
+                FlashState.FINALIZING,
+                "Flash complete. Removing old staged ROMs from the SD card…",
+                95.0,
+            )
+            trim_staged_roms(
+                self._sd_files, self._keep_staged_roms, protect=staged_filename
+            )
+        except Exception as exc:  # noqa: BLE001 — post-flash cleanup, never fatal
+            logger.warning("Staged-ROM cleanup skipped (non-fatal): %s", exc)
 
     def _authenticate_ecu(self) -> None:
         """Bring the ECU to an authenticated programming session over CAN.

@@ -6,6 +6,7 @@ All notable changes to NC Flash are documented here.
 
 ### Added
 - **Driveline damping and tip-in shaping tables in every engine definition.** These tables set how the ECU smooths the torque request after a pedal change (less driveline shuffle, softer or sharper tip-in). They're added to all 103 engine definitions at each ROM's own addresses, read from that ROM's code, along with their Data Integrity copies. Always edit a table and its Data Integrity copy together: the names say which addresses pair up, and where the factory values already differ between the two.
+- **Old staged ROMs no longer pile up on the WiCAN's SD card (#139).** Every WiCAN flash first copies the ROM to the SD card (about 1 MB each), and nothing ever removed those copies. Now a successful flash keeps only the 5 newest and deletes the older ones. Nothing is deleted after a failed flash, the ROM just flashed always stays, and only files in the card's `roms` folder named the way NC Flash names them are deleted. Turn it off or change the number in Settings > ECU > WiCAN.
 
 ### Fixed
 - **Pasting into axis cells no longer crashes.** Copying an axis (for example the LOAD or RPM axis of Load Scaling) and pasting it onto another table's axis now works, and one undo reverts it.
