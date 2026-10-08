@@ -63,6 +63,7 @@ python main.py
 ### Core Features
 - Automatic ROM ID detection and XML definition matching
 - Definitions for about 100 NC ECU calibrations included (from speeps' RomDrop set, with permission)
+- New and corrected definitions reach existing installs on update; your own edits and added tables are kept, and the previous files are backed up
 - Read NC Miata ECU ROM binary files
 - Read NC Miata TCM (transmission) ROMs via the V2 TCM definitions — read/inspect only; TCM flashing is not supported
 - View 1D, 2D, and 3D tables with proper axis labels
@@ -216,6 +217,7 @@ nc-flash/
 │   │   ├── undo_commands.py           # QUndoCommand subclasses
 │   │   ├── project_manager.py         # Project CRUD, commits, snapshots
 │   │   ├── version_models.py          # Commit and version data structures
+│   │   ├── definition_update.py       # Merge new bundled definitions into the workspace
 │   │   └── metadata_writer.py         # XML scaling attribute editor
 │   ├── ecu/                           # ECU communication & flashing
 │   │   ├── checksum.py                # ROM checksum calculation
@@ -280,6 +282,7 @@ nc-flash/
 │       └── paths.py                   # Path resolution
 ├── tools/
 │   ├── metadata_lint.py               # Format and check the definition XMLs
+│   ├── build_definition_history.py    # Entries shipped in past releases (for updates)
 │   └── test_runner.py                 # GUI test automation
 ├── tests/                             # Unit and integration tests
 ├── examples/                          # Example ROM files
@@ -288,6 +291,7 @@ nc-flash/
 │   │   ├── l*.xml                     # NC ECU definitions, one per calibration
 │   │   ├── lf9veb.xml                 # NC Flash's extended LF9VEB definition (master in nc-flash-re)
 │   │   └── *_v02.xml                  # V2 TCM definitions (LFG1TF000, LFG1TG000)
+│   ├── metadata_history.json          # Entries shipped in past releases (unedited = safe to update)
 │   ├── lf9veb.bin                     # Stock NC Miata ECU ROM binary
 │   └── LFG1TF000.bin                  # Example NC TCM ROM dump
 ├── packaging/                         # Build & installer scripts

@@ -4,6 +4,16 @@ All notable changes to NC Flash are documented here.
 
 ## [Unreleased]
 
+### Added
+- **New and corrected ROM definitions now reach existing installs (#121).** Until now NC Flash only copied its definitions into a new workspace, so fixes such as the knock-retard one never reached you. Now, the first time a newer version starts:
+  - Definitions you don't have yet are added, and definitions you never edited are replaced with the new ones.
+  - From this version on, NC Flash remembers which version it gave you, so a definition you edit later is merged: your changes are kept. If NC Flash also changed the same value, its correction wins for values that decide which bytes are written (address, size, data type, formula, axes) and your value wins for names, categories, min/max, units and format. Show Details lists every such case.
+  - A definition you edited before this version is left as it is (NC Flash can't yet tell your edits from its own older values). The message tells you where the new file is, and names any file whose differences change which bytes are written (for example the old knock-retard type), so you can compare and copy what you need.
+  - Tables you added are kept, and a ROM you define in a file of your own doesn't get a second definition. From this version on, a definition file you delete isn't brought back.
+  - Every file that changes is backed up first, to the `metadata_backups` folder in your workspace.
+  - If your Metadata Directory (Settings > General > Paths) isn't the workspace's own `metadata` folder, nothing in it is changed; NC Flash tells you where the new files are.
+  - It never runs when you go back to an older version.
+
 ## [v2.21.0] - 2026-10-07
 
 **Smoother idle after a reflash:** every engine definition now has a setting that stops the idle from hunting at stops while the ECU relearns.
