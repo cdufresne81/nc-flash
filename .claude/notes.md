@@ -8,10 +8,10 @@ History before Sep 24, 2026: `git show f4709f1:.claude/notes.md` (search it, don
 
 1. Optional: tell speeps the definitions are being fixed and extended (speeps' email only OKs
    including them).
-2. #121 deliver new/fixed definitions to existing installs.
-3. #124 tool to port a new table across all NC calibrations.
-5. #122 give duplicate-named tables real names.
-6. #123 check the TCM odd-address cells / overlaps against the TCM code.
+2. #124 tool to port a new table across all NC calibrations.
+3. #122 give duplicate-named tables real names.
+4. #123 check the TCM odd-address cells / overlaps against the TCM code.
+5. #149 Windows CI reports exit 1 after every test has passed.
 
 ## Open items (not tracked in an issue)
 

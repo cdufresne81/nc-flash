@@ -1,0 +1,473 @@
+{
+ "format": 1,
+ "releases": [
+  "v0.1.0-matplotlib",
+  "v1.0.0",
+  "v1.1.0",
+  "v1.2.0",
+  "v1.3.0",
+  "v1.4.0",
+  "v1.4.1",
+  "v1.4.2",
+  "v1.5.0",
+  "v1.6.0",
+  "v2.0.0",
+  "v2.1.0",
+  "v2.1.1",
+  "v2.10.0",
+  "v2.11.0",
+  "v2.12.0",
+  "v2.13.0",
+  "v2.14.0",
+  "v2.15.0",
+  "v2.16.0",
+  "v2.17.0",
+  "v2.18.0",
+  "v2.19.0",
+  "v2.2.0",
+  "v2.20.0",
+  "v2.20.1",
+  "v2.21.0",
+  "v2.3.0",
+  "v2.3.1",
+  "v2.3.2",
+  "v2.3.3",
+  "v2.4.0",
+  "v2.4.1",
+  "v2.4.2",
+  "v2.4.3",
+  "v2.5.0",
+  "v2.6.0",
+  "v2.6.1",
+  "v2.7.0",
+  "v2.7.1",
+  "v2.7.2",
+  "v2.8.0",
+  "v2.9.0"
+ ],
+ "files": {
+  "l831ed.xml": [
+   "bfb9a4be2cc18b4b",
+   "ec84a966bea24bbd"
+  ],
+  "l831ee.xml": [
+   "047d7b79ce626cd5",
+   "4298377072f80f98"
+  ],
+  "l831ef.xml": [
+   "1613573888c9d194",
+   "bccff21c93e693dc"
+  ],
+  "l831eg.xml": [
+   "6da127ef9c095b12",
+   "a9d3232dd7773518"
+  ],
+  "l843ec.xml": [
+   "6ef7782ed0f3c816",
+   "e49c1e2ba6a9fd5f"
+  ],
+  "l862ed.xml": [
+   "c3acc0fa6716c717",
+   "d39d54b5f479fbc9"
+  ],
+  "lf4weg.xml": [
+   "2bc871151dda2538",
+   "d1bc365711fd5284"
+  ],
+  "lf4xed.xml": [
+   "3241f87072abe255",
+   "d68f82e97a03c351"
+  ],
+  "lf4xee.xml": [
+   "034283cc72572832",
+   "f42ebf4e192544dd"
+  ],
+  "lf4xeg.xml": [
+   "07919845a5d00fc2",
+   "52f9f4b30372508b"
+  ],
+  "lf5aeg.xml": [
+   "9b245c0694b7c9f8",
+   "ec2086d2cb4efcd2"
+  ],
+  "lf5beg.xml": [
+   "14be837329f4b55a",
+   "d39314938fdbd5c8"
+  ],
+  "lf5ceg.xml": [
+   "1a2185d751988e72",
+   "cc4e701f3521cbb9"
+  ],
+  "lf5deg.xml": [
+   "12cb938a95731a6e",
+   "e6eb6c116c665392"
+  ],
+  "lf6je0.xml": [
+   "4d635e86b2f82e37",
+   "93a4720a725c027a"
+  ],
+  "lf8hed.xml": [
+   "4956574ea5011a44",
+   "5c0432046ea1b825"
+  ],
+  "lf9hed.xml": [
+   "37393a040e24a8c5",
+   "80f16056b321cca4"
+  ],
+  "lf9hee.xml": [
+   "04e4e1782b8cb553",
+   "bdbb17bd8708b85f"
+  ],
+  "lf9jed.xml": [
+   "af856093bf977dd9",
+   "f1dd07ce97f6fe51"
+  ],
+  "lf9kec.xml": [
+   "7c7423df836e7fc1",
+   "d390f6b548223fd9"
+  ],
+  "lf9kee.xml": [
+   "9cc9ee94e2ea9550",
+   "d70ceee496a2ec06"
+  ],
+  "lf9red.xml": [
+   "065574e62139fdf8",
+   "8e5609a9000646be"
+  ],
+  "lf9sed.xml": [
+   "2c3331dd8a995f24",
+   "3daee90d5186a54c"
+  ],
+  "lf9tee.xml": [
+   "93ea08bf617ea80c",
+   "ab05cfecb6aff741"
+  ],
+  "lf9veb.xml": [
+   "5eaf85eb36032196",
+   "773f8868eb853d68",
+   "c9dedc5559770aad",
+   "c9eee599adb12246"
+  ],
+  "lf9web.xml": [
+   "3665d0cf5bd5fc09",
+   "913a0dde049650a6"
+  ],
+  "lf9xeb.xml": [
+   "199780fbe5396126",
+   "3ac47ec30af61b5f"
+  ],
+  "lfaaeb.xml": [
+   "1d74891ac4cbb358",
+   "77cdbd9b55b49733"
+  ],
+  "lfabeb.xml": [
+   "459773f5f4c8c802",
+   "53c5dce76d05aecf"
+  ],
+  "lfaceb.xml": [
+   "68b13d74416c530c",
+   "b5168bde00a68239"
+  ],
+  "lfakeb.xml": [
+   "13dc6896730a3537",
+   "304ce6be9f5ee837"
+  ],
+  "lfdjea.xml": [
+   "167263d76d9f86a7",
+   "7117f769234b0e2c"
+  ],
+  "lfdkeb.xml": [
+   "ad92f9819842cd08",
+   "e3ff26a2e0dec759"
+  ],
+  "lfdlec.xml": [
+   "598ad28505854186",
+   "fd62972cf0bd39a8"
+  ],
+  "lfdmea.xml": [
+   "06557bb9c1a2a7de",
+   "db4baa5d0952f0fa"
+  ],
+  "lfdneb.xml": [
+   "a232668b4876b34c",
+   "ebe2f0673fd79f66"
+  ],
+  "lfdpec.xml": [
+   "13df39c7d8e8da0a",
+   "142b94b883fd00a0"
+  ],
+  "lffced.xml": [
+   "aa8c1e8833af8bd4",
+   "c101f241db84d23a"
+  ],
+  "lffded.xml": [
+   "ba2c99d8fde899e0",
+   "e51e0bde6604ca5d"
+  ],
+  "lffeee.xml": [
+   "cf1949c1bb9c1946",
+   "d8a6ab95c63473be"
+  ],
+  "lfg1ek.xml": [
+   "0b9aa8333e3b7855",
+   "451585221d7e06e5"
+  ],
+  "lfg1er.xml": [
+   "2744080193b2ea51",
+   "5ff238a21c36f6a3"
+  ],
+  "lfg1tf000.xml": [
+   "87fc3d933c6792e9"
+  ],
+  "lfg1tf000_v02.xml": [
+   "4de4865d88a2137c"
+  ],
+  "lfg1tg000_v02.xml": [
+   "16ce17dbcf05462f"
+  ],
+  "lfg2ee.xml": [
+   "3115493aabd2c1ba",
+   "330d0b8aece2c861"
+  ],
+  "lfg2ef.xml": [
+   "9c73d5255e4c5042",
+   "b85e77f59d23ccdf"
+  ],
+  "lfg2eg.xml": [
+   "3afb69be48cde6cf",
+   "b5982a570d20d96e"
+  ],
+  "lfg2ej.xml": [
+   "668ee486015fe93e",
+   "b7cf456c186930fe"
+  ],
+  "lfg2el.xml": [
+   "6348746dbe34fdf2",
+   "7bef2183f2a6c8f0"
+  ],
+  "lfg2em.xml": [
+   "66224ca5856fb675",
+   "f83d805e0a96b4aa"
+  ],
+  "lfg2ep.xml": [
+   "a7a0b035f5de0888",
+   "e1269e92aa7e9d85"
+  ],
+  "lfg3ee.xml": [
+   "4ade9ae30bc48093",
+   "b830fafc9947b55b"
+  ],
+  "lfg3ef.xml": [
+   "18869c8da7c0bf15",
+   "b7edbc245768f700"
+  ],
+  "lfg3eg.xml": [
+   "73e7ccdc3373901e",
+   "f416b75f007fb9d4"
+  ],
+  "lfg3ek.xml": [
+   "48064ade308e19d9",
+   "896c3d5d287e196b"
+  ],
+  "lfg3en.xml": [
+   "0ab0fb887e234849",
+   "3f7333cc6fe9cdbb"
+  ],
+  "lfg7ed.xml": [
+   "2c7dc931779d46ee",
+   "dfbee2eef045231a"
+  ],
+  "lfg7eg.xml": [
+   "bd9651f9f7e05af6",
+   "fadd36949163be4f"
+  ],
+  "lfg8ef.xml": [
+   "26f5488667608b30",
+   "73761313e113abdf"
+  ],
+  "lfg8eg.xml": [
+   "679b321fa119c3a2",
+   "7b194a7f05a105d6"
+  ],
+  "lfg9eh.xml": [
+   "ad4ddb04e3506ee5",
+   "bfff9c4687833f2c"
+  ],
+  "lfgjed.xml": [
+   "9433ed18592ed754",
+   "b178b5bc573b586f"
+  ],
+  "lfgkec.xml": [
+   "0733710f30601280",
+   "ee9dcafcd0c13a8c"
+  ],
+  "lfgked.xml": [
+   "8aad931cddb7d9b5",
+   "f0dd1e90ce6e0cf2"
+  ],
+  "lfglef.xml": [
+   "9cb6b2229bdcdb2f",
+   "ae60af33a06e1e99"
+  ],
+  "lfgmec.xml": [
+   "455241ff4c334ede",
+   "70703f04bedf91f0"
+  ],
+  "lfgmee.xml": [
+   "4ce5012b746e4795",
+   "72ce40eb2d581a4a"
+  ],
+  "lfgnec.xml": [
+   "a2cb8b0dc1361afc",
+   "c48ae7759d91cd2f"
+  ],
+  "lfgnee.xml": [
+   "b1195870f7e5e220",
+   "d41b0f067da875b0"
+  ],
+  "lfgpef.xml": [
+   "b4b5a0c3ccdac4a0",
+   "bdf2ddf625a43106"
+  ],
+  "lfh9ec.xml": [
+   "053f0fc1a5684c95",
+   "3371c12b40e58ea4"
+  ],
+  "lfh9ed.xml": [
+   "0c5fd45c4fbdee35",
+   "d7be70824e0dad7e"
+  ],
+  "lfh9ee.xml": [
+   "2e73f2c9d66fc247",
+   "c9fc2b6c435c87e3"
+  ],
+  "lfh9ef.xml": [
+   "35ff370ed37a09f3",
+   "b1d88a470d184719"
+  ],
+  "lfj1ec.xml": [
+   "32610094f249ca28",
+   "fb9fb7b415ce2e3e"
+  ],
+  "lfj1ee.xml": [
+   "5c605f413f5e85b1",
+   "5eb57eda474ee9bd"
+  ],
+  "lfj1ef.xml": [
+   "5cb37829209fce5c",
+   "c83e799a58025339"
+  ],
+  "lfj5eg.xml": [
+   "3a7bfe0e339cd65c",
+   "ba462018f25e52f1"
+  ],
+  "lfleec.xml": [
+   "3879b9bc817b93e6",
+   "867f67bb883c3a87"
+  ],
+  "lflgec.xml": [
+   "5a06262694377e59",
+   "eb7de3bef7b7ca72"
+  ],
+  "lflmea.xml": [
+   "039c2e83075d167f",
+   "3b3d8942b7d3ee40"
+  ],
+  "lflmec.xml": [
+   "7f3fd37f9c50b754",
+   "fc883899b7080860"
+  ],
+  "lflmed.xml": [
+   "0789385776d2c777",
+   "bf6b21ed9f0c51f5"
+  ],
+  "lflnec.xml": [
+   "d6dce0981ff07cb5",
+   "e200d94d52b806f9"
+  ],
+  "lflpe0.xml": [
+   "9437d1fdf94e2a0b",
+   "a9392460c41feac4"
+  ],
+  "lflpea.xml": [
+   "20bfbbd15035d70b",
+   "699927e61ddcc9c9"
+  ],
+  "lflpeb.xml": [
+   "1e59aa550e0073ac",
+   "c98df7c3f5be7ee4"
+  ],
+  "lflpec.xml": [
+   "3a9b9ad52f550b04",
+   "f09ca9b97763c714"
+  ],
+  "lflped.xml": [
+   "91d7ea69d1fb6b92",
+   "d8f62280fd2836e1"
+  ],
+  "lflrea.xml": [
+   "c558fd6cea275585",
+   "dee0c7476ee81143"
+  ],
+  "lflveb.xml": [
+   "2bcb946246a941c7",
+   "ac50c8dc4d98e6d9"
+  ],
+  "lflweb.xml": [
+   "1012bbbadb1f99be",
+   "369275f59fd5c856"
+  ],
+  "lflxe0.xml": [
+   "347e3c5079c9ee3b",
+   "bb9000ac386c2883"
+  ],
+  "lflxec.xml": [
+   "5df0dc387800f972",
+   "61374d7af0d42513"
+  ],
+  "lfmae0.xml": [
+   "67cbba71e1c51ddd",
+   "c70adebd57f709f5"
+  ],
+  "lfmaeb.xml": [
+   "1d9aef80927d0905",
+   "851111f3ddf36c92"
+  ],
+  "lfmaec.xml": [
+   "68d8af613ca41bc3",
+   "bab28038472abeaf"
+  ],
+  "lfmsea.xml": [
+   "ad3659f7acb82908",
+   "ef87c419ec2c3d21"
+  ],
+  "lfn3er.xml": [
+   "65062fc34708cbde",
+   "b60e39e871272062"
+  ],
+  "lfn4ek.xml": [
+   "4aee3bafcca029af",
+   "f1e00a3fce5b9df4"
+  ],
+  "lfn4ep.xml": [
+   "dd78c412e1fb59a2",
+   "f72eda4eb9506e6e"
+  ],
+  "lfn5en.xml": [
+   "2392bc6c72f3d4de",
+   "30c4176f1117bb4e"
+  ],
+  "lfzze0.xml": [
+   "a3a9df707337290f",
+   "a869bf9d21e13832"
+  ],
+  "lfzzea.xml": [
+   "17ae78165dab3731",
+   "5d07c20858292fd3"
+  ],
+  "lsyaea.xml": [
+   "4a3bafc6946488ec",
+   "ccd73dad05e4277a"
+  ]
+ }
+}

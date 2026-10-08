@@ -5,6 +5,14 @@ All notable changes to NC Flash are documented here.
 ## [Unreleased]
 
 ### Added
+- **New and corrected ROM definitions now reach existing installs (#121).** Until now NC Flash only copied its definitions into a new workspace, so fixes such as the knock-retard one never reached you. Now, the first time a newer version starts:
+  - Definitions you don't have yet are added, and definitions you never edited are replaced with the new ones.
+  - From this version on, NC Flash remembers which version it gave you, so a definition you edit later is merged: your changes are kept. If NC Flash also changed the same value, its correction wins for values that decide which bytes are written (address, size, data type, formula, axes) and your value wins for names, categories, min/max, units and format. Show Details lists every such case.
+  - A definition you edited before this version is left as it is (NC Flash can't yet tell your edits from its own older values). The message tells you where the new file is, and names any file whose differences change which bytes are written (for example the old knock-retard type), so you can compare and copy what you need.
+  - Tables you added are kept, and a ROM you define in a file of your own doesn't get a second definition. From this version on, a definition file you delete isn't brought back.
+  - Every file that changes is backed up first, to the `metadata_backups` folder in your workspace.
+  - If your Metadata Directory (Settings > General > Paths) isn't the workspace's own `metadata` folder, nothing in it is changed; NC Flash tells you where the new files are.
+  - It never runs when you go back to an older version.
 - **Driveline damping and tip-in shaping tables in every engine definition.** These tables set how the ECU smooths the torque request after a pedal change (less driveline shuffle, softer or sharper tip-in). They're added to all 103 engine definitions at each ROM's own addresses, read from that ROM's code, along with their Data Integrity copies. Always edit a table and its Data Integrity copy together: the names say which addresses pair up, and where the factory values already differ between the two.
 - **Old staged ROMs no longer pile up on the WiCAN's SD card (#139).** Every WiCAN flash first copies the ROM to the SD card (about 1 MB each), and nothing ever removed those copies. Now a successful flash keeps only the 5 newest and deletes the older ones. Nothing is deleted after a failed flash, the ROM just flashed always stays, and only files in the card's `roms` folder named the way NC Flash names them are deleted. Turn it off or change the number in Settings > ECU > WiCAN.
 
