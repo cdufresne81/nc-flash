@@ -4,16 +4,18 @@ Table Clipboard Helper
 Handles copy/paste operations for TableViewer.
 """
 
-import logging
 import csv
+import json
+import logging
+import math
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional, Tuple
 
-from PySide6.QtCore import Qt, QUrl
+from PySide6.QtCore import QMimeData, Qt, QUrl
 from PySide6.QtGui import QBrush, QDesktopServices
 from PySide6.QtWidgets import QApplication
 
-from ...utils.formatting import parse_numeric_text
+from ...utils.formatting import parse_cell_text
 from .context import TableViewerContext, frozen_table_updates
 
 if TYPE_CHECKING:
@@ -21,6 +23,9 @@ if TYPE_CHECKING:
     from .editing import TableEditHelper
 
 logger = logging.getLogger(__name__)
+
+# Exact cell values (JSON grid of floats / null) placed next to text/plain.
+CELLS_MIME = "application/x-ncflash-cells"
 
 
 class TableClipboardHelper:
@@ -48,40 +53,104 @@ class TableClipboardHelper:
         min_col = min(r.leftColumn() for r in selected)
         max_col = max(r.rightColumn() for r in selected)
 
-        # Build tab-separated string
-        rows_text = []
-        for row in range(min_row, max_row + 1):
-            row_values = []
-            for col in range(min_col, max_col + 1):
-                item = self.ctx.table_widget.item(row, col)
-                if item:
-                    row_values.append(item.text())
-                else:
-                    row_values.append("")
-            rows_text.append("\t".join(row_values))
-
-        clipboard_text = "\n".join(rows_text)
-        QApplication.clipboard().setText(clipboard_text)
+        self._put_on_clipboard(min_row, max_row, min_col, max_col)
         logger.debug(
             f"Copied {max_row - min_row + 1}x{max_col - min_col + 1} cells to clipboard"
         )
+
+    def _put_on_clipboard(self, min_row, max_row, min_col, max_col):
+        """Put a block of cells on the clipboard, twice over.
+
+        text/plain carries the displayed text (for Excel and other apps).
+        CELLS_MIME carries the exact stored values: the displayed text is
+        rounded to the scaling format, so pasting it back would silently
+        change the ROM (e.g. a 0.0625 breakpoint shown as 0.062).
+        """
+        rows_text = []
+        rows_exact = []
+        for row in range(min_row, max_row + 1):
+            row_values = []
+            row_exact = []
+            for col in range(min_col, max_col + 1):
+                item = self.ctx.table_widget.item(row, col)
+                row_values.append(item.text() if item else "")
+                row_exact.append(
+                    self._stored_value(item.data(Qt.UserRole)) if item else None
+                )
+            rows_text.append("\t".join(row_values))
+            rows_exact.append(row_exact)
+
+        mime = QMimeData()
+        mime.setText("\n".join(rows_text))
+        mime.setData(CELLS_MIME, json.dumps(rows_exact).encode("utf-8"))
+        QApplication.clipboard().setMimeData(mime)
+
+    def _stored_value(self, coords) -> Optional[float]:
+        """Exact stored display value behind a cell's Qt.UserRole coords."""
+        if coords is None:
+            return None
+        if isinstance(coords[0], str):
+            axis_data = self.ctx.current_data.get(coords[0])
+            return None if axis_data is None else float(axis_data[coords[1]])
+        values = self.ctx.current_data["values"]
+        if values.ndim == 1:
+            return float(values[coords[0]])
+        return float(values[coords[0], coords[1]])
+
+    @staticmethod
+    def _read_clipboard() -> Tuple[Optional[list], bool]:
+        """Return (rows, exact).
+
+        exact=True: rows of floats/None from an NC Flash copy (CELLS_MIME).
+        exact=False: rows of tab-separated text cells from any other source.
+        """
+        mime = QApplication.clipboard().mimeData()
+        if mime is not None and mime.hasFormat(CELLS_MIME):
+            try:
+                rows = json.loads(bytes(mime.data(CELLS_MIME)).decode("utf-8"))
+                if isinstance(rows, list) and all(isinstance(r, list) for r in rows):
+                    return rows, True
+            except (ValueError, UnicodeDecodeError):
+                pass
+            logger.warning("Ignoring unreadable NC Flash clipboard data")
+
+        text = QApplication.clipboard().text()
+        if not text:
+            return None, False
+        # Strip only line breaks: a leading tab is the empty corner cell of a
+        # copied 3D table, and stripping it shifts the whole X-axis row left.
+        lines = text.strip("\r\n").split("\n")
+        return [line.rstrip("\r").split("\t") for line in lines], False
+
+    def _pasted_value(self, source, exact: bool, item, coords) -> Optional[float]:
+        """Value to paste into one cell, or None to leave the cell alone."""
+        if exact:
+            # Exact value from an NC Flash copy (None = no data at the source)
+            if isinstance(source, bool) or not isinstance(source, (int, float)):
+                return None
+            try:
+                value = float(source)
+            except OverflowError:
+                return None
+            return value if math.isfinite(value) else None
+
+        # Parse in the cell's own display format (hex cells take hex) - skip
+        # anything that is not a finite number
+        fmt = self.display.get_cell_format(coords)
+        value = parse_cell_text(source, fmt)
+        # Text that reads as the number the cell already shows ("0" for
+        # "0.00", e.g. back from Excel) changes nothing: the text is rounded,
+        # so applying it would overwrite the exact stored value.
+        if value is not None and value == parse_cell_text(item.text(), fmt):
+            return None
+        return value
 
     def paste_selection(self):
         """Paste clipboard content into selected cells"""
         if self.ctx.read_only:
             return
 
-        clipboard = QApplication.clipboard()
-        text = clipboard.text()
-        if not text:
-            return
-
-        # Parse clipboard data (tab-separated rows)
-        rows_data = []
-        for line in text.strip().split("\n"):
-            row_values = line.split("\t")
-            rows_data.append(row_values)
-
+        rows_data, exact = self._read_clipboard()
         if not rows_data:
             return
 
@@ -95,10 +164,11 @@ class TableClipboardHelper:
 
         # Paste values
         changes_made = []
+        axis_changes = []
 
         with frozen_table_updates(self.ctx.table_widget):
             for row_offset, row_values in enumerate(rows_data):
-                for col_offset, value_text in enumerate(row_values):
+                for col_offset, source in enumerate(row_values):
                     target_row = start_row + row_offset
                     target_col = start_col + col_offset
 
@@ -112,14 +182,21 @@ class TableClipboardHelper:
                     if not item:
                         continue
 
-                    # Check if this is a data cell (not axis)
                     data_indices = item.data(Qt.UserRole)
                     if data_indices is None:
-                        continue  # Skip axis cells
+                        continue  # No data behind this cell
 
-                    # Parse value - skip anything that is not a finite number
-                    new_value = parse_numeric_text(value_text)
+                    new_value = self._pasted_value(source, exact, item, data_indices)
                     if new_value is None:
+                        continue
+
+                    # Axis cell: ('x_axis' | 'y_axis', index)
+                    if isinstance(data_indices[0], str):
+                        change = self.edit.apply_axis_value(
+                            item, data_indices[0], data_indices[1], new_value
+                        )
+                        if change is not None:
+                            axis_changes.append(change)
                         continue
 
                     data_row, data_col = data_indices
@@ -130,6 +207,7 @@ class TableClipboardHelper:
                         old_value = float(values[data_row])
                     else:
                         old_value = float(values[data_row, data_col])
+                    new_value = self.edit.fit_to_array(values, new_value)
 
                     # Skip if no change
                     if abs(new_value - old_value) < 1e-10:
@@ -177,7 +255,15 @@ class TableClipboardHelper:
             # Emit single bulk signal for atomic undo (matches operations.py pattern)
             if changes_made:
                 self.ctx.viewer.bulk_changes.emit(self.ctx.current_table, changes_made)
-                logger.debug(f"Pasted {len(changes_made)} cell(s)")
+            if axis_changes:
+                self.ctx.viewer.axis_bulk_changes.emit(
+                    self.ctx.current_table, axis_changes
+                )
+            if changes_made or axis_changes:
+                logger.debug(
+                    f"Pasted {len(changes_made)} cell(s), "
+                    f"{len(axis_changes)} axis cell(s)"
+                )
 
     def copy_table_to_clipboard(self):
         """Copy entire table to clipboard as tab-separated values (for Excel)"""
@@ -190,20 +276,7 @@ class TableClipboardHelper:
         if row_count == 0 or col_count == 0:
             return
 
-        # Build tab-separated string for entire table
-        rows_text = []
-        for row in range(row_count):
-            row_values = []
-            for col in range(col_count):
-                item = self.ctx.table_widget.item(row, col)
-                if item:
-                    row_values.append(item.text())
-                else:
-                    row_values.append("")
-            rows_text.append("\t".join(row_values))
-
-        clipboard_text = "\n".join(rows_text)
-        QApplication.clipboard().setText(clipboard_text)
+        self._put_on_clipboard(0, row_count - 1, 0, col_count - 1)
 
         table_name = self.ctx.current_table.name if self.ctx.current_table else "table"
         logger.info(

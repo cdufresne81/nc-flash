@@ -7,6 +7,13 @@ All notable changes to NC Flash are documented here.
 ### Added
 - **Driveline damping and tip-in shaping tables in every engine definition.** These tables set how the ECU smooths the torque request after a pedal change (less driveline shuffle, softer or sharper tip-in). They're added to all 103 engine definitions at each ROM's own addresses, read from that ROM's code, along with their Data Integrity copies. Always edit a table and its Data Integrity copy together: the names say which addresses pair up, and where the factory values already differ between the two.
 
+### Fixed
+- **Pasting into axis cells no longer crashes.** Copying an axis (for example the LOAD or RPM axis of Load Scaling) and pasting it onto another table's axis now works, and one undo reverts it.
+- **Hex settings copy and paste correctly.** Tire Size Correction and the CEL Flash Pattern settings are shown in hex, but pasting or typing into them read the value as decimal: a value with letters was ignored, and an all-digit value such as `02054517` was saved as a different, wrong number. They now take hex, with or without `0x`.
+- **Pasting a whole copied 3D table no longer shifts its top axis by one column.**
+- **Copy and paste between tables now keeps exact values.** Before, the copy held the rounded numbers shown on screen, so pasting changed values slightly (a 0.0625 breakpoint became 0.062), even when pasting a table back onto itself. Copies pasted into Excel or other apps still show the rounded numbers.
+- **A value too big or too small for a cell is now refused as you enter it.** Before, it was only refused when saved, and a paste that covered both axes and data could be half-saved while the message said everything was reverted. Whole-number settings now also keep the rounded value they show instead of a cut-off one.
+
 ## [v2.21.0] - 2026-10-07
 
 **Smoother idle after a reflash:** every engine definition now has a setting that stops the idle from hunting at stops while the ECU relearns.
