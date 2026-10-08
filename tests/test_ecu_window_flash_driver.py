@@ -23,8 +23,12 @@ from src.ui.ecu_window import ECUProgrammingWindow
 class _FakeWindow:
     """Minimal stand-in exposing only what ``_build_flash_driver`` touches."""
 
-    def __init__(self, *, wican: bool, connected: bool = True):
+    def __init__(self, *, wican: bool, connected: bool = True, trim_roms=True):
         self._wican = wican
+        settings = MagicMock()
+        settings.get_wican_trim_staged_roms.return_value = trim_roms
+        settings.get_wican_keep_staged_roms.return_value = 5
+        self._main_window = SimpleNamespace(settings=settings)
         self._session_acquired = False
         self._guard_override = False
         if connected:
@@ -60,6 +64,7 @@ class TestWiCANWriteRouting:
             fake._session.transport,
             source_name=None,
             datalog=fake._session.wican_datalog,
+            keep_staged_roms=5,
             allow_unread_voltage=False,
         )
 
@@ -74,8 +79,16 @@ class TestWiCANWriteRouting:
             fake._session.transport,
             source_name="My Tune éà.bin",
             datalog=fake._session.wican_datalog,
+            keep_staged_roms=5,
             allow_unread_voltage=False,
         )
+
+    def test_staged_rom_cleanup_off_passes_none(self):
+        # #139: with the setting off, the flasher is told to leave the card alone.
+        fake = _FakeWindow(wican=True, trim_roms=False)
+        with patch("src.ecu.wican_sd_flash.WiCANSdFlasher") as MockFlasher:
+            _build(fake, "flash")
+        assert MockFlasher.call_args.kwargs["keep_staged_roms"] is None
 
     @pytest.mark.parametrize("operation", ["flash", "dynamic_flash"])
     def test_wican_write_kill_switch_disables(self, operation):

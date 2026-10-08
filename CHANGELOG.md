@@ -4,6 +4,9 @@ All notable changes to NC Flash are documented here.
 
 ## [Unreleased]
 
+### Added
+- **Old staged ROMs no longer pile up on the WiCAN's SD card (#139).** Every WiCAN flash first copies the ROM to the SD card (about 1 MB each), and nothing ever removed those copies. Now a successful flash keeps only the 5 newest and deletes the older ones. Nothing is deleted after a failed flash, the ROM just flashed always stays, and only files in the card's `roms` folder named the way NC Flash names them are deleted. Turn it off or change the number in Settings > ECU > WiCAN.
+
 ### Fixed
 - **Pasting into axis cells no longer crashes.** Copying an axis (for example the LOAD or RPM axis of Load Scaling) and pasting it onto another table's axis now works, and one undo reverts it.
 - **Hex settings copy and paste correctly.** Tire Size Correction and the CEL Flash Pattern settings are shown in hex, but pasting or typing into them read the value as decimal: a value with letters was ignored, and an all-digit value such as `02054517` was saved as a different, wrong number. They now take hex, with or without `0x`.
