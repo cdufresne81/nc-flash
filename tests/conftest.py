@@ -138,3 +138,34 @@ def pytest_collection_modifyitems(config, items):
     for item in items:
         if item.get_closest_marker("graph"):
             item.add_marker(skip)
+
+
+# --- CI: skip native teardown after the run ---------------------------------
+
+
+def pytest_sessionfinish(session, exitstatus):
+    session.config._ncflash_exitstatus = int(exitstatus)
+
+
+@pytest.hookimpl(trylast=True)
+def pytest_unconfigure(config):
+    """On CI, end the process with pytest's own exit status right here.
+
+    After every test has passed, CI runs sometimes die while Python tears down
+    native libraries (Qt widgets the tests left alive, the GPU stack): heap
+    corruption ("malloc_consolidate(): unaligned fastbin chunk detected",
+    exit 134), a segfault (139), or a bare exit 1 on Windows. Nothing is left
+    to check at that point, so skip the teardown. Local runs are unchanged:
+    os._exit would also kill a caller that runs pytest in-process.
+    """
+    import os
+    import sys
+
+    if not os.environ.get("CI"):
+        return
+    status = getattr(config, "_ncflash_exitstatus", None)
+    if status is None:
+        return
+    sys.stdout.flush()
+    sys.stderr.flush()
+    os._exit(status)
