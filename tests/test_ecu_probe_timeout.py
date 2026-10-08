@@ -60,7 +60,10 @@ def test_probe_gives_up_after_its_own_budget():
         UDSConnection(t).tester_present(timeout_ms=200)
     assert time.monotonic() - start < 1.0  # was 60 s on the pending budget
     assert t.sent == [bytes([SID_TESTER_PRESENT, TESTER_PRESENT_SUB])]
-    assert t.receive_timeouts == [200]
+    # Every read uses the probe budget, never the 60 s one. On Windows a sleep
+    # can return a hair early (199 ms), so the loop may read once more.
+    assert t.receive_timeouts and set(t.receive_timeouts) == {200}
+    assert len(t.receive_timeouts) <= 2
 
 
 def test_probe_succeeds_when_ecu_answers():
