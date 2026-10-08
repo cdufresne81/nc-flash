@@ -168,8 +168,5 @@ def pytest_unconfigure(config):
     sys.stdout.flush()
     sys.stderr.flush()
     if os.name == "nt":
-        import ctypes
-
-        kernel32 = ctypes.windll.kernel32
-        kernel32.TerminateProcess(kernel32.GetCurrentProcess(), status)
+        return  # probe: measure Windows without the hard exit
     os._exit(status)

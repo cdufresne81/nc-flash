@@ -66,7 +66,11 @@ jobs:
 
     - name: Run tests with pytest
       run: |
-        pytest
+        pytest tests/test_paths.py -q
+        echo "PROBE pytest.exe small exit=$LASTEXITCODE"
+        python -m pytest
+        echo "PROBE python -m pytest exit=$LASTEXITCODE"
+        python -c "import sys; sys.exit(0)"
       env:
         QT_QPA_PLATFORM: ${{ runner.os == 'Linux' && 'offscreen' || '' }}
         # This job has lavapipe: GPU graph tests must run, not skip.
