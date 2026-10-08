@@ -144,7 +144,10 @@ def pytest_collection_modifyitems(config, items):
 
 
 def pytest_sessionfinish(session, exitstatus):
+    import sys
     session.config._ncflash_exitstatus = int(exitstatus)
+    print(f"
+PROBE sessionfinish exitstatus={int(exitstatus)} testsfailed={session.testsfailed}", file=sys.stderr, flush=True)
 
 
 @pytest.hookimpl(trylast=True)
@@ -161,6 +164,7 @@ def pytest_unconfigure(config):
     import os
     import sys
 
+    print(f"PROBE unconfigure CI={os.environ.get('CI')!r} status={getattr(config, '_ncflash_exitstatus', None)}", file=sys.stderr, flush=True)
     if not os.environ.get("CI"):
         return
     status = getattr(config, "_ncflash_exitstatus", None)
@@ -168,4 +172,5 @@ def pytest_unconfigure(config):
         return
     sys.stdout.flush()
     sys.stderr.flush()
+    print("PROBE os._exit now", file=sys.stderr, flush=True)
     os._exit(status)
