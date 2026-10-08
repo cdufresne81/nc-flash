@@ -144,49 +144,32 @@ def pytest_collection_modifyitems(config, items):
 
 
 def pytest_sessionfinish(session, exitstatus):
-    import sys
     session.config._ncflash_exitstatus = int(exitstatus)
-    print(f"PROBE sessionfinish exitstatus={int(exitstatus)} testsfailed={session.testsfailed}", file=sys.stderr, flush=True)
 
 
 @pytest.hookimpl(trylast=True)
 def pytest_unconfigure(config):
     """On CI, end the process with pytest's own exit status right here.
 
-    After every test has passed, CI runs sometimes die while Python tears down
-    native libraries (Qt widgets the tests left alive, the GPU stack): heap
-    corruption ("malloc_consolidate(): unaligned fastbin chunk detected",
-    exit 134), a segfault (139), or a bare exit 1 on Windows. Nothing is left
-    to check at that point, so skip the teardown. Local runs are unchanged:
-    os._exit would also kill a caller that runs pytest in-process.
+    After every test has passed, CI runs sometimes die while native libraries
+    shut down (Qt widgets the tests left alive, the GPU stack): heap corruption
+    ("malloc_consolidate(): unaligned fastbin chunk detected", exit 134) or a
+    segfault (139) on Linux, a bare exit 1 on Windows. Nothing is left to check
+    at that point, so skip that shutdown. On Windows even os._exit still runs
+    every DLL's shutdown code, so the process is terminated instead. Local runs
+    are unchanged: this would also kill a caller that runs pytest in-process.
     """
     import os
     import sys
 
-    print(f"PROBE unconfigure CI={os.environ.get('CI')!r} status={getattr(config, '_ncflash_exitstatus', None)}", file=sys.stderr, flush=True)
-    if not os.environ.get("CI"):
-        return
     status = getattr(config, "_ncflash_exitstatus", None)
-    if status is None:
+    if not os.environ.get("CI") or status is None:
         return
     sys.stdout.flush()
     sys.stderr.flush()
-    import threading
-    import subprocess
-
-    for t in threading.enumerate():
-        print(f"PROBE thread {t.name} daemon={t.daemon}", file=sys.stderr, flush=True)
     if os.name == "nt":
-        out = subprocess.run(
-            [
-                "powershell",
-                "-NoProfile",
-                "-Command",
-                f"Get-CimInstance Win32_Process | Where-Object {{ $_.ParentProcessId -eq {os.getpid()} -or $_.ProcessId -eq {os.getppid()} }} | ForEach-Object {{ \"PROBE proc $($_.ProcessId) parent=$($_.ParentProcessId) $($_.CommandLine)\" }}",
-            ],
-            capture_output=True,
-            text=True,
-        ).stdout
-        print(out, file=sys.stderr, flush=True)
-    print("PROBE os._exit now", file=sys.stderr, flush=True)
+        import ctypes
+
+        kernel32 = ctypes.windll.kernel32
+        kernel32.TerminateProcess(kernel32.GetCurrentProcess(), status)
     os._exit(status)
