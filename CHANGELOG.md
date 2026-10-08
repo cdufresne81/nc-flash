@@ -4,6 +4,13 @@ All notable changes to NC Flash are documented here.
 
 ## [Unreleased]
 
+### Changed
+- **LF9VEB definition brought up to date.** 70 new tables, among them DSC torque intervention, the closed-loop fuel trim controller, and the Data Integrity copies of the throttle, idle and driveline damping tables (always edit a table and its Data Integrity copy together). 56 existing tables have clearer names, mostly saying which copy they pair with; no address, size or data type changed. Three of them are now marked **DO NOT EDIT**: the throttle-angle chain enable gate and the two Tip-In Shaping TP-window monitor copies, whose other half isn't editable.
+- **Version history shows a renamed table under its current name**, with the old name after "was:", one line per table. Searching the history finds it by either name.
+
+### Removed
+- **Old Auto-Blip settings removed from the LF9VEB definition.** They belonged to a retired Auto-Blip version and pointed at bytes no current ROM uses.
+
 ## [v2.21.0] - 2026-10-07
 
 **Smoother idle after a reflash:** every engine definition now has a setting that stops the idle from hunting at stops while the ECU relearns.

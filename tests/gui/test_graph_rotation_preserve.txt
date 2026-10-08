@@ -2,7 +2,7 @@
 # This test verifies that rotating the graph and then selecting cells preserves the view angle
 
 load_rom examples/lf9veb.bin
-open_table "APP to TP Desired - 2nd Gear"
+open_table "APP to TP Desired - 2nd Gear (pair with f8618)"
 wait 300
 
 # Open graph

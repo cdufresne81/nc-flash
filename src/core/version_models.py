@@ -14,7 +14,7 @@ Serialization Pattern:
 from dataclasses import dataclass, field
 import os
 from pathlib import Path
-from typing import Optional, List, Protocol, TypeVar, runtime_checkable
+from typing import Dict, Optional, List, Protocol, Tuple, TypeVar, runtime_checkable
 from datetime import datetime
 import uuid
 
@@ -162,6 +162,37 @@ class Commit:
             "snapshot_filename": self.snapshot_filename,
             "deleted": self.deleted,
         }
+
+    def renamed_tables(
+        self, names_by_address: Dict[int, List[str]]
+    ) -> Dict[Tuple[str, str], str]:
+        """
+        Map each table stored in this commit to the name the current
+        definition uses at the same address, for tables renamed since.
+
+        History stores the name a table had when it was committed; a newer
+        definition can rename that table without moving it. Only an
+        unambiguous match counts: one current name at that address, and the
+        stored name no longer present there. Keyed by (stored name, address):
+        an older definition could give two tables the same name (a table and
+        its Data Integrity copy), and a newer one names them apart.
+
+        Args:
+            names_by_address: Current definition, address (int) -> table names
+
+        Returns:
+            {(stored name, stored address): current name}, renamed tables only
+        """
+        renamed = {}
+        for tc in self.changes:
+            try:
+                address = int(tc.table_address, 16)
+            except (TypeError, ValueError):
+                continue
+            current = names_by_address.get(address, [])
+            if len(current) == 1 and current[0] != tc.table_name:
+                renamed[(tc.table_name, tc.table_address)] = current[0]
+        return renamed
 
     @classmethod
     def from_dict(cls, data: dict, fallback_version: int = 0) -> "Commit":

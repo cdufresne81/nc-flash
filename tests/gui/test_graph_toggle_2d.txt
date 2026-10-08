@@ -1,7 +1,7 @@
 # Test script to verify 2D graph toggle also works without warnings
 
 load_rom examples/lf9veb.bin
-open_table "TP Commanded Limit - Max"
+open_table "TP Commanded Limit - Max (pair with f82dc)"
 wait 200
 
 # Toggle 3 times
