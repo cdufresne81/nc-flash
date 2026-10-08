@@ -171,5 +171,22 @@ def pytest_unconfigure(config):
         return
     sys.stdout.flush()
     sys.stderr.flush()
+    import threading
+    import subprocess
+
+    for t in threading.enumerate():
+        print(f"PROBE thread {t.name} daemon={t.daemon}", file=sys.stderr, flush=True)
+    if os.name == "nt":
+        out = subprocess.run(
+            [
+                "powershell",
+                "-NoProfile",
+                "-Command",
+                f"Get-CimInstance Win32_Process | Where-Object {{ $_.ParentProcessId -eq {os.getpid()} -or $_.ProcessId -eq {os.getppid()} }} | ForEach-Object {{ \"PROBE proc $($_.ProcessId) parent=$($_.ParentProcessId) $($_.CommandLine)\" }}",
+            ],
+            capture_output=True,
+            text=True,
+        ).stdout
+        print(out, file=sys.stderr, flush=True)
     print("PROBE os._exit now", file=sys.stderr, flush=True)
     os._exit(status)
