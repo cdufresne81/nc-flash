@@ -2030,5 +2030,141 @@
     <table level="1" type="2D" category="Spark Final - Advance Limit" swapxy="true" name="Spark Final - Max Advance Rate" address="d8428" elements="13" scaling="885800">
       <table name="RPM_6DD8" address="d83f4" elements="13" scaling="885748" type="Y Axis"/>
     </table>
+    <!-- Torque Request - Driveline Damping Filter / Tip-In Shaping + Data Integrity (Level-2 monitor) copies.
+         Ported 2026-10-08 by nc-flash-re tools/port_torque_damping_defs.py from the reviewed LF9VEB / LFH9EF / LFLMEA entries:
+         every address below is the one this ROM's own code loads (located by masked code match;
+         nc-flash-re analysis/torque_damping_port/2026-10-08_all_roms.md). The ECU's monitor recomputes the filter
+         from the "(Data Integrity)" copies: edit both halves of a pair together. Rates are "per pass" (5 ms on
+         LF9VEB; not verified here). NC Flash fixes the checksums at flash. -->
+    <scaling name="tqdf_coef_b0" units="" toexpr="x" frexpr="x" format="%0.4f" min="-3.000" max="3.000" inc="0.0001" storagetype="float" endian="big"/>
+    <scaling name="tqdf_coef_b0_ax0" units="" toexpr="x" frexpr="x" format="%0.2f" min="0.000" max="1.000" inc="0.05" storagetype="float" endian="big"/>
+    <scaling name="tqdf_coef_b0_ax1" units="" toexpr="x" frexpr="x" format="%0.1f" min="0.000" max="20.000" inc="0.5" storagetype="float" endian="big"/>
+    <scaling name="tqdf_coef_b1" units="" toexpr="x" frexpr="x" format="%0.4f" min="-3.000" max="3.000" inc="0.0001" storagetype="float" endian="big"/>
+    <scaling name="tqdf_coef_b1_ax0" units="" toexpr="x" frexpr="x" format="%0.2f" min="0.000" max="1.000" inc="0.05" storagetype="float" endian="big"/>
+    <scaling name="tqdf_coef_b1_ax1" units="" toexpr="x" frexpr="x" format="%0.1f" min="0.000" max="20.000" inc="0.5" storagetype="float" endian="big"/>
+    <scaling name="tqdf_coef_b2" units="" toexpr="x" frexpr="x" format="%0.4f" min="-3.000" max="3.000" inc="0.0001" storagetype="float" endian="big"/>
+    <scaling name="tqdf_coef_b2_ax0" units="" toexpr="x" frexpr="x" format="%0.2f" min="0.000" max="1.000" inc="0.05" storagetype="float" endian="big"/>
+    <scaling name="tqdf_coef_b2_ax1" units="" toexpr="x" frexpr="x" format="%0.1f" min="0.000" max="20.000" inc="0.5" storagetype="float" endian="big"/>
+    <scaling name="tqdf_coef_a1" units="" toexpr="x" frexpr="x" format="%0.4f" min="-3.000" max="3.000" inc="0.0001" storagetype="float" endian="big"/>
+    <scaling name="tqdf_coef_a1_ax0" units="" toexpr="x" frexpr="x" format="%0.2f" min="0.000" max="1.000" inc="0.05" storagetype="float" endian="big"/>
+    <scaling name="tqdf_coef_a1_ax1" units="" toexpr="x" frexpr="x" format="%0.1f" min="0.000" max="20.000" inc="0.5" storagetype="float" endian="big"/>
+    <scaling name="tqdf_coef_a2" units="" toexpr="x" frexpr="x" format="%0.4f" min="-3.000" max="3.000" inc="0.0001" storagetype="float" endian="big"/>
+    <scaling name="tqdf_coef_a2_ax0" units="" toexpr="x" frexpr="x" format="%0.2f" min="0.000" max="1.000" inc="0.05" storagetype="float" endian="big"/>
+    <scaling name="tqdf_coef_a2_ax1" units="" toexpr="x" frexpr="x" format="%0.1f" min="0.000" max="20.000" inc="0.5" storagetype="float" endian="big"/>
+    <scaling name="tqdf_gain3d" units="" toexpr="x" frexpr="x" format="%0.3f" min="0.000" max="2.000" inc="0.01" storagetype="float" endian="big"/>
+    <scaling name="tqdf_gain3d_ax0" units="" toexpr="x" frexpr="x" format="%0.0f" min="0.000" max="10.000" inc="1" storagetype="float" endian="big"/>
+    <scaling name="tqdf_gain3d_ax1" units="" toexpr="x" frexpr="x" format="%0.0f" min="0.000" max="10.000" inc="1" storagetype="float" endian="big"/>
+    <scaling name="tqdf_gain_retard" units="" toexpr="x" frexpr="x" format="%0.2f" min="0.000" max="2.000" inc="0.01" storagetype="float" endian="big"/>
+    <scaling name="tqdf_gain_retard_ax0" units="" toexpr="x" frexpr="x" format="%0.2f" min="0.000" max="3.000" inc="0.1" storagetype="float" endian="big"/>
+    <scaling name="tqdf_gain_rpm" units="" toexpr="x" frexpr="x" format="%0.2f" min="0.000" max="2.000" inc="0.01" storagetype="float" endian="big"/>
+    <scaling name="tqdf_gain_rpm_ax0" units="" toexpr="x" frexpr="x" format="%0.0f" min="0.000" max="8000.000" inc="100" storagetype="float" endian="big"/>
+    <scaling name="tqdf_shuffle_hz" units="Hz" toexpr="x" frexpr="x" format="%0.2f" min="2.000" max="10.000" inc="0.05" storagetype="float" endian="big"/>
+    <scaling name="tqdf_shuffle_hz_ax0" units="" toexpr="x" frexpr="x" format="%0.3f" min="0.000" max="10.000" inc="0.001" storagetype="float" endian="big"/>
+    <scaling name="tqdf_bypass" units="" toexpr="x" frexpr="x" format="%d" min="0" max="1" inc="1" storagetype="uint8" endian="big"/>
+    <scaling name="tqdf_q" units="" toexpr="x" frexpr="x" format="%0.2f" min="0.200" max="1.000" inc="0.05" storagetype="float" endian="big"/>
+    <scaling name="tqdf_mode_a" units="" toexpr="x" frexpr="x" format="%0.3f" min="0.000" max="2.000" inc="0.01" storagetype="float" endian="big"/>
+    <scaling name="tqdf_mode_b" units="" toexpr="x" frexpr="x" format="%0.3f" min="0.000" max="2.000" inc="0.01" storagetype="float" endian="big"/>
+    <scaling name="tqdf_mode_c" units="" toexpr="x" frexpr="x" format="%0.3f" min="0.000" max="2.000" inc="0.01" storagetype="float" endian="big"/>
+    <scaling name="tqdf_mult_ac" units="" toexpr="x" frexpr="x" format="%0.3f" min="0.000" max="2.000" inc="0.01" storagetype="float" endian="big"/>
+    <scaling name="tqdf_mult_hd" units="" toexpr="x" frexpr="x" format="%0.3f" min="0.000" max="2.000" inc="0.01" storagetype="float" endian="big"/>
+    <scaling name="tqdf_mult_flag" units="" toexpr="x" frexpr="x" format="%0.3f" min="0.000" max="2.000" inc="0.01" storagetype="float" endian="big"/>
+    <scaling name="tqdf_arb_gain" units="" toexpr="x" frexpr="x" format="%0.3f" min="0.000" max="2.000" inc="0.01" storagetype="float" endian="big"/>
+    <scaling name="tqdf_arb_gain_ax0" units="" toexpr="x" frexpr="x" format="%0.0f" min="0.000" max="10.000" inc="1" storagetype="float" endian="big"/>
+    <scaling name="tqdf_arb_gain_ax1" units="" toexpr="x" frexpr="x" format="%0.1f" min="0.000" max="3.000" inc="0.2" storagetype="float" endian="big"/>
+    <scaling name="tqdf_tis_vss" units="" toexpr="x" frexpr="x" format="%0.3f" min="0.000" max="10.000" inc="0.01" storagetype="float" endian="big"/>
+    <scaling name="tqdf_tis_step" units="" toexpr="x" frexpr="x" format="%0.3f" min="0.000" max="10.000" inc="0.01" storagetype="float" endian="big"/>
+    <scaling name="tqdf_tis_clamp" units="" toexpr="x" frexpr="x" format="%0.1f" min="0.000" max="1000.000" inc="1" storagetype="float" endian="big"/>
+    <scaling name="tqdf_tis_wmax" units="" toexpr="x" frexpr="x" format="%0.1f" min="0.000" max="100.000" inc="0.5" storagetype="float" endian="big"/>
+    <scaling name="tqdf_tis_wmin" units="" toexpr="x" frexpr="x" format="%0.1f" min="0.000" max="100.000" inc="0.5" storagetype="float" endian="big"/>
+    <table level="4" type="3D" category="Torque Request - Driveline Damping Filter" swapxy="true" name="Driveline Damping Filter - Coefficient b0 (Current Input) (pair with 0xFA22C)" address="cf044" elements="48" scaling="tqdf_coef_b0">
+      <table name="Filter Q" address="cf02c" elements="6" scaling="tqdf_coef_b0_ax0" type="X Axis"/>
+      <table name="Driveline Shuffle Frequency Hz (per gear)" address="cf00c" elements="8" scaling="tqdf_coef_b0_ax1" type="Y Axis"/>
+    </table>
+    <table level="4" type="3D" category="Torque Request - Driveline Damping Filter" swapxy="true" name="Driveline Damping Filter - Coefficient b1 (Previous Input) (pair with 0xFA324)" address="cf13c" elements="48" scaling="tqdf_coef_b1">
+      <table name="Filter Q" address="cf124" elements="6" scaling="tqdf_coef_b1_ax0" type="X Axis"/>
+      <table name="Driveline Shuffle Frequency Hz (per gear)" address="cf104" elements="8" scaling="tqdf_coef_b1_ax1" type="Y Axis"/>
+    </table>
+    <table level="4" type="3D" category="Torque Request - Driveline Damping Filter" swapxy="true" name="Driveline Damping Filter - Coefficient b2 (Input Two Passes Ago) (pair with 0xFA41C)" address="cf234" elements="48" scaling="tqdf_coef_b2">
+      <table name="Filter Q" address="cf21c" elements="6" scaling="tqdf_coef_b2_ax0" type="X Axis"/>
+      <table name="Driveline Shuffle Frequency Hz (per gear)" address="cf1fc" elements="8" scaling="tqdf_coef_b2_ax1" type="Y Axis"/>
+    </table>
+    <table level="4" type="3D" category="Torque Request - Driveline Damping Filter" swapxy="true" name="Driveline Damping Filter - Coefficient a1 (Previous Output) (stability: a2 &lt; 1, |a1| &lt; 1 + a2) (pair with 0xFA514)" address="cf32c" elements="48" scaling="tqdf_coef_a1">
+      <table name="Filter Q" address="cf314" elements="6" scaling="tqdf_coef_a1_ax0" type="X Axis"/>
+      <table name="Driveline Shuffle Frequency Hz (per gear)" address="cf2f4" elements="8" scaling="tqdf_coef_a1_ax1" type="Y Axis"/>
+    </table>
+    <table level="4" type="3D" category="Torque Request - Driveline Damping Filter" swapxy="true" name="Driveline Damping Filter - Coefficient a2 (Output Two Passes Ago) (stability: a2 &lt; 1, |a1| &lt; 1 + a2) (pair with 0xFA60C)" address="cf424" elements="48" scaling="tqdf_coef_a2">
+      <table name="Filter Q" address="cf40c" elements="6" scaling="tqdf_coef_a2_ax0" type="X Axis"/>
+      <table name="Driveline Shuffle Frequency Hz (per gear)" address="cf3ec" elements="8" scaling="tqdf_coef_a2_ax1" type="Y Axis"/>
+    </table>
+    <table level="4" type="3D" category="Torque Request - Driveline Damping Filter" swapxy="true" name="Driveline Damping Filter - Gain | Estimated Gear x Tip-In Size (pair with 0xFA6F8)" address="cf510" elements="28" scaling="tqdf_gain3d">
+      <table name="Tip-In Size class (0 = idle)" address="cf500" elements="4" scaling="tqdf_gain3d_ax0" type="X Axis"/>
+      <table name="Estimated Gear (0 = low RPM)" address="cf4e4" elements="7" scaling="tqdf_gain3d_ax1" type="Y Axis"/>
+    </table>
+    <table level="4" type="2D" category="Torque Request - Driveline Damping Filter" swapxy="true" name="Driveline Damping Filter - Gain Multiplier | Spark Retard Correction (pair with 0xF814C)" address="cda3c" elements="15" scaling="tqdf_gain_retard">
+      <table name="Spark Retard Correction" address="cda00" elements="15" scaling="tqdf_gain_retard_ax0" type="Y Axis"/>
+    </table>
+    <table level="4" type="2D" category="Torque Request - Driveline Damping Filter" swapxy="true" name="Driveline Damping Filter - Gain Multiplier | RPM (pair with 0xF81BC)" address="cdaac" elements="13" scaling="tqdf_gain_rpm">
+      <table name="RPM" address="cda78" elements="13" scaling="tqdf_gain_rpm_ax0" type="Y Axis"/>
+    </table>
+    <table level="4" type="2D" category="Torque Request - Driveline Damping Filter" swapxy="true" name="Driveline Damping Filter - Shuffle Frequency Hz | Gear Ratio (step table: edit every cell of a gear band; SHARED: its output also feeds the spark tip-in logic)" address="c8580" elements="12" scaling="tqdf_shuffle_hz">
+      <table name="Gear Ratio rpm / output shaft (SHARED with another table - do not edit)" address="e4ff0" elements="12" scaling="tqdf_shuffle_hz_ax0" type="Y Axis"/>
+    </table>
+    <table level="1" type="1D" category="Torque Request - Driveline Damping Filter" swapxy="true" name="Driveline Damping Filter - Bypass (0 = filter active, 1 = off) (pair with 0xF7C7A)" address="cd8b5" elements="1" scaling="tqdf_bypass"/>
+    <table level="1" type="1D" category="Torque Request - Driveline Damping Filter" swapxy="true" name="Driveline Damping Filter - Filter Q (row of the coefficient tables; damping ratio = 0.5 / Q) (pair with 0xF7CBC)" address="cd8c8" elements="1" scaling="tqdf_q"/>
+    <table level="1" type="1D" category="Torque Request - Driveline Damping Filter" swapxy="true" name="Driveline Damping Filter - Gain | Mode A (pair with 0xF7CC8)" address="cd8cc" elements="1" scaling="tqdf_mode_a"/>
+    <table level="1" type="1D" category="Torque Request - Driveline Damping Filter" swapxy="true" name="Driveline Damping Filter - Gain | Mode B (pair with 0xF7CCC)" address="cd8d0" elements="1" scaling="tqdf_mode_b"/>
+    <table level="1" type="1D" category="Torque Request - Driveline Damping Filter" swapxy="true" name="Driveline Damping Filter - Gain | Mode C (pair with 0xF7CD0)" address="cd8d4" elements="1" scaling="tqdf_mode_c"/>
+    <table level="1" type="1D" category="Torque Request - Driveline Damping Filter" swapxy="true" name="Driveline Damping Filter - Gain Multiplier | AC On (SHARED: also scales the spark tip-in retard) (pair with 0xF7CD4)" address="c8574" elements="1" scaling="tqdf_mult_ac"/>
+    <table level="1" type="1D" category="Torque Request - Driveline Damping Filter" swapxy="true" name="Driveline Damping Filter - Gain Multiplier | High Det (SHARED: also scales the spark tip-in retard) (pair with 0xF7CD8)" address="c8578" elements="1" scaling="tqdf_mult_hd"/>
+    <table level="1" type="1D" category="Torque Request - Driveline Damping Filter" swapxy="true" name="Driveline Damping Filter - Gain Multiplier | Flag (SHARED: also scales the spark tip-in retard)" address="c857c" elements="1" scaling="tqdf_mult_flag"/>
+    <table level="4" type="3D" category="Torque Request - Driveline Damping Filter" swapxy="true" name="Driveline Damping (Arbitration Stage) - Gain | ZEROED" address="d0a60" elements="128" scaling="tqdf_arb_gain">
+      <table name="Arb Damping Input B" address="d0a40" elements="8" scaling="tqdf_arb_gain_ax0" type="X Axis"/>
+      <table name="Arb Damping Input A" address="d0a00" elements="16" scaling="tqdf_arb_gain_ax1" type="Y Axis"/>
+    </table>
+    <table level="1" type="1D" category="Torque Request - Tip-In Shaping" swapxy="true" name="Tip-In Shaping - VSS Reference Ramp Rate (per pass) (pair with 0xF7CAC)" address="cd8bc" elements="1" scaling="tqdf_tis_vss"/>
+    <table level="1" type="1D" category="Torque Request - Tip-In Shaping" swapxy="true" name="Tip-In Shaping - Ramp Step (per pass) (pair with 0xF7CB4)" address="cd8c0" elements="1" scaling="tqdf_tis_step"/>
+    <table level="1" type="1D" category="Torque Request - Tip-In Shaping" swapxy="true" name="Tip-In Shaping - Correction Clamp (pair with 0xF7CB8)" address="cd8c4" elements="1" scaling="tqdf_tis_clamp"/>
+    <table level="1" type="1D" category="Torque Request - Tip-In Shaping (Data Integrity)" swapxy="true" name="Tip-In Shaping (Data Integrity) - Ramp Step (per pass) (pair with 0xCD8C0)" address="f7cb4" elements="1" scaling="tqdf_tis_step"/>
+    <table level="1" type="1D" category="Torque Request - Tip-In Shaping (Data Integrity)" swapxy="true" name="Tip-In Shaping (Data Integrity) - Correction Clamp (pair with 0xCD8C4)" address="f7cb8" elements="1" scaling="tqdf_tis_clamp"/>
+    <table level="1" type="1D" category="Torque Request - Tip-In Shaping (Data Integrity)" swapxy="true" name="Tip-In Shaping (Data Integrity) - TP Window Max (%) - DO NOT EDIT (primary is a code literal, not exposed)" address="f7cc0" elements="1" scaling="tqdf_tis_wmax"/>
+    <table level="1" type="1D" category="Torque Request - Tip-In Shaping (Data Integrity)" swapxy="true" name="Tip-In Shaping (Data Integrity) - TP Window Min (%) - DO NOT EDIT (primary is a code literal, not exposed)" address="f7cc4" elements="1" scaling="tqdf_tis_wmin"/>
+    <table level="4" type="2D" category="Torque Request - Driveline Damping Filter (Data Integrity)" swapxy="true" name="Driveline Damping Filter (Data Integrity) - Gain Multiplier | Spark Retard Correction (pair with 0xCDA3C)" address="f814c" elements="15" scaling="tqdf_gain_retard">
+      <table name="Spark Retard Correction" address="f8110" elements="15" scaling="tqdf_gain_retard_ax0" type="Y Axis"/>
+    </table>
+    <table level="4" type="2D" category="Torque Request - Driveline Damping Filter (Data Integrity)" swapxy="true" name="Driveline Damping Filter (Data Integrity) - Gain Multiplier | RPM (pair with 0xCDAAC)" address="f81bc" elements="13" scaling="tqdf_gain_rpm">
+      <table name="RPM" address="f8188" elements="13" scaling="tqdf_gain_rpm_ax0" type="Y Axis"/>
+    </table>
+    <table level="4" type="3D" category="Torque Request - Driveline Damping Filter (Data Integrity)" swapxy="true" name="Driveline Damping Filter (Data Integrity) - Coefficient b0 (Current Input) (pair with 0xCF044)" address="fa22c" elements="48" scaling="tqdf_coef_b0">
+      <table name="Filter Q" address="fa214" elements="6" scaling="tqdf_coef_b0_ax0" type="X Axis"/>
+      <table name="Driveline Shuffle Frequency Hz (per gear)" address="fa1f4" elements="8" scaling="tqdf_coef_b0_ax1" type="Y Axis"/>
+    </table>
+    <table level="4" type="3D" category="Torque Request - Driveline Damping Filter (Data Integrity)" swapxy="true" name="Driveline Damping Filter (Data Integrity) - Coefficient b1 (Previous Input) (pair with 0xCF13C)" address="fa324" elements="48" scaling="tqdf_coef_b1">
+      <table name="Filter Q" address="fa30c" elements="6" scaling="tqdf_coef_b1_ax0" type="X Axis"/>
+      <table name="Driveline Shuffle Frequency Hz (per gear)" address="fa2ec" elements="8" scaling="tqdf_coef_b1_ax1" type="Y Axis"/>
+    </table>
+    <table level="4" type="3D" category="Torque Request - Driveline Damping Filter (Data Integrity)" swapxy="true" name="Driveline Damping Filter (Data Integrity) - Coefficient b2 (Input Two Passes Ago) (pair with 0xCF234)" address="fa41c" elements="48" scaling="tqdf_coef_b2">
+      <table name="Filter Q" address="fa404" elements="6" scaling="tqdf_coef_b2_ax0" type="X Axis"/>
+      <table name="Driveline Shuffle Frequency Hz (per gear)" address="fa3e4" elements="8" scaling="tqdf_coef_b2_ax1" type="Y Axis"/>
+    </table>
+    <table level="4" type="3D" category="Torque Request - Driveline Damping Filter (Data Integrity)" swapxy="true" name="Driveline Damping Filter (Data Integrity) - Coefficient a1 (Previous Output) (stability: a2 &lt; 1, |a1| &lt; 1 + a2) (pair with 0xCF32C)" address="fa514" elements="48" scaling="tqdf_coef_a1">
+      <table name="Filter Q" address="fa4fc" elements="6" scaling="tqdf_coef_a1_ax0" type="X Axis"/>
+      <table name="Driveline Shuffle Frequency Hz (per gear)" address="fa4dc" elements="8" scaling="tqdf_coef_a1_ax1" type="Y Axis"/>
+    </table>
+    <table level="4" type="3D" category="Torque Request - Driveline Damping Filter (Data Integrity)" swapxy="true" name="Driveline Damping Filter (Data Integrity) - Coefficient a2 (Output Two Passes Ago) (stability: a2 &lt; 1, |a1| &lt; 1 + a2) (pair with 0xCF424)" address="fa60c" elements="48" scaling="tqdf_coef_a2">
+      <table name="Filter Q" address="fa5f4" elements="6" scaling="tqdf_coef_a2_ax0" type="X Axis"/>
+      <table name="Driveline Shuffle Frequency Hz (per gear)" address="fa5d4" elements="8" scaling="tqdf_coef_a2_ax1" type="Y Axis"/>
+    </table>
+    <table level="4" type="3D" category="Torque Request - Driveline Damping Filter (Data Integrity)" swapxy="true" name="Driveline Damping Filter (Data Integrity) - Gain | Estimated Gear x Tip-In Size (pair with 0xCF510)" address="fa6f8" elements="28" scaling="tqdf_gain3d">
+      <table name="Tip-In Size class (0 = idle)" address="fa6e8" elements="4" scaling="tqdf_gain3d_ax0" type="X Axis"/>
+      <table name="Estimated Gear (0 = low RPM)" address="fa6cc" elements="7" scaling="tqdf_gain3d_ax1" type="Y Axis"/>
+    </table>
+    <table level="1" type="1D" category="Torque Request - Driveline Damping Filter (Data Integrity)" swapxy="true" name="Driveline Damping Filter (Data Integrity) - Bypass (0 = filter active, 1 = off) (pair with 0xCD8B5)" address="f7c7a" elements="1" scaling="tqdf_bypass"/>
+    <table level="1" type="1D" category="Torque Request - Driveline Damping Filter (Data Integrity)" swapxy="true" name="Driveline Damping Filter (Data Integrity) - Filter Q (row of the coefficient tables; damping ratio = 0.5 / Q) (pair with 0xCD8C8)" address="f7cbc" elements="1" scaling="tqdf_q"/>
+    <table level="1" type="1D" category="Torque Request - Driveline Damping Filter (Data Integrity)" swapxy="true" name="Driveline Damping Filter (Data Integrity) - Gain | Mode A (pair with 0xCD8CC)" address="f7cc8" elements="1" scaling="tqdf_mode_a"/>
+    <table level="1" type="1D" category="Torque Request - Driveline Damping Filter (Data Integrity)" swapxy="true" name="Driveline Damping Filter (Data Integrity) - Gain | Mode B (pair with 0xCD8D0)" address="f7ccc" elements="1" scaling="tqdf_mode_b"/>
+    <table level="1" type="1D" category="Torque Request - Driveline Damping Filter (Data Integrity)" swapxy="true" name="Driveline Damping Filter (Data Integrity) - Gain | Mode C (pair with 0xCD8D4)" address="f7cd0" elements="1" scaling="tqdf_mode_c"/>
+    <table level="1" type="1D" category="Torque Request - Driveline Damping Filter (Data Integrity)" swapxy="true" name="Driveline Damping Filter (Data Integrity) - Gain Multiplier | AC On (read only by the monitor filter) (pair with 0xC8574)" address="f7cd4" elements="1" scaling="tqdf_mult_ac"/>
+    <table level="1" type="1D" category="Torque Request - Driveline Damping Filter (Data Integrity)" swapxy="true" name="Driveline Damping Filter (Data Integrity) - Gain Multiplier | High Det (read only by the monitor filter) (pair with 0xC8578)" address="f7cd8" elements="1" scaling="tqdf_mult_hd"/>
+    <table level="1" type="1D" category="Torque Request - Tip-In Shaping (Data Integrity)" swapxy="true" name="Tip-In Shaping (Data Integrity) - VSS Reference Ramp Rate (per pass) (pair with 0xCD8BC)" address="f7cac" elements="1" scaling="tqdf_tis_vss"/>
   </rom>
 </roms>

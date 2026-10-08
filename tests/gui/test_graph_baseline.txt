@@ -62,7 +62,7 @@ screenshot graph_12_3d_graph_closed table
 close_table
 
 # --- 3D: small map ------------------------------------------------------------
-open_table "APP to TP Desired - 2nd Gear"
+open_table "APP to TP Desired - 2nd Gear (pair with f8618)"
 wait 300
 open_graph
 wait 800
@@ -73,7 +73,7 @@ close_graph
 close_table
 
 # --- 2D: line plot ------------------------------------------------------------
-open_table "APP to TP Desired - Max"
+open_table "APP to TP Desired - Max (pair with f7f70)"
 wait 300
 store_width
 open_graph

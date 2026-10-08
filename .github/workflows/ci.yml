@@ -65,8 +65,10 @@ jobs:
         pip install -r requirements-dev.txt
 
     - name: Run tests with pytest
+      # python -m pytest, not the pytest.exe launcher: on Windows the launcher
+      # sometimes reported exit 1 after every test had passed (see tests/conftest.py)
       run: |
-        pytest
+        python -m pytest
       env:
         QT_QPA_PLATFORM: ${{ runner.os == 'Linux' && 'offscreen' || '' }}
         # This job has lavapipe: GPU graph tests must run, not skip.

@@ -13,6 +13,23 @@ All notable changes to NC Flash are documented here.
   - Every file that changes is backed up first, to the `metadata_backups` folder in your workspace.
   - If your Metadata Directory (Settings > General > Paths) isn't the workspace's own `metadata` folder, nothing in it is changed; NC Flash tells you where the new files are.
   - It never runs when you go back to an older version.
+- **Driveline damping and tip-in shaping tables in every engine definition.** These tables set how the ECU smooths the torque request after a pedal change (less driveline shuffle, softer or sharper tip-in). They're added to all 103 engine definitions at each ROM's own addresses, read from that ROM's code, along with their Data Integrity copies. Always edit a table and its Data Integrity copy together: the names say which addresses pair up, and where the factory values already differ between the two.
+- **Old staged ROMs no longer pile up on the WiCAN's SD card (#139).** Every WiCAN flash first copies the ROM to the SD card (about 1 MB each), and nothing ever removed those copies. Now a successful flash keeps only the 5 newest and deletes the older ones. Nothing is deleted after a failed flash, the ROM just flashed always stays, and only files in the card's `roms` folder named the way NC Flash names them are deleted. Turn it off or change the number in Settings > ECU > WiCAN.
+
+### Changed
+- **LF9VEB definition brought up to date.** 70 new tables, among them DSC torque intervention, the closed-loop fuel trim controller, and the Data Integrity copies of the throttle, idle and driveline damping tables (always edit a table and its Data Integrity copy together). 56 existing tables have clearer names, mostly saying which copy they pair with; no address, size or data type changed. Three of them are now marked **DO NOT EDIT**: the throttle-angle chain enable gate and the two Tip-In Shaping TP-window monitor copies, whose other half isn't editable.
+- **Version history shows a renamed table under its current name**, with the old name after "was:", one line per table. Searching the history finds it by either name.
+
+### Fixed
+- **Pasting into axis cells no longer crashes.** Copying an axis (for example the LOAD or RPM axis of Load Scaling) and pasting it onto another table's axis now works, and one undo reverts it.
+- **Hex settings copy and paste correctly.** Tire Size Correction and the CEL Flash Pattern settings are shown in hex, but pasting or typing into them read the value as decimal: a value with letters was ignored, and an all-digit value such as `02054517` was saved as a different, wrong number. They now take hex, with or without `0x`.
+- **Pasting a whole copied 3D table no longer shifts its top axis by one column.**
+- **Copy and paste between tables now keeps exact values.** Before, the copy held the rounded numbers shown on screen, so pasting changed values slightly (a 0.0625 breakpoint became 0.062), even when pasting a table back onto itself. Copies pasted into Excel or other apps still show the rounded numbers.
+- **A value too big or too small for a cell is now refused as you enter it.** Before, it was only refused when saved, and a paste that covered both axes and data could be half-saved while the message said everything was reverted. Whole-number settings now also keep the rounded value they show instead of a cut-off one.
+- **Behind the scenes:** the automated checks on Linux no longer fail at random after every test has passed (a crash while the test process shut down). Windows still does sometimes (#149). No change to the app itself.
+
+### Removed
+- **Old Auto-Blip settings removed from the LF9VEB definition.** They belonged to a retired Auto-Blip version and pointed at bytes no current ROM uses.
 
 ## [v2.21.0] - 2026-10-07
 

@@ -1,5 +1,5 @@
 load_rom examples/lf9veb.bin
-open_table "APP to TP Desired - 3rd Gear"
+open_table "APP to TP Desired - 3rd Gear (pair with f88e8)"
 wait 300
 screenshot autosize_scroll_top table
 
