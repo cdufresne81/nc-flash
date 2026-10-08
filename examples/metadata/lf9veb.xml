@@ -581,6 +581,15 @@
     <scaling name="877816" units="" toexpr="x" frexpr="x" format="%0.2f" min="0.100" max="0.100" inc="1" storagetype="float" endian="big"/>
     <scaling name="878000" units="" toexpr="x" frexpr="x" format="%0.2f" min="-4.160" max="4.087" inc="0.1" storagetype="float" endian="big"/>
     <scaling name="877912" units="" toexpr="x" frexpr="x" format="%0.2f" min="0.000" max="1.050" inc="0.1" storagetype="float" endian="big"/>
+    <scaling name="879384" units="" toexpr="x" frexpr="x" format="%d" min="0" max="255" inc="1" storagetype="uint8" endian="big"/>
+    <scaling name="879368" units="" toexpr="x" frexpr="x" format="%0.0f" min="-40.000" max="150.000" inc="10" storagetype="float" endian="big"/>
+    <scaling name="879344" units="" toexpr="x" frexpr="x" format="%0.3f" min="0.000" max="2.000" inc="0.01" storagetype="float" endian="big"/>
+    <scaling name="879348" units="" toexpr="x" frexpr="x" format="%0.3f" min="0.000" max="2.000" inc="0.01" storagetype="float" endian="big"/>
+    <scaling name="879356" units="" toexpr="x" frexpr="x" format="%0.1f" min="0.000" max="100.000" inc="1" storagetype="float" endian="big"/>
+    <scaling name="879556" units="" toexpr="x" frexpr="x" format="%0.4f" min="0.100" max="1.000" inc="0.01" storagetype="float" endian="big"/>
+    <scaling name="879500" units="" toexpr="x" frexpr="x" format="%0.2f" min="0.000" max="400.000" inc="5" storagetype="float" endian="big"/>
+    <scaling name="879444" units="" toexpr="x" frexpr="x" format="%0.4f" min="0.300" max="2.000" inc="0.01" storagetype="float" endian="big"/>
+    <scaling name="879388" units="" toexpr="x" frexpr="x" format="%0.2f" min="0.000" max="400.000" inc="5" storagetype="float" endian="big"/>
     <scaling name="844732_LAMBDA" units="" toexpr="100/(100+x)" frexpr="(100/x) - 100" format="%0.3f" min="0.697" max="0.884" inc="0.01" storagetype="float" endian="big"/>
     <scaling name="844640" units="" toexpr="x" frexpr="x" format="%0.0f" min="500.000" max="7500.000" inc="100" storagetype="float" endian="big"/>
     <scaling name="844700" units="" toexpr="x" frexpr="x" format="%0.2f" min="12.500" max="100.000" inc="1" storagetype="float" endian="big"/>
@@ -927,49 +936,49 @@
       <table name="GEAR_674C" address="ba568" elements="6" scaling="763240" type="X Axis"/>
       <table name="VSS_INTERPOLATED_6740" address="ba544" elements="9" scaling="763204_SPD" type="Y Axis"/>
     </table>
-    <table level="4" type="2D" category="DBW - Throttle Position" swapxy="true" name="APP to TP Desired - Max" address="c8e94" elements="18" scaling="822932">
+    <table level="4" type="2D" category="DBW - Throttle Position" swapxy="true" name="APP to TP Desired - Max (pair with f7f70)" address="c8e94" elements="18" scaling="822932">
       <table name="APP_6D1C" address="c8e4c" elements="18" scaling="822860" type="Y Axis"/>
     </table>
-    <table level="4" type="2D" category="DBW - Throttle Position" swapxy="true" name="APP to TP Desired - Min" address="c8f24" elements="18" scaling="823076">
+    <table level="4" type="2D" category="DBW - Throttle Position" swapxy="true" name="APP to TP Desired - Min (pair with f8000)" address="c8f24" elements="18" scaling="823076">
       <table name="APP_6D1C" address="c8edc" elements="18" scaling="823004" type="Y Axis"/>
     </table>
-    <table level="4" type="3D" category="DBW - Throttle Position" swapxy="true" name="APP to TP Desired - 1st Gear" address="c8ffc" elements="180" scaling="823292">
+    <table level="4" type="3D" category="DBW - Throttle Position" swapxy="true" name="APP to TP Desired - 1st Gear (pair with f8348)" address="c8ffc" elements="180" scaling="823292">
       <table name="RPM_6DD8" address="b8300" elements="10" scaling="754432" type="X Axis"/>
       <table name="APP_6D1C" address="b82b8" elements="18" scaling="754360" type="Y Axis"/>
     </table>
-    <table level="4" type="3D" category="DBW - Throttle Position" swapxy="true" name="APP to TP Desired - 2nd Gear" address="c92cc" elements="180" scaling="824012">
+    <table level="4" type="3D" category="DBW - Throttle Position" swapxy="true" name="APP to TP Desired - 2nd Gear (pair with f8618)" address="c92cc" elements="180" scaling="824012">
       <table name="RPM_6DD8" address="b8300" elements="10" scaling="754432" type="X Axis"/>
       <table name="APP_6D1C" address="b82b8" elements="18" scaling="754360" type="Y Axis"/>
     </table>
-    <table level="4" type="3D" category="DBW - Throttle Position" swapxy="true" name="APP to TP Desired - 3rd Gear" address="c959c" elements="180" scaling="824732">
+    <table level="4" type="3D" category="DBW - Throttle Position" swapxy="true" name="APP to TP Desired - 3rd Gear (pair with f88e8)" address="c959c" elements="180" scaling="824732">
       <table name="RPM_6DD8" address="b8300" elements="10" scaling="754432" type="X Axis"/>
       <table name="APP_6D1C" address="b82b8" elements="18" scaling="754360" type="Y Axis"/>
     </table>
-    <table level="4" type="3D" category="DBW - Throttle Position" swapxy="true" name="APP to TP Desired - 4th, 5th, 6th Gear" address="c986c" elements="180" scaling="825452">
+    <table level="4" type="3D" category="DBW - Throttle Position" swapxy="true" name="APP to TP Desired - 4th, 5th, 6th Gear (pair with f8bb8)" address="c986c" elements="180" scaling="825452">
       <table name="RPM_6DD8" address="b8300" elements="10" scaling="754432" type="X Axis"/>
       <table name="APP_6D1C" address="b82b8" elements="18" scaling="754360" type="Y Axis"/>
     </table>
-    <table level="4" type="3D" category="DBW - Throttle Position" swapxy="true" name="APP to TP Desired - Neutral" address="c9b3c" elements="180" scaling="826172">
+    <table level="4" type="3D" category="DBW - Throttle Position" swapxy="true" name="APP to TP Desired - Neutral (pair with f8e88)" address="c9b3c" elements="180" scaling="826172">
       <table name="RPM_6DD8" address="b8300" elements="10" scaling="754432" type="X Axis"/>
       <table name="APP_6D1C" address="b82b8" elements="18" scaling="754360" type="Y Axis"/>
     </table>
-    <table level="4" type="3D" category="DBW - Throttle Position (Data Integrity)" swapxy="true" name="APP to TP Desired - 1st Gear" address="f8348" elements="180" scaling="1016648">
+    <table level="4" type="3D" category="DBW - Throttle Position (Data Integrity)" swapxy="true" name="APP to TP Desired (Data Integrity) - 1st Gear (pair with c8ffc)" address="f8348" elements="180" scaling="1016648">
       <table name="RPM_6DD8" address="dc42c" elements="10" scaling="902188" type="X Axis"/>
       <table name="APP_6D1C" address="dc3e4" elements="18" scaling="902116" type="Y Axis"/>
     </table>
-    <table level="4" type="3D" category="DBW - Throttle Position (Data Integrity)" swapxy="true" name="APP to TP Desired - 2nd Gear" address="f8618" elements="180" scaling="1017368">
+    <table level="4" type="3D" category="DBW - Throttle Position (Data Integrity)" swapxy="true" name="APP to TP Desired (Data Integrity) - 2nd Gear (pair with c92cc)" address="f8618" elements="180" scaling="1017368">
       <table name="RPM_6DD8" address="dc42c" elements="10" scaling="902188" type="X Axis"/>
       <table name="APP_6D1C" address="dc3e4" elements="18" scaling="902116" type="Y Axis"/>
     </table>
-    <table level="4" type="3D" category="DBW - Throttle Position (Data Integrity)" swapxy="true" name="APP to TP Desired - 3rd Gear" address="f88e8" elements="180" scaling="1018088">
+    <table level="4" type="3D" category="DBW - Throttle Position (Data Integrity)" swapxy="true" name="APP to TP Desired (Data Integrity) - 3rd Gear (pair with c959c)" address="f88e8" elements="180" scaling="1018088">
       <table name="RPM_6DD8" address="dc42c" elements="10" scaling="902188" type="X Axis"/>
       <table name="APP_6D1C" address="dc3e4" elements="18" scaling="902116" type="Y Axis"/>
     </table>
-    <table level="4" type="3D" category="DBW - Throttle Position (Data Integrity)" swapxy="true" name="APP to TP Desired - 4th, 5th, 6th Gear" address="f8bb8" elements="180" scaling="1018808">
+    <table level="4" type="3D" category="DBW - Throttle Position (Data Integrity)" swapxy="true" name="APP to TP Desired (Data Integrity) - 4th, 5th, 6th Gear (pair with c986c)" address="f8bb8" elements="180" scaling="1018808">
       <table name="RPM_6DD8" address="dc42c" elements="10" scaling="902188" type="X Axis"/>
       <table name="APP_6D1C" address="dc3e4" elements="18" scaling="902116" type="Y Axis"/>
     </table>
-    <table level="4" type="3D" category="DBW - Throttle Position (Data Integrity)" swapxy="true" name="APP to TP Desired - Neutral" address="f8e88" elements="180" scaling="1019528">
+    <table level="4" type="3D" category="DBW - Throttle Position (Data Integrity)" swapxy="true" name="APP to TP Desired (Data Integrity) - Neutral (pair with c9b3c)" address="f8e88" elements="180" scaling="1019528">
       <table name="RPM_6DD8" address="dc42c" elements="10" scaling="902188" type="X Axis"/>
       <table name="APP_6D1C" address="dc3e4" elements="18" scaling="902116" type="Y Axis"/>
     </table>
@@ -981,14 +990,14 @@
     <table level="1" type="1D" category="DBW - Throttle Position Closed Limits" swapxy="true" name="TP Closed - Default" address="bb0d0" elements="1" scaling="766160"/>
     <table level="1" type="1D" category="DBW - Throttle Position Closed Limits" swapxy="true" name="TP Closed - Max" address="bb0d4" elements="1" scaling="766164"/>
     <table level="1" type="1D" category="DBW - Throttle Position Closed Limits" swapxy="true" name="TP Closed - Min" address="bb0d8" elements="1" scaling="766168"/>
-    <table level="4" type="2D" category="DBW - Throttle Position Commanded Limits" swapxy="true" name="TP Commanded Limit - Max" address="c5cb4" elements="9" scaling="810164">
+    <table level="4" type="2D" category="DBW - Throttle Position Commanded Limits" swapxy="true" name="TP Commanded Limit - Max (pair with f82dc)" address="c5cb4" elements="9" scaling="810164">
       <table name="APP_A6B0" address="c5c90" elements="9" scaling="810128" type="Y Axis"/>
     </table>
-    <table level="4" type="2D" category="DBW - Throttle Position Commanded Limits" swapxy="true" name="TP Commanded Limit - Min" address="c5cfc" elements="9" scaling="810236">
+    <table level="4" type="2D" category="DBW - Throttle Position Commanded Limits" swapxy="true" name="TP Commanded Limit - Min (pair with f8324)" address="c5cfc" elements="9" scaling="810236">
       <table name="APP_A6B0" address="c5cd8" elements="9" scaling="810200" type="Y Axis"/>
     </table>
     <table level="1" type="1D" category="DBW - Throttle Angle" swapxy="true" name="Throttle Angle - Max" address="bb19c" elements="1" scaling="766364"/>
-    <table level="1" type="1D" category="DBW - Throttle Angle" swapxy="true" name="Throttle Angle - Conversion Multiplier" address="bafa0" elements="1" scaling="765856"/>
+    <table level="1" type="1D" category="DBW - Throttle Angle" swapxy="true" name="Throttle Angle - Conversion Multiplier (pair with f7c7c)" address="bafa0" elements="1" scaling="765856"/>
     <!-- Torque Request - Driveline Damping Filter / Tip-In Shaping / Base; DBW - TP Desired Filter (added 2026-09-17, derived from ROM table descriptors) -->
     <scaling name="815228" units="" toexpr="x" frexpr="x" format="%0.4f" min="-3.000" max="3.000" inc="0.0001" storagetype="float" endian="big"/>
     <scaling name="815476" units="" toexpr="x" frexpr="x" format="%0.4f" min="-3.000" max="3.000" inc="0.0001" storagetype="float" endian="big"/>
@@ -1010,6 +1019,8 @@
     <scaling name="816412" units="" toexpr="x" frexpr="x" format="%0.0f" min="0.000" max="10.000" inc="1" storagetype="float" endian="big"/>
     <scaling name="809652" units="" toexpr="x" frexpr="x" format="%0.2f" min="0.000" max="2.000" inc="0.01" storagetype="float" endian="big"/>
     <scaling name="809592" units="" toexpr="x" frexpr="x" format="%0.2f" min="0.000" max="3.000" inc="0.1" storagetype="float" endian="big"/>
+    <scaling name="787964" units="Hz" toexpr="x" frexpr="x" format="%0.2f" min="2.000" max="10.000" inc="0.05" storagetype="float" endian="big"/>
+    <scaling name="754076" units="" toexpr="x" frexpr="x" format="%0.3f" min="0.000" max="10.000" inc="0.001" storagetype="float" endian="big"/>
     <scaling name="809764" units="" toexpr="x" frexpr="x" format="%0.2f" min="0.000" max="2.000" inc="0.01" storagetype="float" endian="big"/>
     <scaling name="809712" units="" toexpr="x" frexpr="x" format="%0.0f" min="0.000" max="8000.000" inc="100" storagetype="float" endian="big"/>
     <scaling name="809265" units="" toexpr="x" frexpr="x" format="%d" min="0" max="1" inc="1" storagetype="uint8" endian="big"/>
@@ -1078,6 +1089,9 @@
     <table level="4" type="2D" category="Torque Request - Driveline Damping Filter" swapxy="true" name="Driveline Damping Filter - Gain Multiplier | RPM (pair with f814c)" address="c5b24" elements="13" scaling="809764">
       <table name="RPM_C5AF0" address="c5af0" elements="13" scaling="809712" type="Y Axis"/>
     </table>
+    <table level="4" type="2D" category="Torque Request - Driveline Damping Filter" swapxy="true" name="Driveline Damping Filter - Shuffle Frequency Hz | Gear Ratio (step table: edit every cell of a gear band; SHARED: also the input of spark tip-in tables 0x9A754/68/7C and timer 0x4E7E8)" address="c05fc" elements="12" scaling="787964">
+      <table name="Gear Ratio rpm / output shaft (SHARED with the gear-estimate table 0xC062C - do not edit)" address="b819c" elements="12" scaling="754076" type="Y Axis"/>
+    </table>
     <table level="1" type="1D" category="Torque Request - Driveline Damping Filter" swapxy="true" name="Driveline Damping Filter - Bypass (0 = filter active, 1 = off) (pair with f7c52)" address="c5931" elements="1" scaling="809265"/>
     <table level="1" type="1D" category="Torque Request - Driveline Damping Filter" swapxy="true" name="Driveline Damping Filter - Filter Q (row of the coefficient tables; damping ratio = 0.5 / Q) (pair with f7c94)" address="c5944" elements="1" scaling="809284"/>
     <table level="1" type="1D" category="Torque Request - Driveline Damping Filter" swapxy="true" name="Driveline Damping Filter - Gain | Mode A (pair with f7ca0)" address="c5948" elements="1" scaling="809288"/>
@@ -1123,18 +1137,18 @@
       <table name="Throttle Position (%)" address="fa740" elements="30" scaling="1025856" type="X Axis"/>
       <table name="RPM_FA6F8" address="fa6f8" elements="18" scaling="1025784" type="Y Axis"/>
     </table>
-    <table level="4" type="2D" category="DBW - Throttle Position Desired Filter" swapxy="true" name="TP Desired Filter - Bias | Tip-In (TP Delta over Threshold) - NOT SELECTED in stock (0xC8CBC = 1)" address="c8d8c" elements="16" scaling="822668">
+    <table level="4" type="2D" category="DBW - Throttle Position Desired Filter" swapxy="true" name="TP Desired Filter - Bias | Tip-In (TP Delta over Threshold) - NOT SELECTED in stock (0xC8CBC = 1) (pair with f7dd8)" address="c8d8c" elements="16" scaling="822668">
       <table name="APP Effective (%) (0xFFFF6CCC)" address="c8d4c" elements="16" scaling="822604" type="Y Axis"/>
     </table>
-    <table level="4" type="2D" category="DBW - Throttle Position Desired Filter" swapxy="true" name="TP Desired Filter - Bias | Tip-In (Target Load Delta over Threshold)" address="c8d28" elements="9" scaling="822568">
+    <table level="4" type="2D" category="DBW - Throttle Position Desired Filter" swapxy="true" name="TP Desired Filter - Bias | Tip-In (Target Load Delta over Threshold) (pair with f7d74)" address="c8d28" elements="9" scaling="822568">
       <table name="RPM_C8D04" address="c8d04" elements="9" scaling="822532" type="Y Axis"/>
     </table>
-    <table level="4" type="2D" category="DBW - Throttle Position Desired Filter" swapxy="true" name="TP Desired Filter - Bias | Tip-Out (DISABLED)" address="c8e0c" elements="16" scaling="822796">
+    <table level="4" type="2D" category="DBW - Throttle Position Desired Filter" swapxy="true" name="TP Desired Filter - Bias | Tip-Out (DISABLED) (pair with f7e58)" address="c8e0c" elements="16" scaling="822796">
       <table name="APP Effective (%) (0xFFFF6CCC)" address="c8dcc" elements="16" scaling="822732" type="Y Axis"/>
     </table>
-    <table level="1" type="1D" category="DBW - Throttle Position Desired Filter" swapxy="true" name="TP Desired Filter - Bias | Fault or Cruise" address="c8cdc" elements="1" scaling="822492"/>
-    <table level="1" type="1D" category="DBW - Throttle Position Desired Filter" swapxy="true" name="TP Desired Filter - Bias | Default" address="c8ce0" elements="1" scaling="822496"/>
-    <table level="1" type="1D" category="DBW - Throttle Position Desired Filter" swapxy="true" name="TP Desired - Limp Maximum" address="c8d00" elements="1" scaling="822528"/>
+    <table level="1" type="1D" category="DBW - Throttle Position Desired Filter" swapxy="true" name="TP Desired Filter - Bias | Fault or Cruise (pair with f7c58)" address="c8cdc" elements="1" scaling="822492"/>
+    <table level="1" type="1D" category="DBW - Throttle Position Desired Filter" swapxy="true" name="TP Desired Filter - Bias | Default (pair with f7c5c)" address="c8ce0" elements="1" scaling="822496"/>
+    <table level="1" type="1D" category="DBW - Throttle Position Desired Filter" swapxy="true" name="TP Desired - Limp Maximum (pair with f7c78)" address="c8d00" elements="1" scaling="822528"/>
     <!-- DBW - Throttle Position Desired Filter: tip-in bias table select flag + tip-in/tip-out state thresholds (F5 review fix, 2026-09-17) -->
     <scaling name="822460" units="" toexpr="x" frexpr="x" format="%d" min="0" max="1" inc="1" storagetype="uint8" endian="big"/>
     <scaling name="822504" units="" toexpr="x" frexpr="x" format="%0.4f" min="-100.000" max="100.000" inc="0.001" storagetype="float" endian="big"/>
@@ -1143,20 +1157,20 @@
     <scaling name="822516" units="" toexpr="x" frexpr="x" format="%0.4f" min="-100.000" max="100.000" inc="0.001" storagetype="float" endian="big"/>
     <scaling name="822520" units="" toexpr="x" frexpr="x" format="%0.4f" min="-100.000" max="100.000" inc="0.001" storagetype="float" endian="big"/>
     <scaling name="822524" units="" toexpr="x" frexpr="x" format="%0.4f" min="-100.000" max="100.000" inc="0.001" storagetype="float" endian="big"/>
-    <table level="1" type="1D" category="DBW - Throttle Position Desired Filter" swapxy="true" name="TP Desired Filter - Tip-In Bias Table Select (0 = TP-Delta table c8d8c, 1 = RPM table c8d28)" address="c8cbc" elements="1" scaling="822460"/>
-    <table level="1" type="1D" category="DBW - Throttle Position Desired Filter" swapxy="true" name="Tip-Out State Enter | TP Desired 25 ms Delta Below" address="c8ce8" elements="1" scaling="822504"/>
-    <table level="1" type="1D" category="DBW - Throttle Position Desired Filter" swapxy="true" name="Tip-Out State Hold | TP Desired 25 ms Delta Below" address="c8cec" elements="1" scaling="822508"/>
-    <table level="1" type="1D" category="DBW - Throttle Position Desired Filter" swapxy="true" name="Tip-Out State Hold | Raw-vs-Filtered TP Desired Delta Above" address="c8cf0" elements="1" scaling="822512"/>
-    <table level="1" type="1D" category="DBW - Throttle Position Desired Filter" swapxy="true" name="Tip-In State Enter | TP Desired 25 ms Delta Above (used only when 0xC8CBC = 0)" address="c8cf4" elements="1" scaling="822516"/>
-    <table level="1" type="1D" category="DBW - Throttle Position Desired Filter" swapxy="true" name="Tip-In State Hold | TP Desired 25 ms Delta Above (used only when 0xC8CBC = 0)" address="c8cf8" elements="1" scaling="822520"/>
-    <table level="1" type="1D" category="DBW - Throttle Position Desired Filter" swapxy="true" name="Tip-In State Hold | Raw-vs-Filtered TP Desired Delta Above" address="c8cfc" elements="1" scaling="822524"/>
-    <table level="4" type="2D" category="DBW - Throttle Position Desired Filter (Data Integrity)" swapxy="true" name="TP Desired Filter (Data Integrity) - Bias | Tip-In (TP Delta over Threshold)" address="f7dd8" elements="16" scaling="1015256">
+    <table level="1" type="1D" category="DBW - Throttle Position Desired Filter" swapxy="true" name="TP Desired Filter - Tip-In Bias Table Select (0 = TP-Delta table c8d8c, 1 = RPM table c8d28) (pair with f7c50)" address="c8cbc" elements="1" scaling="822460"/>
+    <table level="1" type="1D" category="DBW - Throttle Position Desired Filter" swapxy="true" name="Tip-Out State Enter | TP Desired 25 ms Delta Below (pair with f7c60)" address="c8ce8" elements="1" scaling="822504"/>
+    <table level="1" type="1D" category="DBW - Throttle Position Desired Filter" swapxy="true" name="Tip-Out State Hold | TP Desired 25 ms Delta Below (pair with f7c64)" address="c8cec" elements="1" scaling="822508"/>
+    <table level="1" type="1D" category="DBW - Throttle Position Desired Filter" swapxy="true" name="Tip-Out State Hold | Raw-vs-Filtered TP Desired Delta Above (pair with f7c68)" address="c8cf0" elements="1" scaling="822512"/>
+    <table level="1" type="1D" category="DBW - Throttle Position Desired Filter" swapxy="true" name="Tip-In State Enter | TP Desired 25 ms Delta Above (used only when 0xC8CBC = 0) (pair with f7c6c)" address="c8cf4" elements="1" scaling="822516"/>
+    <table level="1" type="1D" category="DBW - Throttle Position Desired Filter" swapxy="true" name="Tip-In State Hold | TP Desired 25 ms Delta Above (used only when 0xC8CBC = 0) (pair with f7c70)" address="c8cf8" elements="1" scaling="822520"/>
+    <table level="1" type="1D" category="DBW - Throttle Position Desired Filter" swapxy="true" name="Tip-In State Hold | Raw-vs-Filtered TP Desired Delta Above (pair with f7c74)" address="c8cfc" elements="1" scaling="822524"/>
+    <table level="4" type="2D" category="DBW - Throttle Position Desired Filter (Data Integrity)" swapxy="true" name="TP Desired Filter (Data Integrity) - Bias | Tip-In (TP Delta over Threshold) (pair with c8d8c)" address="f7dd8" elements="16" scaling="1015256">
       <table name="APP Effective (%) (0xFFFF6CCC)" address="f7d98" elements="16" scaling="1015192" type="Y Axis"/>
     </table>
-    <table level="4" type="2D" category="DBW - Throttle Position Desired Filter (Data Integrity)" swapxy="true" name="TP Desired Filter (Data Integrity) - Bias | Tip-In (Target Load Delta over Threshold)" address="f7d74" elements="9" scaling="1015156">
+    <table level="4" type="2D" category="DBW - Throttle Position Desired Filter (Data Integrity)" swapxy="true" name="TP Desired Filter (Data Integrity) - Bias | Tip-In (Target Load Delta over Threshold) (pair with c8d28)" address="f7d74" elements="9" scaling="1015156">
       <table name="RPM_F7D50" address="f7d50" elements="9" scaling="1015120" type="Y Axis"/>
     </table>
-    <table level="4" type="2D" category="DBW - Throttle Position Desired Filter (Data Integrity)" swapxy="true" name="TP Desired Filter (Data Integrity) - Bias | Tip-Out (DISABLED)" address="f7e58" elements="16" scaling="1015384">
+    <table level="4" type="2D" category="DBW - Throttle Position Desired Filter (Data Integrity)" swapxy="true" name="TP Desired Filter (Data Integrity) - Bias | Tip-Out (DISABLED) (pair with c8e0c)" address="f7e58" elements="16" scaling="1015384">
       <table name="APP Effective (%) (0xFFFF6CCC)" address="f7e18" elements="16" scaling="1015320" type="Y Axis"/>
     </table>
     <!-- DBW - Throttle Angle Desired (INACTIVE in stock): pedal-derived throttle-angle chain computed every 8 ms for the external throttle monitor frame but discarded at 0x1F112 while cal byte 0xBB198 = 1 (F9/F10 review additions, 2026-09-17) -->
@@ -1180,7 +1194,7 @@
     <!-- F10c review addition: chain enable gates, 2026-09-17 -->
     <scaling name="766360" units="" toexpr="x" frexpr="x" format="%d" min="0" max="1" inc="1" storagetype="uint8" endian="big"/>
     <scaling name="766361" units="" toexpr="x" frexpr="x" format="%d" min="0" max="1" inc="1" storagetype="uint8" endian="big"/>
-    <table level="1" type="1D" category="DBW - Throttle Angle Desired (INACTIVE in stock: computed every 8 ms, discarded while 0xBB198 = 1)" swapxy="true" name="Throttle Angle Desired - Chain Enable Gate (0xBB198: 1 = stock, chain discarded, frame angle from live throttle cells; 0 = chain output used)" address="bb198" elements="1" scaling="766360"/>
+    <table level="1" type="1D" category="DBW - Throttle Angle Desired (INACTIVE in stock: computed every 8 ms, discarded while 0xBB198 = 1)" swapxy="true" name="Throttle Angle Desired - Chain Enable Gate (0xBB198: 1 = stock, chain discarded, frame angle from live throttle cells; 0 = chain output used) (role pair with f7c54) - DO NOT EDIT: 0 selects non-equivalent primary/monitor paths" address="bb198" elements="1" scaling="766360"/>
     <table level="1" type="1D" category="DBW - Throttle Angle Desired (INACTIVE in stock: computed every 8 ms, discarded while 0xBB198 = 1)" swapxy="true" name="Throttle Angle Desired - Inner Gate (0xBB199, read at 0x1F130; 1 = stock)" address="bb199" elements="1" scaling="766361"/>
     <table level="4" type="2D" category="DBW - Throttle Angle Desired (INACTIVE in stock: computed every 8 ms, discarded while 0xBB198 = 1)" swapxy="true" name="Throttle Angle Desired - APP to Angle A (deg)" address="bb234" elements="31" scaling="766516">
       <table name="APP Effective (%) (0xFFFF56C4)" address="bb1b8" elements="31" scaling="766392" type="Y Axis"/>
@@ -1803,6 +1817,18 @@
     <table level="1" type="2D" category="Fuel Comp CL - RO2S Trim" swapxy="true" name="RO2S Base Trim" address="d65b0" elements="22" scaling="878000">
       <table name="O2S12_V_8564" address="d6558" elements="22" scaling="877912" type="Y Axis"/>
     </table>
+    <table level="4" type="2D" category="Fuel Comp CL - STFT Controller" swapxy="true" name="STFT Off-and-Reset Time After Transient (firings, 1 = 180 deg crank; STFT forced to 0, 0 = no hold-off) | ECT" address="d6b18" elements="4" scaling="879384">
+      <table name="ECT (C)" address="d6b08" elements="4" scaling="879368" type="Y Axis"/>
+    </table>
+    <table level="4" type="1D" category="Fuel Comp CL - STFT Controller" swapxy="true" name="STFT Hold-Off Trigger - Load Rise Above Filtered Load" address="d6af0" elements="1" scaling="879344"/>
+    <table level="4" type="1D" category="Fuel Comp CL - STFT Controller" swapxy="true" name="STFT Hold-Off Trigger - Load Drop Below Filtered Load" address="d6af4" elements="1" scaling="879348"/>
+    <table level="4" type="1D" category="Fuel Comp CL - STFT Controller" swapxy="true" name="STFT Hold-Off Trigger - Idle-Exit Enrichment Above (0xFFFF7618; stock only exceeded cold)" address="d6afc" elements="1" scaling="879356"/>
+    <table level="4" type="2D" category="Fuel Comp CL - STFT Controller" swapxy="true" name="STFT Gain A (P ~ 0.6 A, I ~ 1.2 A/B per s, D ~ 0.075 A*B s; keep 0.1-1.0, too high = lambda hunting) | Airflow g/s" address="d6bc4" elements="14" scaling="879556">
+      <table name="Airflow (g/s) - Gain A" address="d6b8c" elements="14" scaling="879500" type="Y Axis"/>
+    </table>
+    <table level="4" type="2D" category="Fuel Comp CL - STFT Controller" swapxy="true" name="STFT Gain B (lower = faster I, higher = more D; keep 0.3-2.0, never 0 or negative) | Airflow g/s" address="d6b54" elements="14" scaling="879444">
+      <table name="Airflow (g/s) - Gain B" address="d6b1c" elements="14" scaling="879388" type="Y Axis"/>
+    </table>
     <table level="4" type="3D" category="Fuel Target OL - Base" swapxy="true" name="Fuel Target OL | APP Above WOT Threshold, Special WIP" address="ce3bc" elements="120" scaling="844732_LAMBDA">
       <table name="TP_6CF8" address="ce39c" elements="8" scaling="844700" type="X Axis"/>
       <table name="RPM_6DD8" address="ce360" elements="15" scaling="844640" type="Y Axis"/>
@@ -1946,56 +1972,56 @@
     <table level="4" type="1D" category="Gear Ratio" swapxy="true" name="Gear Ratio - 4th" address="c1508" elements="1" scaling="791816"/>
     <table level="4" type="1D" category="Gear Ratio" swapxy="true" name="Gear Ratio - 5th" address="c150c" elements="1" scaling="791820"/>
     <table level="4" type="1D" category="Gear Ratio" swapxy="true" name="Gear Ratio - 6th" address="c1510" elements="1" scaling="791824"/>
-    <table level="4" type="2D" category="Idle Speed" swapxy="true" name="Idle Speed | In-Gear" address="d9164" elements="8" scaling="889188">
+    <table level="4" type="2D" category="Idle Speed" swapxy="true" name="Idle Speed | In-Gear (pair with f4e80)" address="d9164" elements="8" scaling="889188">
       <table name="ECT_6D4C" address="d9144" elements="8" scaling="889156" type="Y Axis"/>
     </table>
-    <table level="4" type="2D" category="Idle Speed" swapxy="true" name="Idle Speed | Not In-Gear" address="d91a4" elements="8" scaling="889252">
+    <table level="4" type="2D" category="Idle Speed" swapxy="true" name="Idle Speed | Not In-Gear (pair with f4ec0)" address="d91a4" elements="8" scaling="889252">
       <table name="ECT_6D4C" address="d9184" elements="8" scaling="889220" type="Y Axis"/>
     </table>
     <!-- Idle Air Learn - Boot Minimum (added 2026-10-04, reviewed; evidence analysis/idle/2026-10-02_idle_learn_and_kam_wipe.md,
-         docs/subsystems/idle_speed_control.md "Idle-Air Learning (KAM)"). Derived for the MANUAL gearbox only.
-         At every key-on, 0x58810 raises learned idle-air cell 7 (KAM 0xFFFF2348 = MT, A/C off, low electrical load: the
-         normal idle cell) to max(cell, this value), written with its check words. On a normal key-on it runs AFTER the
-         keep-alive RAM wipe that follows every NC Flash reflash (task 17: 0x5D0C wipe, 0x5E60 re-init, 0x5E66 -> 0x11BA6 ->
-         0x58810), so after a flash the idle starts from this value instead of 0. Stock 0.0 = no effect.
-         Pick a value clearly BELOW the car's settled learned cell 7: above it, the value overrides the learn at every
-         key-on until the ECU learns down again. Read the learned value with the engine RUNNING after a warm idle (or log
-         0xFFFF2348 on the WiCAN): a key-on read shows max(learned, this value) and hides a learn that settled lower.
-         Re-check it after any idle or air calibration change. Must stay below the learn ceiling 0xDA430 (0.14795): the
-         learner zeroes a cell above it, and the next key-on raises it again.
-         Only cell 7 is raised; the other cells stay 0 after a wipe until the first learn seeds them. After a reflash,
-         idle warm with the A/C off and low electrical load until the first learn, BEFORE switching the A/C on: otherwise
-         the idle air steps down by this value when the A/C cell (0) takes over.
-         One reader (0x58810); the Level-2 monitor never reads it, so no Data Integrity copy exists. Inside checksum record
-         0xB7000-0xF3FFF: the flashing tool must fix the checksums (NC Flash does), or P0601 = throttle limp. Units of the
-         learned value not traced (the owner's car learned 0.0990 on 2026-10-04, still settling). -->
+     docs/subsystems/idle_speed_control.md "Idle-Air Learning (KAM)"). Derived for the MANUAL gearbox only.
+     At every key-on, 0x58810 raises learned idle-air cell 7 (KAM 0xFFFF2348 = MT, A/C off, low electrical load: the
+     normal idle cell) to max(cell, this value), written with its check words. On a normal key-on it runs AFTER the
+     keep-alive RAM wipe that follows every NC Flash reflash (task 17: 0x5D0C wipe, 0x5E60 re-init, 0x5E66 -> 0x11BA6 ->
+     0x58810), so after a flash the idle starts from this value instead of 0. Stock 0.0 = no effect.
+     Pick a value clearly BELOW the car's settled learned cell 7: above it, the value overrides the learn at every
+     key-on until the ECU learns down again. Read the learned value with the engine RUNNING after a warm idle (or log
+     0xFFFF2348 on the WiCAN): a key-on read shows max(learned, this value) and hides a learn that settled lower.
+     Re-check it after any idle or air calibration change. Must stay below the learn ceiling 0xDA430 (0.14795): the
+     learner zeroes a cell above it, and the next key-on raises it again.
+     Only cell 7 is raised; the other cells stay 0 after a wipe until the first learn seeds them. After a reflash,
+     idle warm with the A/C off and low electrical load until the first learn, BEFORE switching the A/C on: otherwise
+     the idle air steps down by this value when the A/C cell (0) takes over.
+     One reader (0x58810); the Level-2 monitor never reads it, so no Data Integrity copy exists. Inside checksum record
+     0xB7000-0xF3FFF: the flashing tool must fix the checksums (NC Flash does), or P0601 = throttle limp. Units of the
+     learned value not traced (the owner's car learned 0.0990 on 2026-10-04, still settling). -->
     <scaling name="idle_air_learn_floor" units="learned idle air" toexpr="x" frexpr="x" format="%0.3f" min="0" max="0.14" inc="0.005" storagetype="float" endian="big"/>
     <table level="4" type="1D" category="Idle Speed" swapxy="true" name="Idle Air Learn - Boot Minimum | MT, A/C Off, Low Electrical Load (cell 7)" address="da438" elements="1" scaling="idle_air_learn_floor"/>
     <!-- Idle Air Learn - learn window and stability limit (added 2026-10-04, reviewed; evidence
-         analysis/idle/2026-10-02_idle_learn_and_kam_wipe.md section 6). Both read only by the idle-air learn chain; one
-         copy each, the Level-2 monitor never reads them (no Data Integrity copy). Inside checksum record 0xB7000-0xF3FFF.
-         Learn Window (0xDA429, byte): while the learn is eligible, 0x58BCE sums the idle-air correction 0xFFFF8108 for this
-         many passes (task 4, about 5 ms each), stores the mean, and the learner 0x58CA8 then moves half of it into the
-         learned cell (the full mean on the first learn after a wipe); the counter is reloaded by 0x59066 and set at boot
-         by 0x58786. Stock 20 = one learn step about every 100 ms. While idle closed loop runs, each step is bumpless
-         (0x59CA2 removes it from the correction), so the idle air does not change; a smaller window only makes the stored
-         cell follow the live correction more closely, storing more short-lived load (power steering, electrical) in KAM.
-         Values below 10 unsupported: 0 does not cleanly disable learning (the learner then runs every pass with a zero
-         mean, marks the groups learned and copies the current cell into its group). Editor range 10-100.
-         Stable-Idle RPM Error Limit (0xDA42C, float): 0x58918 averages |rpm - idle target| over 64 passes (byte 0xDA428)
-         and sets the stable flag 0xFFFF80D0 when the average is below this. The learn eligibility 0x589D4 requires that
-         flag ONLY once both learned-once flags are set (A/C-off 0xFFFF230C and A/C-on 0xFFFF230E, 0x58A14-0x58A3A): no
-         effect after a reflash, nor on a car whose A/C-on cells never learned. Higher = learns on a rougher idle. -->
+     analysis/idle/2026-10-02_idle_learn_and_kam_wipe.md section 6). Both read only by the idle-air learn chain; one
+     copy each, the Level-2 monitor never reads them (no Data Integrity copy). Inside checksum record 0xB7000-0xF3FFF.
+     Learn Window (0xDA429, byte): while the learn is eligible, 0x58BCE sums the idle-air correction 0xFFFF8108 for this
+     many passes (task 4, about 5 ms each), stores the mean, and the learner 0x58CA8 then moves half of it into the
+     learned cell (the full mean on the first learn after a wipe); the counter is reloaded by 0x59066 and set at boot
+     by 0x58786. Stock 20 = one learn step about every 100 ms. While idle closed loop runs, each step is bumpless
+     (0x59CA2 removes it from the correction), so the idle air does not change; a smaller window only makes the stored
+     cell follow the live correction more closely, storing more short-lived load (power steering, electrical) in KAM.
+     Values below 10 unsupported: 0 does not cleanly disable learning (the learner then runs every pass with a zero
+     mean, marks the groups learned and copies the current cell into its group). Editor range 10-100.
+     Stable-Idle RPM Error Limit (0xDA42C, float): 0x58918 averages |rpm - idle target| over 64 passes (byte 0xDA428)
+     and sets the stable flag 0xFFFF80D0 when the average is below this. The learn eligibility 0x589D4 requires that
+     flag ONLY once both learned-once flags are set (A/C-off 0xFFFF230C and A/C-on 0xFFFF230E, 0x58A14-0x58A3A): no
+     effect after a reflash, nor on a car whose A/C-on cells never learned. Higher = learns on a rougher idle. -->
     <scaling name="idle_air_learn_window" units="passes (about 5 ms)" toexpr="x" frexpr="x" format="%0.0f" min="10" max="100" inc="1" storagetype="uint8" endian="big"/>
     <scaling name="idle_air_learn_stable_rpm" units="rpm" toexpr="x" frexpr="x" format="%0.2f" min="10" max="100" inc="1" storagetype="float" endian="big"/>
     <table level="4" type="1D" category="Idle Speed" swapxy="true" name="Idle Air Learn - Learn Window (passes per learn step)" address="da429" elements="1" scaling="idle_air_learn_window"/>
     <table level="4" type="1D" category="Idle Speed" swapxy="true" name="Idle Air Learn - Stable-Idle RPM Error Limit (only once A/C-off and A/C-on groups have learned)" address="da42c" elements="1" scaling="idle_air_learn_stable_rpm"/>
-    <table level="4" type="1D" category="Idle Status" swapxy="true" name="Idle Validation Switch - APP Threshold" address="bb544" elements="1" scaling="767300"/>
-    <table level="4" type="1D" category="Idle Status" swapxy="true" name="Idle Validation Switch - APP Hysteresis" address="bb548" elements="1" scaling="767304"/>
+    <table level="4" type="1D" category="Idle Status" swapxy="true" name="Idle Validation Switch - APP Threshold (pair with f4508; ALSO recompute f4504 = this - 0xBB548)" address="bb544" elements="1" scaling="767300"/>
+    <table level="4" type="1D" category="Idle Status" swapxy="true" name="Idle Validation Switch - APP Hysteresis (NOT an equal pair: monitor f4504 = 0xBB544 - this; edit f4504 too)" address="bb548" elements="1" scaling="767304"/>
     <table level="4" type="1D" category="Instrument Cluster - CEL Warning" swapxy="true" name="CEL Flash Pattern - Step Rate" address="f3e76" elements="1" scaling="999030"/>
     <table level="4" type="1D" category="Instrument Cluster - CEL Warning" swapxy="true" name="CEL Flash Pattern [hex] | Flex Fuel Sensor Error" address="f3e78" elements="1" scaling="999032"/>
     <table level="4" type="1D" category="Instrument Cluster - CEL Warning" swapxy="true" name="CEL Flash Pattern [hex] | High ECT" address="f3e80" elements="1" scaling="999040"/>
-    <table level="4" type="1D" category="Instrument Cluster - CEL Warning" swapxy="true" name="CEL Flash Pattern - High ECT Activation Threshold " address="c589c" elements="1" scaling="809116"/>
+    <table level="4" type="1D" category="Instrument Cluster - CEL Warning" swapxy="true" name="CEL Flash Pattern - High ECT Activation Threshold (pair with f456c; OEM ECT flag 0xFFFF5263, also read by the idle code 0x5A71A)" address="c589c" elements="1" scaling="809116"/>
     <table level="4" type="2D" category="Instrument Cluster - ECT" swapxy="true" name="ECT Sensor Remap to ECT Guage Ticks" address="f199c" elements="18" scaling="989596">
       <table name="ECT" address="f1954" elements="18" scaling="989524" type="Y Axis"/>
     </table>
@@ -2210,30 +2236,77 @@
     <table level="1" type="2D" category="Spark Final - Advance Limit" swapxy="true" name="Spark Final - Max Advance Rate" address="cfc60" elements="13" scaling="851040">
       <table name="RPM_6DD8" address="cfc2c" elements="13" scaling="850988" type="Y Axis"/>
     </table>
-    <!-- Auto-Blip on Downshift: custom patch in free space (calibration at 0xFCAC0).
-     Only present in autoblip-patched ROMs; reads as 0xFF/garbage on stock or
-     plain-Romdrop ROMs. Generator: nc-flash-re/tools/autoblip_patch.py -->
-    <scaling name="autoblip_enable" units="" toexpr="x" frexpr="x" format="%0.0f" min="0" max="1" inc="1" storagetype="uint8" endian="big"/>
-    <scaling name="autoblip_pct" units="%" toexpr="x" frexpr="x" format="%0.1f" min="0" max="100" inc="0.1" storagetype="float" endian="big"/>
-    <scaling name="autoblip_spd" units="km/h" toexpr="x" frexpr="x" format="%0.1f" min="0" max="300" inc="0.1" storagetype="float" endian="big"/>
-    <scaling name="autoblip_rpm" units="RPM" toexpr="x" frexpr="x" format="%0.0f" min="0" max="10000" inc="10" storagetype="float" endian="big"/>
-    <scaling name="autoblip_factor" units="" toexpr="x" frexpr="x" format="%0.3f" min="0" max="1" inc="0.001" storagetype="float" endian="big"/>
-    <scaling name="autoblip_cycles" units="cycles" toexpr="x" frexpr="x" format="%0.0f" min="0" max="255" inc="1" storagetype="uint8" endian="big"/>
-    <scaling name="autoblip_tp" units="%" toexpr="x" frexpr="x" format="%0.1f" min="0" max="100" inc="0.1" storagetype="float" endian="big"/>
-    <scaling name="autoblip_rpm_delta" units="RPM" toexpr="x" frexpr="x" format="%0.0f" min="0" max="5000" inc="10" storagetype="float" endian="big"/>
-    <table level="1" type="1D" category="Auto-Blip" swapxy="true" name="Auto-Blip - Enable" address="fcac0" elements="1" scaling="autoblip_enable"/>
-    <table level="1" type="1D" category="Auto-Blip" swapxy="true" name="Auto-Blip - APP Threshold" address="fcac4" elements="1" scaling="autoblip_pct"/>
-    <table level="1" type="1D" category="Auto-Blip" swapxy="true" name="Auto-Blip - Min VSS" address="fcac8" elements="1" scaling="autoblip_spd"/>
-    <table level="1" type="1D" category="Auto-Blip" swapxy="true" name="Auto-Blip - Min RPM" address="fcacc" elements="1" scaling="autoblip_rpm"/>
-    <table level="1" type="1D" category="Auto-Blip" swapxy="true" name="Auto-Blip - Max RPM Target" address="fcad0" elements="1" scaling="autoblip_rpm"/>
-    <table level="1" type="1D" category="Auto-Blip" swapxy="true" name="Auto-Blip - Decay Factor" address="fcad4" elements="1" scaling="autoblip_factor"/>
-    <table level="1" type="1D" category="Auto-Blip" swapxy="true" name="Auto-Blip - Max Duration" address="fcad8" elements="1" scaling="autoblip_cycles"/>
-    <table level="1" type="2D" category="Auto-Blip" swapxy="true" name="Auto-Blip - RPM Delta to TP Offset" address="fcafc" elements="8" scaling="autoblip_tp">
-      <table name="RPM Delta" address="fcadc" elements="8" scaling="autoblip_rpm_delta" type="Y Axis"/>
+    <scaling name="dsc_retard_deg" units="degrees" toexpr="x" frexpr="x" format="%0.1f" min="0.000" max="30.000" inc="0.5" storagetype="float" endian="big"/>
+    <scaling name="dsc_rpm_axis" units="RPM" toexpr="x" frexpr="x" format="%0.0f" min="0.000" max="8000.000" inc="100" storagetype="float" endian="big"/>
+    <scaling name="dsc_bucket_axis" units="cut bucket" toexpr="x" frexpr="x" format="%0.0f" min="0.000" max="3.000" inc="1" storagetype="float" endian="big"/>
+    <scaling name="dsc_level_u8" units="level 0-7" toexpr="x" frexpr="x" format="%d" min="0.000" max="7.000" inc="1" storagetype="uint8" endian="big"/>
+    <scaling name="dsc_index_u8" units="index 1-4" toexpr="x" frexpr="x" format="%d" min="1.000" max="4.000" inc="1" storagetype="uint8" endian="big"/>
+    <scaling name="dsc_override_u8" units="index 0-4" toexpr="x" frexpr="x" format="%d" min="0.000" max="4.000" inc="1" storagetype="uint8" endian="big"/>
+    <scaling name="dsc_flag_u8" units="0/1" toexpr="x" frexpr="x" format="%d" min="0.000" max="1.000" inc="1" storagetype="uint8" endian="big"/>
+    <scaling name="dsc_ect_c" units="degC" toexpr="x" frexpr="x" format="%0.1f" min="-40.000" max="150.000" inc="1" storagetype="float" endian="big"/>
+    <scaling name="dsc_ect_hyst_c" units="degC" toexpr="x" frexpr="x" format="%0.1f" min="0.000" max="30.000" inc="1" storagetype="float" endian="big"/>
+    <scaling name="dsc_rpm" units="RPM" toexpr="x" frexpr="x" format="%0.2f" min="0.000" max="8000.000" inc="50" storagetype="float" endian="big"/>
+    <scaling name="dsc_float" units="" toexpr="x" frexpr="x" format="%0.3f" min="0.000" max="100.000" inc="0.05" storagetype="float" endian="big"/>
+    <scaling name="dsc_fuel_pct" units="% fuel added" toexpr="x" frexpr="x" format="%0.1f" min="-20.000" max="60.000" inc="0.5" storagetype="float" endian="big"/>
+    <scaling name="dsc_load_axis" units="load" toexpr="x" frexpr="x" format="%0.3f" min="0.000" max="1.000" inc="0.05" storagetype="float" endian="big"/>
+    <scaling name="dsc_reentry_pct" units="% of raw fuel" toexpr="x" frexpr="x" format="%0.1f" min="100.000" max="800.000" inc="10" storagetype="float" endian="big"/>
+    <scaling name="dsc_ticks_u16" units="5 ms ticks" toexpr="x" frexpr="x" format="%d" min="0.000" max="1200.000" inc="1" storagetype="uint16" endian="big"/>
+    <table level="1" type="3D" category="DSC - Torque Intervention" swapxy="true" name="DSC Spark Retard - Max Retard | Low Det (RPM x Cut Bucket) - EDIT BOTH" address="bfef0" elements="60" scaling="dsc_retard_deg">
+      <table name="Cut Bucket (0xFFFF74D8 level: 0 = none, 1 = 1-2, 2 = 3-4, 3 = 5-7)" address="bfee0" elements="4" scaling="dsc_bucket_axis" type="X Axis"/>
+      <table name="RPM" address="bfea4" elements="15" scaling="dsc_rpm_axis" type="Y Axis"/>
     </table>
-    <!-- Torque Request - Driveline Damping Filter / Tip-In Shaping (+ Data Integrity copies): converged to the reviewed nc-flash-re xml/lf9veb.xml on 2026-10-08 by nc-flash-re tools/port_torque_damping_defs.py -->
-    <scaling name="787964" units="Hz" toexpr="x" frexpr="x" format="%0.2f" min="2.000" max="10.000" inc="0.05" storagetype="float" endian="big"/>
-    <scaling name="754076" units="" toexpr="x" frexpr="x" format="%0.3f" min="0.000" max="10.000" inc="0.001" storagetype="float" endian="big"/>
+    <table level="1" type="3D" category="DSC - Torque Intervention" swapxy="true" name="DSC Spark Retard - Max Retard | High Det (RPM x Cut Bucket) - EDIT BOTH" address="c002c" elements="60" scaling="dsc_retard_deg">
+      <table name="Cut Bucket (0xFFFF74D8 level: 0 = none, 1 = 1-2, 2 = 3-4, 3 = 5-7)" address="c001c" elements="4" scaling="dsc_bucket_axis" type="X Axis"/>
+      <table name="RPM" address="bffe0" elements="15" scaling="dsc_rpm_axis" type="Y Axis"/>
+    </table>
+    <table level="1" type="3D" category="DSC - Torque Intervention" swapxy="true" name="DSC Fuel Adder % - During Cut, Flag 524A = 1 (stock -4.5..-9.5 = LEANER) [was &quot;Fuel Comp Fault 71B9 Normal&quot;]" address="c56e8" elements="98" scaling="dsc_fuel_pct">
+      <table name="Load (load_abs)" address="c56cc" elements="7" scaling="dsc_load_axis" type="X Axis"/>
+      <table name="RPM" address="c5694" elements="14" scaling="dsc_rpm_axis" type="Y Axis"/>
+    </table>
+    <table level="1" type="3D" category="DSC - Torque Intervention" swapxy="true" name="DSC Fuel Adder % - During Cut, Flag 524A = 0 [was &quot;Fuel Comp Fault 71B0 Warm-up Comp&quot;]" address="c550c" elements="98" scaling="dsc_fuel_pct">
+      <table name="Load (load_abs)" address="c54f0" elements="7" scaling="dsc_load_axis" type="X Axis"/>
+      <table name="RPM" address="c54b8" elements="14" scaling="dsc_rpm_axis" type="Y Axis"/>
+    </table>
+    <table level="1" type="3D" category="DSC - Torque Intervention" swapxy="true" name="DSC Fuel Adder % - DSC Active, No Cut (stock +37..+56 = RICHER; used whenever the cut level is 0) [was &quot;Fuel Comp Fault 71B0 Alternative Fuel Target&quot;]" address="c5330" elements="98" scaling="dsc_fuel_pct">
+      <table name="Load (load_abs)" address="c5314" elements="7" scaling="dsc_load_axis" type="X Axis"/>
+      <table name="RPM" address="c52dc" elements="14" scaling="dsc_rpm_axis" type="Y Axis"/>
+    </table>
+    <table level="1" type="2D" category="DSC - Torque Intervention" swapxy="true" name="DSC Spark Retard - Cap Bypass Load Threshold | No Cut (lower = cap returns sooner)" address="bfe20" elements="11" scaling="dsc_float">
+      <table name="RPM" address="bfdf4" elements="11" scaling="dsc_rpm_axis" type="Y Axis"/>
+    </table>
+    <table level="1" type="2D" category="DSC - Torque Intervention" swapxy="true" name="DSC Spark Retard - Cap Bypass Load Threshold | Cutting (lower = cap returns sooner)" address="bfe78" elements="11" scaling="dsc_float">
+      <table name="RPM" address="bfe4c" elements="11" scaling="dsc_rpm_axis" type="Y Axis"/>
+    </table>
+    <table level="1" type="2D" category="DSC - Torque Intervention" swapxy="true" name="DSC Fuel - Re-entry Shot % of Raw Fuel | ECT (first injection after a cut; stock 500-797 %) [was &quot;IPW Global Multiplier Post Transient Modeling DSC TCS&quot;]" address="cbfb4" elements="7" scaling="dsc_reentry_pct">
+      <table name="ECT" address="cbf98" elements="7" scaling="dsc_ect_c" type="Y Axis"/>
+    </table>
+    <table level="1" type="1D" category="DSC - Torque Intervention" swapxy="true" name="DSC Fuel Cut - Level | Index 1, RPM &lt; 6250 (0 no cut*, 1-2 = 25 %, 3-4 = 50 %, 5-6 = 75 %, 7 = 100 %; *0 also switches to the No-Cut fuel adder)" address="c52cc" elements="1" scaling="dsc_level_u8"/>
+    <table level="1" type="1D" category="DSC - Torque Intervention" swapxy="true" name="DSC Fuel Cut - Level | Index 2, RPM &lt; 6250 (0 no cut*, 1-2 = 25 %, 3-4 = 50 %, 5-6 = 75 %, 7 = 100 %; *0 also switches to the No-Cut fuel adder)" address="c52cd" elements="1" scaling="dsc_level_u8"/>
+    <table level="1" type="1D" category="DSC - Torque Intervention" swapxy="true" name="DSC Fuel Cut - Level | Index 3, RPM &lt; 6250 (0 no cut*, 1-2 = 25 %, 3-4 = 50 %, 5-6 = 75 %, 7 = 100 %; *0 also switches to the No-Cut fuel adder)" address="c52ce" elements="1" scaling="dsc_level_u8"/>
+    <table level="1" type="1D" category="DSC - Torque Intervention" swapxy="true" name="DSC Fuel Cut - Level | Index 4, RPM &lt; 6250 (0 no cut*, 1-2 = 25 %, 3-4 = 50 %, 5-6 = 75 %, 7 = 100 %; *0 also switches to the No-Cut fuel adder)" address="c52cf" elements="1" scaling="dsc_level_u8"/>
+    <table level="1" type="1D" category="DSC - Torque Intervention" swapxy="true" name="DSC Fuel Cut - Level | Index 1, RPM &gt;= 6250 (0 no cut*, 1-2 = 25 %, 3-4 = 50 %, 5-6 = 75 %, 7 = 100 %; *0 also switches to the No-Cut fuel adder)" address="c52d0" elements="1" scaling="dsc_level_u8"/>
+    <table level="1" type="1D" category="DSC - Torque Intervention" swapxy="true" name="DSC Fuel Cut - Level | Index 2, RPM &gt;= 6250 (0 no cut*, 1-2 = 25 %, 3-4 = 50 %, 5-6 = 75 %, 7 = 100 %; *0 also switches to the No-Cut fuel adder)" address="c52d1" elements="1" scaling="dsc_level_u8"/>
+    <table level="1" type="1D" category="DSC - Torque Intervention" swapxy="true" name="DSC Fuel Cut - Level | Index 3, RPM &gt;= 6250 (0 no cut*, 1-2 = 25 %, 3-4 = 50 %, 5-6 = 75 %, 7 = 100 %; *0 also switches to the No-Cut fuel adder)" address="c52d2" elements="1" scaling="dsc_level_u8"/>
+    <table level="1" type="1D" category="DSC - Torque Intervention" swapxy="true" name="DSC Fuel Cut - Level | Index 4, RPM &gt;= 6250 (0 no cut*, 1-2 = 25 %, 3-4 = 50 %, 5-6 = 75 %, 7 = 100 %; *0 also switches to the No-Cut fuel adder)" address="c52d3" elements="1" scaling="dsc_level_u8"/>
+    <table level="1" type="1D" category="DSC - Torque Intervention" swapxy="true" name="DSC Fuel Cut - Max Index (NEVER 0; 4 = all levels, 3 = never uses Index 4, 2 = never Index 3-4)" address="e149c" elements="1" scaling="dsc_index_u8"/>
+    <table level="1" type="1D" category="DSC - Torque Intervention" swapxy="true" name="DSC Fuel Cut - Index Override Enable (1 = use Override Value on every DSC event, ECT gate ignored)" address="c14de" elements="1" scaling="dsc_flag_u8"/>
+    <table level="1" type="1D" category="DSC - Torque Intervention" swapxy="true" name="DSC Fuel Cut - Index Override Value (0 = no injector cut, then No-Cut fuel adder applies; 1-4 = FORCE that index on every DSC event, even below 60 C)" address="c14df" elements="1" scaling="dsc_override_u8"/>
+    <table level="1" type="1D" category="DSC - Torque Intervention" swapxy="true" name="DSC Spark+Fuel Enable - ECT Threshold (intervention needs ECT &gt;= this)" address="bfde8" elements="1" scaling="dsc_ect_c"/>
+    <table level="1" type="1D" category="DSC - Torque Intervention" swapxy="true" name="DSC Spark+Fuel Enable - ECT Hysteresis (switches off below threshold - this; never negative)" address="bfdec" elements="1" scaling="dsc_ect_hyst_c"/>
+    <table level="1" type="1D" category="DSC - Torque Intervention" swapxy="true" name="DSC Fuel Cut - High RPM Table Switch Threshold" address="c52c4" elements="1" scaling="dsc_rpm"/>
+    <table level="1" type="1D" category="DSC - Torque Intervention" swapxy="true" name="DSC Fuel Cut - High RPM Table Switch Hysteresis" address="c52c8" elements="1" scaling="dsc_rpm"/>
+    <table level="1" type="1D" category="DSC - Torque Intervention" swapxy="true" name="DSC Fuel Cut - Level Threshold Hysteresis (torque units of 0xFFFF705C)" address="c14e8" elements="1" scaling="dsc_float"/>
+    <table level="1" type="1D" category="DSC - Torque Intervention" swapxy="true" name="DSC Fuel Cut - Last-Index Floor (target &lt;= this -&gt; deepest index)" address="c14ec" elements="1" scaling="dsc_float"/>
+    <table level="1" type="1D" category="DSC - Torque Intervention" swapxy="true" name="DSC Spark Retard - Cap Bypass Duration (0 = cap always applies; stock 1200 = 6 s)" address="bfde4" elements="1" scaling="dsc_ticks_u16"/>
+    <!-- Data Integrity (Level-2 monitor) copies: tools/integrity_copies_lf9veb.py (2026-09-25; evidence analysis/integrity_copies/2026-09-25_lf9veb.md) -->
+    <scaling name="di_f7f70" units="" toexpr="x" frexpr="x" format="%0.2f" min="16.500" max="100.000" inc="1" storagetype="float" endian="big"/>
+    <scaling name="di_f7f28" units="" toexpr="x" frexpr="x" format="%0.1f" min="0.000" max="100.000" inc="1" storagetype="float" endian="big"/>
+    <scaling name="di_f8000" units="" toexpr="x" frexpr="x" format="%0.2f" min="0.000" max="0.000" inc="1" storagetype="float" endian="big"/>
+    <scaling name="di_f7fb8" units="" toexpr="x" frexpr="x" format="%0.1f" min="0.000" max="100.000" inc="1" storagetype="float" endian="big"/>
+    <scaling name="di_f82dc" units="" toexpr="x" frexpr="x" format="%0.2f" min="16.500" max="100.000" inc="1" storagetype="float" endian="big"/>
+    <scaling name="di_f82b8" units="" toexpr="x" frexpr="x" format="%0.1f" min="0.000" max="100.000" inc="1" storagetype="float" endian="big"/>
+    <scaling name="di_f8324" units="" toexpr="x" frexpr="x" format="%0.2f" min="0.000" max="0.000" inc="1" storagetype="float" endian="big"/>
+    <scaling name="di_f8300" units="" toexpr="x" frexpr="x" format="%0.1f" min="0.000" max="100.000" inc="1" storagetype="float" endian="big"/>
     <scaling name="di_f80dc" units="" toexpr="x" frexpr="x" format="%0.2f" min="0.000" max="2.000" inc="0.01" storagetype="float" endian="big"/>
     <scaling name="di_f80a0" units="" toexpr="x" frexpr="x" format="%0.2f" min="0.000" max="3.000" inc="0.1" storagetype="float" endian="big"/>
     <scaling name="di_f814c" units="" toexpr="x" frexpr="x" format="%0.2f" min="0.000" max="2.000" inc="0.01" storagetype="float" endian="big"/>
@@ -2256,6 +2329,10 @@
     <scaling name="di_fa688" units="" toexpr="x" frexpr="x" format="%0.3f" min="0.000" max="2.000" inc="0.01" storagetype="float" endian="big"/>
     <scaling name="di_fa678" units="" toexpr="x" frexpr="x" format="%0.0f" min="0.000" max="10.000" inc="1" storagetype="float" endian="big"/>
     <scaling name="di_fa65c" units="" toexpr="x" frexpr="x" format="%0.0f" min="0.000" max="10.000" inc="1" storagetype="float" endian="big"/>
+    <scaling name="di_f4e80" units="" toexpr="x" frexpr="x" format="%0.0f" min="720.000" max="1150.000" inc="10" storagetype="float" endian="big"/>
+    <scaling name="di_f4e60" units="" toexpr="x" frexpr="x" format="%0.1f" min="-40.000" max="100.000" inc="10" storagetype="float" endian="big"/>
+    <scaling name="di_f4ec0" units="" toexpr="x" frexpr="x" format="%0.0f" min="720.000" max="1750.000" inc="100" storagetype="float" endian="big"/>
+    <scaling name="di_f4ea0" units="" toexpr="x" frexpr="x" format="%0.1f" min="-40.000" max="100.000" inc="10" storagetype="float" endian="big"/>
     <scaling name="di_f7c52" units="" toexpr="x" frexpr="x" format="%d" min="0" max="1" inc="1" storagetype="uint8" endian="big"/>
     <scaling name="di_f7c94" units="" toexpr="x" frexpr="x" format="%0.2f" min="0.200" max="1.000" inc="0.05" storagetype="float" endian="big"/>
     <scaling name="di_f7ca0" units="" toexpr="x" frexpr="x" format="%0.3f" min="0.000" max="2.000" inc="0.01" storagetype="float" endian="big"/>
@@ -2264,8 +2341,32 @@
     <scaling name="di_f7cac" units="" toexpr="x" frexpr="x" format="%0.3f" min="0.000" max="2.000" inc="0.01" storagetype="float" endian="big"/>
     <scaling name="di_f7cb0" units="" toexpr="x" frexpr="x" format="%0.3f" min="0.000" max="2.000" inc="0.01" storagetype="float" endian="big"/>
     <scaling name="di_f7c84" units="" toexpr="x" frexpr="x" format="%0.3f" min="0.000" max="10.000" inc="0.01" storagetype="float" endian="big"/>
-    <table level="4" type="2D" category="Torque Request - Driveline Damping Filter" swapxy="true" name="Driveline Damping Filter - Shuffle Frequency Hz | Gear Ratio (step table: edit every cell of a gear band; SHARED: also the input of spark tip-in tables 0x9A754/68/7C and timer 0x4E7E8)" address="c05fc" elements="12" scaling="787964">
-      <table name="Gear Ratio rpm / output shaft (SHARED with the gear-estimate table 0xC062C - do not edit)" address="b819c" elements="12" scaling="754076" type="Y Axis"/>
+    <scaling name="di_f7c50" units="" toexpr="x" frexpr="x" format="%d" min="0" max="1" inc="1" storagetype="uint8" endian="big"/>
+    <scaling name="di_f7c58" units="" toexpr="x" frexpr="x" format="%0.3f" min="0.000" max="1.000" inc="0.01" storagetype="float" endian="big"/>
+    <scaling name="di_f7c5c" units="" toexpr="x" frexpr="x" format="%0.3f" min="0.000" max="1.000" inc="0.01" storagetype="float" endian="big"/>
+    <scaling name="di_f7c60" units="" toexpr="x" frexpr="x" format="%0.4f" min="-100.000" max="100.000" inc="0.001" storagetype="float" endian="big"/>
+    <scaling name="di_f7c64" units="" toexpr="x" frexpr="x" format="%0.4f" min="-100.000" max="100.000" inc="0.001" storagetype="float" endian="big"/>
+    <scaling name="di_f7c68" units="" toexpr="x" frexpr="x" format="%0.4f" min="-100.000" max="100.000" inc="0.001" storagetype="float" endian="big"/>
+    <scaling name="di_f7c6c" units="" toexpr="x" frexpr="x" format="%0.4f" min="-100.000" max="100.000" inc="0.001" storagetype="float" endian="big"/>
+    <scaling name="di_f7c70" units="" toexpr="x" frexpr="x" format="%0.4f" min="-100.000" max="100.000" inc="0.001" storagetype="float" endian="big"/>
+    <scaling name="di_f7c74" units="" toexpr="x" frexpr="x" format="%0.4f" min="-100.000" max="100.000" inc="0.001" storagetype="float" endian="big"/>
+    <scaling name="di_f7c78" units="" toexpr="x" frexpr="x" format="%0.2f" min="0.000" max="100.000" inc="0.1" storagetype="float" endian="big"/>
+    <scaling name="di_f7c54" units="" toexpr="x" frexpr="x" format="%d" min="0" max="1" inc="1" storagetype="uint8" endian="big"/>
+    <scaling name="di_f7c7c" units="" toexpr="x" frexpr="x" format="%0.2f" min="0.850" max="0.850" inc="1" storagetype="float" endian="big"/>
+    <scaling name="di_f456c" units="" toexpr="x" frexpr="x" format="%0.0f" min="999.000" max="999.000" inc="1" storagetype="float" endian="big"/>
+    <scaling name="di_f4508" units="" toexpr="x" frexpr="x" format="%0.1f" min="0.000" max="100.000" inc="1" storagetype="float" endian="big"/>
+    <scaling name="di_f4504" units="" toexpr="x" frexpr="x" format="%0.1f" min="0.000" max="100.000" inc="1" storagetype="float" endian="big"/>
+    <table level="4" type="2D" category="DBW - Throttle Position (Data Integrity)" swapxy="true" name="APP to TP Desired (Data Integrity) - Max (pair with c8e94)" address="f7f70" elements="18" scaling="di_f7f70">
+      <table name="APP_6D1C" address="f7f28" elements="18" scaling="di_f7f28" type="Y Axis"/>
+    </table>
+    <table level="4" type="2D" category="DBW - Throttle Position (Data Integrity)" swapxy="true" name="APP to TP Desired (Data Integrity) - Min (pair with c8f24)" address="f8000" elements="18" scaling="di_f8000">
+      <table name="APP_6D1C" address="f7fb8" elements="18" scaling="di_f7fb8" type="Y Axis"/>
+    </table>
+    <table level="4" type="2D" category="DBW - Throttle Position Commanded Limits (Data Integrity)" swapxy="true" name="TP Commanded Limit (Data Integrity) - Max (pair with c5cb4)" address="f82dc" elements="9" scaling="di_f82dc">
+      <table name="APP_A6B0" address="f82b8" elements="9" scaling="di_f82b8" type="Y Axis"/>
+    </table>
+    <table level="4" type="2D" category="DBW - Throttle Position Commanded Limits (Data Integrity)" swapxy="true" name="TP Commanded Limit (Data Integrity) - Min (pair with c5cfc)" address="f8324" elements="9" scaling="di_f8324">
+      <table name="APP_A6B0" address="f8300" elements="9" scaling="di_f8300" type="Y Axis"/>
     </table>
     <table level="4" type="2D" category="Torque Request - Driveline Damping Filter (Data Integrity)" swapxy="true" name="Driveline Damping Filter (Data Integrity) - Gain Multiplier | Spark Retard Correction (pair with c5ab4)" address="f80dc" elements="15" scaling="di_f80dc">
       <table name="Spark Retard Correction (0xFFFF7DC0)" address="f80a0" elements="15" scaling="di_f80a0" type="Y Axis"/>
@@ -2297,6 +2398,12 @@
       <table name="Tip-In Size (0xFFFF7A2C: 0 idle, 1 APP rise &lt;= 8 %, 2 8-15 %, 3 &gt; 15 %)" address="fa678" elements="4" scaling="di_fa678" type="X Axis"/>
       <table name="Estimated Gear (0xFFFF7A34: 1-6, 0 = low RPM)" address="fa65c" elements="7" scaling="di_fa65c" type="Y Axis"/>
     </table>
+    <table level="4" type="2D" category="Idle Speed (Data Integrity)" swapxy="true" name="Idle Speed (Data Integrity) | In-Gear (pair with d9164)" address="f4e80" elements="8" scaling="di_f4e80">
+      <table name="ECT_6D4C" address="f4e60" elements="8" scaling="di_f4e60" type="Y Axis"/>
+    </table>
+    <table level="4" type="2D" category="Idle Speed (Data Integrity)" swapxy="true" name="Idle Speed (Data Integrity) | Not In-Gear (pair with d91a4)" address="f4ec0" elements="8" scaling="di_f4ec0">
+      <table name="ECT_6D4C" address="f4ea0" elements="8" scaling="di_f4ea0" type="Y Axis"/>
+    </table>
     <table level="1" type="1D" category="Torque Request - Driveline Damping Filter (Data Integrity)" swapxy="true" name="Driveline Damping Filter (Data Integrity) - Bypass (0 = filter active, 1 = off) (pair with c5931)" address="f7c52" elements="1" scaling="di_f7c52"/>
     <table level="1" type="1D" category="Torque Request - Driveline Damping Filter (Data Integrity)" swapxy="true" name="Driveline Damping Filter (Data Integrity) - Filter Q (row of the coefficient tables; damping ratio = 0.5 / Q) (pair with c5944)" address="f7c94" elements="1" scaling="di_f7c94"/>
     <table level="1" type="1D" category="Torque Request - Driveline Damping Filter (Data Integrity)" swapxy="true" name="Driveline Damping Filter (Data Integrity) - Gain | Mode A (pair with c5948)" address="f7ca0" elements="1" scaling="di_f7ca0"/>
@@ -2305,5 +2412,20 @@
     <table level="1" type="1D" category="Torque Request - Driveline Damping Filter (Data Integrity)" swapxy="true" name="Driveline Damping Filter (Data Integrity) - Gain Multiplier | AC On (monitor copy of the filter use only) (pair with c05f0)" address="f7cac" elements="1" scaling="di_f7cac"/>
     <table level="1" type="1D" category="Torque Request - Driveline Damping Filter (Data Integrity)" swapxy="true" name="Driveline Damping Filter (Data Integrity) - Gain Multiplier | High Det (monitor copy of the filter use only) (pair with c05f4)" address="f7cb0" elements="1" scaling="di_f7cb0"/>
     <table level="1" type="1D" category="Torque Request - Tip-In Shaping (Data Integrity)" swapxy="true" name="Tip-In Shaping (Data Integrity) - VSS Reference Ramp Rate (per 5 ms) (pair with c5938)" address="f7c84" elements="1" scaling="di_f7c84"/>
+    <table level="1" type="1D" category="DBW - Throttle Position Desired Filter (Data Integrity)" swapxy="true" name="TP Desired Filter (Data Integrity) - Tip-In Bias Table Select (0 = TP-Delta table f7dd8, 1 = RPM table f7d74) (pair with c8cbc)" address="f7c50" elements="1" scaling="di_f7c50"/>
+    <table level="1" type="1D" category="DBW - Throttle Position Desired Filter (Data Integrity)" swapxy="true" name="TP Desired Filter (Data Integrity) - Bias | Fault or Cruise (pair with c8cdc)" address="f7c58" elements="1" scaling="di_f7c58"/>
+    <table level="1" type="1D" category="DBW - Throttle Position Desired Filter (Data Integrity)" swapxy="true" name="TP Desired Filter (Data Integrity) - Bias | Default (pair with c8ce0)" address="f7c5c" elements="1" scaling="di_f7c5c"/>
+    <table level="1" type="1D" category="DBW - Throttle Position Desired Filter (Data Integrity)" swapxy="true" name="Tip-Out State Enter (Data Integrity) | TP Desired 25 ms Delta Below (pair with c8ce8)" address="f7c60" elements="1" scaling="di_f7c60"/>
+    <table level="1" type="1D" category="DBW - Throttle Position Desired Filter (Data Integrity)" swapxy="true" name="Tip-Out State Hold (Data Integrity) | TP Desired 25 ms Delta Below (pair with c8cec)" address="f7c64" elements="1" scaling="di_f7c64"/>
+    <table level="1" type="1D" category="DBW - Throttle Position Desired Filter (Data Integrity)" swapxy="true" name="Tip-Out State Hold (Data Integrity) | Raw-vs-Filtered TP Desired Delta Above (pair with c8cf0)" address="f7c68" elements="1" scaling="di_f7c68"/>
+    <table level="1" type="1D" category="DBW - Throttle Position Desired Filter (Data Integrity)" swapxy="true" name="Tip-In State Enter (Data Integrity) | TP Desired 25 ms Delta Above (used only when 0xF7C50 = 0) (pair with c8cf4)" address="f7c6c" elements="1" scaling="di_f7c6c"/>
+    <table level="1" type="1D" category="DBW - Throttle Position Desired Filter (Data Integrity)" swapxy="true" name="Tip-In State Hold (Data Integrity) | TP Desired 25 ms Delta Above (used only when 0xF7C50 = 0) (pair with c8cf8)" address="f7c70" elements="1" scaling="di_f7c70"/>
+    <table level="1" type="1D" category="DBW - Throttle Position Desired Filter (Data Integrity)" swapxy="true" name="Tip-In State Hold (Data Integrity) | Raw-vs-Filtered TP Desired Delta Above (pair with c8cfc)" address="f7c74" elements="1" scaling="di_f7c74"/>
+    <table level="1" type="1D" category="DBW - Throttle Position Desired Filter (Data Integrity)" swapxy="true" name="TP Desired (Data Integrity) - Limp Maximum (pair with c8d00)" address="f7c78" elements="1" scaling="di_f7c78"/>
+    <table level="1" type="1D" category="DBW - Throttle Angle Desired (INACTIVE in stock: computed every 8 ms, discarded while 0xBB198 = 1) (Data Integrity)" swapxy="true" name="Throttle Angle Desired (Data Integrity) - Chain Enable Gate - DO NOT EDIT (role pair only: 1 = stock, monitor angle from TP commanded; 0 selects NON-equivalent primary/monitor paths) (pair with bb198)" address="f7c54" elements="1" scaling="di_f7c54"/>
+    <table level="1" type="1D" category="DBW - Throttle Angle (Data Integrity)" swapxy="true" name="Throttle Angle (Data Integrity) - Conversion Multiplier (pair with bafa0)" address="f7c7c" elements="1" scaling="di_f7c7c"/>
+    <table level="4" type="1D" category="Instrument Cluster - CEL Warning (Data Integrity)" swapxy="true" name="CEL Flash Pattern (Data Integrity) - High ECT Activation Threshold (monitor copy of the OEM ECT flag 0xFFFF5263, also read by the idle code 0x5A71A) (pair with c589c)" address="f456c" elements="1" scaling="di_f456c"/>
+    <table level="4" type="1D" category="Idle Status (Data Integrity)" swapxy="true" name="Idle Validation Switch (Data Integrity) - APP Exit Threshold (monitor idle flag clears at APP &gt;= this; keep equal to 0xBB544) (pair with bb544)" address="f4508" elements="1" scaling="di_f4508"/>
+    <table level="4" type="1D" category="Idle Status (Data Integrity)" swapxy="true" name="Idle Validation Switch (Data Integrity) - APP Enter Threshold (monitor idle flag sets after 4 counts at APP &lt;= this; keep equal to 0xBB544 - 0xBB548) (pair with bb548)" address="f4504" elements="1" scaling="di_f4504"/>
   </rom>
 </roms>

@@ -5,7 +5,7 @@
 load_rom examples/lf9veb.bin
 
 # Use a 2D table from the ROM definition
-open_table "APP to TP Desired - Max"
+open_table "APP to TP Desired - Max (pair with f7f70)"
 wait 300
 
 # Store the initial window width before opening graph
