@@ -13,6 +13,7 @@ All notable changes to NC Flash are documented here.
 - **Pasting a whole copied 3D table no longer shifts its top axis by one column.**
 - **Copy and paste between tables now keeps exact values.** Before, the copy held the rounded numbers shown on screen, so pasting changed values slightly (a 0.0625 breakpoint became 0.062), even when pasting a table back onto itself. Copies pasted into Excel or other apps still show the rounded numbers.
 - **A value too big or too small for a cell is now refused as you enter it.** Before, it was only refused when saved, and a paste that covered both axes and data could be half-saved while the message said everything was reverted. Whole-number settings now also keep the rounded value they show instead of a cut-off one.
+- **Behind the scenes:** the automated checks on Linux no longer fail at random after every test has passed (a crash while the test process shut down). Windows still does sometimes (#149). No change to the app itself.
 
 ## [v2.21.0] - 2026-10-07
 
