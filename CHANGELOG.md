@@ -4,6 +4,9 @@ All notable changes to NC Flash are documented here.
 
 ## [Unreleased]
 
+### Fixed
+- **WiCAN flashes no longer fail at random at the very first step (#94).** On a running car, a WiCAN flash often stopped at "Verifying ECU session" with an "ECU not responsive … SLCAN" error, then worked on a retry. NC Flash was tripping over messages from the car's other modules, which it should simply ignore. It now skips them. If the adapter still sends garbled data at that step, NC Flash clears the link and asks the ECU once more, and the error now says "garbled data" instead of blaming the ECU. Nothing was ever written to the ECU when this happened.
+
 ## [v2.21.0] - 2026-10-07
 
 **Smoother idle after a reflash:** every engine definition now has a setting that stops the idle from hunting at stops while the ECU relearns.

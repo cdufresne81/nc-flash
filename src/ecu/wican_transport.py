@@ -52,6 +52,7 @@ from .slcan import (
     OPEN,
     SlcanError,
     SlcanFrameStream,
+    decode_frame,
     encode_data_frame,
 )
 from .transport import EcuTransport
@@ -80,8 +81,14 @@ _PRIME_TIMEOUT_MS = 1000
 #: no frame arrives for this long, the warm-up's reply (if any) has been consumed.
 _PRIME_QUIET_MS = 200
 
-#: Hard cap on frames discarded while draining, so a chatty bus can't loop forever.
-_PRIME_MAX_DRAIN_FRAMES = 64
+#: Hard cap (ms) on one drain, so a chatty bus can't keep it reading forever.
+_DRAIN_MAX_MS = 2000
+
+#: Bytes per ``recv`` while draining. A read that comes back shorter than this
+#: has emptied the socket's backlog (see :meth:`WiCANTransport._drain_frames`).
+_DRAIN_CHUNK = _RECV_CHUNK * 16
+
+_HEX_DIGITS = frozenset(b"0123456789abcdefABCDEF")
 
 #: ISO-TP Block Size advertised when receiving a multi-frame response over the
 #: WiCAN. 0 means "send every Consecutive Frame in one block" — fine here because
@@ -298,6 +305,10 @@ class WiCANTransport(EcuTransport):
         #: peripheral on a device the probe never intended to touch.
         self._channel_open = False
         self._stream = SlcanFrameStream()
+        #: True right after a raw socket read (fast read/write, version ping).
+        #: Those stop at an arbitrary byte, so the next line usually starts
+        #: mid-frame and is dropped instead of failing the next receive (#94).
+        self._resync_line = False
         # Decoded frames parsed ahead of what the current recv consumed are
         # buffered here so no frame is lost across recv_frame calls.
         self._frame_buffer: list[Tuple[int, bytes]] = []
@@ -467,6 +478,7 @@ class WiCANTransport(EcuTransport):
         sock.setblocking(False)
         self._sock = sock
         self._stream.reset()
+        self._resync_line = False
         self._frame_buffer.clear()
 
     def _prime_channel(self) -> None:
@@ -504,23 +516,117 @@ class WiCANTransport(EcuTransport):
         self._drain_frames()
         logger.debug("WiCAN channel primed and drained")
 
-    def _drain_frames(self, quiet_ms: int = _PRIME_QUIET_MS) -> None:
-        """Discard any pending RX frames until the channel is quiet (best-effort).
+    def _drain_frames(
+        self, quiet_ms: int = _PRIME_QUIET_MS, max_ms: int = _DRAIN_MAX_MS
+    ) -> None:
+        """Discard pending RX data until the ECU is quiet and the backlog is read.
 
-        Clears the frame buffer and reads the socket, throwing every frame away,
-        until no frame arrives for ``quiet_ms`` (or the discard cap is hit). Used
-        right after the warm-up frame so the ECU's reply to it is consumed here
-        instead of leaking into the caller's first real receive. Errors (a peer
-        close mid-drain, etc.) just end the drain — it must never fail open().
+        Ends once BOTH hold: no frame for our ``rx_id`` for ``quiet_ms``, and the
+        socket backlog has been read (the last ``recv`` came back short of a full
+        chunk, or nothing was waiting). Used after the warm-up frame (to consume
+        the ECU's reply to it), by :meth:`flush`, and before every raw read.
+
+        On a running car the bus never goes silent: other modules broadcast all
+        the time, and they pile up in the socket while nothing reads it (e.g.
+        during an SD upload). "No ECU frame for 200 ms" alone is true at once
+        while that backlog is still streaming, so the backlog check is needed;
+        "no bytes at all" can never happen, so it is not a stop condition (#94).
+        Every byte goes through the line parser, so the stream stays aligned on
+        line boundaries, and malformed lines are dropped: all of it is being
+        thrown away anyway. ``max_ms`` bounds the drain. Socket errors just end
+        it; it must never fail :meth:`open`.
         """
         self._frame_buffer.clear()
-        for _ in range(_PRIME_MAX_DRAIN_FRAMES):
+        sock = self._sock
+        if sock is None:
+            return
+        # A receive that raised on a malformed line leaves the lines after it
+        # buffered in the parser; on a quiet bus no new bytes would ever flush
+        # them, so discard them first.
+        self._feed_stream(b"", lenient=True)
+        start = time.monotonic()
+        last_ours = start
+        caught_up = False
+        while True:
+            now = time.monotonic()
+            if now - start >= max_ms / 1000.0:
+                logger.debug("WiCAN drain hit its %d ms cap", max_ms)
+                return
+            quiet_left = last_ours + quiet_ms / 1000.0 - now
+            if caught_up and quiet_left <= 0:
+                return
+            wait = max(0.0, min(quiet_left, start + max_ms / 1000.0 - now))
             try:
-                if self._recv_frame(quiet_ms) is None:
-                    return
-            except (WiCANError, SlcanError, IsoTpError, OSError) as exc:
+                readable, _, _ = select.select([sock], [], [], wait)
+            except OSError as exc:
                 logger.debug("WiCAN drain ended: %s", exc)
                 return
+            if not readable:
+                caught_up = True
+                continue
+            try:
+                chunk = sock.recv(_DRAIN_CHUNK)
+            except (BlockingIOError, InterruptedError):
+                continue
+            except OSError as exc:
+                logger.debug("WiCAN drain ended: %s", exc)
+                return
+            if chunk == b"":
+                logger.debug("WiCAN drain ended: socket closed by peer")
+                return
+            caught_up = len(chunk) < _DRAIN_CHUNK
+            if self._feed_stream(chunk, lenient=True):
+                last_ours = time.monotonic()
+
+    def _feed_stream(self, chunk: bytes, lenient: bool = False) -> list:
+        """Feed socket bytes to the SLCAN parser; return the frames for ``rx_id``.
+
+        Frames for other CAN ids are dropped. A malformed line is dropped too
+        (logged at DEBUG) when it cannot be ours: the first line after a raw
+        read (it starts mid-frame), or a line whose CAN id still parses and is
+        not ``rx_id``. Those are other modules' broadcasts, often two of them
+        glued together; failing on them aborted flashes before the ECU was even
+        asked anything (#94). A malformed line that may be the ECU's reply
+        still raises :class:`SlcanError`, unless ``lenient`` (draining).
+        """
+        frames = []
+        for line in self._stream.lines(chunk):
+            resync, self._resync_line = self._resync_line, False
+            try:
+                frame = decode_frame(line)
+            except SlcanError as exc:
+                if lenient or resync or not self._may_be_ours(line):
+                    logger.debug("WiCAN: dropped a malformed non-ECU line (%s)", exc)
+                    continue
+                raise
+            if frame is not None and frame[0] == self._rx_id:
+                frames.append(frame)
+        return frames
+
+    def _may_be_ours(self, line: bytes) -> bool:
+        """Return False only if a malformed line's CAN id parses and is not ours."""
+        kind = line[:1]
+        if kind in (b"t", b"r"):
+            id_hex = line[1:4]
+        elif kind in (b"T", b"R"):
+            id_hex = line[1:9]
+        else:
+            return True
+        if len(id_hex) not in (3, 8) or not all(c in _HEX_DIGITS for c in id_hex):
+            return True
+        return int(id_hex, 16) == self._rx_id
+
+    def _after_raw_read(self) -> None:
+        """Re-align the SLCAN parser after reading the socket raw.
+
+        A raw read stops at an arbitrary byte, so the parser's half-finished
+        line no longer joins what comes next: drop it, and drop the next line
+        too if it starts mid-frame. Leaving it glued the half line onto a fresh
+        frame and failed the next receive (#94).
+        """
+        self._stream.reset()
+        self._frame_buffer.clear()
+        self._resync_line = True
 
     def close(self) -> None:
         """Close the SLCAN channel (if one was opened) and the TCP socket.
@@ -550,6 +656,7 @@ class WiCANTransport(EcuTransport):
         self._sock = None
         self._channel_open = False
         self._stream.reset()
+        self._resync_line = False
         self._frame_buffer.clear()
         if sock is not None:
             try:
@@ -697,90 +804,92 @@ class WiCANTransport(EcuTransport):
         self._drain_frames()
         cmd = f"{_FAST_READ_CMD}{start:08X}{length:08X}\r".encode("ascii")
         self._send_raw(cmd)
+        try:
+            sock = self._sock
+            deadline = time.monotonic() + timeout_ms / 1000.0
 
-        sock = self._sock
-        deadline = time.monotonic() + timeout_ms / 1000.0
-
-        # Phase 1 — resync. The firmware suspends CAN forwarding and emits the
-        # _FAST_READ_SYNC preamble before the first ROM byte, but CAN frames
-        # already queued/in-flight toward us (TX queue + TCP send buffer) arrive
-        # first. Read until the marker, then the ROM bytes are whatever follows.
-        pre = bytearray()
-        leftover = b""
-        while True:
-            remaining = deadline - time.monotonic()
-            if remaining <= 0:
-                raise WiCANError(
-                    "fast read got no sync marker (firmware too old or no "
-                    f"response); read {len(pre)} bytes of pre-stream"
-                )
-            try:
-                readable, _, _ = select.select([sock], [], [], remaining)
-            except OSError as exc:
-                raise WiCANError(f"fast read select failed: {exc}") from exc
-            if not readable:
-                continue
-            try:
-                chunk = sock.recv(_RECV_CHUNK * 16)
-            except (BlockingIOError, InterruptedError):
-                continue
-            except OSError as exc:
-                raise WiCANError(f"fast read recv failed: {exc}") from exc
-            if chunk == b"":
-                raise WiCANError("socket closed by peer during fast read")
-            # Scan only the newly-arrived bytes (plus a marker-1 overlap for a
-            # marker split across recvs) so the hunt stays linear in total bytes
-            # even if live CAN traffic runs long before the preamble.
-            scan_from = max(0, len(pre) - (len(_FAST_READ_SYNC) - 1))
-            pre.extend(chunk)
-            idx = pre.find(_FAST_READ_SYNC, scan_from)
-            if idx >= 0:
-                leftover = bytes(pre[idx + len(_FAST_READ_SYNC) :])
-                break
-            # Bound the pre-stream buffer so live CAN traffic can't grow it
-            # unbounded; keep only a tail long enough to catch a split marker.
-            if len(pre) > _FAST_READ_MAX_PRESTREAM:
-                del pre[: -len(_FAST_READ_SYNC)]
-
-        # Phase 2 — collect exactly `length` ROM bytes (some already in leftover).
-        buf = bytearray(leftover[:length])
-        if progress_cb and buf:
-            progress_cb(len(buf), length)
-        while len(buf) < length:
-            remaining = deadline - time.monotonic()
-            if remaining <= 0:
-                raise WiCANError(
-                    f"fast read stalled at {len(buf)}/{length} bytes "
-                    f"(firmware block failure or link drop){self._frerr_suffix(buf)}"
-                )
-            try:
-                readable, _, _ = select.select([sock], [], [], remaining)
-            except OSError as exc:
-                raise WiCANError(f"fast read select failed: {exc}") from exc
-            if not readable:
-                # No data for a beat — the firmware may have aborted and streamed
-                # a FRERR diagnostic instead of more ROM. Surface it immediately
-                # rather than waiting out the whole budget.
-                tail = self._frerr_suffix(buf)
-                if tail:
+            # Phase 1 — resync. The firmware suspends CAN forwarding and emits the
+            # _FAST_READ_SYNC preamble before the first ROM byte, but CAN frames
+            # already queued/in-flight toward us (TX queue + TCP send buffer) arrive
+            # first. Read until the marker, then the ROM bytes are whatever follows.
+            pre = bytearray()
+            leftover = b""
+            while True:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
                     raise WiCANError(
-                        f"fast read aborted at {len(buf)}/{length} bytes{tail}"
+                        "fast read got no sync marker (firmware too old or no "
+                        f"response); read {len(pre)} bytes of pre-stream"
                     )
-                continue
-            try:
-                chunk = sock.recv(min(_RECV_CHUNK * 16, length - len(buf)))
-            except (BlockingIOError, InterruptedError):
-                continue
-            except OSError as exc:
-                raise WiCANError(f"fast read recv failed: {exc}") from exc
-            if chunk == b"":
-                raise WiCANError(
-                    f"socket closed by peer during fast read{self._frerr_suffix(buf)}"
-                )
-            buf.extend(chunk)
-            if progress_cb:
+                try:
+                    readable, _, _ = select.select([sock], [], [], remaining)
+                except OSError as exc:
+                    raise WiCANError(f"fast read select failed: {exc}") from exc
+                if not readable:
+                    continue
+                try:
+                    chunk = sock.recv(_RECV_CHUNK * 16)
+                except (BlockingIOError, InterruptedError):
+                    continue
+                except OSError as exc:
+                    raise WiCANError(f"fast read recv failed: {exc}") from exc
+                if chunk == b"":
+                    raise WiCANError("socket closed by peer during fast read")
+                # Scan only the newly-arrived bytes (plus a marker-1 overlap for a
+                # marker split across recvs) so the hunt stays linear in total bytes
+                # even if live CAN traffic runs long before the preamble.
+                scan_from = max(0, len(pre) - (len(_FAST_READ_SYNC) - 1))
+                pre.extend(chunk)
+                idx = pre.find(_FAST_READ_SYNC, scan_from)
+                if idx >= 0:
+                    leftover = bytes(pre[idx + len(_FAST_READ_SYNC) :])
+                    break
+                # Bound the pre-stream buffer so live CAN traffic can't grow it
+                # unbounded; keep only a tail long enough to catch a split marker.
+                if len(pre) > _FAST_READ_MAX_PRESTREAM:
+                    del pre[: -len(_FAST_READ_SYNC)]
+
+            # Phase 2 — collect exactly `length` ROM bytes (some already in leftover).
+            buf = bytearray(leftover[:length])
+            if progress_cb and buf:
                 progress_cb(len(buf), length)
-        return bytes(buf)
+            while len(buf) < length:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    raise WiCANError(
+                        f"fast read stalled at {len(buf)}/{length} bytes "
+                        f"(firmware block failure or link drop){self._frerr_suffix(buf)}"
+                    )
+                try:
+                    readable, _, _ = select.select([sock], [], [], remaining)
+                except OSError as exc:
+                    raise WiCANError(f"fast read select failed: {exc}") from exc
+                if not readable:
+                    # No data for a beat — the firmware may have aborted and streamed
+                    # a FRERR diagnostic instead of more ROM. Surface it immediately
+                    # rather than waiting out the whole budget.
+                    tail = self._frerr_suffix(buf)
+                    if tail:
+                        raise WiCANError(
+                            f"fast read aborted at {len(buf)}/{length} bytes{tail}"
+                        )
+                    continue
+                try:
+                    chunk = sock.recv(min(_RECV_CHUNK * 16, length - len(buf)))
+                except (BlockingIOError, InterruptedError):
+                    continue
+                except OSError as exc:
+                    raise WiCANError(f"fast read recv failed: {exc}") from exc
+                if chunk == b"":
+                    raise WiCANError(
+                        f"socket closed by peer during fast read{self._frerr_suffix(buf)}"
+                    )
+                buf.extend(chunk)
+                if progress_cb:
+                    progress_cb(len(buf), length)
+            return bytes(buf)
+        finally:
+            self._after_raw_read()
 
     #: Longest possible firmware FRERR line + slack; the line is the LAST thing
     #: the firmware streams before stopping, so only the buffer tail can hold it.
@@ -857,76 +966,80 @@ class WiCANTransport(EcuTransport):
         self._drain_frames()
         cmd = f"{_FAST_WRITE_CMD}{mode}{staged_name}\r".encode("ascii")
         self._send_raw(cmd)
-
-        sock = self._sock
-        deadline = time.monotonic() + timeout_ms / 1000.0
-        buf = bytearray()
-        synced = False
-        last_data = time.monotonic()
-
-        while True:
-            now = time.monotonic()
-            if now > deadline:
-                raise WiCANError(f"fast write timed out{self._fwerr_suffix(buf)}")
-            if now - last_data > idle_ms / 1000.0:
-                raise WiCANError(
-                    f"fast write stalled (no data for {idle_ms} ms)"
-                    f"{self._fwerr_suffix(buf)}"
-                )
-            try:
-                readable, _, _ = select.select([sock], [], [], min(1.0, deadline - now))
-            except OSError as exc:
-                raise WiCANError(f"fast write select failed: {exc}") from exc
-            if not readable:
-                tail = self._fwerr_suffix(buf)
-                if tail:
-                    raise WiCANError(f"fast write aborted{tail}")
-                continue
-            try:
-                chunk = sock.recv(_RECV_CHUNK * 16)
-            except (BlockingIOError, InterruptedError):
-                continue
-            except OSError as exc:
-                raise WiCANError(f"fast write recv failed: {exc}") from exc
-            if chunk == b"":
-                raise WiCANError(
-                    f"socket closed by peer during fast write{self._fwerr_suffix(buf)}"
-                )
-            buf.extend(chunk)
+        try:
+            sock = self._sock
+            deadline = time.monotonic() + timeout_ms / 1000.0
+            buf = bytearray()
+            synced = False
             last_data = time.monotonic()
 
-            # Resync onto NCFWSYNC, discarding leading CAN traffic.
-            if not synced:
-                idx = buf.find(_FAST_WRITE_SYNC)
-                if idx < 0:
-                    if len(buf) > _FAST_READ_MAX_PRESTREAM:
-                        del buf[: -len(_FAST_WRITE_SYNC)]
-                    continue
-                del buf[: idx + len(_FAST_WRITE_SYNC)]
-                synced = True
-
-            # Parse complete newline-delimited marker lines.
             while True:
-                nl = buf.find(b"\n")
-                if nl < 0:
-                    break
-                line = bytes(buf[:nl]).strip()
-                del buf[: nl + 1]
-                if not line:
-                    continue
-                if line.startswith(_FAST_WRITE_ERR):
+                now = time.monotonic()
+                if now > deadline:
+                    raise WiCANError(f"fast write timed out{self._fwerr_suffix(buf)}")
+                if now - last_data > idle_ms / 1000.0:
                     raise WiCANError(
-                        "fast write failed | firmware: "
-                        + line.decode("ascii", "replace")
+                        f"fast write stalled (no data for {idle_ms} ms)"
+                        f"{self._fwerr_suffix(buf)}"
                     )
-                if line.startswith(_FAST_WRITE_DONE):
-                    return
-                if line.startswith(_FAST_WRITE_PROG) and progress_cb:
-                    try:
-                        done, total = line.split()[1].split(b"/")
-                        progress_cb(int(done), int(total))
-                    except (IndexError, ValueError):
-                        pass  # malformed progress line — ignore, keep streaming
+                try:
+                    readable, _, _ = select.select(
+                        [sock], [], [], min(1.0, deadline - now)
+                    )
+                except OSError as exc:
+                    raise WiCANError(f"fast write select failed: {exc}") from exc
+                if not readable:
+                    tail = self._fwerr_suffix(buf)
+                    if tail:
+                        raise WiCANError(f"fast write aborted{tail}")
+                    continue
+                try:
+                    chunk = sock.recv(_RECV_CHUNK * 16)
+                except (BlockingIOError, InterruptedError):
+                    continue
+                except OSError as exc:
+                    raise WiCANError(f"fast write recv failed: {exc}") from exc
+                if chunk == b"":
+                    raise WiCANError(
+                        f"socket closed by peer during fast write{self._fwerr_suffix(buf)}"
+                    )
+                buf.extend(chunk)
+                last_data = time.monotonic()
+
+                # Resync onto NCFWSYNC, discarding leading CAN traffic.
+                if not synced:
+                    idx = buf.find(_FAST_WRITE_SYNC)
+                    if idx < 0:
+                        if len(buf) > _FAST_READ_MAX_PRESTREAM:
+                            del buf[: -len(_FAST_WRITE_SYNC)]
+                        continue
+                    del buf[: idx + len(_FAST_WRITE_SYNC)]
+                    synced = True
+
+                # Parse complete newline-delimited marker lines.
+                while True:
+                    nl = buf.find(b"\n")
+                    if nl < 0:
+                        break
+                    line = bytes(buf[:nl]).strip()
+                    del buf[: nl + 1]
+                    if not line:
+                        continue
+                    if line.startswith(_FAST_WRITE_ERR):
+                        raise WiCANError(
+                            "fast write failed | firmware: "
+                            + line.decode("ascii", "replace")
+                        )
+                    if line.startswith(_FAST_WRITE_DONE):
+                        return
+                    if line.startswith(_FAST_WRITE_PROG) and progress_cb:
+                        try:
+                            done, total = line.split()[1].split(b"/")
+                            progress_cb(int(done), int(total))
+                        except (IndexError, ValueError):
+                            pass  # malformed progress line — ignore, keep streaming
+        finally:
+            self._after_raw_read()
 
     def version_ping(self, window_ms: int = 3000) -> Optional[bytes]:
         """Probe which fast-read firmware is live (or that none is).
@@ -947,36 +1060,38 @@ class WiCANTransport(EcuTransport):
             f"{len(_FAST_READ_VERSION_PREFIX) + 2:08X}\r"
         ).encode("ascii")
         self._send_raw(cmd)
-
-        sock = self._sock
-        buf = bytearray()
-        deadline = time.monotonic() + window_ms / 1000.0
-        while time.monotonic() < deadline:
-            remaining = deadline - time.monotonic()
-            try:
-                readable, _, _ = select.select([sock], [], [], remaining)
-            except OSError as exc:
-                raise WiCANError(f"version ping select failed: {exc}") from exc
-            if not readable:
-                continue
-            try:
-                chunk = sock.recv(_RECV_CHUNK)
-            except (BlockingIOError, InterruptedError):
-                continue
-            except OSError as exc:
-                raise WiCANError(f"version ping recv failed: {exc}") from exc
-            if chunk == b"":
-                break
-            buf.extend(chunk)
+        try:
+            sock = self._sock
+            buf = bytearray()
+            deadline = time.monotonic() + window_ms / 1000.0
+            while time.monotonic() < deadline:
+                remaining = deadline - time.monotonic()
+                try:
+                    readable, _, _ = select.select([sock], [], [], remaining)
+                except OSError as exc:
+                    raise WiCANError(f"version ping select failed: {exc}") from exc
+                if not readable:
+                    continue
+                try:
+                    chunk = sock.recv(_RECV_CHUNK)
+                except (BlockingIOError, InterruptedError):
+                    continue
+                except OSError as exc:
+                    raise WiCANError(f"version ping recv failed: {exc}") from exc
+                if chunk == b"":
+                    break
+                buf.extend(chunk)
+                idx = buf.find(_FAST_READ_VERSION_PREFIX)
+                end = buf.find(b"\n", idx) if idx >= 0 else -1
+                if idx >= 0 and end >= 0:
+                    return bytes(buf[idx:end])
             idx = buf.find(_FAST_READ_VERSION_PREFIX)
-            end = buf.find(b"\n", idx) if idx >= 0 else -1
-            if idx >= 0 and end >= 0:
-                return bytes(buf[idx:end])
-        idx = buf.find(_FAST_READ_VERSION_PREFIX)
-        if idx >= 0:
-            end = buf.find(b"\n", idx)
-            return bytes(buf[idx : end if end >= 0 else len(buf)])
-        return None
+            if idx >= 0:
+                end = buf.find(b"\n", idx)
+                return bytes(buf[idx : end if end >= 0 else len(buf)])
+            return None
+        finally:
+            self._after_raw_read()
 
     @property
     def description(self) -> str:
@@ -1040,11 +1155,8 @@ class WiCANTransport(EcuTransport):
             if chunk == b"":
                 raise WiCANError("WiCAN socket closed by peer")
 
-            frames = self._stream.feed(chunk)
-            # Drop frames not addressed to us; buffer the rest.
-            for frame in frames:
-                if frame[0] == self._rx_id:
-                    self._frame_buffer.append(frame)
+            # Frames not addressed to us are dropped; buffer the rest.
+            self._frame_buffer.extend(self._feed_stream(chunk))
             if self._frame_buffer:
                 return self._frame_buffer.pop(0)
             # Got bytes but no complete in-scope frame yet — loop and read more.

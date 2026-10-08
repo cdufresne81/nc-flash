@@ -327,6 +327,18 @@ class SlcanFrameStream:
         Yields each decoded ``(can_id, data)`` tuple as lines complete.
         See :meth:`feed` for the buffering contract.
         """
+        for line in self.lines(chunk):
+            frame = decode_frame(line)
+            if frame is not None:
+                yield frame
+
+    def lines(self, chunk: Union[bytes, bytearray]) -> Iterator[bytes]:
+        """Buffer ``chunk`` and yield each completed raw line (CR included).
+
+        The undecoded form of :meth:`feed_iter`, for a caller that decides per
+        line what to do with a malformed one instead of failing the whole chunk.
+        A line is removed from the buffer before it is yielded.
+        """
         self._buffer.extend(chunk)
 
         # Split on CR. The element after the last CR is an incomplete line
@@ -337,9 +349,7 @@ class SlcanFrameStream:
                 break
             line = bytes(self._buffer[: idx + 1])  # include the CR
             del self._buffer[: idx + 1]
-            frame = decode_frame(line)
-            if frame is not None:
-                yield frame
+            yield line
 
     @property
     def pending(self) -> bytes:

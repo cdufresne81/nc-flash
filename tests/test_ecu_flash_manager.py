@@ -504,3 +504,46 @@ class TestEnforceRpmGate:
         uds.read_engine_rpm.assert_called_once()
         uds.diagnostic_session.assert_not_called()
         uds.security_access.assert_not_called()
+
+
+class TestBorrowedSessionGarbledLink:
+    """#94: a garbled WiCAN line at the pre-flash ECU check gets one retry."""
+
+    @staticmethod
+    def _garbled():
+        from src.ecu.wican_transport import WiCANError
+
+        exc = UDSTimeoutError("No response from ECU for SID 0x3E")
+        exc.__context__ = WiCANError("WiCAN receive failed: Invalid SLCAN DLC")
+        return exc
+
+    def test_garbled_once_then_ok_retries_after_a_flush(self):
+        uds = MagicMock()
+        uds.tester_present.side_effect = [self._garbled(), None]
+        fm = FlashManager()
+        fm.use_uds(uds)
+        fm._connect()
+        assert uds.tester_present.call_count == 2
+        uds.flush.assert_called_once()
+        assert fm.state == FlashState.CONNECTING
+
+    def test_garbled_twice_says_garbled_not_unresponsive(self):
+        uds = MagicMock()
+        uds.tester_present.side_effect = [self._garbled(), self._garbled()]
+        fm = FlashManager()
+        fm.use_uds(uds)
+        with pytest.raises(FlashError, match="garbled") as exc:
+            fm._connect()
+        assert "not responsive" not in str(exc.value)
+        assert uds.tester_present.call_count == 2
+
+    def test_silent_ecu_is_not_retried(self):
+        """Silence (ignition off) must keep failing fast (#131): no retry."""
+        uds = MagicMock()
+        uds.tester_present.side_effect = UDSTimeoutError("No reply from the ECU")
+        fm = FlashManager()
+        fm.use_uds(uds)
+        with pytest.raises(FlashError, match="not responsive"):
+            fm._connect()
+        uds.tester_present.assert_called_once()
+        uds.flush.assert_not_called()
