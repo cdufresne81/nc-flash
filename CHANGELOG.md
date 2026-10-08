@@ -4,11 +4,21 @@ All notable changes to NC Flash are documented here.
 
 ## [Unreleased]
 
+## [v2.21.0] - 2026-10-07
+
+**Smoother idle after a reflash:** every engine definition now has a setting that stops the idle from hunting at stops while the ECU relearns.
+
 ### Added
-- **Three idle-learn settings in every engine definition (category "Idle Speed"), so the idle stops rolling after a reflash (#132).** Every reflash wipes the ECU's learned idle air, and the idle hunts at stops until the ECU relearns it. **Idle Air Learn - Boot Minimum** sets a starting value for the normal idle cell at every key-on (A/C off, low electrical load): stock 0.0 does nothing. On the LF9VEB test car, 0.08 removed the hunting at stops (that car learned 0.099). Stay below your own car's learned value, or the setting overrides the learn at every key-on. Other engines and calibrations may learn a different value: start lower, or read the learned value first (its RAM address is in the definition file's comment). Keep it below 0.14: above about 0.148 the ECU erases the learned idle value at every key-on, which makes the idle worse than stock, and NC Flash does not stop you from typing it. Automatic gearboxes: the setting only covers idle in Park/Neutral, and that is not verified on a car. Also added, for advanced use: **Learn Window** (how often the learn updates) and **Stable-Idle RPM Error Limit**; comments in the definition files explain both. Added to all 103 engine definitions at each ROM's own addresses; the ECU code behind them was checked against every one of those ROMs. Existing installs: copy your ROM's `.xml` into your workspace's `metadata` folder by hand (#121).
+- **Idle-learn settings in every engine definition (#132).** Every reflash wipes what the ECU has learned about idle air, so the idle hunts at stops until it relearns. The new **Idle Air Learn - Boot Minimum** setting (category "Idle Speed") gives the ECU a starting value at every key-on, with the A/C off and a low electrical load. The stock value, 0.0, does nothing.
+  - **Use a value below what your car learns.** On the LF9VEB test car, 0.08 stopped the hunting (that car learned 0.099). A higher value overrides the learned one at every key-on. Other engines may learn a different value: start lower, or read your car's learned value first (its RAM address is in the definition file's comment).
+  - **Never go above 0.14.** Above about 0.148 the ECU erases its learned idle at every key-on, which makes the idle worse than stock. NC Flash won't stop you from typing a higher value.
+  - **Automatic gearboxes:** the setting only covers idle in Park/Neutral, and that hasn't been tested on a car.
+  - **For advanced users:** **Learn Window** (how often the learn updates) and **Stable-Idle RPM Error Limit** are also added. Comments in the definition files explain both.
+  - Added to all 103 engine definitions at each ROM's own addresses, and checked against every one of those ROMs.
+  - **Already installed?** Your workspace keeps its old definitions. Copy your ROM's `.xml` from the `_internal\examples\metadata` folder where NC Flash is installed into your workspace's `metadata` folder (#121).
 
 ### Fixed
-- **A timing test no longer fails at random on Windows.** It sometimes failed the automated checks without anything being wrong.
+- **Behind the scenes:** a timing test no longer fails at random on Windows. No change to the app itself.
 
 ## [v2.20.1] - 2026-10-05
 
