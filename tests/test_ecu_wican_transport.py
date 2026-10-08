@@ -1266,3 +1266,198 @@ class TestVersionPing:
                 t.close()
         finally:
             srv.close()
+
+
+# ---------------------------------------------------------------------------
+# #94: other modules' CAN broadcasts must not fail an ECU exchange.
+# ---------------------------------------------------------------------------
+
+_TP_REPLY = encode_data_frame(ECU_ID, bytes([0x02, 0x7E, 0x00]))  # 7E 00
+
+
+def _hold_until_client_closes(conn):
+    conn.settimeout(10.0)
+    try:
+        while conn.recv(4096):
+            pass
+    except OSError:
+        pass
+
+
+def _tester_present_round_trip(handler) -> bytes:
+    """Open, version-ping, send Tester Present; return the received reply."""
+    srv = _RawServer(handler)
+    try:
+        t = WiCANTransport(srv.host, srv.port, connect_timeout_ms=2000)
+        t.open()
+        try:
+            assert t.version_ping(window_ms=2000) == b"NCFRv6"
+            t.send_message(b"\x3e\x00", 2000)
+            return t.receive_message(2000)
+        finally:
+            t.close()
+    finally:
+        srv.close()
+
+
+class TestBusChatterTolerance:
+    def test_half_line_left_before_version_ping_is_not_glued_on(self):
+        """The field failure: the drain before the version ping leaves half a
+        broadcast line (t081) in the parser, the ping reads the rest raw, and
+        the next frame got glued on: Invalid SLCAN DLC 't' in 't081t21A8...'."""
+
+        def handler(conn):
+            _ack_handshake(conn)
+            r = _LineReader(conn)
+            r.next_line()  # warm-up frame
+            conn.sendall(b"t2008A7102710271020FF\rt081")  # ends mid-line
+            _read_fast_read_cmd(conn)
+            conn.sendall(b"8F26F0020AABBCCDD\rNCFRv6\n")  # rest of it + marker
+            r.next_line()  # Tester Present
+            conn.sendall(b"t21A80000000000000023\r" + _TP_REPLY)
+            _hold_until_client_closes(conn)
+
+        assert _tester_present_round_trip(handler) == b"\x7e\x00"
+
+    def test_line_cut_by_the_version_ping_is_skipped(self):
+        """The ping stops mid-line, so the next bytes are a tail like 00FF
+        (Unsupported SLCAN frame type '0' in the field logs)."""
+
+        def handler(conn):
+            _ack_handshake(conn)
+            r = _LineReader(conn)
+            r.next_line()  # warm-up frame
+            _read_fast_read_cmd(conn)
+            conn.sendall(b"NCFRv6\nt0902710")  # the ping discards the tail
+            r.next_line()  # Tester Present
+            conn.sendall(b"00FF\r" + _TP_REPLY)
+            _hold_until_client_closes(conn)
+
+        assert _tester_present_round_trip(handler) == b"\x7e\x00"
+
+    def test_version_ping_ending_on_a_line_boundary_keeps_the_next_frame(self):
+        """On a quiet bus the ping ends exactly at a line boundary: the ECU's
+        reply is the first line after it and must not be skipped."""
+
+        def handler(conn):
+            _ack_handshake(conn)
+            r = _LineReader(conn)
+            r.next_line()  # warm-up frame
+            _read_fast_read_cmd(conn)
+            conn.sendall(b"NCFRv6\n")
+            r.next_line()  # Tester Present
+            conn.sendall(_TP_REPLY)
+            _hold_until_client_closes(conn)
+
+        assert _tester_present_round_trip(handler) == b"\x7e\x00"
+
+    def _receive_after(self, wire: bytes) -> bytes:
+        def handler(conn):
+            _ack_handshake(conn)
+            r = _LineReader(conn)
+            r.next_line()  # warm-up frame
+            r.next_line()  # the request
+            conn.sendall(wire)
+            _hold_until_client_closes(conn)
+
+        srv = _RawServer(handler)
+        try:
+            t = WiCANTransport(srv.host, srv.port, connect_timeout_ms=2000)
+            t.open()
+            try:
+                t.send_message(b"\x3e\x00", 2000)
+                return t.receive_message(2000)
+            finally:
+                t.close()
+        finally:
+            srv.close()
+
+    def test_two_broadcasts_glued_together_are_dropped(self):
+        wire = b"t081t21A80000000000000023\rt0904F26F002\r" + _TP_REPLY
+        assert self._receive_after(wire) == b"\x7e\x00"
+
+    def test_malformed_line_with_the_ecu_id_still_raises(self):
+        """A garbled line that may be the ECU's own reply is still corruption."""
+        with pytest.raises(WiCANError):
+            self._receive_after(b"t7E8t21A80000000000000023\r" + _TP_REPLY)
+
+    def test_drain_continues_past_a_malformed_line(self):
+        """A stale ECU frame behind a garbled broadcast must still be drained,
+        not handed to the next request as its reply."""
+
+        def handler(conn):
+            _ack_handshake(conn)
+            r = _LineReader(conn)
+            r.next_line()  # warm-up frame
+            stale = encode_data_frame(ECU_ID, bytes([0x03, 0x7F, 0x3E, 0x12]))
+            conn.sendall(b"t081t21A80000000000000023\r" + stale)
+            r.next_line()  # the real request
+            conn.sendall(_TP_REPLY)
+            _hold_until_client_closes(conn)
+
+        srv = _RawServer(handler)
+        try:
+            t = WiCANTransport(srv.host, srv.port, connect_timeout_ms=2000)
+            t.open()  # its post-warm-up drain must eat the stale 7F 3E 12
+            try:
+                t.send_message(b"\x3e\x00", 2000)
+                assert t.receive_message(2000) == b"\x7e\x00"
+            finally:
+                t.close()
+        finally:
+            srv.close()
+
+    def test_raw_readers_realign_the_parser_even_on_failure(self):
+        """fast_read raising mid-stream must still leave the parser realigned."""
+
+        def handler(conn):
+            _ack_handshake(conn)
+            _LineReader(conn).next_line()  # warm-up frame
+            conn.sendall(b"t081")  # half a line left in the parser
+            _read_fast_read_cmd(conn)
+            conn.close()  # stream dies before the sync marker
+
+        srv = _RawServer(handler)
+        try:
+            t = WiCANTransport(srv.host, srv.port, connect_timeout_ms=2000)
+            t.open()
+            with pytest.raises(WiCANError):
+                t.fast_read(0, 16, timeout_ms=1000)
+            assert t._stream.pending == b""
+            assert t._resync_line is True
+            t.close()
+        finally:
+            srv.close()
+
+    def test_flush_discards_lines_left_behind_by_a_failed_receive(self):
+        """A receive that raises leaves the lines after the bad one buffered;
+        flush() on a quiet bus must still discard them, or the stale reply is
+        handed to the next request (the pre-flash retry relies on this)."""
+        stale = encode_data_frame(ECU_ID, bytes([0x03, 0x7F, 0x3E, 0x12]))
+
+        def handler(conn):
+            _ack_handshake(conn)
+            r = _LineReader(conn)
+            r.next_line()  # warm-up frame
+            r.next_line()  # first Tester Present
+            conn.sendall(b"E8garbage\r" + stale)
+            r.next_line()  # the retry
+            conn.sendall(_TP_REPLY)
+            _hold_until_client_closes(conn)
+
+        srv = _RawServer(handler)
+        try:
+            t = WiCANTransport(srv.host, srv.port, connect_timeout_ms=2000)
+            t.open()
+            try:
+                t.send_message(b"\x3e\x00", 2000)
+                with pytest.raises(WiCANError):
+                    t.receive_message(2000)
+                t.flush()
+                assert t._stream.pending == b""
+                t.send_message(b"\x3e\x00", 2000)
+                assert t.receive_message(2000) == b"\x7e\x00"
+            finally:
+                t.close()
+        finally:
+            srv.close()
