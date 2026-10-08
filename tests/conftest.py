@@ -138,3 +138,34 @@ def pytest_collection_modifyitems(config, items):
     for item in items:
         if item.get_closest_marker("graph"):
             item.add_marker(skip)
+
+
+# --- CI: skip native teardown after the run ---------------------------------
+
+
+def pytest_sessionfinish(session, exitstatus):
+    session.config._ncflash_exitstatus = int(exitstatus)
+
+
+@pytest.hookimpl(trylast=True)
+def pytest_unconfigure(config):
+    """On Linux CI, end the process with pytest's own exit status right here.
+
+    After every test has passed, Linux CI runs sometimes die while native
+    libraries shut down (Qt widgets the tests left alive, the GPU stack): heap
+    corruption ("malloc_consolidate(): unaligned fastbin chunk detected", exit
+    134) or a segfault (139). Nothing is left to check at that point, so skip
+    that shutdown. Not on Windows: there the ``pytest.exe`` launcher reports 1
+    for a process that ends this way, so CI runs ``python -m pytest`` and lets
+    Windows shut down normally. Local runs are unchanged: os._exit would also
+    kill a caller that runs pytest in-process.
+    """
+    import os
+    import sys
+
+    status = getattr(config, "_ncflash_exitstatus", None)
+    if not os.environ.get("CI") or os.name == "nt" or status is None:
+        return
+    sys.stdout.flush()
+    sys.stderr.flush()
+    os._exit(status)
