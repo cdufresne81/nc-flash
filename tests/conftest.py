@@ -140,31 +140,45 @@ def pytest_collection_modifyitems(config, items):
             item.add_marker(skip)
 
 
-# --- CI: skip native teardown after the run ---------------------------------
+# --- CI: record pytest's verdict, skip native teardown after the run -------
 
 
 def pytest_sessionfinish(session, exitstatus):
-    session.config._ncflash_exitstatus = int(exitstatus)
+    session.config._ncflash_session = session
 
 
 @pytest.hookimpl(trylast=True)
 def pytest_unconfigure(config):
-    """On Linux CI, end the process with pytest's own exit status right here.
+    """Record pytest's own exit status, then (Linux CI) end the process with it.
 
-    After every test has passed, Linux CI runs sometimes die while native
-    libraries shut down (Qt widgets the tests left alive, the GPU stack): heap
-    corruption ("malloc_consolidate(): unaligned fastbin chunk detected", exit
-    134) or a segfault (139). Nothing is left to check at that point, so skip
-    that shutdown. Not on Windows: there the ``pytest.exe`` launcher reports 1
-    for a process that ends this way, so CI runs ``python -m pytest`` and lets
-    Windows shut down normally. Local runs are unchanged: os._exit would also
-    kill a caller that runs pytest in-process.
+    After every test has passed, CI runs sometimes die while the process shuts
+    down: on Linux, heap corruption ("malloc_consolidate(): unaligned fastbin
+    chunk detected", exit 134) or a segfault (139) while native libraries
+    unload (Qt widgets the tests left alive, the GPU stack); on Windows, a bare
+    exit code 1 with no output (#149). Nothing is left to check at that point.
+
+    - ``NCFLASH_PYTEST_STATUS_FILE`` set (CI): write pytest's final status
+      there, so the CI step can tell "pytest failed" from "the process died
+      after pytest passed".
+    - Linux CI: skip that shutdown with ``os._exit``. Not on Windows: there an
+      ``os._exit`` is reported as 1 too. Local runs are unchanged: os._exit
+      would also kill a caller that runs pytest in-process.
     """
     import os
     import sys
 
-    status = getattr(config, "_ncflash_exitstatus", None)
-    if not os.environ.get("CI") or os.name == "nt" or status is None:
+    session = getattr(config, "_ncflash_session", None)
+    if session is None:
+        return
+    # session.exitstatus, not sessionfinish's argument: it is what pytest returns
+    status = int(session.exitstatus)
+    status_file = os.environ.get("NCFLASH_PYTEST_STATUS_FILE")
+    if status_file:
+        # no newline: on Windows its carriage return would survive the CI
+        # step's $(cat ...) and "0" would never match
+        with open(status_file, "w", encoding="ascii") as f:
+            f.write(str(status))
+    if not os.environ.get("CI") or os.name == "nt":
         return
     sys.stdout.flush()
     sys.stderr.flush()

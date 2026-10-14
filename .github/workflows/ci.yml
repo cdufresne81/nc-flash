@@ -65,11 +65,24 @@ jobs:
         pip install -r requirements-dev.txt
 
     - name: Run tests with pytest
-      # python -m pytest, not the pytest.exe launcher: on Windows the launcher
-      # sometimes reported exit 1 after every test had passed (see tests/conftest.py)
+      # The process sometimes dies after pytest has reported every test passed
+      # (Windows: exit 1, #149). tests/conftest.py writes pytest's own status
+      # to NCFLASH_PYTEST_STATUS_FILE; when that says 0, the run passed. Any
+      # other status, or no status file (pytest never finished), fails as usual.
+      shell: bash
       run: |
-        python -m pytest
+        rm -f "$NCFLASH_PYTEST_STATUS_FILE"
+        code=0
+        python -m pytest || code=$?
+        status=$(cat "$NCFLASH_PYTEST_STATUS_FILE" 2>/dev/null || true)
+        echo "python exit code: $code, pytest status: ${status:-none}"
+        if [ "$code" -ne 0 ] && [ "$status" = "0" ]; then
+          echo "::warning title=Exit code $code after a passing run (#149)::pytest reported status 0 (every test passed), then the process exited with $code while shutting down. Treating the run as passed."
+          code=0
+        fi
+        exit "$code"
       env:
+        NCFLASH_PYTEST_STATUS_FILE: pytest-exit-status.txt
         QT_QPA_PLATFORM: ${{ runner.os == 'Linux' && 'offscreen' || '' }}
         # This job has lavapipe: GPU graph tests must run, not skip.
         NCFLASH_REQUIRE_GPU: ${{ (runner.os == 'Linux' && matrix.python-version == '3.12') && '1' || '' }}
