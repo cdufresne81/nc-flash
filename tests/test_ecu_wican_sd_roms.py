@@ -199,3 +199,33 @@ class TestTrim:
             trim_staged_roms(fs, 1, protect="whatever.bin")
         fs.list_dir.assert_not_called()
         fs.delete_file.assert_not_called()
+
+
+class TestTrimLogging:
+    """The activity log is the user's only record of what left the card."""
+
+    def test_each_deleted_file_is_named_in_the_log(self, caplog):
+        fs = _FakeSdFiles(_pairs("20261001_0900", "20261007_1200"))
+        with caplog.at_level("INFO", logger="src.ecu.wican_sd_roms"):
+            trim_staged_roms(fs, 1, protect="ROM_20261007_1200.bin")
+        text = caplog.text
+        assert "roms/ROM_20261001_0900.bin" in text
+        assert "roms/ROM_20261001_0900.json" in text
+        assert "removed 2 file(s), kept the newest 1 ROM(s): ROM_20261007_1200" in text
+
+    def test_summary_is_logged_even_when_nothing_is_removed(self, caplog):
+        fs = _FakeSdFiles(_pairs("20261007_1200"))
+        with caplog.at_level("INFO", logger="src.ecu.wican_sd_roms"):
+            trim_staged_roms(fs, 5, protect="ROM_20261007_1200.bin")
+        assert "removed 0 file(s)" in caplog.text
+
+    def test_a_stopped_pass_says_how_far_it_got(self, caplog):
+        fs = _FakeSdFiles(_pairs("20261001_0900", "20261007_1200"))
+        fs.fail["ROM_20261001_0900.json"] = [WiCANHttpError("timed out")]
+        with caplog.at_level("INFO", logger="src.ecu.wican_sd_roms"):
+            trim_staged_roms(fs, 1, protect="ROM_20261007_1200.bin")
+        assert "roms/ROM_20261001_0900.bin" in caplog.text
+        assert "stopped at ROM_20261001_0900.json after removing 1 file(s)" in (
+            caplog.text
+        )
+        assert "Staged-ROM cleanup done" not in caplog.text
