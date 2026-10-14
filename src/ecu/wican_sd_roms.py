@@ -124,6 +124,11 @@ def trim_staged_roms(
                 try:
                     files.delete_file(SD_ROMS_DIR, name)
                     deleted.append(name)
+                    logger.info(
+                        "Deleted old staged ROM from the WiCAN SD card: %s/%s",
+                        SD_ROMS_DIR,
+                        name,
+                    )
                     break
                 except WiCANHttpError as exc:
                     if "HTTP 409" in str(exc) and not retried:
@@ -131,17 +136,17 @@ def trim_staged_roms(
                         time.sleep(retry_wait_s)
                         continue
                     logger.warning(
-                        "Staged-ROM cleanup stopped at %s (retried after the "
-                        "next flash): %s",
+                        "Staged-ROM cleanup stopped at %s after removing %d "
+                        "file(s); it retries after the next flash: %s",
                         name,
+                        len(deleted),
                         exc,
                     )
                     return RomTrimResult(deleted, kept, (name, str(exc)))
-    if deleted:
-        logger.info(
-            "Removed %d old staged ROM file(s) from the WiCAN SD card; kept %d: %s",
-            len(deleted),
-            len(kept),
-            ", ".join(kept),
-        )
+    logger.info(
+        "Staged-ROM cleanup done: removed %d file(s), kept the newest %d ROM(s): %s",
+        len(deleted),
+        len(kept),
+        ", ".join(kept),
+    )
     return RomTrimResult(deleted, kept, None)
