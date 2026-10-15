@@ -398,6 +398,14 @@ class AppSettings:
     def set_offer_open_logs_in_mlv(self, enabled: bool):
         self.settings.setValue("ecu/offer_open_logs_in_mlv", bool(enabled))
 
+    def get_live_datalog_auto_trail(self) -> bool:
+        """Whether a WiCAN live datalog opens MegaLogViewerHD (Trail Live File
+        mode) on its own when the first capture of a run starts."""
+        return self.settings.value("ecu/live_datalog_auto_trail", True, type=bool)
+
+    def set_live_datalog_auto_trail(self, enabled: bool):
+        self.settings.setValue("ecu/live_datalog_auto_trail", bool(enabled))
+
 
 # Global settings instance
 _settings = None
