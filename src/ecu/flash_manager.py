@@ -102,6 +102,22 @@ READ_BLOCK_RETRY_BACKOFF_MAX_S = 1.0
 MAX_ISOTP_READ_SIZE = 0xFFE
 
 
+def _garbled_link(exc: BaseException) -> bool:
+    """Return True if a failed ECU check was a WiCAN link fault, not silence.
+
+    A corrupt or unreadable adapter line reaches here as a ``UDSTimeoutError``
+    chained to the transport's ``WiCANError``; a silent ECU has no such link.
+    """
+    from .wican_transport import WiCANError
+
+    seen: Optional[BaseException] = exc
+    while seen is not None:
+        if isinstance(seen, WiCANError):
+            return True
+        seen = seen.__cause__ or seen.__context__
+    return False
+
+
 def enforce_rpm_gate(
     uds, *, allow_override: bool = False, threshold: float = RPM_FLASH_GATE
 ) -> Optional[float]:
@@ -417,7 +433,25 @@ class FlashManager:
             try:
                 self._uds.tester_present(timeout_ms=TIMEOUT_PROBE)
             except Exception as e:
-                raise FlashError(f"Borrowed ECU session is not responsive: {e}") from e
+                if not _garbled_link(e):
+                    raise FlashError(
+                        f"Borrowed ECU session is not responsive: {e}"
+                    ) from e
+                # A WiCAN link fault (usually garbled adapter data, #94), not a
+                # silent ECU. This check runs before any session change, so
+                # clearing the link and asking once more is safe.
+                logger.warning(
+                    "ECU check hit a WiCAN link error (%s); retrying once", e
+                )
+                try:
+                    self._uds.flush()
+                    self._uds.tester_present(timeout_ms=TIMEOUT_PROBE)
+                except Exception as e2:
+                    raise FlashError(
+                        "The WiCAN sent garbled data or lost the link while "
+                        "checking the ECU; the ECU itself may be fine. Try again. "
+                        f"(Details: {e2})"
+                    ) from e2
             logger.info("Borrowed ECU session verified alive")
             return
 

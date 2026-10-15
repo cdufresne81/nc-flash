@@ -6,7 +6,7 @@ All notable changes to NC Flash are documented here.
 
 ## [v2.22.0] - 2026-10-15
 
-**Definition fixes now reach existing installs, new driveline tables, a tidier WiCAN SD card, and reliable copy/paste.**
+**Definition fixes now reach existing installs, new driveline tables, a tidier WiCAN SD card, fewer failed WiCAN flash starts, and reliable copy/paste.**
 
 ### Added
 - **New and corrected ROM definitions now reach existing installs (#121).** The first time a newer version starts, NC Flash adds definitions you don't have and updates the ones you never edited.
@@ -21,6 +21,7 @@ All notable changes to NC Flash are documented here.
 - **Version history shows a renamed table under its current name** (the old name follows "was:"), and search finds it by either name.
 
 ### Fixed
+- **WiCAN flashes no longer fail at random at the first step (#94).** On a running car, a flash often stopped at "Verifying ECU session" with an "ECU not responsive … SLCAN" error, then worked on a retry. NC Flash was tripping over messages from the car's other modules; it now ignores them, and if the data is still garbled it asks the ECU once more. Nothing was ever written to the ECU when this happened.
 - **Copy and paste between tables is reliable again:**
   - Pasting into axis cells no longer crashes.
   - Pasting a whole 3D table no longer shifts its top axis by one column.
