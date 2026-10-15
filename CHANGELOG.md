@@ -4,32 +4,32 @@ All notable changes to NC Flash are documented here.
 
 ## [Unreleased]
 
+## [v2.22.0] - 2026-10-15
+
+**Definition fixes now reach existing installs, new driveline tables, a tidier WiCAN SD card, and reliable copy/paste.**
+
 ### Added
-- **New and corrected ROM definitions now reach existing installs (#121).** Until now NC Flash only copied its definitions into a new workspace, so fixes such as the knock-retard one never reached you. Now, the first time a newer version starts:
-  - Definitions you don't have yet are added, and definitions you never edited are replaced with the new ones.
-  - From this version on, NC Flash remembers which version it gave you, so a definition you edit later is merged: your changes are kept. If NC Flash also changed the same value, its correction wins for values that decide which bytes are written (address, size, data type, formula, axes) and your value wins for names, categories, min/max, units and format. Show Details lists every such case.
-  - A definition you edited before this version is left as it is (NC Flash can't yet tell your edits from its own older values). The message tells you where the new file is, and names any file whose differences change which bytes are written (for example the old knock-retard type), so you can compare and copy what you need.
-  - Tables you added are kept, and a ROM you define in a file of your own doesn't get a second definition. From this version on, a definition file you delete isn't brought back.
-  - Every file that changes is backed up first, to the `metadata_backups` folder in your workspace.
-  - If your Metadata Directory (Settings > General > Paths) isn't the workspace's own `metadata` folder, nothing in it is changed; NC Flash tells you where the new files are.
-  - It never runs when you go back to an older version.
-- **Driveline damping and tip-in shaping tables in every engine definition.** These tables set how the ECU smooths the torque request after a pedal change (less driveline shuffle, softer or sharper tip-in). They're added to all 103 engine definitions at each ROM's own addresses, read from that ROM's code, along with their Data Integrity copies. Always edit a table and its Data Integrity copy together: the names say which addresses pair up, and where the factory values already differ between the two.
-- **Old staged ROMs no longer pile up on the WiCAN's SD card (#139).** Every WiCAN flash first copies the ROM to the SD card (about 1 MB each), and nothing ever removed those copies. Now a successful flash keeps only the 5 newest and deletes the older ones. Nothing is deleted after a failed flash, the ROM just flashed always stays, and only files in the card's `roms` folder named the way NC Flash names them are deleted. Turn it off or change the number in Settings > ECU > WiCAN. The flash window's activity log names every file deleted and the ROMs kept.
+- **New and corrected ROM definitions now reach existing installs (#121).** The first time a newer version starts, NC Flash adds definitions you don't have and updates the ones you never edited.
+  - **Your edits are kept.** From this version on, a definition you edit is merged with NC Flash's update. Where both changed the same value, NC Flash's correction wins for anything that decides which bytes are written (address, size, data type, formula, axes), and your value wins for names, categories, limits, units and format. Show Details lists each case.
+  - **Definitions you edited before this version are left alone.** The message says where the new file is, and names any file whose differences change which bytes are written (for example the old knock-retard type), so you can compare and copy what you need.
+  - Every changed file is backed up first to your workspace's `metadata_backups` folder. A custom Metadata Directory is never changed, a file you delete isn't brought back, and nothing runs when you go back to an older version.
+- **Driveline damping and tip-in shaping tables in every engine definition.** They set how the ECU smooths the torque request after a pedal change (less driveline shuffle, a softer or sharper tip-in). **Always edit a table and its Data Integrity copy together**: the names say which ones pair up.
+- **Old staged ROMs no longer pile up on the WiCAN's SD card (#139).** After a successful flash, NC Flash keeps the 5 newest staged ROMs and deletes older ones. Nothing is deleted after a failed flash, and only files NC Flash staged itself are touched. You can change the number or turn it off in Settings > ECU > WiCAN. The flash log lists every file deleted.
 
 ### Changed
-- **LF9VEB definition brought up to date.** 70 new tables, among them DSC torque intervention, the closed-loop fuel trim controller, and the Data Integrity copies of the throttle, idle and driveline damping tables (always edit a table and its Data Integrity copy together). 56 existing tables have clearer names, mostly saying which copy they pair with; no address, size or data type changed. Three of them are now marked **DO NOT EDIT**: the throttle-angle chain enable gate and the two Tip-In Shaping TP-window monitor copies, whose other half isn't editable.
-- **Version history shows a renamed table under its current name**, with the old name after "was:", one line per table. Searching the history finds it by either name.
+- **LF9VEB definition brought up to date.** 70 new tables (among them DSC torque intervention and the closed-loop fuel trim controller) and clearer names for 56 tables; no address, size or data type changed. Three tables are now marked **DO NOT EDIT**.
+- **Version history shows a renamed table under its current name** (the old name follows "was:"), and search finds it by either name.
 
 ### Fixed
-- **Pasting into axis cells no longer crashes.** Copying an axis (for example the LOAD or RPM axis of Load Scaling) and pasting it onto another table's axis now works, and one undo reverts it.
-- **Hex settings copy and paste correctly.** Tire Size Correction and the CEL Flash Pattern settings are shown in hex, but pasting or typing into them read the value as decimal: a value with letters was ignored, and an all-digit value such as `02054517` was saved as a different, wrong number. They now take hex, with or without `0x`.
-- **Pasting a whole copied 3D table no longer shifts its top axis by one column.**
-- **Copy and paste between tables now keeps exact values.** Before, the copy held the rounded numbers shown on screen, so pasting changed values slightly (a 0.0625 breakpoint became 0.062), even when pasting a table back onto itself. Copies pasted into Excel or other apps still show the rounded numbers.
-- **A value too big or too small for a cell is now refused as you enter it.** Before, it was only refused when saved, and a paste that covered both axes and data could be half-saved while the message said everything was reverted. Whole-number settings now also keep the rounded value they show instead of a cut-off one.
-- **Behind the scenes:** the automated checks no longer fail at random after every test has passed (a crash while the test process shut down, on Linux and Windows, #149). A real test failure still fails the checks. No change to the app itself.
+- **Copy and paste between tables is reliable again:**
+  - Pasting into axis cells no longer crashes.
+  - Pasting a whole 3D table no longer shifts its top axis by one column.
+  - Pasted values are no longer rounded: a 0.0625 breakpoint used to become 0.062.
+  - Hex settings (Tire Size Correction, CEL Flash Pattern) take hex values. Before, `02054517` was read as decimal and saved as the wrong number.
+- **An out-of-range value is now refused as you enter it.** Before, it was only caught when saving, and a paste could be half-saved while the message said it had been reverted.
 
 ### Removed
-- **Old Auto-Blip settings removed from the LF9VEB definition.** They belonged to a retired Auto-Blip version and pointed at bytes no current ROM uses.
+- **Old Auto-Blip settings removed from the LF9VEB definition.** They pointed at bytes no current ROM uses.
 
 ## [v2.21.0] - 2026-10-07
 
