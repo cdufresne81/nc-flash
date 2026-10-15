@@ -20,6 +20,15 @@ GEN_DETECT_OFFSET = 0x2030
 GEN_NC1 = 0x35
 GEN_NC2_A = 0x36
 GEN_NC2_B = 0x37
+# The ECU's boot block (0x0000-0x1FFF) is never written by a flash, so it tells
+# the ECU's real generation even when its program came from the wrong one (the
+# byte at GEN_DETECT_OFFSET is the "200x" of the program's copyright string and
+# is rewritten by every full flash). Its first 8 bytes are the reset vector and
+# initial stack pointer; they split cleanly by generation across every NC ROM
+# checked (21 distinct images, 2026-10-15).
+BOOT_SIGNATURE_LEN = 8
+BOOT_SIGNATURE_NC1 = bytes.fromhex("00000aacffffbfa0")
+BOOT_SIGNATURE_NC2 = bytes.fromhex("00000c0cffffbfa0")
 
 # --- Checksum ---
 CHECKSUM_MAGIC = 0x5AA5A55A

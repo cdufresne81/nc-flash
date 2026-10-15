@@ -61,7 +61,15 @@ from .constants import (
     ROM_SIZE,
 )
 from .exceptions import FlashError
-from .flash_manager import FlashManager, FlashProgress, FlashState, ProgressCallback
+from .flash_manager import (
+    FlashManager,
+    FlashProgress,
+    FlashState,
+    ProgressCallback,
+    UnverifiedGenerationPrompt,
+    rom_cal_id_text,
+    verify_ecu_generation,
+)
 from .rom_utils import find_first_difference
 from .wican_config import WiCANDatalogClient
 from .wican_flash import WiCANFlasher
@@ -193,8 +201,16 @@ class WiCANSdFlasher:
         self._safeguards = WiCANFlasher(
             transport, min_voltage=min_voltage, **flasher_kwargs
         )
+        # Asked when the ECU's generation can't be read; None refuses instead.
+        self._confirm_unverified_generation: Optional[UnverifiedGenerationPrompt] = None
 
     # --- public API (mirrors WiCANFlasher) ----------------------------------
+
+    def set_unverified_generation_prompt(
+        self, prompt: Optional[UnverifiedGenerationPrompt]
+    ) -> None:
+        """Same contract as :meth:`FlashManager.set_unverified_generation_prompt`."""
+        self._confirm_unverified_generation = prompt
 
     def preflight(self, progress_cb=None):
         """Run ONLY the pre-flight link-quality gate (no flash)."""
@@ -359,8 +375,9 @@ class WiCANSdFlasher:
         except Exception as exc:  # noqa: BLE001 — post-flash cleanup, never fatal
             logger.warning("Staged-ROM cleanup skipped (non-fatal): %s", exc)
 
-    def _authenticate_ecu(self) -> None:
-        """Bring the ECU to an authenticated programming session over CAN.
+    def _authenticate_ecu(self, *, flash_counter: bool = True) -> None:
+        """Bring the ECU to an authenticated programming session over CAN, then
+        (unless ``flash_counter`` is False) run the flash-counter routine.
 
         The firmware fastwrite replays plain bytes and issues RequestDownload with
         no security of its own, so the host must establish the programming session
@@ -378,7 +395,30 @@ class WiCANSdFlasher:
         # blocked: idle -> authenticating" error; this mirrors the read path.
         fm._connect()
         fm._authenticate()
-        fm._uds.check_flash_counter()
+        if flash_counter:
+            self._check_flash_counter()
+
+    def _check_flash_counter(self) -> None:
+        """The flash-counter routine, the last host step before the firmware
+        flash. After it the ECU refuses memory reads (NRC 0x11) until reset."""
+        from .protocol import UDSConnection
+
+        UDSConnection(self._transport).check_flash_counter()
+
+    def _check_ecu_generation(self, pkg: FlashPackage) -> None:
+        """Refuse a ROM made for the other generation (NC1 vs NC2), on the
+        authenticated session and BEFORE the flash counter (after it, the ECU
+        no longer answers memory reads). The same :func:`verify_ecu_generation`
+        the J2534 path runs; the generation is the one the packager used to
+        pick the SBL."""
+        from .protocol import UDSConnection
+
+        verify_ecu_generation(
+            UDSConnection(self._transport),
+            pkg.manifest["generation"],
+            rom_cal_id_text(pkg.corrected_rom),
+            confirm_unverified=self._confirm_unverified_generation,
+        )
 
     def _safe_uds_teardown(self) -> None:
         """Best-effort: return the ECU to the default session after a FAILED flash.
@@ -444,7 +484,9 @@ class WiCANSdFlasher:
         last: Optional[Exception] = None
         for _ in range(POST_FLASH_AUTH_RETRIES):
             try:
-                self._authenticate_ecu()
+                # No flash counter: after it the ECU refuses the memory reads
+                # this verify needs (bench 2026-10-14).
+                self._authenticate_ecu(flash_counter=False)
                 last = None
                 break
             except Exception as exc:  # ECU not yet readable — settle and retry
@@ -527,7 +569,20 @@ class WiCANSdFlasher:
             self._notify(
                 progress_cb, FlashState.AUTHENTICATING, "Authenticating ECU…", 26.0
             )
-            self._authenticate_ecu()
+            self._authenticate_ecu(flash_counter=False)
+
+            # The file must be for this ECU's generation. Checked BEFORE the flash
+            # counter, which makes the ECU refuse memory reads. A refusal raises
+            # with nothing written (this ECU refuses the default-session request
+            # the finally sends, so its programming session times out instead).
+            self._notify(
+                progress_cb,
+                FlashState.AUTHENTICATING,
+                "Checking the ROM matches the ECU…",
+                30.0,
+            )
+            self._check_ecu_generation(pkg)
+            self._check_flash_counter()
 
             # Drive the firmware flash over CAN, mapping its streamed block markers
             # into the existing FlashProgress band (35%→90%, matching the J2534 path).

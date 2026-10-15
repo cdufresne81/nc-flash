@@ -5,6 +5,7 @@ All notable changes to NC Flash are documented here.
 ## [Unreleased]
 
 ### Added
+- **A ROM for the wrong generation is refused before anything is erased.** Right before the flash starts, NC Flash reads the ECU's boot code (which a flash never changes) and checks the ROM is for the same generation. An NC1 ROM on an NC2 ECU (or the reverse) is refused, because the two are not compatible and the wrong flash loader would be sent. This also works on an ECU that still holds a ROM from an earlier wrong flash. Different calibrations of the same generation are still allowed (for example an LF9KED ROM on an LF9KEC ECU); the activity log names both. If the ECU can't be read (usually because it is stuck after a flash that didn't finish), NC Flash asks which car it is from (NC1, before the facelift, or NC2, after it) and only goes on if that matches the ROM. Works with both the cable and the WiCAN.
 - **New and corrected ROM definitions now reach existing installs (#121).** Until now NC Flash only copied its definitions into a new workspace, so fixes such as the knock-retard one never reached you. Now, the first time a newer version starts:
   - Definitions you don't have yet are added, and definitions you never edited are replaced with the new ones.
   - From this version on, NC Flash remembers which version it gave you, so a definition you edit later is merged: your changes are kept. If NC Flash also changed the same value, its correction wins for values that decide which bytes are written (address, size, data type, formula, axes) and your value wins for names, categories, min/max, units and format. Show Details lists every such case.
@@ -21,6 +22,7 @@ All notable changes to NC Flash are documented here.
 - **Version history shows a renamed table under its current name**, with the old name after "was:", one line per table. Searching the history finds it by either name.
 
 ### Fixed
+- **A flash or ROM read no longer fails when the ECU is already unlocked.** If an earlier session left the ECU unlocked, it answers with an empty security seed; NC Flash sent a key anyway and the ECU refused it. NC Flash now skips the key in that case.
 - **Pasting into axis cells no longer crashes.** Copying an axis (for example the LOAD or RPM axis of Load Scaling) and pasting it onto another table's axis now works, and one undo reverts it.
 - **Hex settings copy and paste correctly.** Tire Size Correction and the CEL Flash Pattern settings are shown in hex, but pasting or typing into them read the value as decimal: a value with letters was ignored, and an all-digit value such as `02054517` was saved as a different, wrong number. They now take hex, with or without `0x`.
 - **Pasting a whole copied 3D table no longer shifts its top axis by one column.**

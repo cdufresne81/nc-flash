@@ -119,7 +119,7 @@ python main.py
 - SBL (Secondary Boot Loader) upload for programming session
 - 1 KB block transfers with CRC32 validation
 - ROM validation: size check, vehicle generation detection, checksum correction
-- Safety: battery voltage check, engine-off requirement, state machine prevents step-skipping
+- Safety: battery voltage check, engine-off requirement, NC1/NC2 ROM-vs-ECU check before erase, state machine prevents step-skipping
 - Auto-saves unsaved changes before flashing
 - Configurable J2534 DLL path (auto-detects Tactrix OpenPort via registry)
 

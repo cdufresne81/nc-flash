@@ -66,6 +66,10 @@ class _FlashWorker(QObject):
     progress = Signal(object)  # FlashProgress
     finished = Signal()
     error = Signal(str)
+    # (rom_generation, rom_cal_id, reason): the ECU's generation could not be
+    # read before the flash. Connected BLOCKING: the window answers via
+    # set_unverified_answer.
+    generation_unverified = Signal(str, str, str)
 
     def __init__(self, flash_manager: FlashManager, operation: str, **kwargs):
         super().__init__()
@@ -73,10 +77,24 @@ class _FlashWorker(QObject):
         self._operation = operation
         self._kwargs = kwargs
         self._result = None
+        self._unverified_answer: str | None = None
 
     @property
     def result(self):
         return self._result
+
+    def ask_unverified_generation(
+        self, rom_generation: str, rom_cal_id: str | None, reason: str
+    ) -> str | None:
+        """Runs on the worker thread mid-flash, before anything is erased. Blocks
+        until the window has asked which car the ECU is from: "NC1", "NC2", or
+        None for cancel."""
+        self._unverified_answer = None
+        self.generation_unverified.emit(rom_generation, rom_cal_id or "", reason)
+        return self._unverified_answer
+
+    def set_unverified_answer(self, answer: str | None) -> None:
+        self._unverified_answer = answer
 
     def run(self):
         try:
@@ -1353,6 +1371,7 @@ class ECUProgrammingWindow(QMainWindow):
         worker.progress.connect(self._on_flash_progress, Qt.QueuedConnection)
         worker.finished.connect(self._on_worker_finished, Qt.QueuedConnection)
         worker.error.connect(self._on_worker_error, Qt.QueuedConnection)
+        self._wire_generation_prompt(worker, manager, operation)
         try:
             self._btn_abort.clicked.disconnect()
         except RuntimeError:
@@ -1371,6 +1390,67 @@ class ECUProgrammingWindow(QMainWindow):
     def _on_worker_finished(self):
         """Worker `finished` slot — runs on the GUI thread (bound-method receiver)."""
         self._on_flash_finished(True, self._flash_thread, self._flash_worker)
+
+    def _wire_generation_prompt(self, worker, manager, operation: str) -> None:
+        """Let a flash ask the operator which car the ECU is from when it can't
+        read the ECU. BLOCKING connection: the worker waits for the answer.
+        Safe because the worker runs on its own thread (a blocking connection
+        within one thread would deadlock)."""
+        worker.generation_unverified.connect(
+            self._on_generation_unverified, Qt.BlockingQueuedConnection
+        )
+        if operation in ("flash", "dynamic_flash") and hasattr(
+            manager, "set_unverified_generation_prompt"
+        ):
+            manager.set_unverified_generation_prompt(worker.ask_unverified_generation)
+
+    def _on_generation_unverified(
+        self, rom_generation: str, rom_cal_id: str, reason: str
+    ):
+        """Runs on the GUI thread while the worker waits (nothing is erased
+        yet). Stores the operator's answer on the worker."""
+        answer = self._ask_car_generation(rom_generation, rom_cal_id, reason)
+        if self._flash_worker is not None:
+            self._flash_worker.set_unverified_answer(answer)
+
+    def _ask_car_generation(
+        self, rom_generation: str, rom_cal_id: str, reason: str
+    ) -> str | None:
+        """Ask which car the ECU is from: "NC1", "NC2", or None (cancel, the
+        default). The flash compares the answer with the ROM, so a careless
+        click can't flash the wrong generation. The ROM's own generation is NOT
+        shown: the answer has to come from knowing the car, not from copying it
+        (``rom_generation`` is kept for the signature only)."""
+        box = QMessageBox(self)
+        box.setIcon(QMessageBox.Warning)
+        box.setWindowTitle("Which Car Is This ECU From?")
+        rom_name = f" ({rom_cal_id})" if rom_cal_id else ""
+        box.setText(
+            "NC Flash could not check that the ROM you are flashing"
+            f"{rom_name} is for this ECU.\n\n"
+            f"Reason: {reason}.\n\n"
+            "If the ECU did not answer, it is usually stuck in its bootloader after "
+            "a flash that did not finish. If the last flash finished, cancel, turn "
+            "the key OFF for 10 seconds and back ON, and flash again so NC Flash "
+            "can check the ECU itself.\n\n"
+            "NC1 and NC2 ROMs are not compatible: the wrong one can brick the "
+            "ECU.\n\n"
+            "Which car is this ECU from?"
+        )
+        nc1 = box.addButton(
+            "NC1 (2005-2008, before the facelift)", QMessageBox.AcceptRole
+        )
+        nc2 = box.addButton("NC2 (late 2008-2015, facelift)", QMessageBox.AcceptRole)
+        cancel = box.addButton(QMessageBox.Cancel)
+        box.setDefaultButton(cancel)
+        box.setEscapeButton(cancel)
+        box.exec()
+        clicked = box.clickedButton()
+        if clicked is nc1:
+            return "NC1"
+        if clicked is nc2:
+            return "NC2"
+        return None
 
     def _on_worker_error(self, error_msg: str):
         """Worker `error` slot — runs on the GUI thread (bound-method receiver)."""
