@@ -26,9 +26,13 @@ master ──merge after every stable release──► dev
 - **Branch features from `master`, not `dev`**, so each one can graduate on
   its own. A feature built on top of another unfinished feature can't ship
   until that one does.
-- **New features** go to `dev` first (PR into `dev`). When one is solid, open
-  a second PR from the **same feature branch** into `master`. Never merge all
+- **Every change goes to `dev` first** (features and fixes alike, unless the
+  user says otherwise): PR into `dev`, ship it in a beta. When it's tested,
+  open a second PR from the **same branch** into `master`. Never merge all
   of `dev` into `master`: that would ship every unfinished experiment with it.
+- `.claude/notes.md` lists what is on `dev` awaiting `master`: add a line
+  when a branch merges into `dev`, delete it when that branch reaches
+  `master`.
 - **Never merge or rebase `dev` into a feature branch** (GitHub's "Update
   branch" button on a PR into `dev` does exactly that). The branch would then
   carry all of `dev`, and its PR into `master` would ship every experiment.
@@ -36,7 +40,9 @@ master ──merge after every stable release──► dev
   or resolve it in the PR into `dev` on a throwaway branch.
 - Fixes found during beta testing go on the **feature branch** (then PR into
   `dev` again), never directly on `dev`, so they graduate with the feature.
-- **Bug fixes** to shipped code go straight to `master` (PR).
+- **Straight to `master`** only when the user says so, typically a fix for a
+  hazard in the shipped stable release (brick, data loss). Then merge
+  `master` into `dev` and tag a beta (below).
 - After every stable release, merge `master` into `dev` so `dev` stays a
   superset of `master`. **If a beta newer than that release is out, tag the
   next beta right away**: `2.22.1 < 2.23.0-beta.1`, so beta users never get a
