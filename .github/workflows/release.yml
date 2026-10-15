@@ -215,6 +215,18 @@ jobs:
 
     steps:
     - uses: actions/checkout@v5
+      with:
+        fetch-depth: 0
+
+    - name: Stable tags must be on master
+      # A final tag (no "-") becomes "latest" and is offered to every user;
+      # one pushed on a dev commit would ship every unfinished experiment.
+      if: ${{ !contains(github.ref_name, '-') }}
+      run: |
+        if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/master; then
+          echo "::error::$GITHUB_REF_NAME is a stable tag but its commit is not on master. Tag betas as vX.Y.Z-beta.N."
+          exit 1
+        fi
 
     - name: Download all artifacts
       uses: actions/download-artifact@v4

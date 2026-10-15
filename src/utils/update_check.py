@@ -3,6 +3,12 @@
 Standard library only (no Qt): the UI runs these calls on a worker thread
 (``src/ui/app_updater.py``) and unit tests drive them with a fake ``urlopen``.
 
+Channels: ``stable`` (the default) only ever sees final releases, through
+GitHub's ``releases/latest``, which never returns a pre-release.
+``experimental`` lists recent releases and also offers beta pre-releases
+(tags like ``v2.23.0-beta.1``, built from the ``dev`` branch). A beta user
+still moves to the final release once it is newer.
+
 Trust model:
 
 - The release metadata comes from one unauthenticated HTTPS call to the
@@ -35,6 +41,8 @@ logger = logging.getLogger(__name__)
 
 GITHUB_REPO = "cdufresne81/nc-flash"
 RELEASES_API_URL = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
+#: Newest releases first, pre-releases included (the experimental channel).
+RELEASES_LIST_URL = f"https://api.github.com/repos/{GITHUB_REPO}/releases?per_page=20"
 RELEASES_PAGE_URL = f"https://github.com/{GITHUB_REPO}/releases"
 #: Every installer URL we accept starts with this (followed by ``<tag>/``).
 RELEASE_DOWNLOAD_PREFIX = f"https://github.com/{GITHUB_REPO}/releases/download/"
@@ -43,7 +51,14 @@ RELEASE_DOWNLOAD_PREFIX = f"https://github.com/{GITHUB_REPO}/releases/download/"
 _MAX_API_RESPONSE_BYTES = 2 * 1024 * 1024
 _CHUNK_BYTES = 64 * 1024
 
-_VERSION_RE = re.compile(r"v?(\d+)\.(\d+)\.(\d+)")
+CHANNEL_STABLE = "stable"
+CHANNEL_EXPERIMENTAL = "experimental"
+CHANNELS = (CHANNEL_STABLE, CHANNEL_EXPERIMENTAL)
+
+#: ``X.Y.Z`` or ``X.Y.Z-beta.N``. Any other suffix is not a version.
+_VERSION_RE = re.compile(r"v?(\d+)\.(\d+)\.(\d+)(?:-beta\.(\d+))?")
+#: Fourth element of a version key: a beta sorts before its final release.
+_BETA, _FINAL = 0, 1
 _DIGEST_RE = re.compile(r"sha256:([0-9a-f]{64})")
 
 
@@ -69,7 +84,7 @@ class InstallerAsset:
 class ReleaseInfo:
     """The latest published release, as far as the updater cares."""
 
-    version: str  # "2.17.0" (no "v")
+    version: str  # "2.17.0" or "2.18.0-beta.1" (no "v")
     tag: str  # "v2.17.0"
     notes: str  # release body (the CHANGELOG section, Markdown)
     page_url: str
@@ -77,26 +92,45 @@ class ReleaseInfo:
 
 
 def parse_version(text: str) -> Optional[tuple]:
-    """``"v2.17.0"`` / ``"2.17.0"`` -> ``(2, 17, 0)``; anything else -> None.
+    """A sortable key for ``X.Y.Z`` / ``X.Y.Z-beta.N`` (``"v"`` optional).
 
-    Pre-release suffixes (``2.17.0-rc1``) and the source-tree ``"dev"`` are
-    deliberately not versions: they are never offered and never compared.
+    ``"2.17.0"`` -> ``(2, 17, 0, 1, 0)``; ``"2.18.0-beta.2"`` ->
+    ``(2, 18, 0, 0, 2)``, which sorts after 2.17.0 and before 2.18.0.
+    Anything else (``"dev"``, ``"0.0.0-dev"``, ``"2.17.0-rc1"``) -> None:
+    never offered and never compared.
     """
     match = _VERSION_RE.fullmatch((text or "").strip())
     if not match:
         return None
-    return tuple(int(part) for part in match.groups())
+    major, minor, patch, beta = match.groups()
+    if beta is None:
+        return (int(major), int(minor), int(patch), _FINAL, 0)
+    return (int(major), int(minor), int(patch), _BETA, int(beta))
+
+
+def format_version(key: tuple) -> str:
+    """Inverse of :func:`parse_version`: ``"2.17.0"`` or ``"2.18.0-beta.2"``."""
+    text = f"{key[0]}.{key[1]}.{key[2]}"
+    return text if key[3] == _FINAL else f"{text}-beta.{key[4]}"
+
+
+def is_prerelease(version: str) -> bool:
+    """True for a beta version (``X.Y.Z-beta.N``)."""
+    key = parse_version(version)
+    return key is not None and key[3] == _BETA
 
 
 def is_release_build(current_version: str) -> bool:
-    """True for a version stamped by the release workflow (not ``"dev"``)."""
+    """True for a version stamped by the release workflow, beta or final
+    (not ``"dev"``)."""
     return parse_version(current_version) is not None
 
 
 def is_newer(release_version: str, current_version: str) -> bool:
     """True when *release_version* is strictly newer than *current_version*.
 
-    False whenever either side is not a plain ``X.Y.Z`` version.
+    A beta is older than its final release (``2.18.0-beta.3 < 2.18.0``).
+    False whenever either side is not a version.
     """
     release = parse_version(release_version)
     current = parse_version(current_version)
@@ -114,21 +148,29 @@ def can_self_install() -> bool:
     return sys.platform == "win32" and bool(getattr(sys, "frozen", False))
 
 
-def parse_release(data: dict) -> ReleaseInfo:
-    """Turn a GitHub ``releases/latest`` JSON object into a :class:`ReleaseInfo`.
+def parse_release(data: dict, allow_prerelease: bool = False) -> ReleaseInfo:
+    """Turn a GitHub release JSON object into a :class:`ReleaseInfo`.
+
+    A beta (pre-release flag or ``-beta.N`` tag) is refused unless
+    *allow_prerelease*, so the stable channel is never handed one, even by a
+    beta wrongly marked "latest" on GitHub.
 
     Raises :class:`UpdateError` when the object is not a usable release.
     ``installer`` is None when the release has no acceptable installer asset.
     """
     if not isinstance(data, dict):
         raise UpdateError("GitHub returned an unexpected answer")
-    if data.get("draft") or data.get("prerelease"):
+    if data.get("draft"):
+        raise UpdateError("The latest GitHub release is not published")
+    if data.get("prerelease") and not allow_prerelease:
         raise UpdateError("The latest GitHub release is not a final release")
     tag = str(data.get("tag_name") or "")
     parsed = parse_version(tag)
     if parsed is None:
         raise UpdateError(f"The latest release has an unrecognised tag: {tag!r}")
-    version = ".".join(str(part) for part in parsed)
+    if parsed[3] == _BETA and not allow_prerelease:
+        raise UpdateError("The latest GitHub release is not a final release")
+    version = format_version(parsed)
 
     page_url = str(data.get("html_url") or "")
     if not page_url.startswith(RELEASES_PAGE_URL + "/"):
@@ -172,11 +214,39 @@ def _user_agent(current_version: str) -> str:
 
 
 def fetch_latest_release(
-    current_version: str, timeout: float = 10.0, urlopen=urllib.request.urlopen
+    current_version: str,
+    channel: str = CHANNEL_STABLE,
+    timeout: float = 10.0,
+    urlopen=urllib.request.urlopen,
 ) -> ReleaseInfo:
-    """One GET of the latest release. Raises :class:`UpdateError` on any failure."""
+    """The newest release on *channel* (one GET).
+
+    Raises :class:`UpdateError` on any failure. An unknown channel is stable.
+    """
+    if channel != CHANNEL_EXPERIMENTAL:
+        data = _get_json(RELEASES_API_URL, current_version, timeout, urlopen)
+        return parse_release(data)
+
+    data = _get_json(RELEASES_LIST_URL, current_version, timeout, urlopen)
+    if not isinstance(data, list):
+        raise UpdateError("GitHub returned an unexpected answer")
+    candidates = []
+    for item in data:
+        if not isinstance(item, dict) or item.get("draft"):
+            continue
+        key = parse_version(str(item.get("tag_name") or ""))
+        if key is not None:
+            candidates.append((key, item))
+    if not candidates:
+        raise UpdateError("No published release was found on GitHub.")
+    newest = max(candidates, key=lambda pair: pair[0])[1]
+    return parse_release(newest, allow_prerelease=True)
+
+
+def _get_json(url: str, current_version: str, timeout: float, urlopen):
+    """GET one GitHub API URL and decode its JSON. Raises :class:`UpdateError`."""
     request = urllib.request.Request(
-        RELEASES_API_URL,
+        url,
         headers={
             "Accept": "application/vnd.github+json",
             "X-GitHub-Api-Version": "2022-11-28",
@@ -200,10 +270,9 @@ def fetch_latest_release(
     if len(raw) > _MAX_API_RESPONSE_BYTES:
         raise UpdateError("GitHub returned an unexpected answer")
     try:
-        data = json.loads(raw.decode("utf-8"))
+        return json.loads(raw.decode("utf-8"))
     except (UnicodeDecodeError, json.JSONDecodeError) as e:
         raise UpdateError("GitHub returned an unexpected answer") from e
-    return parse_release(data)
 
 
 def verify_installer(path: Path, asset: InstallerAsset) -> bool:

@@ -291,6 +291,27 @@ SETTINGS_REGISTRY = [
         setter="set_check_updates_on_startup",
         keywords=["update", "upgrade", "release", "version", "github", "install"],
     ),
+    SettingDescriptor(
+        key="general.updates.channel",
+        label="Update channel",
+        description=(
+            "Stable offers final releases only. Experimental also offers beta "
+            "builds with new features that are still being tested, which can "
+            "include changes to ECU reading and flashing. Choose it only if "
+            "you can recover an ECU from a failed flash. Switch back to "
+            "Stable at any time; you keep the beta until a newer final "
+            "release is out."
+        ),
+        category="General",
+        subcategory="Updates",
+        widget_type="combobox",
+        getter="get_update_channel",
+        setter="set_update_channel",
+        widget_options={
+            "items": [("Stable", "stable"), ("Experimental (beta)", "experimental")]
+        },
+        keywords=["update", "channel", "beta", "experimental", "dev", "preview"],
+    ),
     # -- Tools > MCP Server --
     SettingDescriptor(
         key="tools.mcp.auto_start",
