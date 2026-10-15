@@ -6,6 +6,7 @@ NC Flash edits and flashes Mazda MX-5 NC ECU ROMs. What we write ends up in a ca
 
 - **"Question:" prefix** - If a prompt starts with "Question:", answer only. Take no actions (no file edits, no commands).
 - **Commit/push** - Commit only when the user asks. NEVER push or merge without the user's explicit OK. `master` is protected: work ships via branch + PR, admin-merged only after CI is green and the user says so.
+- **Two channels** - New features branch from `master` but PR into `dev` first (experimental beta channel); a feature reaches `master` by a second PR from its own branch once solid, never by merging all of `dev`. NEVER merge or rebase `dev` into a feature branch. Bug fixes to shipped code PR straight into `master`. Details: `docs/internal/RELEASE_CHANNELS.md`.
 - **Before committing** - Run `/precommit` (black, flake8, pytest, CHANGELOG check). A PreToolUse hook (`.claude/hooks/check-changelog-staged.sh`) blocks `git commit` if CHANGELOG.md isn't staged. If the change adds or removes a user-facing feature, update `README.md` too.
 - **Changelog** - `CHANGELOG.md` MUST be updated before every commit. Add entries to the `## [Unreleased]` section using Added/Changed/Fixed/Removed subsections. When a version is tagged, the unreleased section becomes the GitHub release notes. Ensure version sections match actual git tags — never leave released work under Unreleased.
 - **PR descriptions, CHANGELOG entries and release notes** - Keep them concise and human-friendly. Write for a user or reviewer, not a developer mid-session: say what changed and why it matters in plain words. Leave out internal names, file paths, test counts and investigation history unless a reader needs them.
@@ -31,6 +32,7 @@ Layering: utils ← core ← {ecu, ui, api, mcp}; main.py composes ui.
 Reference these before modifying related functionality:
 - `docs/internal/ARCHITECTURE.md` - Layer map + the architecture rules with the incidents that motivated each; read before adding a cross-layer import, a mixin, a shared-state dict, or a duplicated pipeline. Enforced by `tests/test_architecture.py`
 - `docs/internal/LOGGING.md` - Logging configuration and exception hierarchy
+- `docs/internal/RELEASE_CHANNELS.md` - Stable (`master`, `vX.Y.Z`) vs experimental (`dev`, `vX.Y.Z-beta.N`) branches, tags and updater channels; reference before tagging a release, choosing a PR's base branch, or touching the updater's version logic
 - `docs/internal/ROM_DEFINITION_FORMAT.md` - XML format for ROM definitions
 - `docs/internal/ROM_COMPARISON_TOOL.md` - Spec for the side-by-side ROM comparison tool; reference before touching compare/diff code
 - `docs/internal/WINDOWS_SETUP.md` - Windows dev environment setup

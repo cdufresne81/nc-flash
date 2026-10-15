@@ -4,6 +4,9 @@ All notable changes to NC Flash are documented here.
 
 ## [Unreleased]
 
+### Added
+- **Experimental update channel.** Settings > General > Updates > Update channel lets you opt into beta builds with new features before they're final. Stable (the default) stays on final releases only. Betas can include ECU read and flash changes still being tested, so choose Experimental only if you can recover an ECU from a failed flash. Switching back to Stable keeps your beta, and any definition updates it brought, until a newer final release comes out.
+
 ## [v2.22.0] - 2026-10-15
 
 **Definition fixes now reach existing installs, new driveline tables, a tidier WiCAN SD card, fewer failed WiCAN flash starts, and reliable copy/paste.**
