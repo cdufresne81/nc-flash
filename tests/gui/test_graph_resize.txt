@@ -1,6 +1,6 @@
 # Test script to capture graph resize issue
 load_rom examples/lf9veb.bin
-open_table "TP Commanded Limit - Max"
+open_table "TP Commanded Limit - Max (pair with f82dc)"
 open_graph
 wait 500
 screenshot graph_resize_04_graph_open table

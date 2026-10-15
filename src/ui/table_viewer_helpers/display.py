@@ -570,6 +570,16 @@ class TableDisplayHelper:
         """Public method to get axis format (used by editing helper)"""
         return self._get_axis_format(axis_type)
 
+    def get_cell_format(self, coords) -> str:
+        """Format spec for a cell, from its Qt.UserRole coords.
+
+        Axis cells carry ('x_axis'|'y_axis', index); data cells (row, col).
+        """
+        if coords is not None and isinstance(coords[0], str):
+            axis_type = AxisType.X_AXIS if coords[0] == "x_axis" else AxisType.Y_AXIS
+            return self._get_axis_format(axis_type)
+        return self.get_value_format()
+
     def get_axis_color(
         self, value: float, axis_values: np.ndarray, axis_type: AxisType = None
     ) -> QColor:

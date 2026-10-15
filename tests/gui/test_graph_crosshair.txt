@@ -13,7 +13,7 @@ wait 400
 screenshot crosshair_02_3d_block_no_crosshair table
 close_graph
 close_table
-open_table "APP to TP Desired - Max"
+open_table "APP to TP Desired - Max (pair with f7f70)"
 wait 300
 open_graph
 wait 800

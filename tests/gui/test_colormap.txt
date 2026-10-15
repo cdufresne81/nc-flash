@@ -1,6 +1,6 @@
 # Test colormap in both table and graph views
 load_rom examples/lf9veb.bin
-open_table "APP to TP Desired - 2nd Gear"
+open_table "APP to TP Desired - 2nd Gear (pair with f8618)"
 wait 300
 
 # Screenshot table view

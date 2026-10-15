@@ -373,6 +373,23 @@ class AppSettings:
     def set_wican_keep_newest_logs(self, count: int):
         self.settings.setValue("ecu/wican_keep_newest_logs", max(0, int(count)))
 
+    def get_wican_trim_staged_roms(self) -> bool:
+        """Whether a successful WiCAN flash removes older staged ROMs from the
+        device's SD card (on by default: nothing else ever removes them)."""
+        return self.settings.value("ecu/wican_trim_staged_roms", True, type=bool)
+
+    def set_wican_trim_staged_roms(self, enabled: bool):
+        self.settings.setValue("ecu/wican_trim_staged_roms", bool(enabled))
+
+    def get_wican_keep_staged_roms(self) -> int:
+        """How many of the newest staged ROMs stay on the WiCAN's SD card
+        (the one just flashed counts; at least 1)."""
+        value = self.settings.value("ecu/wican_keep_staged_roms", 5, type=int)
+        return max(1, int(value))
+
+    def set_wican_keep_staged_roms(self, count: int):
+        self.settings.setValue("ecu/wican_keep_staged_roms", max(1, int(count)))
+
     def get_offer_open_logs_in_mlv(self) -> bool:
         """Whether a finished trip-log download asks to open the new logs in
         MegaLogViewerHD (only asked when MegaLogViewerHD is installed)."""

@@ -1,6 +1,6 @@
 # Test graph behavior with cell click
 load_rom examples/lf9veb.bin
-open_table "TP Commanded Limit - Max"
+open_table "TP Commanded Limit - Max (pair with f82dc)"
 wait 300
 
 # Open graph panel

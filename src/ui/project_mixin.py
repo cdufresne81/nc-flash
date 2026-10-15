@@ -340,7 +340,24 @@ class ProjectMixin:
             )
             return
 
-        self._history_dialog = HistoryViewer(self.project_manager, self)
+        # Current table names by address, so history recorded under an older
+        # definition shows the table's current name after a rename. Use the
+        # PROJECT's document, not the active tab (another ROM may be open).
+        names_by_address = {}
+        document = self._find_document_by_rom_path(
+            self.project_manager.current_project.working_rom_path
+        )
+        if document and document.rom_definition:
+            for table in document.rom_definition.tables:
+                try:
+                    address = table.address_int
+                except (TypeError, ValueError):
+                    continue
+                names_by_address.setdefault(address, []).append(table.name)
+
+        self._history_dialog = HistoryViewer(
+            self.project_manager, self, names_by_address=names_by_address
+        )
         self._history_dialog.view_table_diff.connect(self._on_view_table_diff)
         self._history_dialog.revert_requested.connect(self._on_revert_version)
         self._history_dialog.delete_requested.connect(self._on_delete_version)

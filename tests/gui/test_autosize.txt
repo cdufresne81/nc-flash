@@ -1,7 +1,7 @@
 load_rom examples/lf9veb.bin
 
 # 3D table - the one that was clipped
-open_table "APP to TP Desired - 3rd Gear"
+open_table "APP to TP Desired - 3rd Gear (pair with f88e8)"
 wait 300
 screenshot autosize_3d table
 close_table

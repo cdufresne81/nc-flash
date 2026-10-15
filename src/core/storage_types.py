@@ -6,6 +6,8 @@ These constants define how to interpret and serialize different data types
 found in ECU ROM files.
 """
 
+import math
+
 # Storage type -> struct format character (for struct.pack/unpack)
 # Reference: https://docs.python.org/3/library/struct.html#format-characters
 STORAGE_TYPE_FORMAT = {
@@ -41,6 +43,27 @@ STORAGE_TYPE_BOUNDS = {
     "I": (0, 4294967295),
     "i": (-2147483648, 2147483647),
 }
+
+_FLOAT32_MAX = 3.4028234663852886e38
+
+
+def raw_fits_storage(raw_value: float, storage_type: str) -> bool:
+    """True if a raw value can be written to this storage type unchanged
+    apart from integer rounding (the same rounding the ROM writer applies).
+
+    Lets editors reject a value before touching any state, instead of the
+    writer raising later after part of a bulk change already landed.
+    """
+    if not math.isfinite(raw_value):
+        return False
+    fmt = STORAGE_TYPE_FORMAT.get((storage_type or "").lower())
+    if fmt in STORAGE_TYPE_BOUNDS:
+        lo, hi = STORAGE_TYPE_BOUNDS[fmt]
+        return lo <= int(round(raw_value)) <= hi
+    if fmt == "f":
+        return abs(raw_value) <= _FLOAT32_MAX
+    return True
+
 
 # Default values used when storage type is unknown
 DEFAULT_FORMAT_CHAR = "f"

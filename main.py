@@ -22,6 +22,7 @@ from PySide6.QtWidgets import (
     QSplitter,
     QFileDialog,
     QMessageBox,
+    QProgressDialog,
     QTabBar,
     QStackedWidget,
     QToolButton,
@@ -2633,9 +2634,52 @@ def main():
 
     ensure_workspace_directories()
 
+    # Deliver new and corrected bundled ROM definitions to the workspace,
+    # keeping the user's edits (issue 121). Runs before any ROM is opened.
+    from src.core.definition_update import update_workspace_definitions
+    from src.utils.settings import get_settings
+
+    update_progress = None
+
+    def show_update_progress(done, total):
+        # Only the first start after an update does this; it can take seconds
+        nonlocal update_progress
+        if update_progress is None:
+            update_progress = QProgressDialog(
+                "Updating ROM definitions...", None, 0, total
+            )
+            update_progress.setWindowTitle(APP_NAME)
+            update_progress.setMinimumDuration(0)
+        update_progress.setValue(done)
+        app.processEvents()
+
+    try:
+        definition_report = update_workspace_definitions(
+            get_settings(), progress=show_update_progress
+        )
+    except Exception as e:
+        logger.exception(f"ROM definition update failed: {type(e).__name__}: {e}")
+        definition_report = None
+    if update_progress is not None:
+        update_progress.close()
+
     window = MainWindow()
     window.start_ipc_server()
     window.show()
+
+    if definition_report is not None and definition_report.worth_telling:
+
+        def tell_definition_update():
+            box = QMessageBox(window)
+            box.setIcon(QMessageBox.Information)
+            box.setWindowTitle("ROM definitions updated")
+            box.setText(definition_report.summary_text())
+            details = definition_report.details_text()
+            if details:
+                box.setDetailedText(details)
+            box.exec()
+
+        QTimer.singleShot(0, tell_definition_update)
 
     # Open file passed as command-line argument (e.g. from file association)
     if file_arg:
