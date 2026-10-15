@@ -21,6 +21,7 @@ All notable changes to NC Flash are documented here.
 - **Version history shows a renamed table under its current name**, with the old name after "was:", one line per table. Searching the history finds it by either name.
 
 ### Fixed
+- **WiCAN flashes no longer fail at random at the very first step (#94).** On a running car, a WiCAN flash often stopped at "Verifying ECU session" with an "ECU not responsive … SLCAN" error, then worked on a retry. NC Flash was tripping over messages from the car's other modules, which it should simply ignore. It now skips them. If the adapter still sends garbled data at that step, NC Flash clears the link and asks the ECU once more, and the error now says "garbled data" instead of blaming the ECU. Nothing was ever written to the ECU when this happened.
 - **Pasting into axis cells no longer crashes.** Copying an axis (for example the LOAD or RPM axis of Load Scaling) and pasting it onto another table's axis now works, and one undo reverts it.
 - **Hex settings copy and paste correctly.** Tire Size Correction and the CEL Flash Pattern settings are shown in hex, but pasting or typing into them read the value as decimal: a value with letters was ignored, and an all-digit value such as `02054517` was saved as a different, wrong number. They now take hex, with or without `0x`.
 - **Pasting a whole copied 3D table no longer shifts its top axis by one column.**
