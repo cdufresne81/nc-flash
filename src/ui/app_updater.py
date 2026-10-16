@@ -2,7 +2,8 @@
 
 One :class:`UpdateController` is owned by the main window (an owned
 collaborator, not a mixin). It runs the check at launch (at most once a day,
-opt-out in Settings) and from *Help > Check for Updates*, shows the
+opt-out in Settings) and from *Help > Check for Updates*, on the update
+channel chosen in Settings (stable, or experimental for betas), shows the
 non-modal :class:`UpdateDialog` with the release notes, and drives the
 download and install. The network and file work lives in
 ``src/utils/update_check.py``; every call runs on a worker QThread, so the GUI
@@ -38,6 +39,7 @@ from PySide6.QtWidgets import (
 from src.utils.constants import APP_NAME
 from src.utils.transfer import format_size
 from src.utils.update_check import (
+    CHANNEL_EXPERIMENTAL,
     RELEASES_PAGE_URL,
     ReleaseInfo,
     UpdateCancelled,
@@ -47,6 +49,7 @@ from src.utils.update_check import (
     download_installer,
     fetch_latest_release,
     is_newer,
+    is_prerelease,
     is_release_build,
     launch_installer,
 )
@@ -82,13 +85,14 @@ class _CheckWorker(QObject):
     finished = Signal(object)  # ReleaseInfo
     error = Signal(str)
 
-    def __init__(self, current_version: str):
+    def __init__(self, current_version: str, channel: str):
         super().__init__()
         self._current_version = current_version
+        self._channel = channel
 
     def run(self):
         try:
-            release = fetch_latest_release(self._current_version)
+            release = fetch_latest_release(self._current_version, channel=self._channel)
         except UpdateError as e:
             self.error.emit(str(e))
             return
@@ -240,7 +244,8 @@ class UpdateController(QObject):
             return False
         self._check_manual = manual
 
-        worker = _CheckWorker(self._current_version)
+        channel = self._settings.get_update_channel()
+        worker = _CheckWorker(self._current_version, channel)
         thread = QThread(self)
         worker.moveToThread(thread)
         self._check_thread = thread
@@ -253,7 +258,7 @@ class UpdateController(QObject):
         worker.error.connect(thread.quit)
         thread.finished.connect(self._on_check_thread_finished, Qt.QueuedConnection)
 
-        logger.info("Checking for %s updates...", APP_NAME)
+        logger.info("Checking for %s updates (%s channel)...", APP_NAME, channel)
         thread.start()
         return True
 
@@ -395,12 +400,22 @@ class UpdateController(QObject):
         if not is_newer(release.version, self._current_version):
             logger.info("%s is up to date (v%s)", APP_NAME, self._current_version)
             if manual:
-                QMessageBox.information(
-                    self._dialog_parent,
-                    "Check for Updates",
-                    f"You have the latest version of {APP_NAME} "
-                    f"(v{self._current_version}).",
-                )
+                if is_prerelease(self._current_version) and not is_prerelease(
+                    release.version
+                ):
+                    # Back on the stable channel while running a beta.
+                    text = (
+                        f"You're running the beta v{self._current_version}, "
+                        f"newer than the latest stable release "
+                        f"(v{release.version}). You'll be offered the next "
+                        "stable release once it is newer."
+                    )
+                else:
+                    text = (
+                        f"You have the latest version of {APP_NAME} "
+                        f"(v{self._current_version})."
+                    )
+                QMessageBox.information(self._dialog_parent, "Check for Updates", text)
             return
         logger.info("%s v%s is available", APP_NAME, release.version)
         if not manual:
@@ -572,12 +587,23 @@ class UpdateDialog(QDialog):
 
         layout = QVBoxLayout(self)
 
+        beta = is_prerelease(release.version)
+        kind = " (experimental beta)" if beta else ""
         headline = QLabel(
-            f"<b>{APP_NAME} v{release.version} is available.</b> "
+            f"<b>{APP_NAME} v{release.version}{kind} is available.</b> "
             f"You have v{current_version}."
         )
         headline.setTextFormat(Qt.RichText)
         layout.addWidget(headline)
+        if beta:
+            warning = QLabel(
+                "This beta has features that are still being tested, which can "
+                "include ECU read and flash changes. You get betas because the "
+                f"update channel is set to {CHANNEL_EXPERIMENTAL.title()} in "
+                "Settings."
+            )
+            warning.setWordWrap(True)
+            layout.addWidget(warning)
 
         notes = QTextBrowser()
         notes.setOpenExternalLinks(True)

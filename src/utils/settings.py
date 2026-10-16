@@ -291,6 +291,19 @@ class AppSettings:
     def set_skipped_update_version(self, version: str):
         self.settings.setValue("updates/skipped_version", version or "")
 
+    def get_update_channel(self) -> str:
+        """Which releases the updater offers: ``"stable"`` (default, final
+        releases only) or ``"experimental"`` (beta pre-releases too)."""
+        value = self.settings.value("updates/channel", "stable", type=str)
+        return value if value in ("stable", "experimental") else "stable"
+
+    def set_update_channel(self, channel: str):
+        channel = "experimental" if channel == "experimental" else "stable"
+        if channel != self.get_update_channel():
+            # The next launch checks the new channel instead of waiting a day.
+            self.set_last_update_check(0)
+        self.settings.setValue("updates/channel", channel)
+
     # ------------------------------------------------------------------ #
     # ECU settings
     # ------------------------------------------------------------------ #

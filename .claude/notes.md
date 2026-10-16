@@ -4,6 +4,17 @@ Only open work and live decisions go here. Completed work goes in `CHANGELOG.md`
 here once it's done. Tracked work lives in GitHub issues (`gh issue list`) — don't duplicate it.
 History before Sep 24, 2026: `git show f4709f1:.claude/notes.md` (search it, don't read it end to end).
 
+## Dev workflow (live decision, Oct 15 2026)
+
+From v2.23.0 on, all work goes to `dev` first unless the user says otherwise, ships as a
+`vX.Y.Z-beta.N`, and is folded into `master` once tested (rule in CLAUDE.md, flow in
+`docs/internal/RELEASE_CHANNELS.md`). The user runs the Experimental update channel.
+
+**On `dev`, awaiting `master`** (add `branch — what — PR into dev` when it merges into `dev`;
+delete the line once that branch's PR into `master` merges):
+
+- (none yet)
+
 ## Next up (in order; delete the top line when it's done)
 
 1. Optional: tell speeps the definitions are being fixed and extended (speeps' email only OKs
