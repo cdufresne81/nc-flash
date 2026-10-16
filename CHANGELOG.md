@@ -7,6 +7,9 @@ All notable changes to NC Flash are documented here.
 ### Changed
 - **Behind the scenes:** a small tool now lists which beta changes are still waiting to reach Stable. No change to the app itself.
 
+### Fixed
+- **Behind the scenes:** the development commit check no longer blocks commits to related repositories that have no changelog. No change to the app itself.
+
 ## [v2.23.0] - 2026-10-15
 
 **Opt into beta builds:** a new update channel setting lets you try new features before they're final.
