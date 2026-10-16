@@ -7,6 +7,16 @@ All notable changes to NC Flash are documented here.
 ### Added
 - **Live datalog from the WiCAN (Trip Logs window > Live Datalog).** NC Flash follows the trip the WiCAN is recording as it records, and writes it to a CSV in the `live` folder inside your logs folder. MegaLogViewerHD can follow that file live: it opens on its own once rows arrive (you can turn that off), or use **Open in MegaLogViewerHD**. If the trip ends and a new one starts with the same channels, the same file keeps growing, so MegaLogViewerHD keeps following. A Wi-Fi drop reconnects by itself. The trip on the WiCAN's SD card is always the complete record. Needs WiCAN firmware with the live stream; while it runs, the ECU Programming window can't connect over the WiCAN (connecting would pause the trip being followed).
 
+## [v2.23.0] - 2026-10-15
+
+**Opt into beta builds:** a new update channel setting lets you try new features before they're final.
+
+### Added
+- **Experimental update channel.** Settings > General > Updates > Update channel lets you opt into beta builds with new features before they're final. Stable (the default) stays on final releases only. Betas can include ECU read and flash changes still being tested, so choose Experimental only if you can recover an ECU from a failed flash. Switching back to Stable keeps your beta, and any definition updates it brought, until a newer final release comes out.
+
+### Changed
+- **New features and fixes now reach beta builds first** and come to Stable once they've been tested.
+
 ## [v2.22.0] - 2026-10-15
 
 **Definition fixes now reach existing installs, new driveline tables, a tidier WiCAN SD card, fewer failed WiCAN flash starts, and reliable copy/paste.**

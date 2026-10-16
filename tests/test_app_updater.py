@@ -60,6 +60,7 @@ def settings():
     s.get_check_updates_on_startup.return_value = True
     s.get_last_update_check.return_value = 0.0
     s.get_skipped_update_version.return_value = ""
+    s.get_update_channel.return_value = "stable"
     return s
 
 
@@ -103,12 +104,17 @@ def make_controller(qtbot, settings, tmp_path, qt_thread_guard):
 
 
 def _fake_fetch(monkeypatch, result):
-    def fetch(current_version):
+    """Replace the network fetch; returns the list of channels it was asked for."""
+    channels = []
+
+    def fetch(current_version, channel):
+        channels.append(channel)
         if isinstance(result, Exception):
             raise result
         return result
 
     monkeypatch.setattr(app_updater, "fetch_latest_release", fetch)
+    return channels
 
 
 def _wait_check(qtbot, ctl):
@@ -212,6 +218,52 @@ class TestManualCheck:
         _wait_check(qtbot, ctl)
         assert ctl._dialog is None
         assert "development build" in boxes[0][2]
+
+
+# --- update channel ---------------------------------------------------------
+
+
+class TestChannel:
+    @pytest.mark.parametrize("channel", ["stable", "experimental"])
+    def test_check_uses_the_channel_from_settings(
+        self, qtbot, make_controller, settings, monkeypatch, boxes, channel
+    ):
+        settings.get_update_channel.return_value = channel
+        channels = _fake_fetch(monkeypatch, _release(version="2.17.0"))
+        ctl = make_controller()
+        ctl.check_for_updates(manual=True)
+        _wait_check(qtbot, ctl)
+        assert channels == [channel]
+
+    def test_beta_build_is_offered_updates(self, qtbot, make_controller, monkeypatch):
+        _fake_fetch(monkeypatch, _release(version="2.18.0-beta.2"))
+        ctl = make_controller(version="2.18.0-beta.1")
+        assert ctl.schedule_startup_check(delay_ms=0)
+        qtbot.waitUntil(lambda: ctl._dialog is not None, timeout=5000)
+        assert (
+            "experimental beta"
+            in ctl._dialog.findChildren(app_updater.QLabel)[0].text()
+        )
+
+    def test_beta_build_on_stable_is_told_it_is_ahead(
+        self, qtbot, make_controller, monkeypatch, boxes
+    ):
+        _fake_fetch(monkeypatch, _release(version="2.17.0"))
+        ctl = make_controller(version="2.18.0-beta.1")
+        ctl.check_for_updates(manual=True)
+        _wait_check(qtbot, ctl)
+        assert ctl._dialog is None
+        assert "newer than the latest stable release" in boxes[0][2]
+
+    def test_final_release_dialog_has_no_beta_label(
+        self, qtbot, make_controller, monkeypatch
+    ):
+        _fake_fetch(monkeypatch, _release())
+        ctl = make_controller()
+        ctl.check_for_updates(manual=True)
+        qtbot.waitUntil(lambda: ctl._dialog is not None, timeout=5000)
+        labels = ctl._dialog.findChildren(app_updater.QLabel)
+        assert not any("beta" in label.text() for label in labels)
 
 
 # --- install safety --------------------------------------------------------

@@ -481,6 +481,24 @@ def test_never_runs_on_a_downgrade_or_from_source(app, tmp_path):
     assert not (ws / "metadata").exists()
 
 
+@pytest.mark.parametrize(
+    "stored, current, runs",
+    [
+        ("2.22.0", "2.23.0-beta.1", True),  # stable -> newer beta
+        ("2.23.0-beta.1", "2.23.0-beta.2", True),
+        ("2.23.0-beta.3", "2.23.0", True),  # beta -> its final release
+        ("2.23.0", "2.23.0-beta.2", False),  # a beta is older than its final
+        ("2.23.0-beta.1", "2.22.1", False),  # back to an older stable
+    ],
+)
+def test_beta_builds_follow_version_order(app, tmp_path, stored, current, runs):
+    ws = tmp_path / "ws"
+    settings, _ = _settings(ws, ws / "metadata", stored=stored)
+    with patch("src.utils.constants.APP_VERSION", current):
+        report = du.update_workspace_definitions(settings)
+    assert (report is not None) == runs
+
+
 def test_environment_forces_a_run_from_source(app, tmp_path, monkeypatch):
     ws = tmp_path / "ws"
     settings, _ = _settings(ws, ws / "metadata")

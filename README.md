@@ -153,7 +153,7 @@ python main.py
 - Multi-window table viewers
 - Recent files list
 - Session restoration (automatically reopen last ROM)
-- Update check (Help > Check for Updates, and at most once a day at launch): shows the release notes and, on Windows, downloads the installer, verifies it, and installs it. Installing is refused while the ECU Programming window is open or a trip-log download is running. Turn the launch check off in Settings > General > Updates.
+- Update check (Help > Check for Updates, and at most once a day at launch): shows the release notes and, on Windows, downloads the installer, verifies it, and installs it. Installing is refused while the ECU Programming window is open or a trip-log download is running. Turn the launch check off in Settings > General > Updates. The same page has the update channel: Stable (final releases, the default) or Experimental (beta builds too).
 - Per-session log files saved to `~/.nc-flash/logs/`
 - First-run setup wizard for metadata configuration
 - Configurable settings (font size, color maps, export paths)
