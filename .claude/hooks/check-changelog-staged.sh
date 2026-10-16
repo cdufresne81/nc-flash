@@ -58,6 +58,12 @@ if top=$(git -C "${repo:-.}" rev-parse --show-toplevel 2>/dev/null) && [[ ! -f "
     exit 0
 fi
 
+# Concluding a merge (e.g. master into dev): the entries come from the branches
+# being merged, and a merge that changes nothing has nothing to add.
+if git -C "${repo:-.}" rev-parse -q --verify MERGE_HEAD >/dev/null 2>&1; then
+    exit 0
+fi
+
 # Check if CHANGELOG.md is in the staging area of the repo being committed to.
 # An amend replaces HEAD, so compare against HEAD's parent: the amended commit
 # passes if it changes CHANGELOG.md.

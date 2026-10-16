@@ -9,7 +9,7 @@ All notable changes to NC Flash are documented here.
 
 ### Fixed
 - **Behind the scenes:** a release no longer fails to publish when its build reports a failure after every test has passed (#149, already fixed for the regular checks). No change to the app itself.
-- **Behind the scenes:** the development commit check no longer blocks commits to related repositories that have no changelog. No change to the app itself.
+- **Behind the scenes:** the development commit check no longer blocks commits to related repositories that have no changelog, or merge commits. No change to the app itself.
 
 ## [v2.23.0] - 2026-10-15
 
