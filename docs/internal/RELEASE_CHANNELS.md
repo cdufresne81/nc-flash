@@ -30,9 +30,15 @@ master ──merge after every stable release──► dev
   user says otherwise): PR into `dev`, ship it in a beta. When it's tested,
   open a second PR from the **same branch** into `master`. Never merge all
   of `dev` into `master`: that would ship every unfinished experiment with it.
-- `.claude/notes.md` lists what is on `dev` awaiting `master`: add a line
-  when a branch merges into `dev`, delete it when that branch reaches
-  `master`.
+- `python tools/dev_status.py` lists what is on `dev` awaiting `master`
+  (PRs merged into `dev` whose head commit isn't in `master` yet), and the
+  branches that reached `master` and can be deleted. Nothing to keep by hand.
+- **Keep the branch** after its PR into `dev` merges: the PR into `master`
+  comes from it. Delete it once that PR merges. (The repo's "Automatically
+  delete head branches" setting must stay off.)
+- **Merge commits only** (`gh pr merge N --merge`), never squash or rebase:
+  the branch's own commits must land in both `dev` and `master`, which is
+  also how `dev_status.py` tells them apart.
 - **Never merge or rebase `dev` into a feature branch** (GitHub's "Update
   branch" button on a PR into `dev` does exactly that). The branch would then
   carry all of `dev`, and its PR into `master` would ship every experiment.
