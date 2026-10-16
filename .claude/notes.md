@@ -26,6 +26,12 @@ delete the line once that branch's PR into `master` merges):
 
 ## Open items (not tracked in an issue)
 
+- **Bench-test the NC1/NC2 generation check on the Tactrix clone (J2534)** (owner: user),
+  before the next release. Proven over WiCAN only. Check: a normal flash logs "Generation
+  check OK"; with the ECU stuck in its bootloader, the "Which car is this ECU from?" picker
+  held open ~30 s still lets the flash go on (a side thread sends Tester Present through the
+  cable DLL meanwhile; some clone DLLs may not like a second thread). Also unproven: the NC1
+  boot signature has only been seen in ROM files, never read from a real NC1 ECU.
 - **Bench-test #130/#131 on the Tactrix clone (J2534)** (owner: user). Only tested over
   WiCAN so far. Check: ignition OFF → Connect fails in ~3 s, not 60 s; right after a ROM
   read or RAM scan, Flash waits ~6.5 s then reads RPM and voltage (no false refusal);
