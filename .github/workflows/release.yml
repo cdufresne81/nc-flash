@@ -76,7 +76,25 @@ jobs:
       shell: pwsh
 
     - name: Run tests
-      run: python -m pytest
+      # The process sometimes dies after pytest has reported every test passed
+      # (Windows: exit 1, #149). Same check as ci.yml: tests/conftest.py writes
+      # pytest's own status to NCFLASH_PYTEST_STATUS_FILE; when that says 0, the
+      # run passed. Any other status, or no status file, fails as usual.
+      shell: bash
+      run: |
+        rm -f "$NCFLASH_PYTEST_STATUS_FILE"
+        code=0
+        python -m pytest || code=$?
+        status=$(cat "$NCFLASH_PYTEST_STATUS_FILE" 2>/dev/null || true)
+        echo "python exit code: $code, pytest status: ${status:-none}"
+        if [ "$code" -ne 0 ] && [ "$status" = "0" ]; then
+          echo "::warning title=Exit code $code after a passing run (#149)::pytest reported status 0 (every test passed), then the process exited with $code while shutting down. Treating the run as passed."
+          code=0
+        fi
+        rm -f "$NCFLASH_PYTEST_STATUS_FILE"
+        exit "$code"
+      env:
+        NCFLASH_PYTEST_STATUS_FILE: pytest-exit-status.txt
 
     - name: Build with PyInstaller
       run: pyinstaller packaging/NCFlash.spec --noconfirm
@@ -175,8 +193,25 @@ jobs:
         echo "Stamped version: $VERSION"
 
     - name: Run tests
-      run: pytest
+      # The process sometimes dies after pytest has reported every test passed
+      # (Windows: exit 1, #149). Same check as ci.yml: tests/conftest.py writes
+      # pytest's own status to NCFLASH_PYTEST_STATUS_FILE; when that says 0, the
+      # run passed. Any other status, or no status file, fails as usual.
+      shell: bash
+      run: |
+        rm -f "$NCFLASH_PYTEST_STATUS_FILE"
+        code=0
+        python -m pytest || code=$?
+        status=$(cat "$NCFLASH_PYTEST_STATUS_FILE" 2>/dev/null || true)
+        echo "python exit code: $code, pytest status: ${status:-none}"
+        if [ "$code" -ne 0 ] && [ "$status" = "0" ]; then
+          echo "::warning title=Exit code $code after a passing run (#149)::pytest reported status 0 (every test passed), then the process exited with $code while shutting down. Treating the run as passed."
+          code=0
+        fi
+        rm -f "$NCFLASH_PYTEST_STATUS_FILE"
+        exit "$code"
       env:
+        NCFLASH_PYTEST_STATUS_FILE: pytest-exit-status.txt
         QT_QPA_PLATFORM: offscreen
 
     - name: Build with PyInstaller

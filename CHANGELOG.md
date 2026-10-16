@@ -13,6 +13,7 @@ All notable changes to NC Flash are documented here.
 
 ### Fixed
 - **A flash or ROM read no longer fails when the ECU is already unlocked.** If an earlier session left the ECU unlocked, it answers with an empty security seed; NC Flash sent a key anyway and the ECU refused it. NC Flash now skips the key in that case.
+- **Behind the scenes:** a release no longer fails to publish when its build reports a failure after every test has passed (#149, already fixed for the regular checks). No change to the app itself.
 
 ## [v2.23.0] - 2026-10-15
 
