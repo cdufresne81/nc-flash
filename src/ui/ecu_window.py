@@ -190,6 +190,10 @@ class ECUProgrammingWindow(QMainWindow):
     #: Consumed by the Trip Logs window to hold its download (composed by
     #: main.py; carries its own context — no sender() walks).
     busy_changed = Signal(bool)
+    #: True while an ECU session over the WiCAN exists (connecting or
+    #: connected). It reserves the device's bus, which pauses its trip logger,
+    #: so the Trip Logs window locks its Live Datalog on it.
+    wican_link_changed = Signal(bool)
 
     def __init__(self, main_window, parent=None):
         super().__init__(parent)
@@ -218,12 +222,16 @@ class ECUProgrammingWindow(QMainWindow):
         # the Trip Logs window locks its download on it, mirroring how this
         # window locks ECU ops on the sync's running_changed.
         self._last_busy_broadcast = None
+        self._last_link_broadcast = None
 
         self._build_ui()
 
         # Re-lock the ECU op buttons as the main-window-owned trip-log sync
         # starts/stops (Qt auto-disconnects when this window is destroyed).
         main_window.wican_log_sync.running_changed.connect(self._update_action_states)
+        main_window.wican_live_datalog.running_changed.connect(
+            self._update_action_states
+        )
 
         self._update_action_states()
 
@@ -381,6 +389,7 @@ class ECUProgrammingWindow(QMainWindow):
                 "src.ecu",
                 "src.ui.ecu_window",
                 "src.ui.wican_log_sync",
+                "src.ui.wican_live_datalog",
                 "__main__",
             ],
             drop_qt_logger=True,
@@ -463,6 +472,15 @@ class ECUProgrammingWindow(QMainWindow):
             self._session = None
 
         adapter = self._build_adapter_config()
+        if (
+            adapter["kind"] == "wican"
+            and self._main_window.wican_live_datalog.is_running
+        ):
+            # Connecting reserves the WiCAN's bus, which pauses the very trip
+            # the live datalog is following. The user stops it first.
+            logger.info("Stop the WiCAN live datalog (Trip Logs window) to connect")
+            self._update_action_states()
+            return
         if adapter["kind"] == "wican":
             connecting_msg = "Connecting to WiCAN..."
         else:
@@ -776,6 +794,12 @@ class ECUProgrammingWindow(QMainWindow):
         )
         return self._ecu_busy or flash_running
 
+    @property
+    def holds_wican(self) -> bool:
+        """Current wican_link_changed state (initial value for a late-created
+        Trip Logs window)."""
+        return bool(self._last_link_broadcast)
+
     def _update_action_states(self):
         connected = self._session and self._session.is_connected
         busy = self.is_busy
@@ -798,7 +822,10 @@ class ECUProgrammingWindow(QMainWindow):
         is_wican_adapter = self._main_window.settings.is_wican_adapter()
         log_sync = self._main_window.wican_log_sync
         sync_running = log_sync.is_running
-        wican_contended = is_wican_adapter and sync_running
+        # The live datalog follows the device's own trip; an ECU session would
+        # reserve the bus and pause that trip, so the two never mix either.
+        live_running = self._main_window.wican_live_datalog.is_running
+        wican_contended = is_wican_adapter and (sync_running or live_running)
 
         # An ECU connect during a download would contend for the WiCAN's
         # SD/CPU/WiFi (and connecting re-parks the datalogger). Gate Connect
@@ -809,7 +836,17 @@ class ECUProgrammingWindow(QMainWindow):
             getattr(self._session, "state", None) == ECUSessionState.DISCONNECTED
         )
         if is_wican_adapter and disconnected:
-            self._btn_connect.setEnabled(not sync_running)
+            self._btn_connect.setEnabled(not (sync_running or live_running))
+            self._btn_connect.setToolTip(
+                "Stop the WiCAN live datalog first (Trip Logs window)"
+                if live_running
+                else ""
+            )
+
+        holds_wican = bool(is_wican_adapter and not disconnected)
+        if holds_wican != self._last_link_broadcast:
+            self._last_link_broadcast = holds_wican
+            self.wican_link_changed.emit(holds_wican)
 
         # Nothing works while an operation is in progress, and no ECU
         # operation may start while a download holds the WiCAN.
@@ -820,11 +857,12 @@ class ECUProgrammingWindow(QMainWindow):
             self._btn_read_rom.setEnabled(False)
             self._btn_scan_ram.setEnabled(False)
             self._btn_flash_current.setEnabled(False)
-            tip = (
-                "Stop the WiCAN trip-log download first"
-                if wican_contended and not busy
-                else ""
-            )
+            if not wican_contended or busy:
+                tip = ""
+            elif live_running:
+                tip = "Stop the WiCAN live datalog first"
+            else:
+                tip = "Stop the WiCAN trip-log download first"
             self._btn_full_flash.setToolTip(tip)
             self._btn_read_rom.setToolTip(tip)
             self._btn_scan_ram.setToolTip(tip)
@@ -1327,6 +1365,10 @@ class ECUProgrammingWindow(QMainWindow):
         if self._is_wican() and log_sync.is_running:
             logger.info("Stopping WiCAN trip-log sync for the ECU operation")
             log_sync.shutdown()
+        live = self._main_window.wican_live_datalog
+        if self._is_wican() and live.is_running:
+            logger.info("Stopping WiCAN live datalog for the ECU operation")
+            live.shutdown()
 
         self._poll_timer.stop()
         self._update_action_states()  # Disable all buttons
@@ -1598,13 +1640,25 @@ class ECUProgrammingWindow(QMainWindow):
             # release() already closed the link without restoring the protocol,
             # so we only need to reopen the transport.
             self._progress_detail.setText("Reconnecting...")
-            QTimer.singleShot(500, self._session.connect_ecu)
+            QTimer.singleShot(500, self._reconnect_wican_session)
             return
         if self._session:
             self._session.disconnect_ecu()
             self._session = None
         self._progress_detail.setText("Reconnecting...")
         QTimer.singleShot(500, self._on_connect)
+
+    def _reconnect_wican_session(self):
+        """Reopen the same WiCAN session after an op, unless a live datalog
+        started in the gap (connecting would pause the trip it follows)."""
+        if self._session is None:
+            return
+        if self._main_window.wican_live_datalog.is_running:
+            logger.info("Not reconnecting: the WiCAN live datalog is running")
+            self._progress_detail.setText("Not reconnected: live datalog running")
+            self._update_action_states()
+            return
+        self._session.connect_ecu()
 
     def _auto_save_to_reads_dir(
         self, data: bytes | bytearray, label: str = "", name_override: str | None = None

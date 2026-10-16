@@ -80,6 +80,7 @@ from src.ui.project_mixin import ProjectMixin
 from src.ui.session_mixin import SessionMixin
 from src.ui.mcp_mixin import McpMixin
 from src.ui.flash_mixin import FlashMixin
+from src.ui.wican_live_datalog import WiCANLiveDatalog
 from src.ui.wican_log_sync import WiCANLogSync
 from src.ui.app_updater import UpdateController
 
@@ -208,6 +209,10 @@ class MainWindow(
         # Finished download: offer to open the new logs in MegaLogViewerHD.
         self.wican_log_sync.download_finished.connect(self._on_trip_logs_downloaded)
 
+        # WiCAN live datalog — single owner of the live stream (firmware #3),
+        # driven by the Trip Logs window.
+        self.wican_live_datalog = WiCANLiveDatalog(self.settings, parent=self)
+
         # In-app updater (GitHub issue 104). Installing closes the app, so it asks
         # _update_install_blocker first and refuses while ECU work could run.
         self.update_controller = UpdateController(
@@ -255,6 +260,9 @@ class MainWindow(
         # while running (aborts between chunks; .part contract keeps it safe).
         if event.isAccepted():
             self.wican_log_sync.shutdown()
+            # 10 s: a stop can land inside a 3 s mDNS lookup plus its teardown,
+            # and Qt aborts if the thread is destroyed still running.
+            self.wican_live_datalog.shutdown(10000)
             self.update_controller.shutdown()
 
     def _update_install_blocker(self):
@@ -1591,6 +1599,7 @@ class MainWindow(
         # Relay ECU-busy to the Trip Logs window (2 hops: owner → here →
         # consumer; both windows are transient, this composer is not).
         window.busy_changed.connect(self._on_ecu_busy_changed)
+        window.wican_link_changed.connect(self._on_ecu_wican_link_changed)
         self.ecu_window = window
         window.show()
 
@@ -1599,10 +1608,15 @@ class MainWindow(
         # A destroyed ECU window cannot be mid-operation (close is confirmed
         # while one runs) — release the Trip Logs hold.
         self._on_ecu_busy_changed(False)
+        self._on_ecu_wican_link_changed(False)
 
     def _on_ecu_busy_changed(self, busy: bool):
         if self.trip_logs_window is not None:
             self.trip_logs_window.set_ecu_busy(busy)
+
+    def _on_ecu_wican_link_changed(self, linked: bool):
+        if self.trip_logs_window is not None:
+            self.trip_logs_window.set_ecu_link(linked)
 
     def _update_trip_logs_visibility(self):
         """Show the Trip Logs entry points only while the WiCAN adapter is
@@ -1625,6 +1639,7 @@ class MainWindow(
         window.destroyed.connect(lambda: setattr(self, "trip_logs_window", None))
         if self.ecu_window is not None:
             window.set_ecu_busy(self.ecu_window.is_busy)
+            window.set_ecu_link(self.ecu_window.holds_wican)
         self.trip_logs_window = window
         window.show()
 
