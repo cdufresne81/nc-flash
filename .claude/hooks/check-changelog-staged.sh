@@ -51,6 +51,13 @@ if [[ "$is_commit" != "1" ]]; then
     exit 0
 fi
 
+# A repo with no CHANGELOG.md at its root (e.g. the WiCAN firmware repo, committed
+# to from an NC Flash session) has nothing to check. Only skip when git confirms
+# the repo: an unresolvable path still blocks (fail closed).
+if top=$(git -C "${repo:-.}" rev-parse --show-toplevel 2>/dev/null) && [[ ! -f "$top/CHANGELOG.md" ]]; then
+    exit 0
+fi
+
 # Check if CHANGELOG.md is in the staging area of the repo being committed to.
 # An amend replaces HEAD, so compare against HEAD's parent: the amended commit
 # passes if it changes CHANGELOG.md.
