@@ -7,6 +7,9 @@ All notable changes to NC Flash are documented here.
 ### Changed
 - **Behind the scenes:** a small tool now lists which beta changes are still waiting to reach Stable. No change to the app itself.
 
+### Fixed
+- **Behind the scenes:** a release no longer fails to publish when its build reports a failure after every test has passed (#149, already fixed for the regular checks). No change to the app itself.
+
 ## [v2.23.0] - 2026-10-15
 
 **Opt into beta builds:** a new update channel setting lets you try new features before they're final.
