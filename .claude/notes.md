@@ -4,19 +4,30 @@ Only open work and live decisions go here. Completed work goes in `CHANGELOG.md`
 here once it's done. Tracked work lives in GitHub issues (`gh issue list`) — don't duplicate it.
 History before Sep 24, 2026: `git show f4709f1:.claude/notes.md` (search it, don't read it end to end).
 
+## Dev workflow (live decision, Oct 15 2026)
+
+From v2.23.0 on, all work goes to `dev` first unless the user says otherwise, ships as a
+`vX.Y.Z-beta.N`, and is folded into `master` once tested (rule in CLAUDE.md, flow in
+`docs/internal/RELEASE_CHANNELS.md`). The user runs the Experimental update channel.
+
+What is on `dev` awaiting `master`: run `python tools/dev_status.py` (asks GitHub; no list to keep here).
+
 ## Next up (in order; delete the top line when it's done)
 
-1. Seed nc-flash-re with the reformatted definitions from `examples/metadata/` (PR #120) before
-   its `sync_ncflash_definitions.py` next runs, or the old layout comes back and fails the lint.
-2. Optional: tell speeps the definitions are being fixed and extended (speeps' email only OKs
+1. Optional: tell speeps the definitions are being fixed and extended (speeps' email only OKs
    including them).
-3. #121 deliver new/fixed definitions to existing installs.
-4. #124 tool to port a new table across all NC calibrations.
-5. #122 give duplicate-named tables real names.
-6. #123 check the TCM odd-address cells / overlaps against the TCM code.
+2. #124 tool to port a new table across all NC calibrations.
+3. #122 give duplicate-named tables real names.
+4. #123 check the TCM odd-address cells / overlaps against the TCM code.
+5. #149 Windows CI reports exit 1 after every test has passed.
 
 ## Open items (not tracked in an issue)
 
+- **Bench-test #130/#131 on the Tactrix clone (J2534)** (owner: user). Only tested over
+  WiCAN so far. Check: ignition OFF → Connect fails in ~3 s, not 60 s; right after a ROM
+  read or RAM scan, Flash waits ~6.5 s then reads RPM and voltage (no false refusal);
+  pulling the cable mid-session → "ECU not answering" and buttons fail fast. Delete this
+  item once done (or open an issue if anything misbehaves).
 - **ROM definitions (after PR #120, speeps import):**
   - Decided: nc-flash-re is the working copy where definitions are edited; NC Flash holds the
     released copy (copied in, never hand-edited). Check any change with

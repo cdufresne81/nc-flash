@@ -86,18 +86,15 @@ from .wican_http import (
     download_to_file,
     fetch_head,
     get_json,
-    post_json,
     sanitize_basename,
 )
+from .wican_sd_files import DELETABLE_NAME, WiCANSdFiles
 
 logger = logging.getLogger(__name__)
 
 CSV_LIST_PATH = "/csv_list"
 CSV_DOWNLOAD_PATH = "/download_csv"
 CSV_STATUS_PATH = "/csv_status"
-
-#: The SD file manager endpoint (``sd_filemgr``); paths are relative to /sdcard.
-FILES_PATH = "/files"
 
 #: The csv_logger's folder, relative to /sdcard (the file manager's root).
 SD_LOGS_DIR = "logs"
@@ -111,12 +108,6 @@ _COMPARE_CHUNK = 64 * 1024
 #: How much of a dated trip is fetched to prove its local copy (the first
 #: rows: header, then millisecond timestamps and live sensor values).
 _HEAD_CHECK_BYTES = 64 * 1024
-
-#: Names the delete pass may touch: the characters the firmware itself uses.
-#: The download URL is query-encoded (a space becomes ``+``) and the firmware
-#: never decodes it, while the delete path is sent verbatim — for any other
-#: name the file downloaded and the file deleted could differ.
-_DELETABLE_NAME = re.compile(r"[A-Za-z0-9._-]+")
 
 #: A trip name the firmware dated from a SET clock (year >= 2020, the
 #: firmware's own validity bar), with its optional ``_N`` duplicate suffix.
@@ -463,48 +454,23 @@ class WiCANLogClient:
 
     # --- opt-in delete after download (#112) ---------------------------------
 
-    def list_sd_logs(self) -> dict:
-        """Fresh file-manager view of the logs folder: ``{name: entry}``.
+    def _sd_files(self) -> WiCANSdFiles:
+        return WiCANSdFiles(
+            self.host, self.http_port, self.timeout_s, error=WiCANLogsError
+        )
 
-        Each entry is the raw ``sd_filemgr`` item (``type``, ``size``,
-        ``mtime``, and ``active`` / ``locked`` flags when set). An unmounted
-        card lists empty, so nothing can be deleted from it.
-        """
-        url = self._url(FILES_PATH, {"op": "list", "path": SD_LOGS_DIR})
-        payload = get_json(url, timeout_s=self.timeout_s)
-        entries = payload.get("entries") if isinstance(payload, dict) else None
-        if not isinstance(entries, list):
-            raise WiCANLogsError(
-                f"/files list from {self.host}: malformed reply {payload!r}"
-            )
-        return {
-            str(e["name"]): e for e in entries if isinstance(e, dict) and e.get("name")
-        }
+    def list_sd_logs(self) -> dict:
+        """Fresh file-manager view of the logs folder: ``{name: entry}``
+        (see :meth:`WiCANSdFiles.list_dir`)."""
+        return self._sd_files().list_dir(SD_LOGS_DIR)
 
     def delete_log(self, name: str) -> None:
-        """Delete ONE trip log file from the device's logs folder.
-
-        Always a single-file path (``logs/<name>``) built from a sanitized
-        basename: the file manager deletes folders recursively, so nothing
-        else may ever reach it. Raises on any refusal (``409`` for the file
-        being recorded, ``403`` reserved, ``404`` gone) or an unexpected reply.
+        """Delete ONE trip log file from the device's logs folder
+        (``logs/<name>``; see :meth:`WiCANSdFiles.delete_file`). Raises on any
+        refusal (``409`` for the file being recorded, ``403`` reserved, ``404``
+        gone) or an unexpected reply.
         """
-        name = sanitize_basename(name)
-        if not _DELETABLE_NAME.fullmatch(name):
-            raise WiCANLogsError(f"refusing to delete {name!r}: unsupported characters")
-        reply = post_json(
-            self._url(FILES_PATH),
-            {"op": "delete", "path": f"{SD_LOGS_DIR}/{name}"},
-            timeout_s=self.timeout_s,
-        )
-        if not isinstance(reply, dict) or reply.get("ok") is not True:
-            raise WiCANLogsError(f"delete of {name} refused: {reply!r}")
-        if reply.get("deleted") != 1:
-            # The file-manager listing said it was one plain file; anything
-            # else means the device changed under us — make it loud.
-            logger.warning(
-                "Delete of %s removed %r entries", name, reply.get("deleted")
-            )
+        self._sd_files().delete_file(SD_LOGS_DIR, name)
 
     def delete_verified(
         self,
@@ -632,7 +598,7 @@ class WiCANLogClient:
             name = sanitize_basename(log.name)
         except WiCANHttpError:
             return "unsafe name"
-        if not _DELETABLE_NAME.fullmatch(name):
+        if not DELETABLE_NAME.fullmatch(name):
             return "name has characters the download cannot address exactly"
         if active is not None and name == active:
             return "being recorded"

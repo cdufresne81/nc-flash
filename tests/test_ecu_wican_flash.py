@@ -3,7 +3,7 @@
 Option A — the host-driven, block-by-block WiFi flash — was RETIRED (audit D4);
 what remains in ``wican_flash`` is the reusable safety gate the SD flasher
 composes. These tests pin the gate contract: a bad link or a low battery refuses;
-a missing voltage does NOT refuse (fail-open, like the J2534 path); ``preflight``
+a voltage the ECU declines does NOT refuse, a failed read does; ``preflight``
 reports link status without reading the battery. No hardware, no _secure, no socket.
 """
 
@@ -72,10 +72,24 @@ def test_low_battery_blocks_gate(mocks):
         WiCANFlasher(MagicMock())._gate()
 
 
-def test_missing_voltage_does_not_block_gate(mocks):
+def test_declined_voltage_does_not_block_gate(mocks):
+    """ECU answered and declined (PID unsupported / bootloader): proceed."""
     _clq, UDS = mocks
     UDS.return_value.read_battery_voltage.return_value = None
-    WiCANFlasher(MagicMock())._gate()  # fail-open: must not raise
+    WiCANFlasher(MagicMock())._gate()  # must not raise
+    UDS.return_value.read_battery_voltage.assert_called_once_with(
+        strict=True, wait_session_exit=True
+    )
+
+
+def test_failed_voltage_read_blocks_gate(mocks):
+    """A read that fails (no reply, corrupt frame) blocks the flash (#130)."""
+    from src.ecu.wican_transport import WiCANError
+
+    _clq, UDS = mocks
+    UDS.return_value.read_battery_voltage.side_effect = WiCANError("bad frame")
+    with pytest.raises(FlashError, match="Could not read the battery voltage"):
+        WiCANFlasher(MagicMock())._gate()
 
 
 # --- preflight (link status only, no battery read) --------------------------
@@ -95,3 +109,18 @@ def test_preflight_reports_bad_link(mocks):
     result = WiCANFlasher(MagicMock()).preflight()
     assert result.ok is False
     assert "packet loss" in result.reason
+
+
+def test_operator_override_lets_unreadable_voltage_proceed(mocks):
+    from src.ecu.wican_transport import WiCANError
+
+    _clq, UDS = mocks
+    UDS.return_value.read_battery_voltage.side_effect = WiCANError("no reply")
+    WiCANFlasher(MagicMock(), allow_unread_voltage=True)._gate()  # must not raise
+
+
+def test_override_never_lets_a_low_battery_through(mocks):
+    _clq, UDS = mocks
+    UDS.return_value.read_battery_voltage.return_value = 11.0
+    with pytest.raises(FlashError, match="Battery voltage"):
+        WiCANFlasher(MagicMock(), allow_unread_voltage=True)._gate()

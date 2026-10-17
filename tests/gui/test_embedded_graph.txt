@@ -2,7 +2,7 @@
 # This test verifies that the graph appears to the right of the table
 
 load_rom examples/lf9veb.bin
-open_table "APP to TP Desired - 2nd Gear"
+open_table "APP to TP Desired - 2nd Gear (pair with f8618)"
 wait 300
 
 # Screenshot table without graph

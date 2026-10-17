@@ -11,7 +11,11 @@ from PySide6.QtCore import QRegularExpression, Qt
 from PySide6.QtGui import QPen, QColor, QRegularExpressionValidator
 
 from ...core.rom_definition import TableType
-from ...utils.formatting import NUMERIC_INPUT_PATTERN
+from ...utils.formatting import (
+    HEX_INPUT_PATTERN,
+    NUMERIC_INPUT_PATTERN,
+    is_hex_format,
+)
 from .. import theme
 
 
@@ -39,12 +43,16 @@ class ModifiedCellDelegate(QStyledItemDelegate):
         typed at all, so 'nan'/'inf' can never reach the ROM. The
         parse-and-revert path in TableEditHelper remains the second line of
         defence for values arriving by other routes (paste, scripting).
+
+        Hex-formatted cells (e.g. Tire Size Correction) accept hex digits
+        instead, matching what the cell displays.
         """
         editor = QLineEdit(parent)
+        pattern = NUMERIC_INPUT_PATTERN
+        if is_hex_format(self.viewer.cell_format(index.data(Qt.UserRole))):
+            pattern = HEX_INPUT_PATTERN
         editor.setValidator(
-            QRegularExpressionValidator(
-                QRegularExpression(NUMERIC_INPUT_PATTERN), editor
-            )
+            QRegularExpressionValidator(QRegularExpression(pattern), editor)
         )
         return editor
 

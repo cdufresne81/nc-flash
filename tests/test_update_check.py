@@ -15,7 +15,9 @@ from src.utils.update_check import (
     UpdateError,
     download_installer,
     fetch_latest_release,
+    format_version,
     is_newer,
+    is_prerelease,
     is_release_build,
     parse_release,
     parse_version,
@@ -100,12 +102,17 @@ def _asset(size=len(PAYLOAD), sha=PAYLOAD_SHA):
 @pytest.mark.parametrize(
     "text, expected",
     [
-        ("v2.17.0", (2, 17, 0)),
-        ("2.17.0", (2, 17, 0)),
-        (" v10.0.1 ", (10, 0, 1)),
+        ("v2.17.0", (2, 17, 0, 1, 0)),
+        ("2.17.0", (2, 17, 0, 1, 0)),
+        (" v10.0.1 ", (10, 0, 1, 1, 0)),
+        ("v2.18.0-beta.3", (2, 18, 0, 0, 3)),
+        ("2.18.0-beta.12", (2, 18, 0, 0, 12)),
         ("dev", None),
         ("0.0.0-dev", None),
         ("v2.17.0-rc1", None),
+        ("v2.17.0-beta", None),
+        ("v2.17.0-beta1", None),
+        ("v2.17.0-alpha.1", None),
         ("v2.17", None),
         ("", None),
         (None, None),
@@ -127,8 +134,32 @@ def test_is_newer_false_for_non_release_versions():
     assert not is_newer("2.18.0-rc1", "2.17.0")
 
 
+def test_beta_sorts_between_finals():
+    assert is_newer("2.18.0-beta.1", "2.17.0")
+    assert is_newer("2.18.0-beta.2", "2.18.0-beta.1")
+    assert is_newer("2.18.0-beta.10", "2.18.0-beta.9")
+    assert is_newer("2.18.0", "2.18.0-beta.9")
+    assert is_newer("2.17.1", "2.17.0-beta.4")
+    assert not is_newer("2.18.0-beta.9", "2.18.0")
+    assert not is_newer("2.17.0", "2.18.0-beta.1")
+
+
+def test_format_version_round_trips():
+    for text in ("2.17.0", "2.18.0-beta.3"):
+        assert format_version(parse_version("v" + text)) == text
+
+
+def test_is_prerelease():
+    assert is_prerelease("2.18.0-beta.1")
+    assert is_prerelease("v2.18.0-beta.1")
+    assert not is_prerelease("2.18.0")
+    assert not is_prerelease("dev")
+
+
 def test_is_release_build():
     assert is_release_build("2.17.0")
+    # A beta must keep updating itself, not call itself a source build.
+    assert is_release_build("2.18.0-beta.1")
     assert not is_release_build("dev")
     assert not is_release_build("0.0.0-dev")
 
@@ -149,6 +180,24 @@ def test_parse_release_picks_the_windows_installer():
 def test_parse_release_rejects_non_final_releases(flag):
     with pytest.raises(UpdateError):
         parse_release(_release_json(**{flag: True}))
+
+
+def test_parse_release_refuses_a_beta_tag_marked_final():
+    # Stable must never get a beta, even one wrongly published as "latest".
+    with pytest.raises(UpdateError):
+        parse_release(_release_json(tag="v2.18.0-beta.1"))
+
+
+def test_parse_release_accepts_a_beta_when_allowed():
+    data = _release_json(tag="v2.18.0-beta.1", prerelease=True)
+    release = parse_release(data, allow_prerelease=True)
+    assert release.version == "2.18.0-beta.1"
+    assert release.installer.name == "NCFlash-2.18.0-beta.1-Setup.exe"
+
+
+def test_parse_release_refuses_drafts_even_when_prerelease_allowed():
+    with pytest.raises(UpdateError):
+        parse_release(_release_json(draft=True), allow_prerelease=True)
 
 
 def test_parse_release_rejects_unrecognised_tag():
@@ -232,6 +281,67 @@ def test_fetch_latest_release_offline():
 def test_fetch_latest_release_bad_json():
     with pytest.raises(UpdateError):
         fetch_latest_release("2.17.0", urlopen=_opener(_FakeResponse(b"<html>")))
+
+
+def _list_opener(releases, seen=None):
+    return _opener(_FakeResponse(json.dumps(releases).encode()), seen=seen)
+
+
+def test_stable_channel_uses_latest_endpoint():
+    seen = []
+    body = json.dumps(_release_json()).encode()
+    fetch_latest_release(
+        "2.17.0", channel="stable", urlopen=_opener(_FakeResponse(body), seen=seen)
+    )
+    assert seen[0].full_url == uc.RELEASES_API_URL
+
+
+def test_experimental_channel_picks_the_newest_beta():
+    seen = []
+    releases = [
+        _release_json(tag="v2.17.0"),
+        _release_json(tag="v2.18.0-beta.2", prerelease=True),
+        _release_json(tag="v2.18.0-beta.10", prerelease=True),
+        _release_json(tag="v2.18.0-beta.9", prerelease=True),
+    ]
+    release = fetch_latest_release(
+        "2.17.0", channel="experimental", urlopen=_list_opener(releases, seen)
+    )
+    assert seen[0].full_url == uc.RELEASES_LIST_URL
+    assert release.version == "2.18.0-beta.10"
+    assert release.installer.name == "NCFlash-2.18.0-beta.10-Setup.exe"
+
+
+def test_experimental_channel_moves_to_the_final_release():
+    releases = [
+        _release_json(tag="v2.18.0-beta.3", prerelease=True),
+        _release_json(tag="v2.18.0"),
+    ]
+    release = fetch_latest_release(
+        "2.18.0-beta.3", channel="experimental", urlopen=_list_opener(releases)
+    )
+    assert release.version == "2.18.0"
+
+
+def test_experimental_channel_skips_drafts_and_unknown_tags():
+    releases = [
+        _release_json(tag="v2.19.0-beta.1", prerelease=True, draft=True),
+        _release_json(tag="nightly", prerelease=True),
+        _release_json(tag="v2.19.0-rc1", prerelease=True),
+        _release_json(tag="v2.18.0"),
+    ]
+    release = fetch_latest_release(
+        "2.17.0", channel="experimental", urlopen=_list_opener(releases)
+    )
+    assert release.version == "2.18.0"
+
+
+@pytest.mark.parametrize("body", [[], {"tag_name": "v2.18.0"}, ["junk"]])
+def test_experimental_channel_without_a_usable_release(body):
+    with pytest.raises(UpdateError):
+        fetch_latest_release(
+            "2.17.0", channel="experimental", urlopen=_list_opener(body)
+        )
 
 
 # --- download_installer ----------------------------------------------------

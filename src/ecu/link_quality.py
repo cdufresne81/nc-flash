@@ -23,6 +23,7 @@ import logging
 import time
 from dataclasses import dataclass, field
 
+from .constants import TIMEOUT_PROBE
 from .exceptions import ECUError
 
 logger = logging.getLogger(__name__)
@@ -128,7 +129,7 @@ def check_link_quality(
     for i in range(pings):
         t0 = time.monotonic()
         try:
-            uds.tester_present()
+            uds.tester_present(timeout_ms=TIMEOUT_PROBE)
             latencies.append((time.monotonic() - t0) * 1000.0)
         except ECUError as exc:
             failures += 1

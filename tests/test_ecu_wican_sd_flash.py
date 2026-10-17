@@ -428,6 +428,117 @@ def transport_fast_write_ran(flasher):
     return bool(getattr(flasher._transport, "fast_write_calls", None))
 
 
+class TestStagedRomCleanup:
+    """#139: after a GOOD flash, old staged ROMs are trimmed from the SD card —
+    outside the bus fence, never after a failure, and never fatal."""
+
+    _STAGED = "ROM_20261007_1200.bin"
+
+    def _flasher(self, marker=b"NCFRv5", keep=2):
+        order = []
+        datalog = MagicMock()
+        datalog.reserved.return_value.__enter__.side_effect = lambda *a: order.append(
+            "fence-up"
+        )
+        datalog.reserved.return_value.__exit__.side_effect = lambda *a: order.append(
+            "fence-down"
+        )
+        sd_files = MagicMock()
+        sd_files.list_dir.side_effect = lambda d: order.append("list") or {}
+        f = WiCANSdFlasher(
+            _FakeTransport(marker=marker),
+            uploader=MagicMock(),
+            datalog=datalog,
+            keep_staged_roms=keep,
+            sd_files=sd_files,
+        )
+        f._safeguards._gate = MagicMock(name="gate")
+        f._verify_readback = MagicMock(name="verify")
+        f._authenticate_ecu = MagicMock(name="auth")
+        f._safe_uds_teardown = MagicMock(name="uds_teardown")
+        return f, sd_files, order
+
+    def _run(self, flasher, **kw):
+        with (
+            patch(
+                "src.ecu.wican_sd_flash.build_flash_package",
+                return_value=_fake_package(name=self._STAGED),
+            ),
+            patch("src.ecu.wican_sd_flash.time.sleep"),
+        ):
+            flasher.flash_rom(b"\x00" * 16, **kw)
+
+    def test_good_flash_trims_after_the_fence_is_released(self):
+        flasher, sd_files, order = self._flasher(keep=2)
+        with patch("src.ecu.wican_sd_flash.trim_staged_roms") as trim:
+            trim.side_effect = lambda *a, **k: order.append("trim")
+            self._run(flasher)
+        trim.assert_called_once_with(sd_files, 2, protect=self._STAGED)
+        assert order == ["fence-up", "fence-down", "trim"]
+
+    def test_cleanup_runs_through_the_real_trim(self):
+        flasher, sd_files, order = self._flasher(keep=1)
+        self._run(flasher)
+        assert "list" in order and order.index("list") > order.index("fence-down")
+
+    def test_refused_flash_trims_nothing(self):
+        flasher, sd_files, _ = self._flasher(marker=b"NCFRv4")
+        with pytest.raises(WiCANError):
+            self._run(flasher)
+        sd_files.list_dir.assert_not_called()
+        sd_files.delete_file.assert_not_called()
+
+    def test_failed_fast_write_trims_nothing(self):
+        flasher, sd_files, _ = self._flasher()
+        flasher._transport.fast_write = MagicMock(side_effect=WiCANError("FWERR"))
+        with pytest.raises(WiCANError):
+            self._run(flasher)
+        sd_files.list_dir.assert_not_called()
+
+    def test_failed_readback_trims_nothing(self):
+        flasher, sd_files, _ = self._flasher()
+        flasher._verify_readback.side_effect = FlashError("differs")
+        with pytest.raises(FlashError):
+            self._run(flasher, verify=True)
+        sd_files.list_dir.assert_not_called()
+
+    def test_cleanup_error_never_fails_the_flash(self):
+        flasher, sd_files, _ = self._flasher()
+        sd_files.list_dir.side_effect = WiCANError("wifi gone")
+        self._run(flasher)  # must not raise
+        assert flasher._transport.fast_write_calls == [(self._STAGED, "L")]
+
+    def test_failing_progress_callback_never_fails_the_flash(self):
+        flasher, _, _ = self._flasher()
+
+        def progress(p):
+            if "Removing old staged ROMs" in p.message:
+                raise RuntimeError("receiver gone")
+
+        self._run(flasher, progress_cb=progress)  # must not raise
+        assert flasher._transport.fast_write_calls == [(self._STAGED, "L")]
+
+    def test_off_by_setting_touches_nothing(self):
+        flasher, sd_files, _ = self._flasher(keep=None)
+        self._run(flasher)
+        sd_files.list_dir.assert_not_called()
+
+    def test_dynamic_flash_trims_too(self, tmp_path):
+        archive = tmp_path / "ncflash.rda"
+        archive.write_bytes(b"\xab" * 64)
+        flasher, sd_files, _ = self._flasher(keep=3)
+        with (
+            patch(
+                "src.ecu.wican_sd_flash.build_flash_package",
+                return_value=_fake_package(name=self._STAGED),
+            ),
+            patch("src.ecu.wican_sd_flash.time.sleep"),
+            patch("src.ecu.wican_sd_flash.trim_staged_roms") as trim,
+        ):
+            flasher.dynamic_flash(b"\x00" * 16, str(archive))
+        trim.assert_called_once_with(sd_files, 3, protect=self._STAGED)
+
+
 class TestDynamicFlash:
     def test_dynamic_reads_archive_and_packages_dynamic(self, tmp_path):
         archive = tmp_path / "ncflash.rda"

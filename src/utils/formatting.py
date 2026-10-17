@@ -30,6 +30,16 @@ NUMERIC_TEXT_PATTERN = r"[+-]?(\d+[.,]?\d*|[.,]\d+)([eE][+-]?\d+)?"
 
 _NUMERIC_TEXT_RE = re.compile(rf"^{NUMERIC_TEXT_PATTERN}$")
 
+# Cells whose scaling format is hexadecimal ('%08x', e.g. Tire Size
+# Correction) display and copy as hex, so they must be typed and parsed as
+# hex too. Reading '02054517' as decimal would silently store 0x001F5975.
+# Capped at 16 digits (64 bits): longer text overflows float(). Values that
+# do not fit the storage type are still rejected when the cell is written.
+# Surrounding spaces are allowed: '%08x' renders space-padded (' 205451a'),
+# and the editor opens with that text.
+HEX_INPUT_PATTERN = r"\s*(0[xX])?[0-9a-fA-F]{0,16}\s*"
+_HEX_TEXT_RE = re.compile(r"^(0[xX])?[0-9a-fA-F]{1,16}$")
+
 
 def parse_numeric_text(text: str) -> Optional[float]:
     """Parse user-entered text into a finite float, or None if not numeric.
@@ -51,6 +61,28 @@ def parse_numeric_text(text: str) -> Optional[float]:
     if not math.isfinite(value):
         return None
     return value
+
+
+def is_hex_format(format_spec: str) -> bool:
+    """True if a Python format spec renders values as hexadecimal."""
+    return bool(format_spec) and format_spec[-1] in "xX"
+
+
+def parse_cell_text(text: str, format_spec: str) -> Optional[float]:
+    """Parse cell text according to the format the cell is displayed in.
+
+    Hex-formatted cells take hex text (optional '0x' prefix), so a value
+    copied from one hex cell pastes back unchanged. Every other cell goes
+    through parse_numeric_text.
+    """
+    if not is_hex_format(format_spec):
+        return parse_numeric_text(text)
+    if text is None:
+        return None
+    stripped = text.strip()
+    if not _HEX_TEXT_RE.match(stripped):
+        return None
+    return float(int(stripped, 16))
 
 
 def printf_to_python_format(printf_format: str) -> str:

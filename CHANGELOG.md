@@ -4,8 +4,74 @@ All notable changes to NC Flash are documented here.
 
 ## [Unreleased]
 
+### Changed
+- **Behind the scenes:** a small tool now lists which beta changes are still waiting to reach Stable. No change to the app itself.
+
+### Fixed
+- **Behind the scenes:** a release no longer fails to publish when its build reports a failure after every test has passed (#149, already fixed for the regular checks). No change to the app itself.
+- **Behind the scenes:** the development commit check no longer blocks commits to related repositories that have no changelog, or merge commits. No change to the app itself.
+
+## [v2.23.0] - 2026-10-15
+
+**Opt into beta builds:** a new update channel setting lets you try new features before they're final.
+
 ### Added
-- **Groundwork for joining the WiCAN's own Wi-Fi when it can't be found (#129).** Developer notes on how it could work, plus a small test script for Windows. Nothing changes in the app yet.
+- **Experimental update channel.** Settings > General > Updates > Update channel lets you opt into beta builds with new features before they're final. Stable (the default) stays on final releases only. Betas can include ECU read and flash changes still being tested, so choose Experimental only if you can recover an ECU from a failed flash. Switching back to Stable keeps your beta, and any definition updates it brought, until a newer final release comes out.
+
+### Changed
+- **New features and fixes now reach beta builds first** and come to Stable once they've been tested.
+
+## [v2.22.0] - 2026-10-15
+
+**Definition fixes now reach existing installs, new driveline tables, a tidier WiCAN SD card, fewer failed WiCAN flash starts, and reliable copy/paste.**
+
+### Added
+- **New and corrected ROM definitions now reach existing installs (#121).** The first time a newer version starts, NC Flash adds definitions you don't have and updates the ones you never edited.
+  - **Your edits are kept.** From this version on, a definition you edit is merged with NC Flash's update. Where both changed the same value, NC Flash's correction wins for anything that decides which bytes are written (address, size, data type, formula, axes), and your value wins for names, categories, limits, units and format. Show Details lists each case.
+  - **Definitions you edited before this version are left alone.** The message says where the new file is, and names any file whose differences change which bytes are written (for example the old knock-retard type), so you can compare and copy what you need.
+  - Every changed file is backed up first to your workspace's `metadata_backups` folder. A custom Metadata Directory is never changed, a file you delete isn't brought back, and nothing runs when you go back to an older version.
+- **Driveline damping and tip-in shaping tables in every engine definition.** They set how the ECU smooths the torque request after a pedal change (less driveline shuffle, a softer or sharper tip-in). **Always edit a table and its Data Integrity copy together**: the names say which ones pair up.
+- **Old staged ROMs no longer pile up on the WiCAN's SD card (#139).** After a successful flash, NC Flash keeps the 5 newest staged ROMs and deletes older ones. Nothing is deleted after a failed flash, and only files NC Flash staged itself are touched. You can change the number or turn it off in Settings > ECU > WiCAN. The flash log lists every file deleted.
+
+### Changed
+- **LF9VEB definition brought up to date.** 70 new tables (among them DSC torque intervention and the closed-loop fuel trim controller) and clearer names for 56 tables; no address, size or data type changed. Three tables are now marked **DO NOT EDIT**.
+- **Version history shows a renamed table under its current name** (the old name follows "was:"), and search finds it by either name.
+
+### Fixed
+- **WiCAN flashes no longer fail at random at the first step (#94).** On a running car, a flash often stopped at "Verifying ECU session" with an "ECU not responsive … SLCAN" error, then worked on a retry. NC Flash was tripping over messages from the car's other modules; it now ignores them, and if the data is still garbled it asks the ECU once more. Nothing was ever written to the ECU when this happened.
+- **Copy and paste between tables is reliable again:**
+  - Pasting into axis cells no longer crashes.
+  - Pasting a whole 3D table no longer shifts its top axis by one column.
+  - Pasted values are no longer rounded: a 0.0625 breakpoint used to become 0.062.
+  - Hex settings (Tire Size Correction, CEL Flash Pattern) take hex values. Before, `02054517` was read as decimal and saved as the wrong number.
+- **An out-of-range value is now refused as you enter it.** Before, it was only caught when saving, and a paste could be half-saved while the message said it had been reverted.
+
+### Removed
+- **Old Auto-Blip settings removed from the LF9VEB definition.** They pointed at bytes no current ROM uses.
+
+## [v2.21.0] - 2026-10-07
+
+**Smoother idle after a reflash:** every engine definition now has a setting that stops the idle from hunting at stops while the ECU relearns.
+
+### Added
+- **Idle-learn settings in every engine definition (#132).** Every reflash wipes what the ECU has learned about idle air, so the idle hunts at stops until it relearns. The new **Idle Air Learn - Boot Minimum** setting (category "Idle Speed") gives the ECU a starting value at every key-on, with the A/C off and a low electrical load. The stock value, 0.0, does nothing.
+  - **Use a value below what your car learns.** On the LF9VEB test car, 0.08 stopped the hunting (that car learned 0.099). A higher value overrides the learned one at every key-on. Other engines may learn a different value: start lower, or read your car's learned value first (its RAM address is in the definition file's comment).
+  - **Never go above 0.14.** Above about 0.148 the ECU erases its learned idle at every key-on, which makes the idle worse than stock. NC Flash won't stop you from typing a higher value.
+  - **Automatic gearboxes:** the setting only covers idle in Park/Neutral, and that hasn't been tested on a car.
+  - **For advanced users:** **Learn Window** (how often the learn updates) and **Stable-Idle RPM Error Limit** are also added. Comments in the definition files explain both.
+  - Added to all 103 engine definitions at each ROM's own addresses, and checked against every one of those ROMs.
+  - **Already installed?** Your workspace keeps its old definitions. Copy your ROM's `.xml` from the `_internal\examples\metadata` folder where NC Flash is installed into your workspace's `metadata` folder (#121).
+
+### Fixed
+- **Behind the scenes:** a timing test no longer fails at random on Windows. No change to the app itself.
+
+## [v2.20.1] - 2026-10-05
+
+**Safer flashing and no more long freezes:** a flash won't start when its safety checks can't read the car, and an ECU that doesn't answer is reported in seconds instead of a minute.
+
+### Fixed
+- **A flash no longer starts when the engine-RPM or battery check can't read the car (#130).** Before, a lost or garbled reply was treated as "not supported" and the flash went ahead without that check. Now it stops and asks you to retry. Re-flashing an ECU after a failed flash still works: if the ECU answers but the check can't run, you get an explicit "flash anyway?" prompt (off by default). A low battery reading always blocks. Flashing right after a ROM read or RAM scan now waits a few seconds for the ECU to be ready.
+- **No more one-minute freeze when the ECU doesn't answer (#131).** With the ignition off, connecting and every ECU button now report the problem within about 3 seconds instead of 60, with a hint to check the ignition. If the ECU stops answering while connected, the window says so and disconnects.
 
 ## [v2.20.0] - 2026-09-28
 

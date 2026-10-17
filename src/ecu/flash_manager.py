@@ -23,6 +23,7 @@ from typing import Callable, Optional
 
 from .constants import (
     ROM_SIZE,
+    TIMEOUT_PROBE,
     ROM_FLASH_START_MIN,
     BLOCK_SIZE,
     CAN_BAUDRATE,
@@ -38,6 +39,7 @@ from .exceptions import (
     FlashError,
     FlashAbortedError,
     EngineRunningError,
+    GuardReadError,
     NegativeResponseError,
     ROMValidationError,
     UDSTimeoutError,
@@ -100,6 +102,22 @@ READ_BLOCK_RETRY_BACKOFF_MAX_S = 1.0
 MAX_ISOTP_READ_SIZE = 0xFFE
 
 
+def _garbled_link(exc: BaseException) -> bool:
+    """Return True if a failed ECU check was a WiCAN link fault, not silence.
+
+    A corrupt or unreadable adapter line reaches here as a ``UDSTimeoutError``
+    chained to the transport's ``WiCANError``; a silent ECU has no such link.
+    """
+    from .wican_transport import WiCANError
+
+    seen: Optional[BaseException] = exc
+    while seen is not None:
+        if isinstance(seen, WiCANError):
+            return True
+        seen = seen.__cause__ or seen.__context__
+    return False
+
+
 def enforce_rpm_gate(
     uds, *, allow_override: bool = False, threshold: float = RPM_FLASH_GATE
 ) -> Optional[float]:
@@ -112,27 +130,36 @@ def enforce_rpm_gate(
 
     Call this BEFORE the programming session is entered (before
     ``session.acquire()`` / ``diagnostic_session(0x85)``). Once a programming
-    session is active the ECU answers OBD Mode-01 with NRC 0x11 and RPM is no
-    longer readable (see ``protocol.py``), so a gate placed after session entry
-    would always read ``None`` and never fire.
+    session is active the ECU answers OBD Mode-01 with NRC 0x22 and RPM is no
+    longer readable, so a gate placed after session entry could never check.
+    Right after a ROM read or RAM scan the ECU is still in that session: the
+    read waits once for it to lapse (``wait_session_exit``, see
+    ``protocol.py``), and raises :class:`GuardReadError` if it hasn't.
 
-    A ``None`` read (PID unsupported / transient failure) does NOT block: it
-    cannot prove the engine is running, and hard-blocking would break ECUs that
-    do not expose PID 0x0C (the dashboard has always allowed flashing in that
-    case). It is logged instead. Transport-agnostic — the same gate guards both
-    the J2534 and WiCAN flash paths.
+    If the ECU answers and declines the request (``None``: PID unsupported, or
+    the bootloader refusing OBD after a flash) the gate does NOT block: that
+    cannot prove the engine is running, and blocking would make a recovery
+    re-flash impossible. It is logged instead. A read that FAILS (no reply, a
+    corrupt reply, a transport error) raises :class:`GuardReadError`: the gate could
+    not check, so the flash must not start. Transport-agnostic — the same gate
+    guards both the J2534 and WiCAN flash paths.
     """
     if uds is None:
         logger.warning("RPM gate skipped: no open UDS session to read engine RPM")
         return None
     try:
-        rpm = uds.read_engine_rpm()
-    except Exception as exc:  # read_engine_rpm already swallows, but be defensive
-        logger.warning("RPM gate: engine RPM read failed (%s); not blocking", exc)
-        return None
+        rpm = uds.read_engine_rpm(strict=True, wait_session_exit=True)
+    except Exception as exc:
+        logger.error("RPM gate BLOCKED flash: engine RPM read failed (%s)", exc)
+        raise GuardReadError(
+            "Could not read the engine RPM before the flash, so the engine-off "
+            "check could not run. Check the ignition is ON (engine off) and the "
+            f"adapter connection, then retry.\n\nDetails: {exc}"
+        ) from exc
     if rpm is None:
         logger.warning(
-            "RPM gate: engine RPM unreadable (PID unsupported?); not blocking"
+            "RPM gate: the ECU declined the RPM request (PID unsupported, or "
+            "bootloader); not blocking"
         )
         return None
     running = rpm >= threshold
@@ -404,9 +431,27 @@ class FlashManager:
             self._set_state(FlashState.CONNECTING)
             self._notify(callback, "Verifying ECU session...", percent=5.0)
             try:
-                self._uds.tester_present()
+                self._uds.tester_present(timeout_ms=TIMEOUT_PROBE)
             except Exception as e:
-                raise FlashError(f"Borrowed ECU session is not responsive: {e}") from e
+                if not _garbled_link(e):
+                    raise FlashError(
+                        f"Borrowed ECU session is not responsive: {e}"
+                    ) from e
+                # A WiCAN link fault (usually garbled adapter data, #94), not a
+                # silent ECU. This check runs before any session change, so
+                # clearing the link and asking once more is safe.
+                logger.warning(
+                    "ECU check hit a WiCAN link error (%s); retrying once", e
+                )
+                try:
+                    self._uds.flush()
+                    self._uds.tester_present(timeout_ms=TIMEOUT_PROBE)
+                except Exception as e2:
+                    raise FlashError(
+                        "The WiCAN sent garbled data or lost the link while "
+                        "checking the ECU; the ECU itself may be fine. Try again. "
+                        f"(Details: {e2})"
+                    ) from e2
             logger.info("Borrowed ECU session verified alive")
             return
 
@@ -447,7 +492,7 @@ class FlashManager:
 
         # Step 1: Tester Present
         self._notify(callback, "Sending Tester Present...", percent=8.0)
-        self._uds.tester_present()
+        self._uds.tester_present(timeout_ms=TIMEOUT_PROBE)
 
         # Step 2: Programming Session
         self._notify(callback, "Entering programming session...", percent=10.0)

@@ -12,7 +12,9 @@ What remains is the reusable safety GATE the SD flash composes:
      or is congested (see :mod:`src.ecu.link_quality`). The write path has no
      mid-stream resend, so a clean link is a hard precondition.
   2. **Battery/voltage guard** — refuse below :data:`BATTERY_VOLTAGE_WARNING`
-     (the historical brick cause), matching the J2534 UI guard.
+     (the historical brick cause), matching the J2534 UI guard. A failed read
+     (no reply, corrupt reply) refuses too; only an ECU that answers and
+     declines the request (PID unsupported, bootloader) skips the check.
 
 J2534 flashing is never gated by this. Headless module: standard library +
 sibling core modules only (no PySide6).
@@ -24,7 +26,7 @@ import logging
 from typing import Callable, Optional
 
 from .constants import BATTERY_VOLTAGE_WARNING
-from .exceptions import FlashError
+from .exceptions import FlashError, GuardReadError
 from .link_quality import (
     DEFAULT_MAX_P95_MS,
     DEFAULT_PINGS,
@@ -66,6 +68,7 @@ class WiCANFlasher:
         max_loss_pct: float = 0.0,
         max_p95_ms: float = DEFAULT_MAX_P95_MS,
         min_voltage: float = BATTERY_VOLTAGE_WARNING,
+        allow_unread_voltage: bool = False,
     ):
         """
         Args:
@@ -74,12 +77,17 @@ class WiCANFlasher:
             max_loss_pct: Maximum tolerated pre-flight packet loss (0 = clean only).
             max_p95_ms: Maximum tolerated pre-flight p95 latency (ms).
             min_voltage: Refuse to flash below this battery voltage.
+            allow_unread_voltage: Operator override (UI, off by default): if the
+                voltage read FAILS, log it and proceed instead of refusing. Only
+                for recovering an ECU that answers but not OBD. A low reading
+                still refuses.
         """
         self._transport = transport
         self._link_pings = link_pings
         self._max_loss_pct = max_loss_pct
         self._max_p95_ms = max_p95_ms
         self._min_voltage = min_voltage
+        self._allow_unread_voltage = allow_unread_voltage
 
     def preflight(
         self, progress_cb: Optional[Callable[[int, int], None]] = None
@@ -110,7 +118,21 @@ class WiCANFlasher:
             )
 
         uds = UDSConnection(self._transport)
-        voltage = uds.read_battery_voltage()
+        try:
+            voltage = uds.read_battery_voltage(strict=True, wait_session_exit=True)
+        except Exception as exc:
+            if self._allow_unread_voltage:
+                logger.warning(
+                    "Battery voltage could not be read (%s) — operator override: "
+                    "proceeding without the voltage guard",
+                    exc,
+                )
+                return
+            raise GuardReadError(
+                "Could not read the battery voltage before the flash, so the "
+                "brown-out check could not run. Check the adapter connection and "
+                f"retry.\n\nDetails: {exc}"
+            ) from exc
         if voltage is not None and voltage < self._min_voltage:
             raise FlashError(
                 f"Battery voltage {voltage:.1f} V is below the {self._min_voltage:.1f} V "
@@ -119,6 +141,6 @@ class WiCANFlasher:
             )
         if voltage is None:
             logger.warning(
-                "Battery voltage unavailable (PID unsupported) — proceeding "
-                "without the voltage guard, as the J2534 path does."
+                "Battery voltage: the ECU declined the request (PID unsupported, "
+                "or bootloader) — proceeding without the voltage guard."
             )

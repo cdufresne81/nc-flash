@@ -21,6 +21,8 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QCheckBox,
 )
+from typing import Dict, List, Optional
+
 from PySide6.QtCore import Qt, QSettings, Signal
 from PySide6.QtGui import QColor, QFont
 
@@ -36,9 +38,20 @@ class HistoryViewer(QDialog):
     revert_requested = Signal(int)  # Emits version number
     delete_requested = Signal(int)  # Emits version number
 
-    def __init__(self, project_manager: ProjectManager, parent=None):
+    def __init__(
+        self,
+        project_manager: ProjectManager,
+        parent=None,
+        names_by_address: Optional[Dict[int, List[str]]] = None,
+    ):
+        """
+        Args:
+            names_by_address: Current definition, address (int) -> table names.
+                Lets a table renamed since a commit show its current name.
+        """
         super().__init__(parent)
         self.project_manager = project_manager
+        self._names_by_address = names_by_address or {}
         self.setWindowTitle("Version History")
         self.setMinimumSize(900, 600)
         self._init_ui()
@@ -94,7 +107,9 @@ class HistoryViewer(QDialog):
         right_layout.addWidget(QLabel("<b>Version Details</b>"))
 
         # Details area
-        self.details_widget = CommitDetailsWidget()
+        self.details_widget = CommitDetailsWidget(
+            names_by_address=self._names_by_address
+        )
         self.details_widget.view_table_requested.connect(self._on_view_table_requested)
         self.details_widget.revert_requested.connect(self._on_revert_requested)
         self.details_widget.delete_requested.connect(self._on_delete_requested)
@@ -206,8 +221,10 @@ class HistoryViewer(QDialog):
             commit = item.data(0, Qt.UserRole + 1)
 
             if commit:
+                names = list(commit.tables_modified)
+                names += commit.renamed_tables(self._names_by_address).values()
                 visible = text in commit.message.lower() or any(
-                    text in t.lower() for t in commit.tables_modified
+                    text in t.lower() for t in names
                 )
                 item.setHidden(not visible)
             else:
@@ -229,9 +246,10 @@ class CommitDetailsWidget(QWidget):
     revert_requested = Signal(int)  # Emits version number
     delete_requested = Signal(int)  # Emits version number
 
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, names_by_address=None):
         super().__init__(parent)
         self.current_commit = None
+        self._names_by_address = names_by_address or {}
         self._init_ui()
 
     def _init_ui(self):
@@ -319,17 +337,26 @@ class CommitDetailsWidget(QWidget):
             self.tables_list.addItem(item)
             self.view_diff_btn.setEnabled(False)
         else:
-            for table_name in commit.tables_modified:
-                # Find cell count for this table
-                cell_count = 0
-                for tc in commit.changes:
-                    if tc.table_name == table_name:
-                        cell_count = len(tc.cell_changes)
-                        break
-
-                item = QListWidgetItem(f"{table_name} ({cell_count} cells)")
-                item.setData(Qt.UserRole, table_name)
+            # One row per changed table: two tables could share a name in an
+            # older definition (a table and its Data Integrity copy)
+            renamed = commit.renamed_tables(self._names_by_address)
+            listed = set()
+            for tc in commit.changes:
+                listed.add(tc.table_name)
+                cell_count = len(tc.cell_changes)
+                current_name = renamed.get((tc.table_name, tc.table_address))
+                if current_name:
+                    text = f"{current_name} ({cell_count} cells) - was: {tc.table_name}"
+                else:
+                    text = f"{tc.table_name} ({cell_count} cells)"
+                item = QListWidgetItem(text)
+                item.setData(Qt.UserRole, tc.table_name)
                 self.tables_list.addItem(item)
+            for table_name in commit.tables_modified:
+                if table_name not in listed:  # recorded without cell changes
+                    item = QListWidgetItem(f"{table_name} (0 cells)")
+                    item.setData(Qt.UserRole, table_name)
+                    self.tables_list.addItem(item)
 
             self.view_diff_btn.setEnabled(not commit.deleted)
 

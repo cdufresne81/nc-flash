@@ -291,6 +291,19 @@ class AppSettings:
     def set_skipped_update_version(self, version: str):
         self.settings.setValue("updates/skipped_version", version or "")
 
+    def get_update_channel(self) -> str:
+        """Which releases the updater offers: ``"stable"`` (default, final
+        releases only) or ``"experimental"`` (beta pre-releases too)."""
+        value = self.settings.value("updates/channel", "stable", type=str)
+        return value if value in ("stable", "experimental") else "stable"
+
+    def set_update_channel(self, channel: str):
+        channel = "experimental" if channel == "experimental" else "stable"
+        if channel != self.get_update_channel():
+            # The next launch checks the new channel instead of waiting a day.
+            self.set_last_update_check(0)
+        self.settings.setValue("updates/channel", channel)
+
     # ------------------------------------------------------------------ #
     # ECU settings
     # ------------------------------------------------------------------ #
@@ -372,6 +385,23 @@ class AppSettings:
 
     def set_wican_keep_newest_logs(self, count: int):
         self.settings.setValue("ecu/wican_keep_newest_logs", max(0, int(count)))
+
+    def get_wican_trim_staged_roms(self) -> bool:
+        """Whether a successful WiCAN flash removes older staged ROMs from the
+        device's SD card (on by default: nothing else ever removes them)."""
+        return self.settings.value("ecu/wican_trim_staged_roms", True, type=bool)
+
+    def set_wican_trim_staged_roms(self, enabled: bool):
+        self.settings.setValue("ecu/wican_trim_staged_roms", bool(enabled))
+
+    def get_wican_keep_staged_roms(self) -> int:
+        """How many of the newest staged ROMs stay on the WiCAN's SD card
+        (the one just flashed counts; at least 1)."""
+        value = self.settings.value("ecu/wican_keep_staged_roms", 5, type=int)
+        return max(1, int(value))
+
+    def set_wican_keep_staged_roms(self, count: int):
+        self.settings.setValue("ecu/wican_keep_staged_roms", max(1, int(count)))
 
     def get_offer_open_logs_in_mlv(self) -> bool:
         """Whether a finished trip-log download asks to open the new logs in

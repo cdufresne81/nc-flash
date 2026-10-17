@@ -291,6 +291,27 @@ SETTINGS_REGISTRY = [
         setter="set_check_updates_on_startup",
         keywords=["update", "upgrade", "release", "version", "github", "install"],
     ),
+    SettingDescriptor(
+        key="general.updates.channel",
+        label="Update channel",
+        description=(
+            "Stable offers final releases only. Experimental also offers beta "
+            "builds with new features that are still being tested, which can "
+            "include changes to ECU reading and flashing. Choose it only if "
+            "you can recover an ECU from a failed flash. Switch back to "
+            "Stable at any time; you keep the beta until a newer final "
+            "release is out."
+        ),
+        category="General",
+        subcategory="Updates",
+        widget_type="combobox",
+        getter="get_update_channel",
+        setter="set_update_channel",
+        widget_options={
+            "items": [("Stable", "stable"), ("Experimental (beta)", "experimental")]
+        },
+        keywords=["update", "channel", "beta", "experimental", "dev", "preview"],
+    ),
     # -- Tools > MCP Server --
     SettingDescriptor(
         key="tools.mcp.auto_start",
@@ -478,6 +499,38 @@ SETTINGS_REGISTRY = [
         setter="set_wican_keep_newest_logs",
         widget_options={"min": 0, "max": 100, "suffix": " trips"},
         keywords=["wican", "logs", "keep", "newest", "retention", "trip", "delete"],
+    ),
+    SettingDescriptor(
+        key="ecu.wican.trim_staged_roms",
+        label="Delete old staged ROMs from the WiCAN",
+        description=(
+            "Every WiCAN flash copies the ROM to the SD card's roms folder "
+            "first, and nothing else ever removes it. When this is on, a "
+            "successful flash deletes the older copies. Only files named the "
+            "way NC Flash names them (name_YYYYMMDD_HHMM.bin and .json) are "
+            "deleted, and nothing is deleted after a failed flash."
+        ),
+        category="ECU",
+        subcategory="WiCAN",
+        widget_type="checkbox",
+        getter="get_wican_trim_staged_roms",
+        setter="set_wican_trim_staged_roms",
+        keywords=["wican", "rom", "staged", "delete", "sd", "card", "space", "flash"],
+    ),
+    SettingDescriptor(
+        key="ecu.wican.keep_staged_roms",
+        label="Staged ROMs to keep on the WiCAN",
+        description=(
+            "When deleting old staged ROMs, always leave this many of the newest "
+            "on the SD card. The ROM just flashed counts and is never deleted."
+        ),
+        category="ECU",
+        subcategory="WiCAN",
+        widget_type="spinbox",
+        getter="get_wican_keep_staged_roms",
+        setter="set_wican_keep_staged_roms",
+        widget_options={"min": 1, "max": 100, "suffix": " ROMs"},
+        keywords=["wican", "rom", "staged", "keep", "newest", "retention", "sd"],
     ),
     # -- ECU > Flash Security --
     SettingDescriptor(
