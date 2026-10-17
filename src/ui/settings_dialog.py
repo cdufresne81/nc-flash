@@ -335,7 +335,8 @@ SETTINGS_REGISTRY = [
         description=(
             "Which adapter NC Flash uses to talk to the ECU. J2534 (wired, e.g. "
             "Tactrix OpenPort) is the default and recommended for flashing. WiCAN "
-            "(wireless WiFi/SLCAN) is opt-in; WiCAN flashing is experimental."
+            "(wireless WiFi/SLCAN) is opt-in; WiCAN flashing is experimental. "
+            "OBDX Pro (USB) is a wired alternative that reads and flashes too."
         ),
         category="ECU",
         subcategory="Adapter",
@@ -343,9 +344,22 @@ SETTINGS_REGISTRY = [
         getter="get_ecu_adapter",
         setter="set_ecu_adapter",
         widget_options={
-            "items": [("J2534 (wired)", "j2534"), ("WiCAN (WiFi)", "wican")]
+            "items": [
+                ("J2534 (wired)", "j2534"),
+                ("WiCAN (WiFi)", "wican"),
+                ("OBDX Pro (USB)", "obdx"),
+            ]
         },
-        keywords=["adapter", "j2534", "wican", "wifi", "transport", "connection"],
+        keywords=[
+            "adapter",
+            "j2534",
+            "wican",
+            "wifi",
+            "obdx",
+            "usb",
+            "transport",
+            "connection",
+        ],
     ),
     # -- ECU > J2534 --
     SettingDescriptor(
@@ -380,6 +394,41 @@ SETTINGS_REGISTRY = [
             "callback_name": "_test_j2534_connection",
         },
         keywords=["test", "connection", "j2534", "device"],
+    ),
+    # -- ECU > OBDX Pro --
+    SettingDescriptor(
+        key="ecu.obdx.port",
+        label="OBDX COM port",
+        description=(
+            "Leave empty to find the OBDX Pro on USB automatically. Set it (e.g. "
+            "COM7) only if more than one OBDX adapter is plugged in. Windows "
+            "needs no driver for it."
+        ),
+        category="ECU",
+        subcategory="OBDX Pro",
+        widget_type="text",
+        getter="get_obdx_port",
+        setter="set_obdx_port",
+        widget_options={"placeholder": "auto-detect"},
+        keywords=["obdx", "com", "port", "usb", "serial", "adapter"],
+    ),
+    SettingDescriptor(
+        key="ecu.obdx.test_connection",
+        label="Test Connection",
+        description=(
+            "Checks that the OBDX Pro answers and shows its firmware and the "
+            "voltage at the OBD port. Does not contact the ECU."
+        ),
+        category="ECU",
+        subcategory="OBDX Pro",
+        widget_type="button",
+        getter="",
+        setter=None,
+        widget_options={
+            "text": "Test Connection",
+            "callback_name": "_test_obdx_connection",
+        },
+        keywords=["obdx", "test", "connection", "usb"],
     ),
     # -- ECU > WiCAN --
     SettingDescriptor(
@@ -1401,6 +1450,27 @@ class SettingsDialog(QDialog):
                 "Connection Failed",
                 f"Could not connect to J2534 device:\n{e}",
             )
+
+    def _test_obdx_connection(self):
+        from PySide6.QtWidgets import QMessageBox
+        from src.ecu.obdx import probe_adapter
+
+        edit = self._widgets.get("ecu.obdx.port")
+        port = edit.text().strip() if edit else ""
+        try:
+            info = probe_adapter(port)
+        except Exception as e:
+            QMessageBox.warning(
+                self, "Connection Failed", f"Could not reach the OBDX Pro:\n{e}"
+            )
+            return
+        QMessageBox.information(
+            self,
+            "Connection OK",
+            f"{info['name']} on {info['port']}\n"
+            f"Firmware {info['firmware']}\n"
+            f"OBD port voltage: {info['voltage']:.1f} V",
+        )
 
     def _test_wican_connection(self):
         """Probe the adapter's SLCAN port and grade its firmware (off-thread).
