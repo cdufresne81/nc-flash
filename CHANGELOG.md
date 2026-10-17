@@ -4,6 +4,9 @@ All notable changes to NC Flash are documented here.
 
 ## [Unreleased]
 
+### Added
+- **Join the WiCAN's own Wi-Fi from NC Flash (Windows).** When you connect and the WiCAN can't be found on your current Wi-Fi (for example in the car, away from home) but its own Wi-Fi is in range, NC Flash offers to switch the PC to it and connects. On Disconnect it offers your previous network back. It always asks first, since the PC has no internet while joined. The WiCAN's Wi-Fi name is learned when you pick the adapter with Scan; the first time, NC Flash asks for its password and Windows keeps it. Turn it off in Settings > ECU > WiCAN. (#129)
+
 ### Changed
 - **Behind the scenes:** a small tool now lists which beta changes are still waiting to reach Stable. No change to the app itself.
 

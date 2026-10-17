@@ -55,7 +55,7 @@ def _device(host="192.168.1.169", device_id="dcb4d91511b9", mac="DC:B4:D9:15:11:
 
 class TestPresentScanResults:
     def _self(self):
-        return SimpleNamespace(_pending_wican_device_id=None)
+        return SimpleNamespace(_pending_wican_device_id=None, _widgets={})
 
     def _present(self, fake, host_edit, devices):
         SettingsDialog._present_scan_results(fake, devices, host_edit)
@@ -119,6 +119,36 @@ class TestPresentScanResults:
             self._present(fake, edit, [dev])
         edit.setText.assert_called_once_with("192.168.1.169")
         assert fake._pending_wican_device_id == ""
+
+    def _pick_with_ap_field(self, ap_text, dev):
+        from PySide6.QtWidgets import QLineEdit
+
+        fake, edit = self._self(), MagicMock()
+        ap_edit = QLineEdit(ap_text)
+        fake._widgets["ecu.wican.ap_ssid"] = ap_edit
+        with (
+            patch("PySide6.QtWidgets.QInputDialog") as QID,
+            patch("PySide6.QtWidgets.QMessageBox"),
+        ):
+            QID.getItem.return_value = (dev.label, True)
+            self._present(fake, edit, [dev])
+        return ap_edit.text()
+
+    def test_pick_fills_the_access_point_name(self):
+        # The AP name comes from the mDNS device_id, not the (station) mac.
+        assert self._pick_with_ap_field("", _device()) == "WiCAN_dcb4d91511b9"
+
+    def test_pick_replaces_another_wican_ap_name(self):
+        assert (
+            self._pick_with_ap_field("WiCAN_aaaaaaaaaaaa", _device())
+            == "WiCAN_dcb4d91511b9"
+        )
+
+    def test_pick_keeps_a_custom_access_point_name(self):
+        assert self._pick_with_ap_field("MyCarWiFi", _device()) == "MyCarWiFi"
+
+    def test_pick_without_device_id_leaves_the_access_point_name(self):
+        assert self._pick_with_ap_field("", _device(device_id=None)) == ""
 
 
 # --------------------------------------------------------------------------- #

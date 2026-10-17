@@ -66,17 +66,29 @@ macOS 14/15 reading SSIDs/scan results needs Location Services for the app (Core
 **Linux (unverified):** `nmcli device wifi connect <ssid> [password <p>]`; normally works
 unprivileged for the desktop user via polkit.
 
-## Proposed shape
+## As built (Windows only)
 
-- `src/utils/wifi_switch.py`: OS abstraction, no Qt, no ECU knowledge (`current()`,
-  `visible_ssids()`, `connect(ssid)`, `has_profile(ssid)`). Windows backend first.
-- Hook: the ECU window **Connect** path only, in `_resolve_wican_host`
-  (`src/ui/ecu_window.py:380`), after mDNS and the stored host both fail. If the saved AP SSID is
-  visible → ask → join → use `192.168.0.10` for this session only.
-- Don't cache `192.168.0.10` as the new `ecu/wican_host`: today a fresh mDNS result is written
-  back (`ecu_window.py:405-411`), which would overwrite the home IP.
-- Offer to rejoin the previous network on Disconnect / app close.
-- Never from background work (`wican_log_sync` auto-on-launch) and never while connected.
+- `src/utils/wifi_switch.py`: no Qt, no ECU knowledge. `get_backend()` returns the
+  `wlanapi.dll` backend on Windows, else None (feature silently off). Backend:
+  `current()`, `scan()`, `visible()`, `add_profile()`, `delete_profile()`, `connect()`.
+  Profiles NC Flash creates are `connectionMode=manual` (WPA2-PSK/AES or open only;
+  anything else → "join it once by hand"), so Windows never auto-joins the WiCAN.
+- `src/ui/wican_ap_switch.py` (`WiCANApSwitch`, owned by the ECU window):
+  - `reach(host)` runs in `_build_adapter_config` after the mDNS re-resolve. Stored host
+    answers on port 80 → use it. PC already on the WiCAN AP → use `192.168.0.10`, no
+    question. Otherwise, setting `ask` + AP visible (scan up to 5 s) → ask → join → wait
+    for the SSID then for `192.168.0.10:80` → connect there for this session only (never
+    written to `ecu/wican_host`). Any failure or "No" returns the stored host, so the
+    connect fails exactly as before.
+  - Not offered while the trip-log download runs (`may_switch=False`).
+  - First join with no Windows profile asks the password (hint: factory `@meatpi#`);
+    Windows stores it, QSettings never does. A failed join deletes that new profile
+    (likely a wrong password) and switches back.
+  - `offer_rejoin()` on Disconnect (only once the session is really closed) and on
+    window close (not while a "Close anyway" operation is still winding down).
+- Settings (`ecu/…`): `wican_ap_switch` (`ask` default / `off`), `wican_ap_ssid` (filled by
+  Scan from the mDNS `device_id`; a custom name is kept), `wican_ap_prev_profile` (saved
+  before switching so the rejoin offer survives a crash; cleared once offered).
 
 ## Safety
 
@@ -84,12 +96,16 @@ unprivileged for the desktop user via polkit.
   the ECU in programming session at worst; after it, the firmware finishes from SD
   (`WICAN_FLASH_SEQUENCE.md` ⑦/⑧). A deliberate switch still has no business being there.
 - **Unconfirmed:** with home Wi-Fi also in range (bench), Windows might roam off the
-  "no internet" WiCAN AP back to an auto-connect network mid-session. Test on the bench before
-  shipping; if it happens, create the WiCAN profile with `connectionMode=manual` and consider
-  temporarily clearing auto-connect on the home profile.
+  "no internet" WiCAN AP back to an auto-connect network mid-session. Profiles NC Flash
+  creates are already `connectionMode=manual`; one the user made by hand may not be. Test on
+  the bench; if it roams, consider temporarily clearing auto-connect on the home profile.
 - Switching drops the laptop's internet: always ask, never silent.
 
 ## Still to verify
+
+Nothing below has run on hardware: the dev PC is Wi-Fi-only, so a real switch cuts the
+session off. The unit tests use a fake backend; the read-only calls (`current`, `visible`)
+were run live.
 
 1. Bench `wifi_mode` / `ap_auto_disable` (the WiCAN answered ping but not HTTP during this
    investigation, so `/check_status` couldn't be read).

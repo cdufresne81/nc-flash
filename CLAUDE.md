@@ -45,7 +45,7 @@ Reference these before modifying related functionality:
 - `docs/internal/WICAN_DEADMAN_AUTORESUME.md` - Validated design for brick-safe datalog auto-resume when NC-Flash vanishes (lid close / crash / Wi-Fi drop): the HOST_BUS_CLAIM_BIT auth-window fence + firmware dead-man reaper, plus the missing #36 RX-forward fix. Reference before touching datalog pause/resume, the `/datalog` endpoint, the FLASH_ACTIVE_BIT/DATALOG_PARK_BIT interlock, or the host flash auth window
 - `docs/internal/WICAN_FLASH_SEQUENCE.md` - Step-by-step diagram of the SD-staged WiCAN flash (PC → SD upload → firmware CAN flash) plus a table of which failures can brick the ECU; reference before touching the WiCAN write path or explaining it
 - `docs/internal/WICAN_SLCAN_STRAND_INVESTIGATION.md` - Historical (path since removed): why the adapter got stranded in Bench SLCAN mode (#92), with bench evidence; reference only for the reasoning behind the single-mode trim
-- `docs/internal/WICAN_AP_AUTOSWITCH.md` - Feasibility findings for #129 (switch the PC's Wi-Fi to the WiCAN access point when it's unreachable): AP SSID/IP/password facts from the firmware, where to save the AP name, Windows native Wi-Fi API approach; reference before implementing Wi-Fi switching
+- `docs/internal/WICAN_AP_AUTOSWITCH.md` - Joining the WiCAN's own Wi-Fi when it's unreachable (#129): AP name/address/password facts from the firmware, the Windows Wi-Fi API approach, how the Connect-time switch and the rejoin work, and what is still unverified; reference before touching `wifi_switch.py` / `wican_ap_switch.py`
 
 **Rule:** When creating new documentation in `docs/`, add it to this list with a brief description of when to reference it.
 
