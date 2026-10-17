@@ -18,6 +18,7 @@ Safety principles:
 import logging
 import threading
 import time
+from contextlib import contextmanager
 from enum import Enum
 from typing import Callable, Optional
 
@@ -36,6 +37,7 @@ from .constants import (
 )
 from .exceptions import (
     ECUError,
+    ECUStillProgrammingError,
     FlashError,
     FlashAbortedError,
     EngineRunningError,
@@ -100,6 +102,23 @@ READ_BLOCK_RETRY_BACKOFF_MAX_S = 1.0
 #: honours sizes above 0x400 must be probed on hardware before raising the
 #: default (see tools/wican_bench_read.py --probe).
 MAX_ISOTP_READ_SIZE = 0xFFE
+
+
+@contextmanager
+def _still_programming_guard():
+    """Turn NRC 0x22 on the pre-transfer flash steps into ECUStillProgrammingError.
+
+    An ECU left mid-programming by an interrupted flash keeps its SBL running
+    and refuses both the flash-counter routine and RequestDownload with 0x22
+    (bench-proven 2026-10-17). Nothing has been sent to flash at that point, so
+    the caller can offer a reset (:meth:`FlashManager.reset_programming_ecu`).
+    """
+    try:
+        yield
+    except NegativeResponseError as e:
+        if e.nrc == NRC_CONDITIONS_NOT_CORRECT:
+            raise ECUStillProgrammingError() from e
+        raise
 
 
 def _garbled_link(exc: BaseException) -> bool:
@@ -486,8 +505,16 @@ class FlashManager:
     def _authenticate(
         self,
         callback: Optional[ProgressCallback] = None,
+        *,
+        allow_unlocked: bool = False,
     ) -> None:
-        """Perform UDS session setup and security access."""
+        """Perform UDS session setup and security access.
+
+        ``allow_unlocked`` (reads and RAM scans only): accept an all-zero seed as
+        "still unlocked" and skip the key. Flashes always send a key, as they
+        always have: right after an interrupted flash the ECU also returns a
+        zero seed, and a flash must stop at security access there.
+        """
         self._set_state(FlashState.AUTHENTICATING)
 
         # Step 1: Tester Present
@@ -502,12 +529,19 @@ class FlashManager:
         self._notify(callback, "Requesting security seed...", percent=12.0)
         seed = self._uds.security_access_request_seed()
 
-        self._notify(callback, "Computing security key...", percent=14.0)
-        key = compute_security_key(seed)
-        logger.info("Security key computed: [%s] from seed [%s]", key.hex(), seed.hex())
+        if allow_unlocked and not any(seed):
+            # An all-zero seed means the ECU is still unlocked (a read moments
+            # ago); sending a key then gets NRC 0x22. Bench-proven 2026-10-17.
+            logger.info("ECU already unlocked (zero seed); no key needed")
+        else:
+            self._notify(callback, "Computing security key...", percent=14.0)
+            key = compute_security_key(seed)
+            logger.info(
+                "Security key computed: [%s] from seed [%s]", key.hex(), seed.hex()
+            )
 
-        self._notify(callback, "Sending security key...", percent=16.0)
-        self._uds.security_access_send_key(key)
+            self._notify(callback, "Sending security key...", percent=16.0)
+            self._uds.security_access_send_key(key)
 
         self._notify(callback, "Authentication complete", percent=20.0)
         logger.info("ECU authentication complete")
@@ -698,7 +732,8 @@ class FlashManager:
 
         # Flash-only: romdrop's Read ROM (0x0040530D) skips this step
         self._notify(callback, "Checking flash counter...", percent=21.0)
-        self._uds.check_flash_counter()
+        with _still_programming_guard():
+            self._uds.check_flash_counter()
 
         # --- Phase 4: Prepare and transfer SBL ---
         # (SBL bytes already built in Phase 1 by prepare_flash_image.)
@@ -707,7 +742,8 @@ class FlashManager:
 
         # Request Download
         self._notify(callback, "Requesting download...", percent=24.0)
-        self._uds.request_download()
+        with _still_programming_guard():
+            self._uds.request_download()
 
         # Transfer SBL
         self._set_state(FlashState.TRANSFERRING_SBL)
@@ -905,7 +941,7 @@ class FlashManager:
 
         try:
             self._connect(progress_cb)
-            self._authenticate(progress_cb)
+            self._authenticate(progress_cb, allow_unlocked=True)
 
             # Read ROM in blocks (no SBL needed for read — only for flash)
             self._set_state(FlashState.READING)
@@ -973,6 +1009,33 @@ class FlashManager:
             raise
         finally:
             self._cleanup()
+
+    def reset_programming_ecu(self, uds) -> None:
+        """Reset an ECU left in programming mode by an interrupted flash.
+
+        Programming session, security access, then ECUReset: the same reset a
+        successful flash ends with. Writes and erases nothing. A default-session
+        reset is refused (NRC 0x22) in this state; bench-proven 2026-10-17.
+        The connection is dead afterwards; the caller reconnects.
+
+        Refuses when the engine is running: a 0x22 that looked like "still
+        programming" can also come from a healthy ECU, and resetting that one
+        would stall the engine. A stuck ECU cannot report RPM, so the check
+        never blocks a real recovery.
+
+        Raises:
+            EngineRunningError: The ECU reports the engine running.
+        """
+        uds.tester_present(timeout_ms=TIMEOUT_PROBE)
+        rpm = uds.read_engine_rpm(strict=False)
+        if rpm is not None and rpm >= RPM_FLASH_GATE:
+            raise EngineRunningError(rpm)
+        uds.diagnostic_session()
+        seed = uds.security_access_request_seed()
+        if any(seed):  # an all-zero seed means it is already unlocked
+            uds.security_access_send_key(compute_security_key(seed))
+        uds.ecu_reset()
+        logger.info("ECU reset out of programming mode")
 
     def read_dtcs(self, uds=None) -> list:
         """
@@ -1099,7 +1162,7 @@ class FlashManager:
 
         try:
             self._connect(progress_cb)
-            self._authenticate(progress_cb)
+            self._authenticate(progress_cb, allow_unlocked=True)
 
             self._set_state(FlashState.SCANNING_RAM)
 

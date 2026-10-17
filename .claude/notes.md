@@ -23,7 +23,15 @@ What is on `dev` awaiting `master`: run `python tools/dev_status.py` (asks GitHu
 
 ## Open items (not tracked in an issue)
 
-- **Bench-test #130/#131 on the Tactrix clone (J2534)** (owner: user). Only tested over
+- **OBDX Pro adapter** (PR from `feature/obdx-pro-adapter` into `dev`): follow-ups tracked in
+  #167 (hardware tests before Stable), #168 (wireless links), #169 (late read reply). The same
+  PR changes the generic flow for every adapter: read/scan accept an all-zero seed without a
+  key, and "still programming" refusals offer an ECU reset. Proven over OBDX only; check them
+  on the Tactrix too (item below). The reset dialog itself was only unit-tested.
+
+- **Bench-test #130/#131 on the Tactrix clone (J2534)** (owner: user). Also check the OBDX PR's
+  generic changes there: Read RAM then Read ROM straight away works, and a flash refused with
+  "still in programming mode" offers a reset that works. Only tested over
   WiCAN so far. Check: ignition OFF → Connect fails in ~3 s, not 60 s; right after a ROM
   read or RAM scan, Flash waits ~6.5 s then reads RPM and voltage (no false refusal);
   pulling the cable mid-session → "ECU not answering" and buttons fail fast. Delete this

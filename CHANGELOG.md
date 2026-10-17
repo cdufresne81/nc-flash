@@ -4,10 +4,15 @@ All notable changes to NC Flash are documented here.
 
 ## [Unreleased]
 
+### Added
+- **OBDX Pro adapter over USB.** Pick "OBDX Pro (USB)" in Settings > ECU > Adapter to read and flash ROMs, scan RAM, and read or clear DTCs with an OBDX Pro. Only the VX has been tested; the GT and FT are untested, and NC Flash says so before flashing with one. Windows needs no driver for it, and NC Flash looks for the adapter's COM port itself (you can also set it). A full flash takes about a minute; NC Flash asks for confirmation before each OBDX flash.
+- **Recovering from an interrupted flash.** If a flash was cut off partway (cable pulled, app closed), the ECU refuses the next one with "Conditions not correct". NC Flash now explains this and offers to reset the ECU, which writes nothing, so you can flash again. This applies to every adapter.
+
 ### Changed
 - **Behind the scenes:** a small tool now lists which beta changes are still waiting to reach Stable. No change to the app itself.
 
 ### Fixed
+- **Read ROM, Read RAM or Flash started right after another one no longer fails with "Conditions not correct".** The ECU was still unlocked from the previous operation and refused a second unlock; NC Flash now recognises that and carries on.
 - **Behind the scenes:** a release no longer fails to publish when its build reports a failure after every test has passed (#149, already fixed for the regular checks). No change to the app itself.
 - **Behind the scenes:** the development commit check no longer blocks commits to related repositories that have no changelog, or merge commits. No change to the app itself.
 
