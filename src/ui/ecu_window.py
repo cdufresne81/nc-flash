@@ -45,6 +45,7 @@ from src.ecu.exceptions import ECUError, FlashAbortedError, ROMValidationError
 from src.ecu.rom_utils import get_cal_id
 from src.ecu.dtc import dedup_dtcs
 from src.ui.log_console import LogConsole
+from src.ui.wican_ap_switch import WiCANApSwitch
 from src.ui import theme
 
 logger = logging.getLogger(__name__)
@@ -213,6 +214,8 @@ class ECUProgrammingWindow(QMainWindow):
         self._poll_timer = QTimer(self)
         self._poll_timer.setInterval(CONDITION_POLL_INTERVAL)
         self._poll_timer.timeout.connect(self._poll_conditions)
+        # Joins the WiCAN's own Wi-Fi when it can't be reached (asks first).
+        self._ap_switch = WiCANApSwitch(self, main_window.settings)
 
         self.setWindowTitle("ECU Programming")
         self.setMinimumSize(700, 500)
@@ -406,9 +409,13 @@ class ECUProgrammingWindow(QMainWindow):
         """Build the transport config for ECUSession from saved settings."""
         s = self._main_window.settings
         if s.get_ecu_adapter() == "wican":
+            host = self._resolve_wican_host(s)
+            # Never switch Wi-Fi under a running trip-log download.
+            log_sync = getattr(self._main_window, "wican_log_sync", None)
+            may_switch = not (log_sync is not None and log_sync.is_running())
             return {
                 "kind": "wican",
-                "host": self._resolve_wican_host(s),
+                "host": self._ap_switch.reach(host, may_switch=may_switch),
             }
         return {"kind": "j2534", "dll_path": self._get_dll_path()}
 
@@ -505,6 +512,10 @@ class ECUProgrammingWindow(QMainWindow):
         self._poll_timer.stop()
         if self._session:
             self._session.disconnect_ecu()
+        # Only once the session is really closed (disconnect is refused while
+        # an operation runs).
+        if self._session is None or not self._session.is_connected:
+            self._ap_switch.offer_rejoin()
 
     def _on_session_state(self, state: str):
         if state == ECUSessionState.CONNECTED.value:
@@ -1846,4 +1857,7 @@ class ECUProgrammingWindow(QMainWindow):
         if self._session:
             self._session.cleanup()
             self._session = None
+        # Not while a "Close anyway" operation is still winding down.
+        if not (self._flash_thread and self._flash_thread.isRunning()):
+            self._ap_switch.offer_rejoin()
         event.accept()

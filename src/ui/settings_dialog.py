@@ -39,6 +39,7 @@ from PySide6.QtWidgets import (
 from ..ecu.constants import WICAN_DEDICATED_SLCAN_PORT
 from ..utils.settings import get_settings
 from ..utils.colormap import reload_colormap
+from ..utils import wifi_switch
 
 logger = logging.getLogger(__name__)
 
@@ -419,6 +420,55 @@ SETTINGS_REGISTRY = [
             "callback_name": "_test_wican_connection",
         },
         keywords=["wican", "test", "connection", "link", "ping", "quality"],
+    ),
+    SettingDescriptor(
+        key="ecu.wican.section_access_point",
+        label="WiCAN Wi-Fi",
+        description="",
+        category="ECU",
+        subcategory="WiCAN",
+        widget_type="section",
+        getter="",
+        setter=None,
+    ),
+    SettingDescriptor(
+        key="ecu.wican.ap_switch",
+        label="When the WiCAN can't be found",
+        description=(
+            "On Connect, if the WiCAN isn't reachable on your current Wi-Fi "
+            "(for example in the car, away from home) but its own Wi-Fi is in "
+            "range, offer to switch this PC to it. You are always asked first, "
+            "since the PC loses internet while joined, and offered your "
+            "previous network back on Disconnect. Windows only."
+        ),
+        category="ECU",
+        subcategory="WiCAN",
+        widget_type="combobox",
+        getter="get_wican_ap_switch",
+        setter="set_wican_ap_switch",
+        widget_options={
+            "items": [
+                ("Offer to join its Wi-Fi", "ask"),
+                ("Do nothing", "off"),
+            ]
+        },
+        keywords=["wican", "wifi", "wi-fi", "access point", "ap", "hotspot", "car"],
+    ),
+    SettingDescriptor(
+        key="ecu.wican.ap_ssid",
+        label="WiCAN Wi-Fi name",
+        description=(
+            "The name of the WiCAN's own Wi-Fi network. Filled in when you pick "
+            "the adapter with Scan; type it here if you gave it a custom name. "
+            "Left empty, NC Flash offers the strongest WiCAN_ network in range."
+        ),
+        category="ECU",
+        subcategory="WiCAN",
+        widget_type="text",
+        getter="get_wican_ap_ssid",
+        setter="set_wican_ap_ssid",
+        widget_options={"placeholder": "WiCAN_..."},
+        keywords=["wican", "wifi", "wi-fi", "ssid", "access point", "ap", "name"],
     ),
     SettingDescriptor(
         key="ecu.wican.section_trip_logs",
@@ -1758,6 +1808,14 @@ class SettingsDialog(QDialog):
         # stage below is not immediately cleared by our manual-edit guard.
         host_edit.setText(chosen.host)
         self._pending_wican_device_id = chosen.stable_id or ""
+        # Remember the adapter's default access-point name for the Wi-Fi
+        # switch. A custom name (not WiCAN_...) typed by the user is kept.
+        ap_edit = self._widgets.get("ecu.wican.ap_ssid")
+        ap_ssid = wifi_switch.ap_ssid_for_device_id(chosen.device_id)
+        if ap_edit is not None and ap_ssid:
+            current = ap_edit.text().strip()
+            if not current or current.startswith(wifi_switch.WICAN_AP_PREFIX):
+                ap_edit.setText(ap_ssid)
 
     # ------------------------------------------------------------------ #
     # Load / Apply settings
