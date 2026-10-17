@@ -41,7 +41,12 @@ from src.ecu.flash_manager import (
     SECURE_MODULE_AVAILABLE,
 )
 from src.ecu.constants import TIMEOUT_PROBE
-from src.ecu.exceptions import ECUError, FlashAbortedError, ROMValidationError
+from src.ecu.exceptions import (
+    ECUError,
+    ECUStillProgrammingError,
+    FlashAbortedError,
+    ROMValidationError,
+)
 from src.ecu.rom_utils import get_cal_id
 from src.ecu.dtc import dedup_dtcs
 from src.ui.log_console import LogConsole
@@ -79,6 +84,9 @@ class _FlashWorker(QObject):
         self._kwargs = kwargs
         self._result = None
         self._unverified_answer: str | None = None
+        # Set when the ECU refused to start because an earlier flash left it in
+        # programming mode; the window then offers a reset.
+        self.needs_ecu_reset = False
 
     @property
     def result(self):
@@ -125,6 +133,10 @@ class _FlashWorker(QObject):
         except ROMValidationError as e:
             # Not a real error — e.g. "ROMs are identical"
             logger.info("Flash skipped: %s", e)
+            self.error.emit(str(e))
+        except ECUStillProgrammingError as e:
+            logger.warning("Flash refused: %s", e)
+            self.needs_ecu_reset = True
             self.error.emit(str(e))
         except Exception as e:
             logger.error("Flash worker error: %s", e, exc_info=True)
@@ -417,6 +429,8 @@ class ECUProgrammingWindow(QMainWindow):
                 "kind": "wican",
                 "host": self._ap_switch.reach(host, may_switch=may_switch),
             }
+        if s.get_ecu_adapter() == "obdx":
+            return {"kind": "obdx", "port": s.get_obdx_port()}
         return {"kind": "j2534", "dll_path": self._get_dll_path()}
 
     def _resolve_wican_host(self, s) -> str:
@@ -458,6 +472,9 @@ class ECUProgrammingWindow(QMainWindow):
     def _is_wican(self) -> bool:
         return bool(self._session and self._session.adapter_kind == "wican")
 
+    def _is_obdx(self) -> bool:
+        return bool(self._session and self._session.adapter_kind == "obdx")
+
     def _on_connect_progress(self, message: str):
         """Show a connect-step message on the connection label."""
         self._conn_label.setText(message)
@@ -467,7 +484,12 @@ class ECUProgrammingWindow(QMainWindow):
         QApplication.processEvents()
 
     def _on_connect(self):
-        if self._session and self._session.is_connected:
+        if self._session and (
+            self._session.is_connected
+            or self._session.state == ECUSessionState.CONNECTING
+        ):
+            # Connected, or a connect is in flight (WiCAN/OBDX connects pump the
+            # event loop, so a timer or a Done click can land inside one).
             return
 
         # Tear down any previous (non-connected) session before replacing it, so
@@ -490,6 +512,8 @@ class ECUProgrammingWindow(QMainWindow):
             return
         if adapter["kind"] == "wican":
             connecting_msg = "Connecting to WiCAN..."
+        elif adapter["kind"] == "obdx":
+            connecting_msg = "Connecting to OBDX Pro..."
         else:
             connecting_msg = "Connecting..."
         self._conn_label.setText(connecting_msg)
@@ -497,9 +521,9 @@ class ECUProgrammingWindow(QMainWindow):
             "font-weight: bold; font-size: 13px; color: #ccaa44; border: none;"
         )
         self._btn_connect.setEnabled(False)
-        if adapter["kind"] == "wican":
-            # Paint the connecting label before the blocking WiCAN protocol
-            # switch. J2534 connect is fast and stays behaviourally unchanged.
+        if adapter["kind"] in ("wican", "obdx"):
+            # Paint the connecting label before the blocking WiCAN / OBDX open.
+            # J2534 connect is fast and stays behaviourally unchanged.
             QApplication.processEvents()
 
         self._session = ECUSession(adapter_config=adapter, parent=self)
@@ -1099,14 +1123,37 @@ class ECUProgrammingWindow(QMainWindow):
         self._guard_override = True
         return True
 
-    def _confirm_wican_flash(self) -> bool:
-        """Gate the WiCAN (WiFi) flash path before a write starts.
+    def _confirm_adapter_flash(self) -> bool:
+        """Gate the non-J2534 flash paths before a write starts.
 
-        Returns True for J2534 (no extra prompt). For WiCAN the host-driven write
-        path is hard-disabled (make-safe) until the SD-staged flash ships: show a
-        plain-language explanation and refuse. Once ``WICAN_WRITE_ENABLED`` is
-        flipped on, fall back to the experimental-risk confirmation.
+        Returns True for J2534 (no extra prompt). OBDX (USB) asks once per
+        flash: it is a newer path than J2534. WiCAN shows the SD-staged flash
+        confirmation, or refuses with an explanation if ``WICAN_WRITE_ENABLED``
+        is turned off.
         """
+        if self._is_obdx():
+            transport = self._session.transport
+            untested = (
+                ""
+                if transport.is_tested_model
+                else f"• NC Flash has been tested with the OBDX Pro VX, not the "
+                f"{transport.adapter_name}.\n"
+            )
+            reply = QMessageBox.warning(
+                self,
+                "Flash with OBDX Pro",
+                "Flashing with the OBDX Pro is new in NC Flash.\n\n"
+                f"{untested}"
+                "• Keep the USB cable plugged in and the ignition ON until the "
+                "flash completes. Unplugging it partway leaves the ECU unable "
+                "to start until it is reset and flashed again (NC Flash offers "
+                "the reset).\n"
+                "• Use a battery charger or keep the battery well charged.\n\n"
+                "Proceed?",
+                QMessageBox.Yes | QMessageBox.No,
+                QMessageBox.No,
+            )
+            return reply == QMessageBox.Yes
         if not self._is_wican():
             return True
         from src.ecu.wican_flash import WICAN_WRITE_ENABLED
@@ -1153,7 +1200,7 @@ class ECUProgrammingWindow(QMainWindow):
                 return
             if not self._check_rpm_gate():
                 return
-            if not self._confirm_wican_flash():
+            if not self._confirm_adapter_flash():
                 return
             doc = self._main_window.get_current_document()
             if not doc:
@@ -1215,7 +1262,7 @@ class ECUProgrammingWindow(QMainWindow):
                 return
             if not self._check_rpm_gate():
                 return
-            if not self._confirm_wican_flash():
+            if not self._confirm_adapter_flash():
                 return
             doc = self._main_window.get_current_document()
             if not doc:
@@ -1281,6 +1328,7 @@ class ECUProgrammingWindow(QMainWindow):
 
           * J2534: a ``FlashManager`` borrowing the open J2534 session.
           * WiCAN read/scan: a ``FlashManager`` borrowing the WiCAN ``uds``.
+          * OBDX (every operation): a ``FlashManager`` borrowing the OBDX ``uds``.
           * WiCAN flash: a ``WiCANSdFlasher`` (SD-staged, firmware-driven; the
             old host-driven ``WiCANFlasher`` survives only as its pre-flight
             link + battery gate) over the WiCAN transport.
@@ -1291,7 +1339,7 @@ class ECUProgrammingWindow(QMainWindow):
         # Make-safe backstop (Option B Phase 0): the host-driven WiCAN write path
         # soft-bricks the ECU on a mid-flash link drop, so it is hard-disabled at
         # this single choke point until the SD-staged flash ships. Reads / RAM
-        # scan / DTC over WiCAN stay live. _confirm_wican_flash already explains
+        # scan / DTC over WiCAN stay live. _confirm_adapter_flash already explains
         # this to the user before we reach here; this guard catches any other
         # caller. J2534 flashing is never affected.
         from src.ecu.wican_flash import WICAN_WRITE_ENABLED
@@ -1349,6 +1397,14 @@ class ECUProgrammingWindow(QMainWindow):
                 )
             if uds is None:
                 logger.error("WiCAN %s requested with no open connection", operation)
+                return None
+            manager = FlashManager()
+            manager.use_uds(uds)
+            return manager
+
+        if self._is_obdx():
+            if uds is None:
+                logger.error("OBDX %s requested with no open connection", operation)
                 return None
             manager = FlashManager()
             manager.use_uds(uds)
@@ -1628,6 +1684,60 @@ class ECUProgrammingWindow(QMainWindow):
                     "font-weight: bold; font-size: 13px; color: #cc4444;"
                 )
             self._progress_detail.setText(error_msg)
+            if getattr(worker, "needs_ecu_reset", False):
+                QTimer.singleShot(300, self._offer_ecu_reset)
+
+    def _offer_ecu_reset(self):
+        """Offer to reset an ECU an interrupted flash left in programming mode."""
+        reply = QMessageBox.question(
+            self,
+            "ECU Still in Programming Mode",
+            "The ECU refused to start the flash. Nothing was written.\n\n"
+            "This usually means it is still in programming mode from an earlier "
+            "flash that was interrupted. Reset the ECU now? This is the same "
+            "reset NC Flash sends at the end of every flash; it does not write "
+            "or erase anything, and NC Flash will not reset an ECU whose engine "
+            "is running. Then flash again.",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.Yes,
+        )
+        if reply == QMessageBox.Yes:
+            self._reset_programming_ecu()
+
+    def _reset_programming_ecu(self):
+        if self.is_busy or (
+            self._session and self._session.state == ECUSessionState.BUSY
+        ):
+            QMessageBox.warning(
+                self, "ECU Reset", "Another ECU operation is running; try again."
+            )
+            return
+        if not (self._session and self._session.is_connected):
+            self._on_connect()
+        if not (self._session and self._session.is_connected and self._session.uds):
+            QMessageBox.warning(
+                self, "ECU Reset", "Could not connect to the ECU to reset it."
+            )
+            return
+        try:
+            FlashManager().reset_programming_ecu(self._session.uds)
+        except Exception as e:
+            QMessageBox.critical(
+                self,
+                "ECU Reset",
+                f"The ECU did not accept the reset:\n{e}\n\n"
+                "Turning the ignition off for 10 seconds, then on, may also "
+                "clear it.",
+            )
+            return
+        self._session.disconnect_ecu()
+        self._progress_detail.setText("ECU reset. Reconnecting...")
+        QTimer.singleShot(3000, self._on_connect)
+        QMessageBox.information(
+            self,
+            "ECU Reset",
+            "The ECU was reset. Once NC Flash has reconnected, flash again.",
+        )
 
     @staticmethod
     def _cleanup_thread(thread):
