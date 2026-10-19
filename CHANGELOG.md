@@ -8,6 +8,7 @@ All notable changes to NC Flash are documented here.
 - **Behind the scenes:** a small tool now lists which beta changes are still waiting to reach Stable. No change to the app itself.
 
 ### Fixed
+- **Clear message when the ECU refuses to start a read, RAM read or flash (#91).** Instead of a raw error code, NC Flash now explains that the ECU is most likely locked by another tuning tool such as EcuTek (which NC Flash can't read or flash), and what to check if it isn't.
 - **Behind the scenes:** a release no longer fails to publish when its build reports a failure after every test has passed (#149, already fixed for the regular checks). No change to the app itself.
 - **Behind the scenes:** the development commit check no longer blocks commits to related repositories that have no changelog, or merge commits. No change to the app itself.
 

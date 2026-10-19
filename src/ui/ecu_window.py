@@ -44,6 +44,7 @@ from src.ecu.constants import TIMEOUT_PROBE
 from src.ecu.exceptions import ECUError, FlashAbortedError, ROMValidationError
 from src.ecu.rom_utils import get_cal_id
 from src.ecu.dtc import dedup_dtcs
+from src.ui.error_helpers import ecu_error_message
 from src.ui.log_console import LogConsole
 from src.ui import theme
 
@@ -109,7 +110,7 @@ class _FlashWorker(QObject):
             self.error.emit(str(e))
         except Exception as e:
             logger.error("Flash worker error: %s", e, exc_info=True)
-            self.error.emit(str(e))
+            self.error.emit(ecu_error_message(e))
 
     def _on_progress(self, p: FlashProgress):
         self.progress.emit(p)
@@ -336,6 +337,9 @@ class ECUProgrammingWindow(QMainWindow):
 
         self._progress_detail = QLabel("")
         self._progress_detail.setStyleSheet("color: gray;")
+        # Error explanations run to several sentences; wrap them instead of
+        # stretching the window.
+        self._progress_detail.setWordWrap(True)
         progress_layout.addWidget(self._progress_detail)
 
         btn_row = QHBoxLayout()
