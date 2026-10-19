@@ -9,9 +9,10 @@ from typing import TYPE_CHECKING, List, Tuple, Callable
 
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QBrush
-from PySide6.QtWidgets import QDialog, QTableWidgetSelectionRange
+from PySide6.QtWidgets import QDialog, QMessageBox, QTableWidgetSelectionRange
 
 from ...core.rom_definition import TableType, AxisType
+from ...utils.formatting import is_hex_format
 from ..data_operation_dialogs import AddValueDialog, MultiplyDialog, SetValueDialog
 from .context import TableViewerContext, frozen_table_updates
 
@@ -403,6 +404,28 @@ class TableOperationsHelper:
         if axis_changes:
             self.ctx.viewer.axis_bulk_changes.emit(self.ctx.current_table, axis_changes)
 
+    def _selection_formats(self) -> set:
+        """Format specs of the cells a bulk operation will touch.
+
+        Walks the same bounding rectangle as apply_bulk_operation.
+        """
+        selected = self.ctx.table_widget.selectedRanges()
+        if not selected:
+            return set()
+        formats = set()
+        for row in range(
+            min(r.topRow() for r in selected), max(r.bottomRow() for r in selected) + 1
+        ):
+            for col in range(
+                min(r.leftColumn() for r in selected),
+                max(r.rightColumn() for r in selected) + 1,
+            ):
+                item = self.ctx.table_widget.item(row, col)
+                coords = item.data(Qt.UserRole) if item else None
+                if coords is not None:
+                    formats.add(self.display.get_cell_format(coords))
+        return formats
+
     def add_to_selection(self):
         """Add custom value to selected cells (dialog)"""
         logger.debug("add_to_selection() called")
@@ -411,7 +434,10 @@ class TableOperationsHelper:
             return
 
         logger.debug("Creating AddValueDialog")
-        dialog = AddValueDialog(self.ctx.viewer)
+        dialog = AddValueDialog(
+            self.ctx.viewer,
+            hex_table=any(is_hex_format(f) for f in self._selection_formats()),
+        )
         logger.debug("Showing dialog")
         result = dialog.exec()
         logger.debug(f"Dialog result: {result}")
@@ -439,7 +465,10 @@ class TableOperationsHelper:
             return
 
         logger.debug("Creating MultiplyDialog")
-        dialog = MultiplyDialog(self.ctx.viewer)
+        dialog = MultiplyDialog(
+            self.ctx.viewer,
+            hex_table=any(is_hex_format(f) for f in self._selection_formats()),
+        )
         logger.debug("Showing dialog")
         result = dialog.exec()
         logger.debug(f"Dialog result: {result}")
@@ -474,13 +503,28 @@ class TableOperationsHelper:
             for r in selected
         )
 
-        dialog = SetValueDialog(cell_count, self.ctx.viewer)
+        # Hex cells (Tire Size Correction) take hex text, like typing into
+        # them; a selection mixing hex and decimal cells has no single
+        # notation for one value, so it is refused rather than guessed.
+        formats = self._selection_formats()
+        hex_formats = {f for f in formats if is_hex_format(f)}
+        if hex_formats and hex_formats != formats:
+            QMessageBox.information(
+                self.ctx.viewer,
+                "Set Value",
+                "The selection mixes hex and decimal cells. " "Set them separately.",
+            )
+            return
+        format_spec = next(iter(hex_formats)) if hex_formats else ""
+
+        dialog = SetValueDialog(cell_count, self.ctx.viewer, format_spec=format_spec)
         if dialog.exec() == QDialog.Accepted:
             value = dialog.get_value()
+            label = f"0x{int(value):X}" if hex_formats else f"{value}"
 
             # Apply operation
             data_changes, axis_changes = self.apply_bulk_operation(
-                lambda v: value, f"Set to {value}"
+                lambda v: value, f"Set to {label}"
             )
 
             # Emit signals

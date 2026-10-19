@@ -11,7 +11,7 @@ import struct
 import os
 import numpy as np
 from pathlib import Path
-from typing import Optional, Union
+from typing import Optional, Tuple, Union
 import logging
 from simpleeval import simple_eval
 
@@ -796,6 +796,37 @@ class RomReader:
             ScalingNotFoundError: If scaling definition is not found
             RomWriteError: If writing fails
         """
+        address, packed_data = self._pack_cell(table, row, col, raw_value)
+        # Modify ROM data in memory (in-place)
+        self.rom_data[address : address + len(packed_data)] = packed_data
+        logger.debug(f"Wrote cell [{row},{col}] = {raw_value} at {hex(address)}")
+
+    def cell_write_changes_bytes(
+        self, table: Table, row: int, col: int, raw_value: float
+    ) -> bool:
+        """True if writing ``raw_value`` to this cell would change ROM bytes.
+
+        Packs the value exactly as write_cell_value would (same rounding,
+        same validation) and compares it with the bytes in memory. Nothing is
+        written.
+
+        Raises:
+            ScalingNotFoundError: If scaling definition is not found
+            RomWriteError: If the value could not be written
+        """
+        address, packed_data = self._pack_cell(table, row, col, raw_value)
+        return bytes(self.rom_data[address : address + len(packed_data)]) != (
+            packed_data
+        )
+
+    def _pack_cell(
+        self, table: Table, row: int, col: int, raw_value: float
+    ) -> Tuple[int, bytes]:
+        """Validate a cell write and return (address, packed bytes).
+
+        The one place that maps a cell to its ROM address and packs its raw
+        value; write_cell_value and cell_write_changes_bytes share it.
+        """
         scaling = self.definition.get_scaling(table.scaling)
         if not scaling:
             raise ScalingNotFoundError(
@@ -867,16 +898,12 @@ class RomReader:
                 raise RomWriteError(f"Address out of bounds: {hex(address)}")
             if address + len(packed_data) > len(self.rom_data):
                 raise RomWriteError(f"Write exceeds ROM bounds at {hex(address)}")
-
-            # Modify ROM data in memory (in-place)
-            self.rom_data[address : address + len(packed_data)] = packed_data
-            logger.debug(f"Wrote cell [{row},{col}] = {raw_value} at {hex(address)}")
-
         except RomWriteError:
             raise
         except Exception as e:
             logger.error(f"Error writing cell value: {e}")
             raise RomWriteError(f"Failed to write cell value: {e}")
+        return address, packed_data
 
     def write_axis_value(
         self, table: Table, axis_type: str, index: int, raw_value: float
