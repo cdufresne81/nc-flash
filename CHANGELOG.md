@@ -15,6 +15,9 @@ All notable changes to NC Flash are documented here.
 ### Fixed
 - **A flash or ROM read no longer fails when the ECU is already unlocked.** If an earlier session left the ECU unlocked, it answers with an empty security seed; NC Flash sent a key anyway and the ECU refused it. NC Flash now skips the key in that case.
 - **Rare crash after an update check or update download.** NC Flash could close without warning when a check for updates (at startup or from Help > Check for Updates) or an update download finished (#154).
+- **Undo after Interpolate now puts the right values back in the ROM on the common scalings (#145).** On tables whose displayed value isn't the stored number as-is (lambda targets shown as `100/(100+x)`, `1-x` and similar), Undo used to show the original number on screen but write a wrong value to the ROM. The same fix applies when a failed write rolls an interpolation back. If you undid an interpolation on such a table in an earlier version and then saved, re-check that table against your last good copy.
+- **Interpolate no longer half-applies when a cell can't be converted.** A cell whose value can't be stored (for example an unprogrammed value) is now skipped, and the rest of the selection is applied normally. Before, the screen could show new values that never reached the ROM.
+- **Interpolate, add/multiply/set and smoothing on whole-number tables now keep the screen in step with the ROM.** A value like 7.5 is now kept as 8, matching what is written, instead of 7 in memory. Before, a later undo could write the wrong number.
 - **Behind the scenes:** a release no longer fails to publish when its build reports a failure after every test has passed (#149, already fixed for the regular checks). No change to the app itself.
 - **Behind the scenes:** the development commit check no longer blocks commits to related repositories that have no changelog, or merge commits. No change to the app itself.
 

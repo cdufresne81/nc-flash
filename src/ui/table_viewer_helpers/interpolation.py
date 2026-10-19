@@ -5,6 +5,7 @@ Handles interpolation algorithms for TableViewer.
 """
 
 import logging
+import math
 from typing import TYPE_CHECKING
 
 from PySide6.QtCore import Qt
@@ -23,6 +24,7 @@ from .context import TableViewerContext, frozen_table_updates
 
 if TYPE_CHECKING:
     from .display import TableDisplayHelper
+    from .editing import TableEditHelper
 
 logger = logging.getLogger(__name__)
 
@@ -111,9 +113,15 @@ def compute_interpolated_2d_values(
 class TableInterpolationHelper:
     """Helper class for interpolation operations"""
 
-    def __init__(self, ctx: TableViewerContext, display: "TableDisplayHelper"):
+    def __init__(
+        self,
+        ctx: TableViewerContext,
+        display: "TableDisplayHelper",
+        edit: "TableEditHelper",
+    ):
         self.ctx = ctx
         self.display = display
+        self.edit = edit
 
     def _check_scaling_available(self) -> bool:
         """Check if scaling is available for interpolation. Warn user if not."""
@@ -321,25 +329,22 @@ class TableInterpolationHelper:
 
                         if abs(new_val - old_val) > 1e-9:
                             if is_axis_line == axis_key:
-                                self._apply_axis_interpolation(
+                                changed = self._apply_axis_interpolation(
                                     item,
                                     coords,
                                     axis_type,
                                     axis_key,
-                                    old_val,
                                     new_val,
                                     axis_changes,
                                 )
-                                cells_interpolated += 1
                             else:
-                                self._apply_data_interpolation(
+                                changed = self._apply_data_interpolation(
                                     item,
                                     coords,
-                                    old_val,
                                     new_val,
                                     all_changes,
                                 )
-                                cells_interpolated += 1
+                            cells_interpolated += int(changed)
 
                     logger.debug(
                         f"{line_label} {line_idx}: interpolated {cells_interpolated} cells"
@@ -362,74 +367,110 @@ class TableInterpolationHelper:
         if not all_changes and not axis_changes:
             logger.debug(f"{direction_label} interpolation: no changes made")
 
+    def _stored_values(self, array, old_val, new_val, scaling, to_raw):
+        """Raw/display values an interpolated cell will hold, or None to skip it.
+
+        ``to_raw`` is the edit helper's display->raw converter, which returns
+        None for a failed conversion (e.g. a stored inf under 100/(100+x)) or
+        a raw value the storage type can't hold. A skipped cell is left
+        completely alone: not redrawn, not stored, not recorded, so screen,
+        memory and ROM stay in step.
+
+        current_data holds DISPLAY values, so the old raw value goes back
+        through the scaling like the new one (recording the display value as
+        raw made undo/rollback write wrong bytes, issue 145).
+
+        Returns:
+            (old_raw, new_val, new_raw) or None.
+        """
+        old_raw = to_raw(old_val)
+        new_raw = to_raw(new_val)
+        if old_raw is None or new_raw is None or not math.isfinite(new_raw):
+            return None
+        try:
+            new_val = float(ScalingConverter(scaling).to_display(new_raw))
+        except Exception as e:
+            logger.error(f"Error converting interpolated value to display: {e}")
+            return None
+        # Integer-dtype (identity-scaled) arrays truncate on assignment while
+        # the ROM writer rounds; store what the ROM will hold.
+        new_val = self.edit.fit_to_array(array, new_val)
+        if not math.isfinite(new_val) or abs(new_val - old_val) < 1e-10:
+            return None
+        return float(old_raw), new_val, float(new_raw)
+
     def _apply_axis_interpolation(
-        self, item, coords, axis_type, axis_key, old_val, new_val, axis_changes
-    ):
-        """Apply an interpolated value to an axis cell and record the change."""
+        self, item, coords, axis_type, axis_key, new_val, axis_changes
+    ) -> bool:
+        """Apply an interpolated value to an axis cell and record the change.
+
+        Returns True if the cell changed, False if it was skipped.
+        """
         axis_table = self.ctx.current_table.get_axis(axis_type)
         if not axis_table:
-            return
-
-        data_idx = coords[1]
-        old_raw = float(self.ctx.current_data[axis_key][data_idx])
+            return False
 
         scaling = self.ctx.rom_definition.get_scaling(axis_table.scaling)
         if not scaling:
-            return
+            return False
 
-        converter = ScalingConverter(scaling)
-        new_raw = converter.from_display(new_val)
-        new_val = converter.to_display(new_raw)
+        axis_data = self.ctx.current_data[axis_key]
+        data_idx = coords[1]
+        old_val = float(axis_data[data_idx])
+        stored = self._stored_values(
+            axis_data,
+            old_val,
+            new_val,
+            scaling,
+            lambda v: self.edit._axis_display_to_raw(v, axis_table),
+        )
+        if stored is None:
+            logger.debug(f"{axis_key}[{data_idx}]: skipping (value can't be stored)")
+            return False
+        old_raw, new_val, new_raw = stored
 
         self.ctx.editing_in_progress = True
         try:
             axis_fmt = self.display.get_axis_format(axis_type)
             item.setText(self.display.format_value(new_val, axis_fmt))
-            self.ctx.current_data[axis_key][data_idx] = new_val
-            color = self.display.get_axis_color(
-                new_val,
-                self.ctx.current_data[axis_key],
-                axis_type,
-            )
+            axis_data[data_idx] = new_val
+            color = self.display.get_axis_color(new_val, axis_data, axis_type)
             item.setBackground(QBrush(color))
         finally:
             self.ctx.editing_in_progress = False
 
-        axis_changes.append(
-            (
-                axis_key,
-                data_idx,
-                float(old_val),
-                float(new_val),
-                float(old_raw),
-                float(new_raw),
-            )
-        )
+        axis_changes.append((axis_key, data_idx, old_val, new_val, old_raw, new_raw))
+        return True
 
-    def _apply_data_interpolation(self, item, coords, old_val, new_val, all_changes):
-        """Apply an interpolated value to a data cell and record the change."""
+    def _apply_data_interpolation(self, item, coords, new_val, all_changes) -> bool:
+        """Apply an interpolated value to a data cell and record the change.
+
+        Returns True if the cell changed, False if it was skipped.
+        """
         values = self.ctx.current_data["values"]
-        if values.ndim == 2:
-            old_raw = values[coords[0], coords[1]]
-        else:
-            old_raw = values[coords[0]]
 
         scaling = self.ctx.rom_definition.get_scaling(self.ctx.current_table.scaling)
         if not scaling:
-            return
+            return False
 
-        converter = ScalingConverter(scaling)
-        new_raw = converter.from_display(new_val)
-        new_val = converter.to_display(new_raw)
+        if values.ndim == 2:
+            index = (coords[0], coords[1])
+        else:
+            index = coords[0]
+        old_val = float(values[index])
+        stored = self._stored_values(
+            values, old_val, new_val, scaling, self.edit.display_to_raw
+        )
+        if stored is None:
+            logger.debug(f"Cell {coords}: skipping (value can't be stored)")
+            return False
+        old_raw, new_val, new_raw = stored
 
         self.ctx.editing_in_progress = True
         try:
             value_fmt = self.display.get_value_format()
             item.setText(self.display.format_value(new_val, value_fmt))
-            if values.ndim == 2:
-                values[coords[0], coords[1]] = new_val
-            else:
-                values[coords[0]] = new_val
+            values[index] = new_val
             color = self.display.get_cell_color(
                 new_val,
                 values,
@@ -444,12 +485,13 @@ class TableInterpolationHelper:
             (
                 coords[0],
                 coords[1] if len(coords) > 1 else 0,
-                float(old_val),
-                float(new_val),
-                float(old_raw),
-                float(new_raw),
+                old_val,
+                new_val,
+                old_raw,
+                new_raw,
             )
         )
+        return True
 
     def interpolate_2d(self):
         """2D bilinear interpolation for 3D tables (B key)"""
@@ -561,7 +603,6 @@ class TableInterpolationHelper:
                             self._apply_data_interpolation(
                                 item,
                                 coords,
-                                old_val,
                                 new_val,
                                 all_changes,
                             )
