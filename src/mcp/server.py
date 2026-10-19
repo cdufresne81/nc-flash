@@ -114,7 +114,8 @@ def _create_mcp(port: int = DEFAULT_HTTP_PORT) -> FastMCP:
         Some tables (e.g. Tire Size Correction, '%08x') display in HEX:
         metadata "format" is "hex" or "decimal" and "format_spec" is the
         printf spec. "numeric_values" has the same values as plain numbers
-        (same shape, full precision) — prefer it for arithmetic.
+        (same shape, full precision) — prefer it for arithmetic. A blank or
+        NaN cell is null in "numeric_values"; sending null back is refused.
         Axes include name, units, scaling expression, format, and values.
         Includes any pending (unsaved) edits.
         Requires the ROM to be open in NC Flash.
@@ -137,7 +138,8 @@ def _create_mcp(port: int = DEFAULT_HTTP_PORT) -> FastMCP:
         (count, names, change percentage).
 
         With table_name: returns a cell-by-cell diff with values from
-        both ROMs and deltas.
+        both ROMs and deltas. "format_a" / "format_b" say whether value_a
+        (and delta) / value_b are "hex" or "decimal" text.
 
         Supports cross-definition comparison (tables matched by name).
         Both ROMs must be open in NC Flash.
@@ -199,12 +201,24 @@ def _create_mcp(port: int = DEFAULT_HTTP_PORT) -> FastMCP:
 
         Changes appear in the app with full undo support.
         Values are in display units (same as read_table/read_live_table).
-        A JSON number is the numeric value, on every table (hex ones too):
-        send numbers from read_table's "numeric_values". A JSON string is
-        parsed in the table's display format: hex text on "hex" tables
-        ("2054517" or "0x2054517" means 0x02054517), decimal elsewhere — so
-        text from read_table's "values" writes back unchanged.
-        If any cell is invalid, nothing is written and the error lists why.
+        - "hex" tables (read_table metadata "format", e.g. Tire Size
+          Correction) take hex TEXT only: "2054517" or "0x2054517" means
+          0x02054517. A JSON number is refused on a hex table.
+        - Other tables take a JSON number, or decimal text with "." as the
+          decimal point. Text with a comma ("4,500") is refused.
+        - Tables that show whole numbers refuse a fraction (no rounding).
+        - A cell whose value equals its current value is skipped: text equal
+          to the current "values" text, or a number equal to the current
+          "numeric_values" entry. So you can send back a whole table to
+          change a few cells.
+        - For an exact value, send numbers from "numeric_values" (display
+          text is rounded). A changed decimal value is rounded to what the
+          table's storage type can hold; check the returned "cells".
+        - Every cell is checked first (format, whole numbers, storage
+          range). If any cell is invalid, nothing is written and the error
+          lists each bad cell and why.
+        On success, "cells" lists each requested cell with "changed" and the
+        value now stored ("value" text and "numeric_value" number).
         Requires the app to be running with MCP server enabled.
 
         Args:
@@ -212,6 +226,7 @@ def _create_mcp(port: int = DEFAULT_HTTP_PORT) -> FastMCP:
             table_name: Exact name of the table to edit.
             cells: List of cell edits, each a dict with "row", "col", "value" keys.
                    Example: [{"row": 0, "col": 0, "value": 42.5}]
+                   Hex table: [{"row": 0, "col": 0, "value": "0x2054517"}]
         """
         return _get_ctx().write_table(rom_path, table_name, cells)
 

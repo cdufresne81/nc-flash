@@ -8,7 +8,9 @@ All notable changes to NC Flash are documented here.
 - **Behind the scenes:** a small tool now lists which beta changes are still waiting to reach Stable. No change to the app itself.
 
 ### Fixed
-- **AI tool edits of hex values:** an AI assistant editing Tire Size Correction or a CEL Flash Pattern through the AI tools could save the wrong value, because the hex value it read back was treated as a decimal number. Edits now read text in the table's own format, table reads say which values are hex and also give plain numbers, and an edit with any unreadable value is refused without changing anything (#146).
+- **AI tool edits of hex values:** an AI assistant editing Tire Size Correction or a CEL Flash Pattern through the AI tools could save the wrong value, because the hex value it read back was treated as a decimal number. Hex tables now take hex text only, and table reads say which values are hex and also give exact plain numbers (#146).
+- **Safer AI tool edits:** an AI edit is now checked in full before anything is written. Unreadable values, numbers with a comma (such as "4,500"), fractions on whole-number tables and values the table can't store are refused, and nothing changes. Cells sent back unchanged are left alone, so re-sending a whole table no longer nudges rounded values. Each edit reports the values actually stored.
+- **Set Value on hex tables:** Set Value on Tire Size Correction now takes hex text, as the cell shows it, instead of reading it as a decimal number. Add and Multiply say their amount is a decimal number.
 - **Behind the scenes:** a release no longer fails to publish when its build reports a failure after every test has passed (#149, already fixed for the regular checks). No change to the app itself.
 - **Behind the scenes:** the development commit check no longer blocks commits to related repositories that have no changelog, or merge commits. No change to the app itself.
 

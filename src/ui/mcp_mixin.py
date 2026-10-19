@@ -41,11 +41,18 @@ from PySide6.QtWidgets import (
 )
 
 from src.ui.icons import make_icon
+from src.core.storage_types import (
+    STORAGE_TYPE_BOUNDS,
+    STORAGE_TYPE_FORMAT,
+    raw_fits_storage,
+)
 from src.utils.formatting import (
     printf_to_python_format,
     format_value,
     get_scaling_format,
+    is_integer_format,
     parse_api_value,
+    parse_cell_text,
     value_format_name,
 )
 from src.utils.logging_config import get_logger
@@ -58,6 +65,93 @@ def _api_number(value):
     """A table value as a JSON-safe number (None when not finite)."""
     number = float(value)
     return number if math.isfinite(number) else None
+
+
+def _plan_api_cell_edits(
+    cells, old_vals, converter, storage_type, fmt_spec, max_rows, max_cols
+) -> dict:
+    """Validate API cell edits before anything is written.
+
+    Returns {"changes": [...], "order": [(row, col), ...], "errors": [...]}.
+    ``changes`` holds (row, col, old_val, new_val, old_raw, new_raw) for the
+    cells that actually change; unchanged cells are skipped. Any error means
+    the caller must write nothing.
+    """
+    changes = []
+    order = []
+    errors = []
+    seen = set()
+    fmt_char = STORAGE_TYPE_FORMAT.get((storage_type or "").lower())
+    int_storage = fmt_char in STORAGE_TYPE_BOUNDS
+    for cell in cells:
+        if not isinstance(cell, dict):
+            errors.append(f"Cell {cell!r} is not an object with row/col/value")
+            continue
+        r = cell.get("row", 0)
+        c = cell.get("col", 0)
+        if not all(isinstance(i, int) and not isinstance(i, bool) for i in (r, c)):
+            errors.append(f"Cell ({r!r},{c!r}): row and col must be integers")
+            continue
+        where = f"cell ({r},{c})"
+        if r < 0 or r >= max_rows or c < 0 or c >= max_cols:
+            errors.append(f"{where} out of range ({max_rows}x{max_cols})")
+            continue
+        if (r, c) in seen:
+            errors.append(f"{where} appears more than once")
+            continue
+        seen.add((r, c))
+        order.append((r, c))
+
+        value = cell.get("value")
+        if value is None:
+            errors.append(f"Missing 'value' for {where}")
+            continue
+        try:
+            new_val = parse_api_value(value, fmt_spec)
+        except ValueError as e:
+            errors.append(f"Invalid value {value!r} for {where}: {e}")
+            continue
+
+        old_val = float(old_vals[r] if old_vals.ndim == 1 else old_vals[r, c])
+
+        # Unchanged cell: text equal to the current display text, or a number
+        # equal to the current full-precision value. Skipped, so re-sending a
+        # whole table never re-rounds the cells the client did not change.
+        if isinstance(value, str):
+            current = parse_cell_text(format_value(old_val, fmt_spec), fmt_spec)
+            if current is not None and new_val == current:
+                continue
+        elif new_val == old_val:
+            continue
+
+        try:
+            old_raw = float(converter.from_display(old_val))
+            new_raw = float(converter.from_display(new_val))
+        except Exception as e:
+            errors.append(f"Could not convert value {value!r} for {where}: {e}")
+            continue
+
+        # Whole-number tables are refused a fraction instead of rounding it
+        # silently (1.5 -> 2): integer display formats, and integer storage
+        # whose scaling stores the value as-is.
+        if not new_val.is_integer() and (
+            is_integer_format(fmt_spec) or (int_storage and new_raw == new_val)
+        ):
+            errors.append(
+                f"Invalid value {value!r} for {where}: this table holds whole "
+                "numbers; send a whole number"
+            )
+            continue
+
+        if not raw_fits_storage(new_raw, storage_type):
+            errors.append(
+                f"Invalid value {value!r} for {where}: does not fit the "
+                f"table's storage type ({storage_type}, raw value {new_raw:g})"
+            )
+            continue
+
+        changes.append((r, c, old_val, new_val, old_raw, new_raw))
+    return {"changes": changes, "order": order, "errors": errors}
 
 
 class McpMixin:
@@ -436,7 +530,14 @@ class McpMixin:
         }
 
     def _api_edit_table(self, request: dict) -> dict:
-        """Handle /api/edit-table — write values through the editing pipeline."""
+        """Handle /api/edit-table — write values through the editing pipeline.
+
+        Every cell is validated before anything is written (format, whole
+        numbers, storage range); one bad cell refuses the whole request.
+        Cells whose input equals their current value are skipped, so a client
+        can send back a whole table to change one cell. A write that fails
+        anyway is undone byte-exactly from a snapshot of the ROM.
+        """
         from src.core.rom_reader import ScalingConverter
         from src.core.table_undo_manager import make_table_key
 
@@ -444,7 +545,7 @@ class McpMixin:
         table_name = request.get("table_name", "").strip()
         cells = request.get("cells", [])
 
-        if not cells:
+        if not cells or not isinstance(cells, list):
             return {"success": False, "error": "No cells provided"}
 
         document = self._find_document_by_rom_path(rom_path)
@@ -464,9 +565,8 @@ class McpMixin:
 
         old_vals = old_data["values"]
         scaling = document.rom_definition.get_scaling(table.scaling)
-        converter = ScalingConverter(scaling) if scaling else None
         # Same format spec the read endpoint and the table window use, so text
-        # read from a hex table ('%08x') parses back as hex, not decimal (issue 146).
+        # read from a hex table ('%08x') parses back as hex (issue 146).
         fmt_spec = get_scaling_format(document.rom_definition, table.scaling)
 
         if table.type.value == "3D":
@@ -474,104 +574,76 @@ class McpMixin:
             y_axis = table.y_axis
             max_cols = x_axis.elements if x_axis else 1
             max_rows = y_axis.elements if y_axis else 1
-        elif table.type.value == "2D":
-            max_rows = old_vals.shape[0] if old_vals.ndim >= 1 else 1
-            max_cols = 1
         else:
             max_rows = old_vals.shape[0] if old_vals.ndim >= 1 else table.elements
             max_cols = 1
 
-        changes = []
-        errors = []
-        for cell in cells:
-            r = cell.get("row", 0)
-            c = cell.get("col", 0)
-            new_display_val = cell.get("value")
-
-            if new_display_val is None:
-                errors.append(f"Missing 'value' for cell ({r},{c})")
-                continue
-
-            if r < 0 or r >= max_rows or c < 0 or c >= max_cols:
-                errors.append(
-                    f"Cell ({r},{c}) out of range for {table_name} ({max_rows}x{max_cols})"
-                )
-                continue
-
-            raw_input = new_display_val
-            new_display_val = parse_api_value(raw_input, fmt_spec)
-            if new_display_val is None:
-                expected = (
-                    "a number, or hex text such as '2054517' or '0x2054517'"
-                    if value_format_name(fmt_spec) == "hex"
-                    else "a number, or decimal text"
-                )
-                errors.append(
-                    f"Invalid value {raw_input!r} for cell ({r},{c}): "
-                    f"expected {expected}"
-                )
-                continue
-
-            if old_vals.ndim == 1:
-                old_display_val = float(old_vals[r])
-            else:
-                old_display_val = float(old_vals[r, c])
-
-            try:
-                old_raw = (
-                    float(converter.from_display(old_display_val))
-                    if converter
-                    else old_display_val
-                )
-                new_raw = (
-                    float(converter.from_display(new_display_val))
-                    if converter
-                    else new_display_val
-                )
-            except Exception as e:
-                errors.append(f"Failed to convert value {new_display_val}: {e}")
-                continue
-
-            changes.append((r, c, old_display_val, new_display_val, old_raw, new_raw))
-
-        # All or nothing: one bad cell rejects the whole request, so a batch
-        # is never half-applied with the bad cells silently skipped.
-        if errors:
+        plan = _plan_api_cell_edits(
+            cells,
+            old_vals,
+            ScalingConverter(scaling),
+            scaling.storagetype,
+            fmt_spec,
+            max_rows,
+            max_cols,
+        )
+        if plan["errors"]:
             return {
                 "success": False,
-                "error": "No cells written: " + "; ".join(errors),
+                "error": "No cells written: " + "; ".join(plan["errors"]),
             }
 
+        changes = plan["changes"]
+        if changes:
+            reader = document.rom_reader
+            rom_path_key = reader.rom_path
+            document.edit_state.capture_originals(table.address, old_data)
+
+            # Byte snapshot: the shared rollback re-writes from_display(old
+            # display value), which is not byte-exact on lossy scalings. If the
+            # write fails, put back exactly what was there.
+            snapshot = bytes(reader.rom_data)
+            desc = f"AI: edit {len(changes)} cell(s) in {table_name}"
+            if not self._apply_external_cell_edits(
+                document, table, changes, desc, rom_path=rom_path_key
+            ):
+                reader.rom_data[:] = snapshot
+                return {
+                    "success": False,
+                    "error": (
+                        f"ROM write failed for '{table_name}'; "
+                        "no cells written (ROM restored)"
+                    ),
+                }
+
+            # Activate undo stack so Ctrl+Z works immediately
+            table_key = make_table_key(rom_path_key, table.address)
+            self.table_undo_manager.set_active_stack(table_key)
+
+            self._update_tab_title(document)
+            self._write_workspace_state()
+
+        # Report what the ROM now holds for every requested cell, read back
+        # from the ROM, so a client can check the stored values.
+        new_vals = document.rom_reader.read_table_data(table)["values"]
+        changed = {(r, c) for r, c, *_ in changes}
+        stored = []
+        for r, c in plan["order"]:
+            v = new_vals[r] if new_vals.ndim == 1 else new_vals[r, c]
+            stored.append(
+                {
+                    "row": r,
+                    "col": c,
+                    "changed": (r, c) in changed,
+                    "value": format_value(v, fmt_spec),
+                    "numeric_value": _api_number(v),
+                }
+            )
+
+        result = {"success": True, "cells_modified": len(changes), "cells": stored}
         if not changes:
-            return {
-                "success": True,
-                "cells_modified": 0,
-                "message": "No changes needed",
-            }
-
-        # Capture originals and apply through shared pipeline
-        rom_path_key = document.rom_reader.rom_path
-        document.edit_state.capture_originals(table.address, old_data)
-
-        desc = f"AI: edit {len(changes)} cell(s) in {table_name}"
-        if not self._apply_external_cell_edits(
-            document, table, changes, desc, rom_path=rom_path_key
-        ):
-            # The ROM write failed and was rolled back (B8) — report the truth
-            # instead of a success the ROM never took.
-            return {
-                "success": False,
-                "error": f"ROM write failed for '{table_name}'; changes rolled back",
-            }
-
-        # Activate undo stack so Ctrl+Z works immediately
-        table_key = make_table_key(rom_path_key, table.address)
-        self.table_undo_manager.set_active_stack(table_key)
-
-        self._update_tab_title(document)
-        self._write_workspace_state()
-
-        return {"success": True, "cells_modified": len(changes)}
+            result["message"] = "No changes needed"
+        return result
 
     # ========== ROM metadata endpoints (single source of truth for MCP) ==========
 

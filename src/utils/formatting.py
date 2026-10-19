@@ -20,13 +20,13 @@ _PRINTF_PATTERN = re.compile(r"%[-+0 #]*(\d*)\.?(\d*)([diouxXeEfFgGaAcspn%])")
 # and friends cannot be entered. Sign and decimal separator are required
 # alongside the digits: without them negative and fractional table values
 # would be impossible to enter.
-NUMERIC_INPUT_PATTERN = r"[+-]?\d*[.,]?\d*"
+NUMERIC_INPUT_PATTERN = r"[+-]?[0-9]*[.,]?[0-9]*"
 
 # What counts as a numeric value once committed. Same as the typed form plus
 # scientific notation, which arrives via clipboard paste from spreadsheets.
 # Deliberately excludes the alphabetic spellings Python's float() accepts
 # ('nan', 'inf', 'infinity') and the underscore separator ('1_0').
-NUMERIC_TEXT_PATTERN = r"[+-]?(\d+[.,]?\d*|[.,]\d+)([eE][+-]?\d+)?"
+NUMERIC_TEXT_PATTERN = r"[+-]?([0-9]+[.,]?[0-9]*|[.,][0-9]+)([eE][+-]?[0-9]+)?"
 
 _NUMERIC_TEXT_RE = re.compile(rf"^{NUMERIC_TEXT_PATTERN}$")
 
@@ -93,30 +93,63 @@ def value_format_name(format_spec: str) -> str:
     return "hex" if is_hex_format(format_spec) else "decimal"
 
 
-def parse_api_value(value, format_spec: str) -> Optional[float]:
-    """Parse a table value received over the API/MCP bridge, or None if invalid.
+def is_integer_format(format_spec: str) -> bool:
+    """True if a Python format spec renders whole numbers only (d, x, ...)."""
+    return bool(format_spec) and bool(_INT_SPECIFIERS.search(format_spec))
+
+
+def parse_api_value(value, format_spec: str) -> float:
+    """Parse a table value received over the API/MCP bridge.
 
     The rule, so a client never has to guess:
-    - A JSON number (int or float) is the numeric display value, used as-is,
-      on every table including hex ones. 33899799 means 0x02054517.
-    - A JSON string is cell text, parsed the same way as typing it into the
-      table window: hex text on hex-formatted tables ('2054517',
-      ' 2054517', '0x2054517'), decimal text everywhere else. So the display
-      text returned by a read writes back unchanged.
-    - Anything else (bool, null, list, NaN, infinity) is rejected.
+    - Hex tables ('%08x', e.g. Tire Size Correction) take hex TEXT only
+      ('2054517', ' 2054517' or '0x2054517' all mean 0x02054517). A JSON
+      number is refused there: 2054517 would be ambiguous.
+    - Other tables take a JSON number, or decimal text with '.' as the
+      decimal point. A comma is refused: '4,500' could mean 4500 or 4.5.
+    - Anything else (bool, null, list, NaN, infinity, unparsable text) is
+      refused.
+
+    Unlike the table window, which takes ',' as a decimal mark from the
+    keyboard, this path never guesses.
+
+    Returns:
+        The display value as a finite float.
+
+    Raises:
+        ValueError: with a reason a client can act on.
     """
+    hex_fmt = is_hex_format(format_spec)
+    expected = (
+        "hex text such as '2054517' or '0x2054517'"
+        if hex_fmt
+        else "a number, or decimal text such as '12.5'"
+    )
     # bool is an int subclass: True must not silently become 1.
-    if isinstance(value, bool):
-        return None
+    if isinstance(value, bool) or not isinstance(value, (int, float, str)):
+        raise ValueError(f"expected {expected}")
     if isinstance(value, (int, float)):
+        if hex_fmt:
+            raise ValueError(
+                f"this table shows hex values; send {expected} "
+                "(as a string), not a JSON number"
+            )
         try:
             number = float(value)
         except OverflowError:
-            return None
-        return number if math.isfinite(number) else None
-    if isinstance(value, str):
-        return parse_cell_text(value, format_spec)
-    return None
+            raise ValueError("number is too large") from None
+        if not math.isfinite(number):
+            raise ValueError(f"expected {expected}")
+        return number
+    if not hex_fmt and "," in value:
+        raise ValueError(
+            "commas are not accepted: use '.' as the decimal point and "
+            "no thousands separator"
+        )
+    number = parse_cell_text(value, format_spec)
+    if number is None:
+        raise ValueError(f"expected {expected}")
+    return number
 
 
 def printf_to_python_format(printf_format: str) -> str:
