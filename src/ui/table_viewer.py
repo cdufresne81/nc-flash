@@ -309,7 +309,7 @@ class TableViewer(QWidget):
             return
 
         # Convert display values to raw
-        old_raw = self._edit.display_to_raw(old_value)
+        old_raw = self._edit.display_to_raw(old_value, current=True)
         new_raw = self._edit.display_to_raw(new_value)
         if old_raw is None or new_raw is None:
             return
