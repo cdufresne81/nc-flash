@@ -136,7 +136,7 @@ class TableViewer(QWidget):
         self._display = TableDisplayHelper(self._ctx)
         self._edit = TableEditHelper(self._ctx, self._display)
         self._ops = TableOperationsHelper(self._ctx, self._display, self._edit)
-        self._interp = TableInterpolationHelper(self._ctx, self._display)
+        self._interp = TableInterpolationHelper(self._ctx, self._display, self._edit)
         self._clipboard = TableClipboardHelper(self._ctx, self._display, self._edit)
 
         # Set up delegate for modified cell borders

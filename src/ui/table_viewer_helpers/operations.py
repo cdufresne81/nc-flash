@@ -196,6 +196,7 @@ class TableOperationsHelper:
                                     f"Operation failed for axis cell [{axis_type_str}][{data_idx}]: {e}"
                                 )
                                 continue
+                            new_value = self.edit.fit_to_array(axis_data, new_value)
 
                             # Skip if no change
                             if abs(new_value - old_value) < 1e-10:
@@ -261,6 +262,7 @@ class TableOperationsHelper:
                                     f"Operation failed for cell [{data_row},{data_col}]: {e}"
                                 )
                                 continue
+                            new_value = self.edit.fit_to_array(values, new_value)
 
                             # Skip if no change
                             if abs(new_value - old_value) < 1e-10:
@@ -621,6 +623,7 @@ class TableOperationsHelper:
                     old_value = float(values[data_row])
                 else:
                     old_value = float(values[data_row, data_col])
+                new_value = self.edit.fit_to_array(values, new_value)
 
                 # Skip if no significant change
                 if abs(new_value - old_value) < 1e-10:

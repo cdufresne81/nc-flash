@@ -311,3 +311,166 @@ def test_recorded_old_raw_is_raw_not_display(setup):
         assert old_raw == pytest.approx(DATA_RAW[row][col], abs=1e-6)
         assert old_value == pytest.approx(100.0 / (100.0 + DATA_RAW[row][col]))
     assert np.isfinite([c[4] for c in setup.captured["cells"]]).all()
+
+
+# --- cells that can't be stored are skipped, not half-applied ---------------
+
+
+def test_unconvertible_cell_is_skipped_and_screen_matches_rom(tmp_path):
+    """A stored inf (display 0 under 100/(100+x)) has no raw inverse.
+
+    Interpolating across it used to raise midway, leaving earlier cells
+    changed on screen while nothing reached the ROM. Now that one cell is
+    skipped and every other cell is applied normally.
+    """
+    definition, table = _definition("float")
+    rom_path = tmp_path / "rom.bin"
+    _write_rom(rom_path, "float")
+    rom = bytearray(rom_path.read_bytes())
+    inf_at = DATA_ADDR + 4 * (2 * N + 2)  # cell (2, 2), row-major
+    rom[inf_at : inf_at + 4] = struct.pack(">f", float("inf"))
+    rom_path.write_bytes(bytes(rom))
+    reader = RomReader(str(rom_path), definition)
+
+    viewer = TableViewer(definition)
+    try:
+        viewer.display_table(table, reader.read_table_data(table))
+        captured = []
+        viewer.bulk_changes.connect(lambda _t, ch: captured.extend(ch))
+
+        cells = _ui_cells(viewer)
+        top, col = cells[(0, 2)]
+        bottom, _ = cells[(N - 1, 2)]
+        _select(viewer, top, col, bottom, col)
+        viewer._interp.interpolate_vertical()  # must not raise
+
+        changed = {(r, c) for r, c, *_ in captured}
+        assert changed == {(1, 2), (3, 2)}
+        _apply_forward(reader, table, captured, [])
+
+        # Memory, screen and ROM agree on every cell of the column.
+        rom_values = reader.read_table_data(table)["values"]
+        mem_values = viewer._ctx.current_data["values"]
+        np.testing.assert_allclose(mem_values, rom_values, rtol=1e-6)
+        for row in range(N):
+            ui_row, ui_col = cells[(row, 2)]
+            shown = float(viewer.table_widget.item(ui_row, ui_col).text())
+            assert shown == pytest.approx(rom_values[row, 2], abs=5e-4)
+        stored = struct.unpack(">f", reader.rom_data[inf_at : inf_at + 4])[0]
+        assert stored == float("inf")
+    finally:
+        viewer.deleteLater()
+
+
+# --- integer (identity-scaled) tables: memory holds what the ROM holds -------
+
+
+def _identity_uint8_table(tmp_path, raw_values):
+    romid = RomID(
+        xmlid="test",
+        internalidaddress="0x0",
+        internalidstring="T",
+        ecuid="",
+        make="",
+        model="",
+        flashmethod="",
+        memmodel="",
+        checksummodule="",
+    )
+    scalings = {
+        "Raw": Scaling(
+            name="Raw",
+            units="",
+            toexpr="x",
+            frexpr="x",
+            format="%d",
+            min=0.0,
+            max=255.0,
+            inc=1.0,
+            storagetype="uint8",
+            endian="big",
+        ),
+        "AxisScale": Scaling(
+            name="AxisScale",
+            units="",
+            toexpr="x",
+            frexpr="x",
+            format="%0.1f",
+            min=0.0,
+            max=1000.0,
+            inc=1.0,
+            storagetype="float",
+            endian="big",
+        ),
+    }
+    y_axis = Table(
+        name="Y",
+        address=hex(Y_ADDR),
+        elements=len(raw_values),
+        scaling="AxisScale",
+        type=TableType.ONE_D,
+        axis_type=AxisType.Y_AXIS,
+    )
+    table = Table(
+        name="Counts",
+        address=hex(DATA_ADDR),
+        elements=len(raw_values),
+        scaling="Raw",
+        type=TableType.TWO_D,
+        children=[y_axis],
+    )
+    definition = RomDefinition(romid=romid, scalings=scalings, tables=[table])
+    rom = bytearray(0x400)
+    for i in range(len(raw_values)):
+        rom[Y_ADDR + 4 * i : Y_ADDR + 4 * i + 4] = struct.pack(">f", 10.0 * i)
+        rom[DATA_ADDR + i] = raw_values[i]
+    rom_path = tmp_path / "rom.bin"
+    rom_path.write_bytes(bytes(rom))
+    return definition, table, RomReader(str(rom_path), definition)
+
+
+def test_uint8_identity_second_interpolation_undo_restores_rom(tmp_path):
+    """0..10 over 5 cells interpolates to 2.5/5/7.5: the ROM rounds 7.5 to 8.
+
+    An int array truncated 7.5 to 7 in memory, so the next interpolation
+    recorded 7 as the old value and its undo wrote 7 where the ROM had 8.
+    """
+    definition, table, reader = _identity_uint8_table(tmp_path, [0, 9, 9, 9, 10])
+    viewer = TableViewer(definition)
+    try:
+        viewer.display_table(table, reader.read_table_data(table))
+        assert np.issubdtype(viewer._ctx.current_data["values"].dtype, np.integer)
+        captured = []
+        viewer.bulk_changes.connect(lambda _t, ch: captured.extend(ch))
+        cells = _ui_cells(viewer)
+        first = cells[(0, 0)]
+        last = cells[(4, 0)]
+
+        def interpolate():
+            captured.clear()
+            _select(viewer, first[0], first[1], last[0], last[1])
+            if first[1] == last[1]:
+                viewer._interp.interpolate_vertical()
+            else:
+                viewer._interp.interpolate_horizontal()
+            _apply_forward(reader, table, captured, [])
+            return list(captured)
+
+        interpolate()
+        rom_values = reader.read_table_data(table)["values"]
+        assert list(rom_values) == [0, 2, 5, 8, 10]
+        assert list(viewer._ctx.current_data["values"]) == [0, 2, 5, 8, 10]
+
+        # A typed edit of the last cell (ROM write + viewer update), then
+        # interpolate again and undo it.
+        reader.write_cell_value(table, 4, 0, 20.0)
+        viewer.update_cell_value(4, 0, 20.0)
+        before_second = bytes(reader.rom_data)
+
+        second = interpolate()
+        assert {r for r, *_ in second} == {1, 2, 3}
+        assert bytes(reader.rom_data) != before_second
+        _undo_through_stack(reader, table, second, [])
+        assert bytes(reader.rom_data) == before_second
+    finally:
+        viewer.deleteLater()

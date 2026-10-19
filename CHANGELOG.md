@@ -8,7 +8,9 @@ All notable changes to NC Flash are documented here.
 - **Behind the scenes:** a small tool now lists which beta changes are still waiting to reach Stable. No change to the app itself.
 
 ### Fixed
-- **Undoing an interpolation now restores the exact original values in the ROM (#145).** On tables with a non-linear scaling (for example lambda targets shown as `100/(100+x)`), Undo after Interpolate used to put back the right number on screen but a wrong value in the ROM. The same fix applies when a failed write rolls an interpolation back. If you undid an interpolation on such a table in an earlier version and then saved, re-check that table against your last good copy.
+- **Undo after Interpolate now puts the right values back in the ROM on the common scalings (#145).** On tables whose displayed value isn't the stored number as-is (lambda targets shown as `100/(100+x)`, `1-x` and similar), Undo used to show the original number on screen but write a wrong value to the ROM. The same fix applies when a failed write rolls an interpolation back. If you undid an interpolation on such a table in an earlier version and then saved, re-check that table against your last good copy.
+- **Interpolate no longer half-applies when a cell can't be converted.** A cell whose value can't be stored (for example an unprogrammed value) is now skipped, and the rest of the selection is applied normally. Before, the screen could show new values that never reached the ROM.
+- **Interpolate, add/multiply/set and smoothing on whole-number tables now keep the screen in step with the ROM.** A value like 7.5 is now kept as 8, matching what is written, instead of 7 in memory. Before, a later undo could write the wrong number.
 - **Behind the scenes:** a release no longer fails to publish when its build reports a failure after every test has passed (#149, already fixed for the regular checks). No change to the app itself.
 - **Behind the scenes:** the development commit check no longer blocks commits to related repositories that have no changelog, or merge commits. No change to the app itself.
 
