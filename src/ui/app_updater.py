@@ -439,10 +439,9 @@ class UpdateController(QObject):
             )
 
     def _on_check_thread_finished(self):
-        thread, worker = self._check_thread, self._check_worker
+        self._join(self._check_thread)
         self._check_thread = None
-        self._check_worker = None
-        self._dispose(thread, worker)
+        self._check_worker = None  # last reference: deleted here, on this thread
 
     # --- download results (GUI thread) --------------------------------------
 
@@ -488,10 +487,9 @@ class UpdateController(QObject):
             dialog.show_cancelled()
 
     def _on_download_thread_finished(self):
-        thread, worker = self._download_thread, self._download_worker
+        self._join(self._download_thread)
         self._download_thread = None
-        self._download_worker = None
-        self._dispose(thread, worker)
+        self._download_worker = None  # last reference: deleted here, on this thread
 
     # --- helpers ------------------------------------------------------------
 
@@ -558,10 +556,19 @@ class UpdateController(QObject):
         logger.info("Update v%s skipped", version)
 
     @staticmethod
-    def _dispose(thread, worker):
-        if worker is not None:
-            worker.deleteLater()
+    def _join(thread):
+        """Wait for a finished worker thread to exit, then schedule its deletion.
+
+        ``QThread.finished`` is emitted by the worker thread just before it
+        exits, so its queued handler can run while that thread is still
+        shutting down: join it first (the wait is brief). The worker object is
+        never ``deleteLater()``-ed: the exiting worker thread itself would
+        destroy it, which crashed the app now and then (issue 154). The caller
+        drops its last reference after this call instead, so the worker is
+        deleted on the GUI thread once its thread has stopped.
+        """
         if thread is not None:
+            thread.wait()
             thread.deleteLater()
 
 
