@@ -43,6 +43,7 @@ from PySide6.QtGui import (
 
 from ..core.rom_definition import Table, TableType, AxisType, RomDefinition
 from ..core.rom_reader import RomReader
+from ..core.table_lookup import match_tables
 from ..utils.colormap import value_to_color
 from .theme import get_toolbar_stylesheet
 from ..utils.formatting import (
@@ -143,16 +144,16 @@ class CompareWindow(QMainWindow):
         return len(self._modified_tables) > 0
 
     def _match_tables(self):
-        """Build name-based lookup matching tables across two definitions."""
-        by_name_a = {t.name: t for t in self._definition_a.tables}
-        by_name_b = {t.name: t for t in self._definition_b.tables}
-        all_names = sorted(set(by_name_a) | set(by_name_b))
-        matched = []
-        for name in all_names:
-            ta = by_name_a.get(name)
-            tb = by_name_b.get(name)
-            cat = (ta or tb).category or ""
-            matched.append((name, cat, ta, tb))
+        """Pair every table of the two definitions (see core.table_lookup).
+
+        Names are not unique, so each duplicate-named copy gets its own row,
+        labelled "Name @ 0xADDR"; a plain name-keyed dict would hide all but
+        the last copy and report differing ROMs as identical.
+        """
+        matched = [
+            (m.label, m.category, m.table_a, m.table_b)
+            for m in match_tables(self._definition_a.tables, self._definition_b.tables)
+        ]
         matched.sort(key=lambda m: (m[1], m[0]))
         return matched
 
