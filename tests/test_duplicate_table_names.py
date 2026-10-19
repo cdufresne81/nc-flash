@@ -11,6 +11,7 @@ import struct
 from pathlib import Path
 from types import SimpleNamespace
 
+import numpy as np
 import pytest
 
 from src.core.definition_parser import load_definition
@@ -183,8 +184,43 @@ class TestMatchTables:
         ]
         assert dup[0].label == "Dup @ 0x100 / 0x1100"
         assert dup[2].label == "Dup @ 0x1300"
+        # 2 copies vs 3: the pairing is a guess, so none may be copied.
+        assert all(m.uncertain and not m.copy_safe for m in dup)
         solo = [m for m in matches if m.name == "Solo"]
         assert len(solo) == 1 and solo[0].label == "Solo"
+        assert solo[0].copy_safe
+
+    def test_same_address_pairs_first(self):
+        """Reviewer repro: B inserts a copy in the middle. A's 0xF8348 must
+        pair with B's 0xF8348, not with B's new 2nd copy."""
+        a = [_t("Dup", "cdc0c"), _t("Dup", "f8348")]
+        b = [_t("Dup", "cdc00"), _t("Dup", "cdc04"), _t("Dup", "f8348")]
+        pairs = [
+            (m.table_a and m.table_a.address, m.table_b and m.table_b.address)
+            for m in match_tables(a, b)
+        ]
+        assert pairs == [("cdc0c", "cdc00"), ("f8348", "f8348"), (None, "cdc04")]
+        assert all(m.uncertain for m in match_tables(a, b))
+
+    def test_equal_counts_same_address_reordered(self):
+        a = [_t("Dup", "100"), _t("Dup", "200")]
+        b = [_t("Dup", "200"), _t("Dup", "100")]
+        matches = match_tables(a, b)
+        assert [(m.table_a.address, m.table_b.address) for m in matches] == [
+            ("100", "100"),
+            ("200", "200"),
+        ]
+        assert all(m.copy_safe for m in matches)
+
+    def test_equal_counts_in_order_pair_as_before(self):
+        a = [_t("Dup", "100"), _t("Dup", "200")]
+        b = [_t("Dup", "1100"), _t("Dup", "1200")]
+        matches = match_tables(a, b)
+        assert [(m.table_a.address, m.table_b.address) for m in matches] == [
+            ("100", "1100"),
+            ("200", "1200"),
+        ]
+        assert all(m.copy_safe for m in matches)
 
     def test_find_match_refuses_ambiguous_and_accepts_address(self):
         a = [_t("Dup", "100"), _t("Dup", "200")]
@@ -240,6 +276,107 @@ class TestCompareWindowDuplicates:
         diffs = _window_diffs(reader_a, reader_b, lf9veb)
         assert sorted(d["table_a"].address_int for d in diffs) == TRIPLE_ADDRS
         assert len({d["name"] for d in diffs}) == 3
+
+
+class _AddrReader:
+    """Fake reader keyed by table address (names are not unique)."""
+
+    def __init__(self, values_by_addr):
+        self._v = values_by_addr
+
+    def read_table_data(self, table):
+        return {"values": np.array([self._v[table.address]])}
+
+
+def _cross_def_window(tables_a, tables_b, vals_a, vals_b):
+    from src.ui.compare_window import CompareWindow
+
+    win = CompareWindow.__new__(CompareWindow)
+    win._reader_a = _AddrReader(vals_a)
+    win._reader_b = _AddrReader(vals_b)
+    win._definition_a = RomDefinition(romid=_romid("x"), tables=tables_a)
+    win._definition_b = RomDefinition(romid=_romid("y"), tables=tables_b)
+    win._cross_def = True
+    win._readonly = False
+    win._name_a, win._name_b = "a.bin", "b.bin"
+    win._modified_tables = []
+    win._compute_diffs()
+    return win
+
+
+class _Button:
+    def __init__(self):
+        self.enabled = None
+
+    def setEnabled(self, value):
+        self.enabled = bool(value)
+
+
+class TestCompareCopyGuard:
+    def test_count_mismatch_shows_all_copies_but_blocks_copy(self):
+        a = [_t("Dup", "cdc0c"), _t("Dup", "f8348")]
+        b = [_t("Dup", "cdc00"), _t("Dup", "cdc04"), _t("Dup", "f8348")]
+        win = _cross_def_window(
+            a,
+            b,
+            {"cdc0c": 1.0, "f8348": 2.0},
+            {"cdc00": 5.0, "cdc04": 6.0, "f8348": 7.0},
+        )
+        rows = win._modified_tables
+        # Every copy on each side is still shown as a difference.
+        assert {r["table_a"].address for r in rows if r["table_a"]} == {
+            "cdc0c",
+            "f8348",
+        }
+        assert {r["table_b"].address for r in rows if r["table_b"]} == {
+            "cdc00",
+            "cdc04",
+            "f8348",
+        }
+        paired = [r for r in rows if r["table_a"] and r["table_b"]]
+        assert paired and all(r["pairing_uncertain"] for r in paired)
+
+        # Copy All skips them in both directions.
+        assert win._get_eligible_entries("a_to_b") == []
+        assert win._get_eligible_entries("b_to_a") == []
+
+        # Single-table Copy buttons are disabled for each of them.
+        win._copy_a_to_b_btn, win._copy_b_to_a_btn = _Button(), _Button()
+        for i, row in enumerate(rows):
+            win._current_index = i
+            win._update_copy_buttons()
+            assert win._copy_a_to_b_btn.enabled is False
+            assert win._copy_b_to_a_btn.enabled is False
+
+    def test_copy_table_refuses_uncertain_pair(self, monkeypatch):
+        # If the guard ever regresses, the copy path's error dialog must not
+        # block the test run.
+        monkeypatch.setattr(
+            "src.ui.compare_window.QMessageBox.warning", lambda *a, **k: None
+        )
+        a = [_t("Dup", "100"), _t("Dup", "200")]
+        b = [_t("Dup", "100"), _t("Dup", "200"), _t("Dup", "300")]
+        win = _cross_def_window(
+            a, b, {"100": 1.0, "200": 2.0}, {"100": 9.0, "200": 2.5, "300": 3.0}
+        )
+        writes = []
+        win.parent = lambda: SimpleNamespace(
+            apply_compare_copy=lambda *args: writes.append(args)
+        )
+        for i, row in enumerate(win._modified_tables):
+            win._current_index = i
+            win._copy_table("a_to_b")
+            win._copy_table("b_to_a")
+        assert writes == []
+
+    def test_equal_counts_still_copyable(self):
+        a = [_t("Dup", "100"), _t("Dup", "200")]
+        b = [_t("Dup", "1100"), _t("Dup", "1200")]
+        win = _cross_def_window(
+            a, b, {"100": 1.0, "200": 2.0}, {"1100": 9.0, "1200": 8.0}
+        )
+        assert not any(r["pairing_uncertain"] for r in win._modified_tables)
+        assert len(win._get_eligible_entries("a_to_b")) == 2
 
 
 # ---------------------------------------------------------------------------
@@ -335,7 +472,8 @@ class TestMcpDuplicates:
 
         result = McpMixin._api_edit_table(app, request)
 
-        assert result == {"success": True, "cells_modified": 1}
+        assert result["success"] is True, result
+        assert result["cells_modified"] == 1
         after = bytes(reader.rom_data)
         assert after[addr : addr + 4] == struct.pack(">f", 42.0)
         changed = [i for i in range(len(after)) if after[i] != before[i]]

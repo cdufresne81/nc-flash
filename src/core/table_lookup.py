@@ -8,8 +8,7 @@ no copy is silently shadowed by another one with the same name.
 """
 
 import re
-from dataclasses import dataclass
-from itertools import zip_longest
+from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING, Dict, Iterable, List, Optional, Tuple, Union
 
 if TYPE_CHECKING:  # pragma: no cover
@@ -116,6 +115,10 @@ class TableMatch:
     ``label`` is unique within one match list: the plain name when the name
     is unique, else "Name @ 0xADDR" (or "Name @ 0xA / 0xB" when a cross-
     definition pair sits at different addresses).
+
+    ``uncertain`` is True when the two definitions list a different number
+    of tables under this name: the pairing is then only a guess, so the pair
+    is still compared and shown but must never be used to copy data.
     """
 
     name: str
@@ -123,6 +126,14 @@ class TableMatch:
     category: str
     table_a: Optional["Table"]
     table_b: Optional["Table"]
+    uncertain: bool = False
+
+    @property
+    def copy_safe(self) -> bool:
+        """True when both sides exist and are known to be the same table."""
+        return (
+            self.table_a is not None and self.table_b is not None and not self.uncertain
+        )
 
 
 def _group_by_name(tables: Iterable["Table"]) -> Dict[str, List["Table"]]:
@@ -145,10 +156,12 @@ def match_tables(
 ) -> List[TableMatch]:
     """Pair the tables of two definitions, one TableMatch per table copy.
 
-    Tables are matched by name. When several tables share a name, the copies
-    are paired by their order in each definition (1st with 1st, 2nd with
-    2nd, ...) and a side with more copies yields one-sided matches for the
-    extras. No table on either side is ever dropped.
+    Tables are matched by name. When several tables share a name, copies at
+    the same address on both sides are paired first; the remaining copies
+    pair by their order in each definition (1st with 1st, ...). A side with
+    more copies yields one-sided matches for the extras. If the two sides
+    list a different number of copies, every match for that name is marked
+    ``uncertain`` (still compared, never copied). No table is ever dropped.
     """
     groups_a = _group_by_name(tables_a)
     groups_b = _group_by_name(tables_b)
@@ -160,10 +173,11 @@ def match_tables(
         copies_a = groups_a.get(name, [])
         copies_b = groups_b.get(name, [])
         duplicated = len(copies_a) > 1 or len(copies_b) > 1
-        for ta, tb in zip_longest(copies_a, copies_b):
+        uncertain = duplicated and len(copies_a) != len(copies_b)
+        for ta, tb in _pair_copies(copies_a, copies_b):
             label = _pair_label(name, ta, tb) if duplicated else name
             category = (ta or tb).category or ""
-            matches.append(TableMatch(name, label, category, ta, tb))
+            matches.append(TableMatch(name, label, category, ta, tb, uncertain))
 
     # Labels must stay unique (they key UI rows and API answers). Two copies
     # at the same address under one name would collide; number them.
@@ -172,10 +186,42 @@ def match_tables(
         count = seen.get(m.label, 0) + 1
         seen[m.label] = count
         if count > 1:
-            matches[i] = TableMatch(
-                m.name, f"{m.label} #{count}", m.category, m.table_a, m.table_b
-            )
+            matches[i] = replace(m, label=f"{m.label} #{count}")
     return matches
+
+
+def _pair_copies(
+    copies_a: List["Table"], copies_b: List["Table"]
+) -> List[Tuple[Optional["Table"], Optional["Table"]]]:
+    """Pair same-named copies: same address first, then by order.
+
+    Output follows A's order (each A copy with its partner or None), then
+    any B copies left over.
+    """
+    partner: Dict[int, "Table"] = {}  # index in copies_a -> B copy
+    used_b = set()
+    for i, ta in enumerate(copies_a):
+        for j, tb in enumerate(copies_b):
+            if j not in used_b and _same_address(ta, tb):
+                partner[i] = tb
+                used_b.add(j)
+                break
+    rest_a = [i for i in range(len(copies_a)) if i not in partner]
+    rest_b = [j for j in range(len(copies_b)) if j not in used_b]
+    for i, j in zip(rest_a, rest_b):
+        partner[i] = copies_b[j]
+        used_b.add(j)
+
+    pairs = [(ta, partner.get(i)) for i, ta in enumerate(copies_a)]
+    pairs.extend((None, tb) for j, tb in enumerate(copies_b) if j not in used_b)
+    return pairs
+
+
+def _same_address(ta: "Table", tb: "Table") -> bool:
+    try:
+        return ta.address_int == tb.address_int
+    except (TypeError, ValueError):
+        return False
 
 
 def find_match(

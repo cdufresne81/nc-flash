@@ -832,6 +832,13 @@ class McpMixin:
                     }
                 )
 
+        # The definitions list a different number of copies of these names,
+        # so which copy pairs with which is a guess; say so.
+        uncertain = {m.label for m in matches if m.uncertain}
+        for entry in changed_tables:
+            if entry["name"] in uncertain:
+                entry["pairing_uncertain"] = True
+
         return {
             "success": True,
             "rom_a": Path(doc_a.rom_reader.rom_path).name,

@@ -8,7 +8,7 @@ All notable changes to NC Flash are documented here.
 - **Behind the scenes:** a small tool now lists which beta changes are still waiting to reach Stable. No change to the app itself.
 
 ### Fixed
-- **ROM compare no longer misses changes in tables that share a name.** Some definitions give two or three tables the same name. Compare only checked the last one, so two ROMs could show as identical while another copy differed. Every copy is now compared and listed separately, with its address after the name.
+- **ROM compare no longer misses changes in tables that share a name.** Some definitions give two or three tables the same name. Compare only checked the last one, so two ROMs could show as identical while another copy differed. Every copy is now compared and listed separately, with its address after the name. When the two ROMs' definitions list a different number of copies, compare still shows them all but won't copy between them, since it can't tell which copy matches which.
 - **AI tools no longer edit the wrong copy of a shared table name.** Reading, editing or comparing a name that several tables share now stops with a list of the copies and their addresses, instead of quietly picking one. Pick a copy by adding its address.
 - **Behind the scenes:** a release no longer fails to publish when its build reports a failure after every test has passed (#149, already fixed for the regular checks). No change to the app itself.
 - **Behind the scenes:** the development commit check no longer blocks commits to related repositories that have no changelog, or merge commits. No change to the app itself.
