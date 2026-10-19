@@ -326,7 +326,6 @@ class TableInterpolationHelper:
                                     coords,
                                     axis_type,
                                     axis_key,
-                                    old_val,
                                     new_val,
                                     axis_changes,
                                 )
@@ -335,7 +334,6 @@ class TableInterpolationHelper:
                                 self._apply_data_interpolation(
                                     item,
                                     coords,
-                                    old_val,
                                     new_val,
                                     all_changes,
                                 )
@@ -363,7 +361,7 @@ class TableInterpolationHelper:
             logger.debug(f"{direction_label} interpolation: no changes made")
 
     def _apply_axis_interpolation(
-        self, item, coords, axis_type, axis_key, old_val, new_val, axis_changes
+        self, item, coords, axis_type, axis_key, new_val, axis_changes
     ):
         """Apply an interpolated value to an axis cell and record the change."""
         axis_table = self.ctx.current_table.get_axis(axis_type)
@@ -371,13 +369,17 @@ class TableInterpolationHelper:
             return
 
         data_idx = coords[1]
-        old_raw = float(self.ctx.current_data[axis_key][data_idx])
 
         scaling = self.ctx.rom_definition.get_scaling(axis_table.scaling)
         if not scaling:
             return
 
         converter = ScalingConverter(scaling)
+        # current_data holds DISPLAY values, so the old raw value must go back
+        # through the scaling like the new one; recording the display value
+        # as raw made undo/rollback write wrong bytes (issue 145).
+        old_val = float(self.ctx.current_data[axis_key][data_idx])
+        old_raw = converter.from_display(old_val)
         new_raw = converter.from_display(new_val)
         new_val = converter.to_display(new_raw)
 
@@ -406,19 +408,23 @@ class TableInterpolationHelper:
             )
         )
 
-    def _apply_data_interpolation(self, item, coords, old_val, new_val, all_changes):
+    def _apply_data_interpolation(self, item, coords, new_val, all_changes):
         """Apply an interpolated value to a data cell and record the change."""
         values = self.ctx.current_data["values"]
-        if values.ndim == 2:
-            old_raw = values[coords[0], coords[1]]
-        else:
-            old_raw = values[coords[0]]
 
         scaling = self.ctx.rom_definition.get_scaling(self.ctx.current_table.scaling)
         if not scaling:
             return
 
         converter = ScalingConverter(scaling)
+        # current_data holds DISPLAY values, so the old raw value must go back
+        # through the scaling like the new one; recording the display value
+        # as raw made undo/rollback write wrong bytes (issue 145).
+        if values.ndim == 2:
+            old_val = float(values[coords[0], coords[1]])
+        else:
+            old_val = float(values[coords[0]])
+        old_raw = converter.from_display(old_val)
         new_raw = converter.from_display(new_val)
         new_val = converter.to_display(new_raw)
 
@@ -561,7 +567,6 @@ class TableInterpolationHelper:
                             self._apply_data_interpolation(
                                 item,
                                 coords,
-                                old_val,
                                 new_val,
                                 all_changes,
                             )

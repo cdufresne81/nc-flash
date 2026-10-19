@@ -8,6 +8,7 @@ All notable changes to NC Flash are documented here.
 - **Behind the scenes:** a small tool now lists which beta changes are still waiting to reach Stable. No change to the app itself.
 
 ### Fixed
+- **Undoing an interpolation now restores the exact original values in the ROM (#145).** On tables with a non-linear scaling (for example lambda targets shown as `100/(100+x)`), Undo after Interpolate used to put back the right number on screen but a wrong value in the ROM. The same fix applies when a failed write rolls an interpolation back. If you undid an interpolation on such a table in an earlier version and then saved, re-check that table against your last good copy.
 - **Behind the scenes:** a release no longer fails to publish when its build reports a failure after every test has passed (#149, already fixed for the regular checks). No change to the app itself.
 - **Behind the scenes:** the development commit check no longer blocks commits to related repositories that have no changelog, or merge commits. No change to the app itself.
 
