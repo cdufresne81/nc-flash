@@ -385,7 +385,7 @@ class ECUProgrammingWindow(QMainWindow):
             host = self._resolve_wican_host(s)
             # Never switch Wi-Fi under a running trip-log download.
             log_sync = getattr(self._main_window, "wican_log_sync", None)
-            may_switch = not (log_sync is not None and log_sync.is_running())
+            may_switch = not (log_sync is not None and log_sync.is_running)
             return {
                 "kind": "wican",
                 "host": self._ap_switch.reach(host, may_switch=may_switch),
