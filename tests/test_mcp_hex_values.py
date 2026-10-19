@@ -410,6 +410,66 @@ def test_bad_cell_addresses_are_refused(bench, cells):
     _assert_untouched(bench, before)
 
 
+THROTTLE_MULT = "Throttle Angle - Conversion Multiplier (pair with f7c7c)"
+DWELL_3D = "Ignition Coil Dwell | Speed Limiter Inactive"  # 15x9
+
+
+@pytest.mark.parametrize(
+    "table, cell, needle",
+    [
+        # Misspelled key: used to write row 0 and report success.
+        (FAN_ECT, {"Row": 5, "col": 0, "value": 90}, "unknown key(s) Row"),
+        (FAN_ECT, {"row": 5, "col": 0, "value": 90, "note": 1}, "unknown key"),
+        (FAN_ECT, {"col": 0, "value": 90}, "missing row"),
+        (DWELL_3D, {"row": 2, "value": 3.0}, "missing col"),
+        (DWELL_3D, {"value": 3.0}, "missing row and col"),
+    ],
+)
+def test_cell_keys_must_be_exact(bench, table, cell, needle):
+    before = bytes(bench.reader.rom_data)
+    good = {"row": 1, "col": 0, "value": 80}
+    result = _edit_cells(bench, table, [good, cell])
+    assert result["success"] is False
+    assert needle in result["error"]
+    assert "Cell #1" in result["error"]
+    _assert_untouched(bench, before)
+
+
+def test_single_row_table_needs_no_row_or_col(bench):
+    result = _edit_cells(bench, bench.tire.name, [{"value": "2054517"}])
+    assert result["success"] is True
+    assert _bytes(bench, TIRE_ADDR) == bytes.fromhex("02054517")
+
+
+def test_two_d_table_needs_no_col(bench):
+    result = _edit_cells(bench, FAN_ECT, [{"row": 2, "value": 80}])
+    assert result["success"] is True
+    assert result["cells"][0]["row"] == 2
+
+
+@pytest.mark.parametrize("value", [0.85, "0.85", "0.850"])
+def test_value_packing_to_same_bytes_is_unchanged(bench, value):
+    """float32 stores 0.85 as 0.8500000238: sending 0.85 changes no byte, so
+    it is no edit (no write, no undo entry, no modified flag)."""
+    before = bytes(bench.reader.rom_data)
+    result = _edit(bench, THROTTLE_MULT, value)
+    assert result["success"] is True
+    assert result["cells_modified"] == 0
+    assert result["cells"][0]["changed"] is False
+    _assert_untouched(bench, before)
+
+
+def test_cell_write_changes_bytes_matches_writer(bench):
+    table = bench.definition.get_table_by_name(THROTTLE_MULT)
+    assert bench.reader.cell_write_changes_bytes(table, 0, 0, 0.85) is False
+    assert bench.reader.cell_write_changes_bytes(table, 0, 0, 0.86) is True
+    fan = bench.definition.get_table_by_name(FAN_ECT)
+    assert bench.reader.cell_write_changes_bytes(fan, 0, 0, 186.4) is False
+    assert bench.reader.cell_write_changes_bytes(fan, 0, 0, 186.6) is True
+    with pytest.raises(RomWriteError):
+        bench.reader.cell_write_changes_bytes(fan, 0, 0, -1)
+
+
 # --------------------------------------------------------------------------
 # Pure parsing rule
 # --------------------------------------------------------------------------

@@ -67,15 +67,26 @@ def _api_number(value):
     return number if math.isfinite(number) else None
 
 
+_API_CELL_KEYS = {"row", "col", "value"}
+
+
 def _plan_api_cell_edits(
-    cells, old_vals, converter, storage_type, fmt_spec, max_rows, max_cols
+    cells,
+    old_vals,
+    converter,
+    storage_type,
+    fmt_spec,
+    max_rows,
+    max_cols,
+    reader,
+    table,
 ) -> dict:
     """Validate API cell edits before anything is written.
 
     Returns {"changes": [...], "order": [(row, col), ...], "errors": [...]}.
     ``changes`` holds (row, col, old_val, new_val, old_raw, new_raw) for the
-    cells that actually change; unchanged cells are skipped. Any error means
-    the caller must write nothing.
+    cells whose ROM bytes would actually change; unchanged cells are skipped.
+    Any error means the caller must write nothing.
     """
     changes = []
     order = []
@@ -83,9 +94,28 @@ def _plan_api_cell_edits(
     seen = set()
     fmt_char = STORAGE_TYPE_FORMAT.get((storage_type or "").lower())
     int_storage = fmt_char in STORAGE_TYPE_BOUNDS
-    for cell in cells:
+    for index, cell in enumerate(cells):
         if not isinstance(cell, dict):
-            errors.append(f"Cell {cell!r} is not an object with row/col/value")
+            errors.append(f"Cell #{index} {cell!r} is not an object with row/col/value")
+            continue
+        # A misspelled key ('Row') must not silently fall back to row 0.
+        unknown = sorted(str(k) for k in cell if k not in _API_CELL_KEYS)
+        if unknown:
+            errors.append(
+                f"Cell #{index} {cell!r}: unknown key(s) {', '.join(unknown)} "
+                "(allowed: row, col, value)"
+            )
+            continue
+        missing = [
+            key
+            for key, size in (("row", max_rows), ("col", max_cols))
+            if size > 1 and key not in cell
+        ]
+        if missing:
+            errors.append(
+                f"Cell #{index} {cell!r}: missing {' and '.join(missing)} "
+                f"(table is {max_rows}x{max_cols})"
+            )
             continue
         r = cell.get("row", 0)
         c = cell.get("col", 0)
@@ -148,6 +178,16 @@ def _plan_api_cell_edits(
                 f"Invalid value {value!r} for {where}: does not fit the "
                 f"table's storage type ({storage_type}, raw value {new_raw:g})"
             )
+            continue
+
+        # Changed means the ROM bytes change: pack the value exactly as the
+        # writer will and compare. A float32 table sent 0.85 over a stored
+        # 0.8500000238 packs to the same bytes, so it is not an edit.
+        try:
+            if not reader.cell_write_changes_bytes(table, r, c, new_raw):
+                continue
+        except Exception as e:
+            errors.append(f"Invalid value {value!r} for {where}: {e}")
             continue
 
         changes.append((r, c, old_val, new_val, old_raw, new_raw))
@@ -586,6 +626,8 @@ class McpMixin:
             fmt_spec,
             max_rows,
             max_cols,
+            document.rom_reader,
+            table,
         )
         if plan["errors"]:
             return {

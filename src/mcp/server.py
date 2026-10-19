@@ -115,7 +115,8 @@ def _create_mcp(port: int = DEFAULT_HTTP_PORT) -> FastMCP:
         metadata "format" is "hex" or "decimal" and "format_spec" is the
         printf spec. "numeric_values" has the same values as plain numbers
         (same shape, full precision) — prefer it for arithmetic. A blank or
-        NaN cell is null in "numeric_values"; sending null back is refused.
+        NaN cell is null in "numeric_values" and "nan" in "values"; both are
+        refused by write_table, so resend a table without its blank cells.
         Axes include name, units, scaling expression, format, and values.
         Includes any pending (unsaved) edits.
         Requires the ROM to be open in NC Flash.
@@ -207,10 +208,18 @@ def _create_mcp(port: int = DEFAULT_HTTP_PORT) -> FastMCP:
         - Other tables take a JSON number, or decimal text with "." as the
           decimal point. Text with a comma ("4,500") is refused.
         - Tables that show whole numbers refuse a fraction (no rounding).
-        - A cell whose value equals its current value is skipped: text equal
-          to the current "values" text, or a number equal to the current
-          "numeric_values" entry. So you can send back a whole table to
-          change a few cells.
+          Some of them store fractions underneath (e.g. the fan ECT
+          thresholds): there, send whole-number text such as "80". A
+          fractional number is refused unless it equals the current
+          "numeric_values" entry exactly (then the cell is skipped).
+        - A cell is skipped (not written, "changed": false) when its text
+          equals the current "values" text, its number equals the current
+          "numeric_values" entry, or the value would store the same bytes
+          as now. So you can send back a whole table to change a few cells.
+        - "nan" text and null are refused: resend a table without its blank
+          (null / "nan") cells.
+        - Each cell is an object with "value" and, when the table has more
+          than one row / column, "row" / "col". Other keys are refused.
         - For an exact value, send numbers from "numeric_values" (display
           text is rounded). A changed decimal value is rounded to what the
           table's storage type can hold; check the returned "cells".
