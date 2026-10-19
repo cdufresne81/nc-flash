@@ -85,6 +85,40 @@ def parse_cell_text(text: str, format_spec: str) -> Optional[float]:
     return float(int(stripped, 16))
 
 
+def value_format_name(format_spec: str) -> str:
+    """Name the notation a format spec displays values in: 'hex' or 'decimal'.
+
+    Reported to API/MCP clients so they know how to read display text.
+    """
+    return "hex" if is_hex_format(format_spec) else "decimal"
+
+
+def parse_api_value(value, format_spec: str) -> Optional[float]:
+    """Parse a table value received over the API/MCP bridge, or None if invalid.
+
+    The rule, so a client never has to guess:
+    - A JSON number (int or float) is the numeric display value, used as-is,
+      on every table including hex ones. 33899799 means 0x02054517.
+    - A JSON string is cell text, parsed the same way as typing it into the
+      table window: hex text on hex-formatted tables ('2054517',
+      ' 2054517', '0x2054517'), decimal text everywhere else. So the display
+      text returned by a read writes back unchanged.
+    - Anything else (bool, null, list, NaN, infinity) is rejected.
+    """
+    # bool is an int subclass: True must not silently become 1.
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, (int, float)):
+        try:
+            number = float(value)
+        except OverflowError:
+            return None
+        return number if math.isfinite(number) else None
+    if isinstance(value, str):
+        return parse_cell_text(value, format_spec)
+    return None
+
+
 def printf_to_python_format(printf_format: str) -> str:
     """Convert printf-style format (e.g. '%0.2f') to Python format spec (e.g. '.2f')."""
     if not printf_format:

@@ -22,6 +22,7 @@ This is a mixin class — it has no __init__ and relies on MainWindow providing:
 """
 
 import json
+import math
 import os
 import subprocess
 import sys
@@ -40,11 +41,23 @@ from PySide6.QtWidgets import (
 )
 
 from src.ui.icons import make_icon
-from src.utils.formatting import printf_to_python_format, format_value
+from src.utils.formatting import (
+    printf_to_python_format,
+    format_value,
+    get_scaling_format,
+    parse_api_value,
+    value_format_name,
+)
 from src.utils.logging_config import get_logger
 from src.utils.paths import get_app_root
 
 logger = get_logger(__name__)
+
+
+def _api_number(value):
+    """A table value as a JSON-safe number (None when not finite)."""
+    number = float(value)
+    return number if math.isfinite(number) else None
 
 
 class McpMixin:
@@ -339,6 +352,10 @@ class McpMixin:
         scaling = document.rom_definition.get_scaling(table.scaling)
         fmt_spec = printf_to_python_format(scaling.format) if scaling else ".2f"
 
+        # "values" is display text in the table's own format, which for some
+        # tables is hex (Tire Size Correction, '%08x'). "format" says which,
+        # and "numeric_values" carries the same values as plain numbers (full
+        # precision, same shape) so a client never has to parse the text (issue 146).
         result = {
             "success": True,
             "metadata": {
@@ -346,6 +363,8 @@ class McpMixin:
                 "type": table.type.value,
                 "address": table.address,
                 "elements": table.elements,
+                "format": value_format_name(fmt_spec),
+                "format_spec": scaling.format if scaling else "",
             },
         }
 
@@ -361,6 +380,7 @@ class McpMixin:
         if table.type == TableType.ONE_D:
             result["metadata"]["dimensions"] = str(table.elements)
             result["values"] = [format_value(v, fmt_spec) for v in values.flat]
+            result["numeric_values"] = [_api_number(v) for v in values.flat]
 
         elif table.type == TableType.TWO_D:
             y_axis_table = table.y_axis
@@ -368,6 +388,7 @@ class McpMixin:
                 y_axis_table.elements if y_axis_table else table.elements
             )
             result["values"] = [format_value(v, fmt_spec) for v in values.flat]
+            result["numeric_values"] = [_api_number(v) for v in values.flat]
             if "y_axis" in data and y_axis_table:
                 result["y_axis"] = self._api_format_axis(
                     y_axis_table, data["y_axis"], document.rom_definition
@@ -381,9 +402,12 @@ class McpMixin:
             result["metadata"]["dimensions"] = f"{cols}x{rows}"
 
             grid = []
+            numeric_grid = []
             for row_idx in range(values.shape[0]):
                 grid.append([format_value(v, fmt_spec) for v in values[row_idx]])
+                numeric_grid.append([_api_number(v) for v in values[row_idx]])
             result["values"] = grid
+            result["numeric_values"] = numeric_grid
 
             if "x_axis" in data and x_axis_table:
                 result["x_axis"] = self._api_format_axis(
@@ -406,7 +430,9 @@ class McpMixin:
             "name": axis_table.name,
             "units": axis_scaling.units if axis_scaling else "",
             "scaling_expression": axis_scaling.toexpr if axis_scaling else "",
+            "format": value_format_name(axis_fmt),
             "values": [format_value(v, axis_fmt) for v in axis_values.flat],
+            "numeric_values": [_api_number(v) for v in axis_values.flat],
         }
 
     def _api_edit_table(self, request: dict) -> dict:
@@ -439,6 +465,9 @@ class McpMixin:
         old_vals = old_data["values"]
         scaling = document.rom_definition.get_scaling(table.scaling)
         converter = ScalingConverter(scaling) if scaling else None
+        # Same format spec the read endpoint and the table window use, so text
+        # read from a hex table ('%08x') parses back as hex, not decimal (issue 146).
+        fmt_spec = get_scaling_format(document.rom_definition, table.scaling)
 
         if table.type.value == "3D":
             x_axis = table.x_axis
@@ -469,10 +498,18 @@ class McpMixin:
                 )
                 continue
 
-            try:
-                new_display_val = float(new_display_val)
-            except (ValueError, TypeError) as e:
-                errors.append(f"Failed to convert value {cell.get('value')}: {e}")
+            raw_input = new_display_val
+            new_display_val = parse_api_value(raw_input, fmt_spec)
+            if new_display_val is None:
+                expected = (
+                    "a number, or hex text such as '2054517' or '0x2054517'"
+                    if value_format_name(fmt_spec) == "hex"
+                    else "a number, or decimal text"
+                )
+                errors.append(
+                    f"Invalid value {raw_input!r} for cell ({r},{c}): "
+                    f"expected {expected}"
+                )
                 continue
 
             if old_vals.ndim == 1:
@@ -497,8 +534,13 @@ class McpMixin:
 
             changes.append((r, c, old_display_val, new_display_val, old_raw, new_raw))
 
-        if errors and not changes:
-            return {"success": False, "error": "; ".join(errors)}
+        # All or nothing: one bad cell rejects the whole request, so a batch
+        # is never half-applied with the bad cells silently skipped.
+        if errors:
+            return {
+                "success": False,
+                "error": "No cells written: " + "; ".join(errors),
+            }
 
         if not changes:
             return {
@@ -529,10 +571,7 @@ class McpMixin:
         self._update_tab_title(document)
         self._write_workspace_state()
 
-        result = {"success": True, "cells_modified": len(changes)}
-        if errors:
-            result["warnings"] = errors
-        return result
+        return {"success": True, "cells_modified": len(changes)}
 
     # ========== ROM metadata endpoints (single source of truth for MCP) ==========
 
@@ -886,6 +925,9 @@ class McpMixin:
             "type": table_a.type.value,
             "total_cells": min_len,
             "changed_cells": len(diffs),
+            # Notation of value_a/delta and value_b ('hex' or 'decimal', issue 146).
+            "format_a": value_format_name(fmt_a),
+            "format_b": value_format_name(fmt_b),
             "diffs": diffs,
         }
 

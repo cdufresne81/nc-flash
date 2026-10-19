@@ -110,8 +110,12 @@ def _create_mcp(port: int = DEFAULT_HTTP_PORT) -> FastMCP:
         2D → column of values with Y-axis.
         3D → 2D grid of values with X/Y axes.
 
-        Values are formatted using the definition's printf format spec.
-        Axes include name, units, scaling expression, and formatted values.
+        "values" are text formatted with the definition's printf format spec.
+        Some tables (e.g. Tire Size Correction, '%08x') display in HEX:
+        metadata "format" is "hex" or "decimal" and "format_spec" is the
+        printf spec. "numeric_values" has the same values as plain numbers
+        (same shape, full precision) — prefer it for arithmetic.
+        Axes include name, units, scaling expression, format, and values.
         Includes any pending (unsaved) edits.
         Requires the ROM to be open in NC Flash.
 
@@ -195,6 +199,12 @@ def _create_mcp(port: int = DEFAULT_HTTP_PORT) -> FastMCP:
 
         Changes appear in the app with full undo support.
         Values are in display units (same as read_table/read_live_table).
+        A JSON number is the numeric value, on every table (hex ones too):
+        send numbers from read_table's "numeric_values". A JSON string is
+        parsed in the table's display format: hex text on "hex" tables
+        ("2054517" or "0x2054517" means 0x02054517), decimal elsewhere — so
+        text from read_table's "values" writes back unchanged.
+        If any cell is invalid, nothing is written and the error lists why.
         Requires the app to be running with MCP server enabled.
 
         Args:
