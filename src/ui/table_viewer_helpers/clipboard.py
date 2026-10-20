@@ -221,7 +221,7 @@ class TableClipboardHelper:
                     # cannot be encoded in the storage type.
 
                     # Convert to raw values
-                    old_raw = self.edit.display_to_raw(old_value)
+                    old_raw = self.edit.display_to_raw(old_value, current=True)
                     new_raw = self.edit.display_to_raw(new_value)
                     if old_raw is None or new_raw is None:
                         continue

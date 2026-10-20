@@ -6,7 +6,7 @@ Handles interpolation algorithms for TableViewer.
 
 import logging
 import math
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, NamedTuple, Optional
 
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QBrush
@@ -27,6 +27,22 @@ if TYPE_CHECKING:
     from .editing import TableEditHelper
 
 logger = logging.getLogger(__name__)
+
+
+class _CellPlan(NamedTuple):
+    """One interpolated cell, computed but not yet applied.
+
+    Interpolation computes and validates every cell first and only then
+    touches memory and the screen, so a cell that fails (or an exception)
+    can never leave the screen showing values the ROM and undo never got.
+    """
+
+    item: object  # the QTableWidgetItem to redraw
+    array_key: str  # "values", "x_axis" or "y_axis" in current_data
+    index: object  # index into that array
+    axis_type: Optional[AxisType]  # None for a data cell
+    text: str  # formatted new value, as the cell will show it
+    change: tuple  # (row|axis_key, col|index, old, new, old_raw, new_raw)
 
 
 def compute_interpolated_1d_values(
@@ -190,8 +206,7 @@ class TableInterpolationHelper:
 
         logger.debug(f"Processing {len(selected_ranges)} selection range(s)")
 
-        all_changes = []
-        axis_changes = []
+        planned = {}  # (ui_row, ui_col) -> _CellPlan
 
         # Pre-compute formats and precisions for auto-round
         auto_round = get_settings().get_auto_round()
@@ -205,167 +220,212 @@ class TableInterpolationHelper:
             data_precision = _get_format_precision(data_fmt)
             axis_precision = _get_format_precision(axis_fmt_str)
 
-        with frozen_table_updates(self.ctx.table_widget):
-            for sel_range in selected_ranges:
-                logger.debug(
-                    f"Selection range: rows {sel_range.topRow()}-{sel_range.bottomRow()}, "
-                    f"cols {sel_range.leftColumn()}-{sel_range.rightColumn()}"
-                )
+        # Planning pass: nothing in this loop touches memory or the screen.
+        for sel_range in selected_ranges:
+            logger.debug(
+                f"Selection range: rows {sel_range.topRow()}-{sel_range.bottomRow()}, "
+                f"cols {sel_range.leftColumn()}-{sel_range.rightColumn()}"
+            )
 
-                # Vertical: iterate columns, collect cells per column
-                # Horizontal: iterate rows, collect cells per row
-                if is_vertical:
-                    outer_range = range(
-                        sel_range.leftColumn(), sel_range.rightColumn() + 1
-                    )
-                    inner_range = range(sel_range.topRow(), sel_range.bottomRow() + 1)
-                else:
-                    outer_range = range(sel_range.topRow(), sel_range.bottomRow() + 1)
-                    inner_range = range(
-                        sel_range.leftColumn(), sel_range.rightColumn() + 1
-                    )
+            # Vertical: iterate columns, collect cells per column
+            # Horizontal: iterate rows, collect cells per row
+            if is_vertical:
+                outer_range = range(sel_range.leftColumn(), sel_range.rightColumn() + 1)
+                inner_range = range(sel_range.topRow(), sel_range.bottomRow() + 1)
+            else:
+                outer_range = range(sel_range.topRow(), sel_range.bottomRow() + 1)
+                inner_range = range(sel_range.leftColumn(), sel_range.rightColumn() + 1)
 
-                for line_idx in outer_range:
-                    # Collect cells along this line (both data and axis)
-                    cells = []
-                    is_axis_line = None
+            for line_idx in outer_range:
+                # Collect cells along this line (both data and axis)
+                cells = []
+                is_axis_line = None
 
-                    for pos_idx in inner_range:
-                        row = pos_idx if is_vertical else line_idx
-                        col = line_idx if is_vertical else pos_idx
-                        item = self.ctx.table_widget.item(row, col)
-                        if item and item.data(Qt.UserRole) is not None:
-                            coords = item.data(Qt.UserRole)
-                            if isinstance(coords[0], str):
-                                # Axis cell — only matching axis can be interpolated
-                                if coords[0] == axis_key:
-                                    if is_axis_line is None:
-                                        is_axis_line = axis_key
-                                    elif is_axis_line != axis_key:
-                                        continue
-                                    try:
-                                        value = float(item.text())
-                                        cells.append((pos_idx, value, coords))
-                                    except ValueError:
-                                        continue
-                            else:
-                                # Data cell
+                for pos_idx in inner_range:
+                    row = pos_idx if is_vertical else line_idx
+                    col = line_idx if is_vertical else pos_idx
+                    item = self.ctx.table_widget.item(row, col)
+                    if item and item.data(Qt.UserRole) is not None:
+                        coords = item.data(Qt.UserRole)
+                        if isinstance(coords[0], str):
+                            # Axis cell — only matching axis can be interpolated
+                            if coords[0] == axis_key:
                                 if is_axis_line is None:
-                                    is_axis_line = False
-                                elif is_axis_line is not False:
+                                    is_axis_line = axis_key
+                                elif is_axis_line != axis_key:
                                     continue
                                 try:
-                                    value = float(item.text())
+                                    value = self._shown_value(item, row, col, planned)
                                     cells.append((pos_idx, value, coords))
                                 except ValueError:
                                     continue
+                        else:
+                            # Data cell
+                            if is_axis_line is None:
+                                is_axis_line = False
+                            elif is_axis_line is not False:
+                                continue
+                            try:
+                                value = self._shown_value(item, row, col, planned)
+                                cells.append((pos_idx, value, coords))
+                            except ValueError:
+                                continue
 
-                    logger.debug(
-                        f"{line_label} {line_idx}: found {len(cells)} cells (axis={is_axis_line})"
-                    )
-
-                    if len(cells) < 2:
-                        logger.debug(
-                            f"{line_label} {line_idx}: skipping (need at least 2 cells)"
-                        )
-                        continue
-
-                    first_pos, first_val, first_coords = cells[0]
-                    last_pos, last_val, last_coords = cells[-1]
-
-                    logger.debug(
-                        f"{line_label} {line_idx}: first cell at pos {first_pos} = {first_val}, "
-                        f"last cell at pos {last_pos} = {last_val}"
-                    )
-
-                    if last_pos == first_pos:
-                        logger.debug(
-                            f"{line_label} {line_idx}: skipping (first and last at same position)"
-                        )
-                        continue
-
-                    if len(cells) == 2 and last_pos - first_pos == 1:
-                        logger.debug(
-                            f"{line_label} {line_idx}: skipping (only 2 adjacent cells, nothing between)"
-                        )
-                        continue
-
-                    # Pre-compute all interpolated values
-                    interp_precision = (
-                        (axis_precision if is_axis_line == axis_key else data_precision)
-                        if auto_round
-                        else 2
-                    )
-                    interp_values = compute_interpolated_1d_values(
-                        first_pos,
-                        first_val,
-                        last_pos,
-                        last_val,
-                        auto_round=auto_round,
-                        precision=interp_precision,
-                    )
-
-                    # Apply interpolated values to widget cells
-                    cells_interpolated = 0
-                    for pos, new_val in interp_values.items():
-                        row = pos if is_vertical else line_idx
-                        col = line_idx if is_vertical else pos
-                        item = self.ctx.table_widget.item(row, col)
-                        if not item or item.data(Qt.UserRole) is None:
-                            logger.debug(
-                                f"{line_label} {line_idx}, pos {pos}: skipping (not a data cell)"
-                            )
-                            continue
-
-                        coords = item.data(Qt.UserRole)
-
-                        try:
-                            old_val = float(item.text())
-                        except ValueError:
-                            logger.debug(
-                                f"{line_label} {line_idx}, pos {pos}: skipping (can't parse value)"
-                            )
-                            continue
-
-                        if abs(new_val - old_val) > 1e-9:
-                            if is_axis_line == axis_key:
-                                changed = self._apply_axis_interpolation(
-                                    item,
-                                    coords,
-                                    axis_type,
-                                    axis_key,
-                                    new_val,
-                                    axis_changes,
-                                )
-                            else:
-                                changed = self._apply_data_interpolation(
-                                    item,
-                                    coords,
-                                    new_val,
-                                    all_changes,
-                                )
-                            cells_interpolated += int(changed)
-
-                    logger.debug(
-                        f"{line_label} {line_idx}: interpolated {cells_interpolated} cells"
-                    )
-
-            if all_changes:
                 logger.debug(
-                    f"{direction_label} interpolation: updated {len(all_changes)} data cells"
+                    f"{line_label} {line_idx}: found {len(cells)} cells (axis={is_axis_line})"
                 )
-                self.ctx.viewer.bulk_changes.emit(self.ctx.current_table, all_changes)
 
-            if axis_changes:
-                logger.info(
-                    f"{direction_label} interpolation: updated {len(axis_changes)} axis cells"
+                if len(cells) < 2:
+                    logger.debug(
+                        f"{line_label} {line_idx}: skipping (need at least 2 cells)"
+                    )
+                    continue
+
+                first_pos, first_val, first_coords = cells[0]
+                last_pos, last_val, last_coords = cells[-1]
+
+                logger.debug(
+                    f"{line_label} {line_idx}: first cell at pos {first_pos} = {first_val}, "
+                    f"last cell at pos {last_pos} = {last_val}"
                 )
-                self.ctx.viewer.axis_bulk_changes.emit(
-                    self.ctx.current_table, axis_changes
+
+                if last_pos == first_pos:
+                    logger.debug(
+                        f"{line_label} {line_idx}: skipping (first and last at same position)"
+                    )
+                    continue
+
+                if len(cells) == 2 and last_pos - first_pos == 1:
+                    logger.debug(
+                        f"{line_label} {line_idx}: skipping (only 2 adjacent cells, nothing between)"
+                    )
+                    continue
+
+                # Pre-compute all interpolated values
+                interp_precision = (
+                    (axis_precision if is_axis_line == axis_key else data_precision)
+                    if auto_round
+                    else 2
                 )
+                interp_values = compute_interpolated_1d_values(
+                    first_pos,
+                    first_val,
+                    last_pos,
+                    last_val,
+                    auto_round=auto_round,
+                    precision=interp_precision,
+                )
+
+                # Plan the interpolated values for this line
+                cells_interpolated = 0
+                for pos, new_val in interp_values.items():
+                    row = pos if is_vertical else line_idx
+                    col = line_idx if is_vertical else pos
+                    item = self.ctx.table_widget.item(row, col)
+                    if not item or item.data(Qt.UserRole) is None:
+                        logger.debug(
+                            f"{line_label} {line_idx}, pos {pos}: skipping (not a data cell)"
+                        )
+                        continue
+
+                    coords = item.data(Qt.UserRole)
+
+                    try:
+                        old_val = self._shown_value(item, row, col, planned)
+                    except ValueError:
+                        logger.debug(
+                            f"{line_label} {line_idx}, pos {pos}: skipping (can't parse value)"
+                        )
+                        continue
+
+                    if abs(new_val - old_val) > 1e-9:
+                        if is_axis_line == axis_key:
+                            plan = self._plan_axis_cell(
+                                item, coords, axis_type, axis_key, new_val
+                            )
+                        else:
+                            plan = self._plan_data_cell(item, coords, new_val)
+                        self._record_plan(planned, row, col, plan)
+                        cells_interpolated += int(plan is not None)
+
+                logger.debug(
+                    f"{line_label} {line_idx}: interpolated {cells_interpolated} cells"
+                )
+
+        all_changes, axis_changes = self._commit(planned)
+
+        if all_changes:
+            logger.debug(
+                f"{direction_label} interpolation: updated {len(all_changes)} data cells"
+            )
+            self.ctx.viewer.bulk_changes.emit(self.ctx.current_table, all_changes)
+
+        if axis_changes:
+            logger.info(
+                f"{direction_label} interpolation: updated {len(axis_changes)} axis cells"
+            )
+            self.ctx.viewer.axis_bulk_changes.emit(self.ctx.current_table, axis_changes)
 
         if not all_changes and not axis_changes:
             logger.debug(f"{direction_label} interpolation: no changes made")
+
+    def _shown_value(self, item, row, col, planned) -> float:
+        """The number a cell shows, counting changes planned so far.
+
+        Raises ValueError for text that isn't a number. Overlapping selection
+        ranges read each other's planned values here, exactly as they used to
+        read each other's already-applied cell text.
+        """
+        plan = planned.get((row, col))
+        return float(plan.text if plan is not None else item.text())
+
+    @staticmethod
+    def _record_plan(planned, row, col, plan):
+        """Keep the latest plan for a cell; None drops any earlier one.
+
+        Every plan's old values come from current_data, which planning never
+        modifies, so the latest plan for a cell already carries the cell's
+        true original value for undo.
+        """
+        if plan is None:
+            planned.pop((row, col), None)
+        else:
+            planned[(row, col)] = plan
+
+    def _commit(self, planned):
+        """Apply every planned cell to memory and the screen.
+
+        Returns (data_changes, axis_changes) for the bulk signals.
+        """
+        data_changes = []
+        axis_changes = []
+        if not planned:
+            return data_changes, axis_changes
+        with frozen_table_updates(self.ctx.table_widget):
+            self.ctx.editing_in_progress = True
+            try:
+                for plan in planned.values():
+                    array = self.ctx.current_data[plan.array_key]
+                    new_val = plan.change[3]
+                    array[plan.index] = new_val
+                    plan.item.setText(plan.text)
+                    if plan.axis_type is None:
+                        color = self.display.get_cell_color(
+                            new_val,
+                            array,
+                            plan.change[0],
+                            plan.change[1] if array.ndim == 2 else 0,
+                        )
+                        data_changes.append(plan.change)
+                    else:
+                        color = self.display.get_axis_color(
+                            new_val, array, plan.axis_type
+                        )
+                        axis_changes.append(plan.change)
+                    plan.item.setBackground(QBrush(color))
+            finally:
+                self.ctx.editing_in_progress = False
+        return data_changes, axis_changes
 
     def _stored_values(self, array, old_val, new_val, scaling, to_raw):
         """Raw/display values an interpolated cell will hold, or None to skip it.
@@ -383,7 +443,7 @@ class TableInterpolationHelper:
         Returns:
             (old_raw, new_val, new_raw) or None.
         """
-        old_raw = to_raw(old_val)
+        old_raw = to_raw(old_val, current=True)
         new_raw = to_raw(new_val)
         if old_raw is None or new_raw is None or not math.isfinite(new_raw):
             return None
@@ -392,27 +452,34 @@ class TableInterpolationHelper:
         except Exception as e:
             logger.error(f"Error converting interpolated value to display: {e}")
             return None
-        # Integer-dtype (identity-scaled) arrays truncate on assignment while
-        # the ROM writer rounds; store what the ROM will hold.
-        new_val = self.edit.fit_to_array(array, new_val)
-        if not math.isfinite(new_val) or abs(new_val - old_val) < 1e-10:
+        if not math.isfinite(new_val):
+            return None
+        # Integer-dtype arrays truncate on assignment while the ROM writer
+        # rounds; store what the ROM will hold. When that changes the value,
+        # the raw value is recomputed from it, so memory and ROM agree even
+        # under an offset scaling such as x-41 (the writer rounding 41.5 and
+        # the array rounding 0.5 would otherwise land on different numbers).
+        fitted = self.edit.fit_to_array(array, new_val)
+        if fitted != new_val:
+            new_val = fitted
+            new_raw = to_raw(new_val)
+            if new_raw is None or not math.isfinite(new_raw):
+                return None
+        if abs(new_val - old_val) < 1e-10:
             return None
         return float(old_raw), new_val, float(new_raw)
 
-    def _apply_axis_interpolation(
-        self, item, coords, axis_type, axis_key, new_val, axis_changes
-    ) -> bool:
-        """Apply an interpolated value to an axis cell and record the change.
-
-        Returns True if the cell changed, False if it was skipped.
-        """
+    def _plan_axis_cell(
+        self, item, coords, axis_type, axis_key, new_val
+    ) -> Optional[_CellPlan]:
+        """Plan an interpolated value for an axis cell, or None to skip it."""
         axis_table = self.ctx.current_table.get_axis(axis_type)
         if not axis_table:
-            return False
+            return None
 
         scaling = self.ctx.rom_definition.get_scaling(axis_table.scaling)
         if not scaling:
-            return False
+            return None
 
         axis_data = self.ctx.current_data[axis_key]
         data_idx = coords[1]
@@ -422,36 +489,30 @@ class TableInterpolationHelper:
             old_val,
             new_val,
             scaling,
-            lambda v: self.edit._axis_display_to_raw(v, axis_table),
+            lambda v, current=False: self.edit._axis_display_to_raw(
+                v, axis_table, current
+            ),
         )
         if stored is None:
             logger.debug(f"{axis_key}[{data_idx}]: skipping (value can't be stored)")
-            return False
+            return None
         old_raw, new_val, new_raw = stored
 
-        self.ctx.editing_in_progress = True
-        try:
-            axis_fmt = self.display.get_axis_format(axis_type)
-            item.setText(self.display.format_value(new_val, axis_fmt))
-            axis_data[data_idx] = new_val
-            color = self.display.get_axis_color(new_val, axis_data, axis_type)
-            item.setBackground(QBrush(color))
-        finally:
-            self.ctx.editing_in_progress = False
+        text = self.display.format_value(
+            new_val, self.display.get_axis_format(axis_type)
+        )
+        change = (axis_key, data_idx, old_val, new_val, old_raw, new_raw)
+        return _CellPlan(item, axis_key, data_idx, axis_type, text, change)
 
-        axis_changes.append((axis_key, data_idx, old_val, new_val, old_raw, new_raw))
-        return True
-
-    def _apply_data_interpolation(self, item, coords, new_val, all_changes) -> bool:
-        """Apply an interpolated value to a data cell and record the change.
-
-        Returns True if the cell changed, False if it was skipped.
-        """
+    def _plan_data_cell(self, item, coords, new_val) -> Optional[_CellPlan]:
+        """Plan an interpolated value for a data cell, or None to skip it."""
+        if isinstance(coords[0], str):
+            return None  # an axis cell is never a data cell
         values = self.ctx.current_data["values"]
 
         scaling = self.ctx.rom_definition.get_scaling(self.ctx.current_table.scaling)
         if not scaling:
-            return False
+            return None
 
         if values.ndim == 2:
             index = (coords[0], coords[1])
@@ -463,35 +524,19 @@ class TableInterpolationHelper:
         )
         if stored is None:
             logger.debug(f"Cell {coords}: skipping (value can't be stored)")
-            return False
+            return None
         old_raw, new_val, new_raw = stored
 
-        self.ctx.editing_in_progress = True
-        try:
-            value_fmt = self.display.get_value_format()
-            item.setText(self.display.format_value(new_val, value_fmt))
-            values[index] = new_val
-            color = self.display.get_cell_color(
-                new_val,
-                values,
-                coords[0],
-                coords[1] if values.ndim == 2 else 0,
-            )
-            item.setBackground(QBrush(color))
-        finally:
-            self.ctx.editing_in_progress = False
-
-        all_changes.append(
-            (
-                coords[0],
-                coords[1] if len(coords) > 1 else 0,
-                old_val,
-                new_val,
-                old_raw,
-                new_raw,
-            )
+        text = self.display.format_value(new_val, self.display.get_value_format())
+        change = (
+            coords[0],
+            coords[1] if len(coords) > 1 else 0,
+            old_val,
+            new_val,
+            old_raw,
+            new_raw,
         )
-        return True
+        return _CellPlan(item, "values", index, None, text, change)
 
     def interpolate_2d(self):
         """2D bilinear interpolation for 3D tables (B key)"""
@@ -521,7 +566,7 @@ class TableInterpolationHelper:
 
         logger.debug(f"Processing {len(selected_ranges)} selection range(s)")
 
-        all_changes = []
+        planned = {}  # (ui_row, ui_col) -> _CellPlan
 
         # Pre-compute format and precision for auto-round
         auto_round = get_settings().get_auto_round()
@@ -531,88 +576,92 @@ class TableInterpolationHelper:
             )
             data_precision = _get_format_precision(data_fmt)
 
-        with frozen_table_updates(self.ctx.table_widget):
-            for sel_range in selected_ranges:
-                top_row = sel_range.topRow()
-                bottom_row = sel_range.bottomRow()
-                left_col = sel_range.leftColumn()
-                right_col = sel_range.rightColumn()
+        # Planning pass: nothing in this loop touches memory or the screen.
+        for sel_range in selected_ranges:
+            # A 3D table shows the X axis in row 0 and the Y axis in
+            # column 0 (see TableEditHelper.data_to_ui_coords). 2D
+            # interpolation works on data cells only: an axis row or
+            # column in the selection is left out, and the data cells
+            # at the edge of what remains are the corners.
+            top_row = max(sel_range.topRow(), 1)
+            bottom_row = sel_range.bottomRow()
+            left_col = max(sel_range.leftColumn(), 1)
+            right_col = sel_range.rightColumn()
 
-                logger.debug(
-                    f"Selection range: rows {top_row}-{bottom_row}, cols {left_col}-{right_col}"
-                )
+            logger.debug(
+                f"Selection range: rows {top_row}-{bottom_row}, cols {left_col}-{right_col}"
+            )
 
-                # Need at least 2x2 selection
-                if (bottom_row - top_row < 1) or (right_col - left_col < 1):
-                    logger.debug("Selection too small (need at least 2x2)")
-                    continue
+            # Need at least 2x2 selection
+            if (bottom_row - top_row < 1) or (right_col - left_col < 1):
+                logger.debug("Selection too small (need at least 2x2)")
+                continue
 
-                # Get corner values
-                def get_corner_value(row, col):
-                    item = self.ctx.table_widget.item(row, col)
-                    if item and item.data(Qt.UserRole) is not None:
-                        try:
-                            return float(item.text())
-                        except ValueError:
-                            return None
+            # Get corner values (data cells only)
+            def get_corner_value(row, col):
+                item = self.ctx.table_widget.item(row, col)
+                if item is None:
+                    return None
+                coords = item.data(Qt.UserRole)
+                if coords is None or isinstance(coords[0], str):
+                    return None
+                try:
+                    return self._shown_value(item, row, col, planned)
+                except ValueError:
                     return None
 
-                # Get all four corners
-                v00 = get_corner_value(top_row, left_col)  # Top-left
-                v10 = get_corner_value(top_row, right_col)  # Top-right
-                v01 = get_corner_value(bottom_row, left_col)  # Bottom-left
-                v11 = get_corner_value(bottom_row, right_col)  # Bottom-right
+            # Get all four corners
+            v00 = get_corner_value(top_row, left_col)  # Top-left
+            v10 = get_corner_value(top_row, right_col)  # Top-right
+            v01 = get_corner_value(bottom_row, left_col)  # Bottom-left
+            v11 = get_corner_value(bottom_row, right_col)  # Bottom-right
 
-                logger.debug(f"Corner values: TL={v00}, TR={v10}, BL={v01}, BR={v11}")
+            logger.debug(f"Corner values: TL={v00}, TR={v10}, BL={v01}, BR={v11}")
 
-                # All corners must have values
-                if None in (v00, v10, v01, v11):
-                    logger.debug("Missing corner value(s), skipping this selection")
-                    continue
+            # All corners must have values
+            if None in (v00, v10, v01, v11):
+                logger.debug("Missing corner value(s), skipping this selection")
+                continue
 
-                # Pre-compute all interpolated values
-                grid_rows = bottom_row - top_row + 1
-                grid_cols = right_col - left_col + 1
-                interp_values = compute_interpolated_2d_values(
-                    v00,
-                    v10,
-                    v01,
-                    v11,
-                    grid_rows,
-                    grid_cols,
-                    auto_round=auto_round,
-                    precision=data_precision if auto_round else 2,
-                )
+            # Pre-compute all interpolated values
+            grid_rows = bottom_row - top_row + 1
+            grid_cols = right_col - left_col + 1
+            interp_values = compute_interpolated_2d_values(
+                v00,
+                v10,
+                v01,
+                v11,
+                grid_rows,
+                grid_cols,
+                auto_round=auto_round,
+                precision=data_precision if auto_round else 2,
+            )
 
-                # Apply interpolated values to widget cells
-                for row in range(top_row, bottom_row + 1):
-                    for col in range(left_col, right_col + 1):
-                        item = self.ctx.table_widget.item(row, col)
-                        if not item or item.data(Qt.UserRole) is None:
-                            continue
+            # Plan the interpolated values for this range
+            for row in range(top_row, bottom_row + 1):
+                for col in range(left_col, right_col + 1):
+                    item = self.ctx.table_widget.item(row, col)
+                    if not item or item.data(Qt.UserRole) is None:
+                        continue
 
-                        coords = item.data(Qt.UserRole)
-                        new_val = interp_values[(row - top_row, col - left_col)]
+                    coords = item.data(Qt.UserRole)
+                    if isinstance(coords[0], str):
+                        continue  # never write a data value into an axis
+                    new_val = interp_values[(row - top_row, col - left_col)]
 
-                        try:
-                            old_val = float(item.text())
-                        except ValueError:
-                            continue
+                    try:
+                        old_val = self._shown_value(item, row, col, planned)
+                    except ValueError:
+                        continue
 
-                        if abs(new_val - old_val) > 1e-9:
-                            self._apply_data_interpolation(
-                                item,
-                                coords,
-                                new_val,
-                                all_changes,
-                            )
+                    if abs(new_val - old_val) > 1e-9:
+                        plan = self._plan_data_cell(item, coords, new_val)
+                        self._record_plan(planned, row, col, plan)
 
-                if all_changes:
-                    logger.debug(
-                        f"2D bilinear interpolation: updated {len(all_changes)} cells"
-                    )
-                    self.ctx.viewer.bulk_changes.emit(
-                        self.ctx.current_table, all_changes
-                    )
-                else:
-                    logger.debug("2D bilinear interpolation: no changes made")
+        # Apply and signal once, after every range is planned.
+        all_changes, _axis_changes = self._commit(planned)
+        if all_changes:
+            logger.debug(f"2D bilinear interpolation: updated {len(all_changes)} cells")
+            self.ctx.viewer.bulk_changes.emit(self.ctx.current_table, all_changes)
+        else:
+            logger.debug("2D bilinear interpolation: no changes made")

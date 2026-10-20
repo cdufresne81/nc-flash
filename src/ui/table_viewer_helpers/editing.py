@@ -79,7 +79,7 @@ class TableEditHelper:
             return
 
         # Convert display values to raw values
-        old_raw = self.display_to_raw(old_value)
+        old_raw = self.display_to_raw(old_value, current=True)
         new_raw = self.display_to_raw(new_value)
 
         if old_raw is None or new_raw is None:
@@ -138,20 +138,41 @@ class TableEditHelper:
         finally:
             self.ctx.editing_in_progress = False
 
-    def display_to_raw(self, display_value: float) -> Optional[float]:
-        """Convert display value to raw binary value using scaling"""
+    def display_to_raw(
+        self, display_value: float, current: bool = False
+    ) -> Optional[float]:
+        """Convert display value to raw binary value using scaling.
+
+        ``current=True`` marks the cell's existing value (the undo "old"
+        side); see _scaled_to_raw.
+        """
         if not self.ctx.rom_definition or not self.ctx.current_table:
             return display_value
-        return self._scaled_to_raw(display_value, self.ctx.current_table.scaling)
+        return self._scaled_to_raw(
+            display_value, self.ctx.current_table.scaling, current
+        )
 
-    def _scaled_to_raw(self, display_value: float, scaling_name) -> Optional[float]:
+    def _scaled_to_raw(
+        self, display_value: float, scaling_name, current: bool = False
+    ) -> Optional[float]:
         """Display -> raw via a scaling, or None if the value cannot be stored.
 
-        None covers both a failed conversion and a raw value outside the
-        storage type (e.g. 300 into uint8). Every caller treats None as
-        "leave this cell alone", so a bulk paste skips the cell up front
-        rather than the ROM writer rejecting half of the change later.
+        None covers a failed conversion, a non-finite new value (NaN, +-inf)
+        and a raw value outside the storage type (e.g. 300 into uint8).
+        Every caller treats None as "leave this cell alone", so a bulk edit
+        skips the cell up front rather than the ROM writer rejecting half of
+        the change later (or, for float tables, writing inf into the ROM).
+
+        ``current=True`` is for converting what a cell holds NOW, recorded as
+        the undo value. A non-finite current value (an unprogrammed
+        0xFFFFFFFF patch area reads as NaN) passes through unchecked so the
+        cell stays editable and undo can put that value back. A NEW value is
+        never allowed to be non-finite.
         """
+        if not math.isfinite(display_value) and not current:
+            logger.debug(f"Rejected non-finite value {display_value}")
+            return None
+
         scaling = self.ctx.rom_definition.get_scaling(scaling_name)
         if not scaling:
             return display_value
@@ -163,9 +184,6 @@ class TableEditHelper:
         except Exception as e:
             logger.error(f"Error converting to raw: {e}")
             return None
-        # A NaN display value is a cell's current content (unprogrammed
-        # 0xFFFFFFFF patch area), never a new one: parsing rejects NaN. Let
-        # it through so those cells stay editable, as before.
         if math.isfinite(display_value) and not raw_fits_storage(
             raw, scaling.storagetype
         ):
@@ -183,8 +201,10 @@ class TableEditHelper:
         assignment (3.7 -> 3) while the cell text and the ROM writer round
         (-> 4). Rounding here keeps memory, screen, undo and ROM in step.
         """
-        if np.issubdtype(array.dtype, np.integer):
+        if np.issubdtype(array.dtype, np.integer) and math.isfinite(value):
             return float(round(value))
+        # A non-finite value comes back unchanged (round() would raise);
+        # display_to_raw then refuses it.
         return value
 
     def update_cell_value(self, data_row: int, data_col: int, new_value: float):
@@ -327,7 +347,7 @@ class TableEditHelper:
             return None
 
         # Convert display values to raw values
-        old_raw = self._axis_display_to_raw(old_value, axis_table)
+        old_raw = self._axis_display_to_raw(old_value, axis_table, current=True)
         new_raw = self._axis_display_to_raw(new_value, axis_table)
         if old_raw is None or new_raw is None:
             return None
@@ -372,11 +392,16 @@ class TableEditHelper:
         finally:
             self.ctx.editing_in_progress = False
 
-    def _axis_display_to_raw(self, display_value: float, axis_table) -> Optional[float]:
-        """Convert axis display value to raw binary value using scaling"""
+    def _axis_display_to_raw(
+        self, display_value: float, axis_table, current: bool = False
+    ) -> Optional[float]:
+        """Convert axis display value to raw binary value using scaling.
+
+        ``current`` as in display_to_raw.
+        """
         if not self.ctx.rom_definition or not axis_table:
             return display_value
-        return self._scaled_to_raw(display_value, axis_table.scaling)
+        return self._scaled_to_raw(display_value, axis_table.scaling, current)
 
     def update_axis_cell_value(self, axis_type: str, data_idx: int, new_value: float):
         """

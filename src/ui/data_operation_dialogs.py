@@ -4,6 +4,9 @@ Data Operation Dialogs
 Dialogs for entering values for data manipulation operations.
 """
 
+import re
+from typing import Optional
+
 from PySide6.QtWidgets import (
     QDialog,
     QVBoxLayout,
@@ -15,11 +18,66 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import QRegularExpression
 from PySide6.QtGui import QDoubleValidator, QRegularExpressionValidator
 
-from ..utils.formatting import HEX_INPUT_PATTERN, is_hex_format, parse_cell_text
+from ..utils.formatting import (
+    HEX_INPUT_PATTERN,
+    is_hex_format,
+    parse_cell_text,
+    parse_numeric_text,
+)
+from . import theme
 
 # Shown by Add/Multiply on a table that displays hex values (e.g. Tire Size
 # Correction): their operand is always a plain decimal number.
 HEX_OPERAND_NOTE = "This table shows hex values. Enter the amount as a decimal number."
+
+
+# Largest magnitude any table can hold: float tables are 32-bit floats and
+# integer tables top out far below this. Anything bigger (or "1e999", which
+# Python reads as infinity) would only ever write garbage into the ROM.
+MAX_ABS_VALUE = 3.4028234663852886e38
+
+MULTIPLY_MAX_FACTOR = 1000000.0
+
+VALUE_ERROR = (
+    "Enter a number. Values beyond 3.4e38 either way (including infinity) "
+    "can't be stored in a table. Type thousands without a separator "
+    "(1000, not 1,000)."
+)
+
+# "1,000" or "-12,500": a comma followed by exactly three digits after a
+# non-zero lead reads as thousands grouping to many people, while the comma
+# decimal mark would turn it into 1.0. Refused rather than guessed.
+_GROUPED_NUMBER_RE = re.compile(r"^[+-]?[1-9]\d{0,2},\d{3}$")
+
+
+def parse_dialog_number(text: str) -> Optional[float]:
+    """The finite number typed in a dialog, or None.
+
+    QDoubleValidator lets out-of-range text such as "1e999" through as
+    "intermediate", so every dialog value goes through the same gate as cell
+    edits (no inf/nan, comma as decimal mark), and a number that looks like
+    thousands grouping is refused instead of being read as a decimal.
+    """
+    if text is None:
+        return None
+    if _GROUPED_NUMBER_RE.match(text.strip()):
+        return None
+    return parse_numeric_text(text)
+
+
+def _make_error_label() -> QLabel:
+    label = QLabel("")
+    label.setWordWrap(True)
+    label.setStyleSheet(f"color: {theme.WARNING_AMBER};")
+    label.setVisible(False)
+    return label
+
+
+def _show_error(label: QLabel, edit: QLineEdit, message: str):
+    label.setText(message)
+    label.setVisible(True)
+    edit.selectAll()
+    edit.setFocus()
 
 
 class AddValueDialog(QDialog):
@@ -60,6 +118,9 @@ class AddValueDialog(QDialog):
 
         layout.addLayout(input_layout)
 
+        self.error_label = _make_error_label()
+        layout.addWidget(self.error_label)
+
         # Buttons
         button_box = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
         button_box.accepted.connect(self._on_accept)
@@ -70,13 +131,17 @@ class AddValueDialog(QDialog):
         self.value_edit.setFocus()
 
     def _on_accept(self):
-        """Validate and accept"""
-        try:
-            self._value = float(self.value_edit.text())
-            self.accept()
-        except ValueError:
-            self.value_edit.selectAll()
-            self.value_edit.setFocus()
+        """Validate and accept: only a finite, storable number gets through."""
+        value = parse_dialog_number(self.value_edit.text())
+        if value is None or abs(value) > MAX_ABS_VALUE:
+            _show_error(
+                self.error_label,
+                self.value_edit,
+                VALUE_ERROR,
+            )
+            return
+        self._value = value
+        self.accept()
 
     def get_value(self) -> float:
         """Get the entered value"""
@@ -112,7 +177,7 @@ class MultiplyDialog(QDialog):
         input_layout.addWidget(QLabel("Factor:"))
 
         self.factor_edit = QLineEdit()
-        self.factor_edit.setValidator(QDoubleValidator(0.0, 1000000.0, 10))
+        self.factor_edit.setValidator(QDoubleValidator(0.0, MULTIPLY_MAX_FACTOR, 10))
         self.factor_edit.setText("1.0")
         self.factor_edit.selectAll()
         self.factor_edit.textChanged.connect(self._update_percentage)
@@ -124,6 +189,9 @@ class MultiplyDialog(QDialog):
         self.percentage_label = QLabel("(0% change)")
         self.percentage_label.setStyleSheet("color: #666; font-size: 11px;")
         layout.addWidget(self.percentage_label)
+
+        self.error_label = _make_error_label()
+        layout.addWidget(self.error_label)
 
         # Examples
         examples = QLabel(
@@ -158,17 +226,17 @@ class MultiplyDialog(QDialog):
             self.percentage_label.setText("")
 
     def _on_accept(self):
-        """Validate and accept"""
-        try:
-            self._factor = float(self.factor_edit.text())
-            if self._factor <= 0:
-                self.factor_edit.selectAll()
-                self.factor_edit.setFocus()
-                return
-            self.accept()
-        except ValueError:
-            self.factor_edit.selectAll()
-            self.factor_edit.setFocus()
+        """Validate and accept: a finite factor in (0, 1,000,000]."""
+        factor = parse_dialog_number(self.factor_edit.text())
+        if factor is None or not 0 < factor <= MULTIPLY_MAX_FACTOR:
+            _show_error(
+                self.error_label,
+                self.factor_edit,
+                "Enter a factor greater than 0 and at most 1,000,000.",
+            )
+            return
+        self._factor = factor
+        self.accept()
 
     def get_factor(self) -> float:
         """Get the entered factor"""
@@ -233,6 +301,9 @@ class SetValueDialog(QDialog):
 
         layout.addLayout(input_layout)
 
+        self.error_label = _make_error_label()
+        layout.addWidget(self.error_label)
+
         # Preview label
         if self._selected_count > 0:
             self.preview_label = QLabel(
@@ -251,18 +322,16 @@ class SetValueDialog(QDialog):
         self.value_edit.setFocus()
 
     def _on_accept(self):
-        """Validate and accept"""
+        """Validate and accept: only a finite, storable number gets through."""
         if self.is_hex():
             # Same parser the table cells use: hex text, optional '0x'.
             value = parse_cell_text(self.value_edit.text(), self._format_spec)
+            message = "Enter a hex value, for example 2054517 or 0x2054517."
         else:
-            try:
-                value = float(self.value_edit.text())
-            except ValueError:
-                value = None
-        if value is None:
-            self.value_edit.selectAll()
-            self.value_edit.setFocus()
+            value = parse_dialog_number(self.value_edit.text())
+            message = VALUE_ERROR
+        if value is None or abs(value) > MAX_ABS_VALUE:
+            _show_error(self.error_label, self.value_edit, message)
             return
         self._value = value
         self.accept()
