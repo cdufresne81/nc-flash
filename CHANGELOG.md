@@ -10,6 +10,7 @@ All notable changes to NC Flash are documented here.
 ### Fixed
 - **Behind the scenes:** a release no longer fails to publish when its build reports a failure after every test has passed (#149, already fixed for the regular checks). No change to the app itself.
 - **Behind the scenes:** the development commit check no longer blocks commits to related repositories that have no changelog, or merge commits. No change to the app itself.
+- **Version history tells apart tables that share a name (#122).** When two tables have the same name, such as the two copies of "APP to TP Desired - 1st Gear", the list of changed tables now shows each one's address (for example "APP to TP Desired - 1st Gear @ 0xC8FFC"), the same way the compare window does. Before, the two rows looked identical.
 
 ## [v2.23.0] - 2026-10-15
 
