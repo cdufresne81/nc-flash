@@ -261,9 +261,11 @@ def test_changed_decimal_value_reports_the_rounded_stored_value(bench):
     assert result["success"] is True
     cell = result["cells"][0]
     assert cell["changed"] is True
-    # 80 is stored as uint16 raw 165, which reads back as 80.75 ('81').
-    assert cell["numeric_value"] == pytest.approx(80.75, abs=0.01)
-    assert cell["value"] == "81"
+    # 80 is stored as uint16 raw 168, the closest count, which reads back
+    # as 80.065 ('80'). Before issue 172 the approximate frexpr gave raw 165
+    # (80.75).
+    assert cell["numeric_value"] == pytest.approx(80.065, abs=0.001)
+    assert cell["value"] == "80"
     read = _read(bench, FAN_ECT)
     assert read["numeric_values"][0] == cell["numeric_value"]
     assert read["values"][0] == cell["value"]
