@@ -23,6 +23,24 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+def selected_cells(ranges) -> List[Tuple[int, int]]:
+    """The (row, col) of every selected cell, each once, in selection order.
+
+    Ctrl+click selections are several ranges. Only the cells inside them are
+    selected; the rectangle around them is not, so bulk edits must not touch
+    the cells in between.
+    """
+    seen = set()
+    cells = []
+    for sel_range in ranges:
+        for row in range(sel_range.topRow(), sel_range.bottomRow() + 1):
+            for col in range(sel_range.leftColumn(), sel_range.rightColumn() + 1):
+                if (row, col) not in seen:
+                    seen.add((row, col))
+                    cells.append((row, col))
+    return cells
+
+
 def compute_smoothed_values(
     values,
     selected_indices,
@@ -128,38 +146,31 @@ class TableOperationsHelper:
             logger.debug(f"{operation_name}: No selection")
             return [], []
 
-        # Get bounding rectangle of selection
-        min_row = min(r.topRow() for r in selected)
-        max_row = max(r.bottomRow() for r in selected)
-        min_col = min(r.leftColumn() for r in selected)
-        max_col = max(r.rightColumn() for r in selected)
-
         # Phase 1: compute and validate every cell's new value without
         # touching memory or the screen. A cell whose result is non-finite
         # (e.g. a multiply that overflows), unchanged or unstorable is
         # skipped here, so nothing below can fail halfway through.
         axis_plans = []  # (item, axis_type, axis_key, data_idx, change)
         data_plans = []  # (row, col, change)
-        for row in range(min_row, max_row + 1):
-            for col in range(min_col, max_col + 1):
-                item = self.ctx.table_widget.item(row, col)
-                if not item:
-                    continue
-                data_indices = item.data(Qt.UserRole)
-                if data_indices is None:
-                    continue  # No data associated with this cell
+        for row, col in selected_cells(selected):
+            item = self.ctx.table_widget.item(row, col)
+            if not item:
+                continue
+            data_indices = item.data(Qt.UserRole)
+            if data_indices is None:
+                continue  # No data associated with this cell
 
-                if isinstance(data_indices[0], str):
-                    # Axis cell: ('x_axis', index) or ('y_axis', index)
-                    plan = self._plan_axis_cell(
-                        data_indices, operation_fn, axis_operation_fn
-                    )
-                    if plan is not None:
-                        axis_plans.append((item,) + plan)
-                else:
-                    change = self._plan_data_cell(data_indices, operation_fn)
-                    if change is not None:
-                        data_plans.append((row, col, change))
+            if isinstance(data_indices[0], str):
+                # Axis cell: ('x_axis', index) or ('y_axis', index)
+                plan = self._plan_axis_cell(
+                    data_indices, operation_fn, axis_operation_fn
+                )
+                if plan is not None:
+                    axis_plans.append((item,) + plan)
+            else:
+                change = self._plan_data_cell(data_indices, operation_fn)
+                if change is not None:
+                    data_plans.append((row, col, change))
 
         # Phase 2: apply. Every value here is finite and storable.
         data_changes = [change for _row, _col, change in data_plans]
@@ -451,10 +462,7 @@ class TableOperationsHelper:
         if not selected:
             return
 
-        cell_count = sum(
-            (r.bottomRow() - r.topRow() + 1) * (r.rightColumn() - r.leftColumn() + 1)
-            for r in selected
-        )
+        cell_count = len(selected_cells(selected))
 
         dialog = SetValueDialog(cell_count, self.ctx.viewer)
         if dialog.exec() == QDialog.Accepted:
@@ -537,27 +545,25 @@ class TableOperationsHelper:
 
         # Collect selected data cells with their coordinates
         values = self.ctx.current_data["values"]
-        selected_cells = []
+        smooth_cells = []
 
-        for sel_range in selected:
-            for row in range(sel_range.topRow(), sel_range.bottomRow() + 1):
-                for col in range(sel_range.leftColumn(), sel_range.rightColumn() + 1):
-                    item = self.ctx.table_widget.item(row, col)
-                    if not item:
-                        continue
+        for row, col in selected_cells(selected):
+            item = self.ctx.table_widget.item(row, col)
+            if not item:
+                continue
 
-                    data_indices = item.data(Qt.UserRole)
-                    if data_indices is None:
-                        continue
+            data_indices = item.data(Qt.UserRole)
+            if data_indices is None:
+                continue
 
-                    # Only process data cells (not axis cells)
-                    if isinstance(data_indices[0], str):
-                        continue  # Skip axis cells
+            # Only process data cells (not axis cells)
+            if isinstance(data_indices[0], str):
+                continue  # Skip axis cells
 
-                    data_row, data_col = data_indices
-                    selected_cells.append((row, col, data_row, data_col))
+            data_row, data_col = data_indices
+            smooth_cells.append((row, col, data_row, data_col))
 
-        if not selected_cells:
+        if not smooth_cells:
             logger.debug("Smooth: No data cells in selection")
             return
 
@@ -578,7 +584,7 @@ class TableOperationsHelper:
 
         # Calculate smoothed values first (don't modify while iterating)
         selected_data_indices = [
-            (data_row, data_col) for _, _, data_row, data_col in selected_cells
+            (data_row, data_col) for _, _, data_row, data_col in smooth_cells
         ]
         smoothed_values = compute_smoothed_values(
             values,
@@ -595,7 +601,7 @@ class TableOperationsHelper:
         # result (a NaN neighbour, e.g. an unprogrammed cell) or an
         # unstorable one is skipped.
         plans = []
-        for ui_row, ui_col, data_row, data_col in selected_cells:
+        for ui_row, ui_col, data_row, data_col in smooth_cells:
             if (data_row, data_col) not in smoothed_values:
                 continue
 

@@ -684,3 +684,63 @@ def test_bulk_ops_on_real_integer_tables_keep_memory_with_rom(
             assert bytes(s.reader.rom_data) == s.original
         finally:
             s.viewer.deleteLater()
+
+
+# --- Ctrl+click selections -----------------------------------------------------
+
+
+def _select_cells(viewer, cells):
+    tw = viewer.table_widget
+    tw.clearSelection()
+    for r, c in cells:
+        tw.setRangeSelected(QTableWidgetSelectionRange(r, c, r, c), True)
+
+
+@pytest.mark.parametrize("storage", ["float", "uint8"])
+def test_bulk_add_changes_only_the_selected_cells(tmp_path, storage):
+    """Two corner cells selected: the 7 cells between them stay untouched.
+
+    The bounding rectangle of the selection used to be edited, so adding 1 to
+    two Ctrl+clicked corners changed all 9 cells, in memory and in the ROM.
+    """
+    s = _table_3d(tmp_path, storage)
+    try:
+        corners = [(1, 1), (3, 3)]  # table rows/cols; data starts at (1, 1)
+        _select_cells(s.viewer, corners)
+        cells, axes = s.viewer._ops.apply_bulk_operation(lambda v: v + 1, "add")
+        assert axes == []
+        assert sorted((ch[0], ch[1]) for ch in cells) == [(0, 0), (2, 2)]
+        _apply_forward(s, cells, axes)
+        _assert_screen_memory_rom_agree(s)
+
+        before = np.asarray(DATA_RAW, dtype=float)
+        after = np.asarray(s.reader.read_table_data(s.table)["values"], dtype=float)
+        changed = {tuple(i) for i in np.argwhere(~np.isclose(after, before))}
+        assert changed == {(0, 0), (2, 2)}
+    finally:
+        s.viewer.deleteLater()
+
+
+def test_overlapping_ranges_edit_each_cell_once(tmp_path):
+    s = _table_3d(tmp_path, "float")
+    try:
+        tw = s.viewer.table_widget
+        tw.clearSelection()
+        tw.setRangeSelected(QTableWidgetSelectionRange(1, 1, 2, 2), True)
+        tw.setRangeSelected(QTableWidgetSelectionRange(2, 2, 3, 3), True)
+        cells, _axes = s.viewer._ops.apply_bulk_operation(lambda v: v + 1, "add")
+        coords = [(ch[0], ch[1]) for ch in cells]
+        assert len(coords) == len(set(coords))
+    finally:
+        s.viewer.deleteLater()
+
+
+def test_smoothing_leaves_unselected_gap_cells_alone(tmp_path):
+    s = _table_3d(tmp_path, "float")
+    try:
+        _select_cells(s.viewer, [(2, 2), (2, 4)])
+        s.viewer._ops.smooth_selection()
+        touched = {(ch[0], ch[1]) for ch in s.captured["cells"]}
+        assert touched <= {(1, 1), (1, 3)}
+    finally:
+        s.viewer.deleteLater()
