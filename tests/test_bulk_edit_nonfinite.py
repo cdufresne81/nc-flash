@@ -355,6 +355,36 @@ def test_value_dialogs_accept_a_normal_number(dialog_cls):
         dialog.deleteLater()
 
 
+@pytest.mark.parametrize("dialog_cls", [SetValueDialog, AddValueDialog])
+@pytest.mark.parametrize("text", ["1,000", "-12,500", "+999,999"])
+def test_value_dialogs_refuse_thousands_grouping(dialog_cls, text):
+    # The comma decimal mark would read "1,000" as 1.0; refuse, don't guess.
+    dialog = dialog_cls()
+    try:
+        dialog.value_edit.setText(text)
+        dialog._on_accept()
+        assert dialog.result() != QDialog.Accepted
+        assert "1000" in dialog.error_label.text()
+    finally:
+        dialog.deleteLater()
+
+
+@pytest.mark.parametrize("dialog_cls", [SetValueDialog, AddValueDialog])
+@pytest.mark.parametrize(
+    "text, expected",
+    [("1,5", 1.5), ("0,125", 0.125), ("12,50", 12.5), ("1000", 1000.0)],
+)
+def test_value_dialogs_accept_comma_decimals(dialog_cls, text, expected):
+    dialog = dialog_cls()
+    try:
+        dialog.value_edit.setText(text)
+        dialog._on_accept()
+        assert dialog.result() == QDialog.Accepted
+        assert dialog.get_value() == expected
+    finally:
+        dialog.deleteLater()
+
+
 @pytest.mark.parametrize("text", BAD_VALUES + ["0", "-1.5", "2000000"])
 def test_multiply_dialog_refuses_unstorable_factor(text):
     dialog = MultiplyDialog()

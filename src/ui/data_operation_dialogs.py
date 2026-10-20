@@ -4,7 +4,7 @@ Data Operation Dialogs
 Dialogs for entering values for data manipulation operations.
 """
 
-import math
+import re
 from typing import Optional
 
 from PySide6.QtWidgets import (
@@ -18,6 +18,7 @@ from PySide6.QtWidgets import (
 from PySide6.QtGui import QDoubleValidator
 
 from . import theme
+from ..utils.formatting import parse_numeric_text
 
 # Largest magnitude any table can hold: float tables are 32-bit floats and
 # integer tables top out far below this. Anything bigger (or "1e999", which
@@ -28,22 +29,29 @@ MULTIPLY_MAX_FACTOR = 1000000.0
 
 VALUE_ERROR = (
     "Enter a number. Values beyond 3.4e38 either way (including infinity) "
-    "can't be stored in a table."
+    "can't be stored in a table. Type thousands without a separator "
+    "(1000, not 1,000)."
 )
+
+# "1,000" or "-12,500": a comma followed by exactly three digits after a
+# non-zero lead reads as thousands grouping to many people, while the comma
+# decimal mark would turn it into 1.0. Refused rather than guessed.
+_GROUPED_NUMBER_RE = re.compile(r"^[+-]?[1-9]\d{0,2},\d{3}$")
 
 
 def parse_dialog_number(text: str) -> Optional[float]:
     """The finite number typed in a dialog, or None.
 
     QDoubleValidator lets out-of-range text such as "1e999" through as
-    "intermediate", and float() turns it into infinity, so every dialog
-    value is checked here before it reaches a table.
+    "intermediate", so every dialog value goes through the same gate as cell
+    edits (no inf/nan, comma as decimal mark), and a number that looks like
+    thousands grouping is refused instead of being read as a decimal.
     """
-    try:
-        value = float(text.strip().replace(",", "."))
-    except (ValueError, AttributeError):
+    if text is None:
         return None
-    return value if math.isfinite(value) else None
+    if _GROUPED_NUMBER_RE.match(text.strip()):
+        return None
+    return parse_numeric_text(text)
 
 
 def _make_error_label() -> QLabel:
