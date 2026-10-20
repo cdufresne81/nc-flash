@@ -184,6 +184,9 @@ class ECUProgrammingWindow(QMainWindow):
         self._current_manager = None
         self._session_acquired = False
         self._current_operation = None
+        # False after a successful flash: Done then returns to the actions page
+        # without reconnecting (the session was ended so the car can be driven).
+        self._reconnect_on_done = True
         self._ecu_busy = False  # True during any ECU operation
         self._poll_misses = 0
         self._conditions_pending = False  # connect-time load skipped (no reply)
@@ -1404,6 +1407,15 @@ class ECUProgrammingWindow(QMainWindow):
             )
             self._session.release(connection_dead=connection_dead)
 
+        # After a successful flash the user goes to drive the car, so Done must
+        # not reconnect (on the WiCAN a reconnect re-reserves the bus and parks
+        # the datalogger for the drive). Every other outcome keeps reconnecting:
+        # a read / RAM scan leaves the ECU in a programming session, and after
+        # a failed flash the user needs the link to retry or recover.
+        self._reconnect_on_done = not (
+            success and self._current_operation in ("flash", "dynamic_flash")
+        )
+
         if success:
             self._progress_state.setText("Complete")
             self._progress_state.setStyleSheet(
@@ -1464,8 +1476,11 @@ class ECUProgrammingWindow(QMainWindow):
                 # cycle is required to finish. Cycling the key afterward is the
                 # recommended (not mandatory) way to be certain the new cal is live,
                 # so frame it as a recommendation rather than a blocking "you MUST".
+                wican_released = self._end_session_after_flash()
+                self._progress_state.setText("Flash complete")
                 self._progress_detail.setText(
-                    "Flash written & confirmed. The ECU reboots on its own."
+                    "The ECU has restarted. NC Flash has disconnected, so you can "
+                    "unplug or drive. Click Connect to reconnect."
                 )
                 QTimer.singleShot(
                     300,
@@ -1478,7 +1493,14 @@ class ECUProgrammingWindow(QMainWindow):
                         "not need to cycle the ignition — but it is recommended: turn "
                         "the key OFF, then back ON to be sure the new calibration "
                         "boots cleanly.\n\n"
-                        "Click Done to reconnect.",
+                        "NC Flash has disconnected from the ECU"
+                        + (
+                            " and handed the WiCAN back to its datalogger"
+                            if wican_released
+                            else ""
+                        )
+                        + ". You can unplug the adapter or drive. To reconnect, "
+                        "click Connect.",
                     ),
                 )
         else:
@@ -1504,12 +1526,44 @@ class ECUProgrammingWindow(QMainWindow):
             thread.wait(3000)
 
     def _on_progress_done(self):
-        """Return to actions page and reconnect if needed."""
+        """Return to actions page and reconnect if needed.
+
+        Not after a successful flash: that session was ended on purpose (see
+        ``_end_session_after_flash``), and Connect is one click away.
+        """
         self._stack.setCurrentIndex(0)
-        if not self._session or not self._session.is_connected:
+        if self._reconnect_on_done and (
+            not self._session or not self._session.is_connected
+        ):
             self._on_connect()
         else:
             self._update_action_states()
+
+    def _end_session_after_flash(self) -> bool:
+        """End the ECU session after a successful flash and say so.
+
+        The flash's release has normally closed the session already (the ECU
+        reset drops the link). This makes sure of it, so the adapter is free to
+        unplug and, on the WiCAN, the bus reservation is released and the
+        datalogger resumes for the drive. Returns True for a WiCAN session that
+        is now closed.
+        """
+        self._poll_timer.stop()
+        session = self._session
+        if session is None:
+            return False
+        if session.state != ECUSessionState.DISCONNECTED:
+            # Refused (and logged) while BUSY: never close a link under a
+            # running operation.
+            session.disconnect_ecu()
+        if session.state != ECUSessionState.DISCONNECTED:
+            return False
+        self._conn_label.setText("Disconnected — flash complete")
+        self._conn_label.setStyleSheet(
+            "font-weight: bold; font-size: 13px; "
+            f"color: {theme.TEXT_MUTED}; border: none;"
+        )
+        return session.adapter_kind == "wican"
 
     def _auto_reconnect(self):
         """Try to reconnect after ECU reset."""

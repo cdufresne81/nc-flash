@@ -467,8 +467,10 @@ class ECUSession(QObject):
         if connection_dead:
             # ECU rebooted — tear down the dead connection. Teardown still runs
             # so the whole-session bus reservation is released and the
-            # datalogger resumes; the window auto-reconnects (and re-reserves)
-            # after a connection-dead release.
+            # datalogger resumes. The window reconnects (and re-reserves) after
+            # a read / RAM scan, and on Done after a failed flash; it stays
+            # disconnected after a successful flash so the logger keeps the bus
+            # for the drive.
             self._teardown()
             self._set_state(ECUSessionState.DISCONNECTED)
             logger.info("ECU session released (connection dead after reset)")
