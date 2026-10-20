@@ -45,6 +45,7 @@ from src.ecu.exceptions import ECUError, FlashAbortedError, ROMValidationError
 from src.ecu.rom_utils import get_cal_id
 from src.ecu.dtc import dedup_dtcs
 from src.ui.log_console import LogConsole
+from src.ui.rom_read_check import UNVERIFIED, RomReadCheck, check_rom_read
 from src.ui import theme
 
 logger = logging.getLogger(__name__)
@@ -1412,8 +1413,11 @@ class ECUProgrammingWindow(QMainWindow):
             self._progress_bar.setValue(100)
 
             if self._current_operation == "read" and worker.result:
-                saved_path = self._auto_save_rom(worker.result)
-                if saved_path:
+                check = self._check_rom_read(worker.result)
+                saved_path = self._auto_save_rom(worker.result, suspect=check.suspect)
+                if saved_path and check.suspect:
+                    self._show_suspect_read(saved_path, check)
+                elif saved_path:
                     self._progress_detail.setText(
                         f"ROM saved to {saved_path.name}. Reconnecting..."
                     )
@@ -1424,6 +1428,12 @@ class ECUProgrammingWindow(QMainWindow):
                         subprocess.Popen(["explorer", "/select,", str(saved_path)])
                     except Exception:
                         pass  # Non-critical — ROM is saved regardless
+                    unverified_note = (
+                        "\n\nNote: NC Flash could not check this ROM against its "
+                        f"own checksums ({check.detail})."
+                        if check.status == UNVERIFIED
+                        else ""
+                    )
                     # Remind user to keep a backup
                     QTimer.singleShot(
                         500,
@@ -1433,7 +1443,8 @@ class ECUProgrammingWindow(QMainWindow):
                             f"ROM saved to:\n{saved_path.name}\n\n"
                             "Keep a copy of this file somewhere safe.\n"
                             "This is your stock ROM backup — you will need it\n"
-                            "to revert to factory if anything goes wrong.",
+                            "to revert to factory if anything goes wrong."
+                            + unverified_note,
                         ),
                     )
                 else:
@@ -1577,10 +1588,16 @@ class ECUProgrammingWindow(QMainWindow):
             logger.error("Failed to save to %s: %s", save_path, e)
             return None
 
-    def _auto_save_rom(self, rom_data: bytearray) -> Path | None:
-        """Auto-save ROM read to ~/.nc-flash/reads/, named by calibration ID."""
+    def _auto_save_rom(self, rom_data: bytearray, suspect: bool = False) -> Path | None:
+        """Auto-save ROM read to ~/.nc-flash/reads/, named by calibration ID.
+
+        A read that failed its checksum check is still saved (better than losing
+        it), with ``SUSPECT`` in the name so it isn't mistaken for a good backup.
+        """
         return self._auto_save_to_reads_dir(
-            rom_data, name_override=self._cal_id_from_rom(rom_data)
+            rom_data,
+            label="SUSPECT" if suspect else "",
+            name_override=self._cal_id_from_rom(rom_data),
         )
 
     @staticmethod
@@ -1606,6 +1623,54 @@ class ECUProgrammingWindow(QMainWindow):
         except Exception:
             # Best-effort naming only — never let a bad/partial ROM abort the save.
             return None
+
+    @staticmethod
+    def _check_rom_read(rom_data: bytes) -> RomReadCheck:
+        """Check a fresh ROM read against its own checksums (issue 169) and log it.
+        Never raises: a failed check must not cost the user the read."""
+        try:
+            check = check_rom_read(bytes(rom_data))
+        except Exception as e:  # pragma: no cover - defensive
+            logger.error("ROM read checksum check failed to run: %s", e)
+            return RomReadCheck(UNVERIFIED, f"the check could not run: {e}")
+        if check.suspect:
+            bad = ", ".join(
+                f"0x{start:06X}-0x{end:06X}" for start, end in check.bad_regions
+            )
+            logger.warning(
+                "ROM read checksum check FAILED: %s%s. The backup may be corrupt; "
+                "do not flash it, read the ROM again.",
+                check.detail,
+                f" ({bad})" if bad else "",
+            )
+        elif check.status == UNVERIFIED:
+            logger.info("ROM read not checked against checksums: %s", check.detail)
+        else:
+            logger.info("ROM read checksum check passed: %s", check.detail)
+        return check
+
+    def _show_suspect_read(self, saved_path: Path, check: RomReadCheck) -> None:
+        """Mark the read as suspect on the progress page and warn the user."""
+        self._progress_state.setText("Read finished: backup may be corrupt")
+        self._progress_state.setStyleSheet(
+            f"font-weight: bold; font-size: 13px; color: {theme.WARNING_AMBER};"
+        )
+        self._progress_detail.setText(
+            f"Saved as {saved_path.name}. Do not flash it. Reconnecting..."
+        )
+        QTimer.singleShot(
+            500,
+            lambda: QMessageBox.warning(
+                self,
+                "ROM Read May Be Corrupt",
+                "The ROM was read, but it failed its checksum check: "
+                f"{check.detail}.\n\n"
+                "This backup may be corrupt. A late reply from the ECU on a "
+                "weak link can shift part of the data.\n\n"
+                "Do NOT flash this file. Read the ROM again.\n\n"
+                f"It was saved anyway, as:\n{saved_path.name}",
+            ),
+        )
 
     def _auto_save_ram_dump(self, ram_data: bytearray) -> Path | None:
         """Auto-save RAM dump to ~/.nc-flash/reads/."""

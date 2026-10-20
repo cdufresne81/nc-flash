@@ -8,6 +8,7 @@ All notable changes to NC Flash are documented here.
 - **Behind the scenes:** a small tool now lists which beta changes are still waiting to reach Stable. No change to the app itself.
 
 ### Fixed
+- **A ROM read is now checked before you rely on it (#169)** — On a weak link, a late reply from the ECU could shift part of a ROM read without anyone noticing, and flashing that backup later would put a broken calibration on the ECU. After every ROM read, NC Flash now checks the ROM against its own checksums. If they don't match, it warns you not to flash the file and to read the ROM again, and saves the file with SUSPECT in its name so the read isn't lost.
 - **Behind the scenes:** a release no longer fails to publish when its build reports a failure after every test has passed (#149, already fixed for the regular checks). No change to the app itself.
 - **Behind the scenes:** the development commit check no longer blocks commits to related repositories that have no changelog, or merge commits. No change to the app itself.
 
