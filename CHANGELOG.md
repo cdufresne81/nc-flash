@@ -9,6 +9,7 @@ All notable changes to NC Flash are documented here.
 
 ### Fixed
 - **A ROM read is now checked before you rely on it (#169)** — On a weak link, a late reply from the ECU could shift part of a ROM read without anyone noticing, and flashing that backup later would put a broken calibration on the ECU. After every ROM read, NC Flash now checks the ROM against its own checksums and looks for a block read twice. If either check fails, it warns you not to flash the file and to read the ROM again, and saves the file with SUSPECT in its name so the read isn't lost.
+- **A suspect ROM read can no longer be flashed by accident (#169)** — Flashing a file saved from a read that failed that check, or any ROM that shows a block read twice (even renamed), now stops with a warning and Cancel as the default. You can still flash it if you've verified it yourself, for example against a second read. Opening such a file shows a notice, and starting a project from one asks first. Normal edited ROMs are not affected.
 - **Behind the scenes:** a release no longer fails to publish when its build reports a failure after every test has passed (#149, already fixed for the regular checks). No change to the app itself.
 - **Behind the scenes:** the development commit check no longer blocks commits to related repositories that have no changelog, or merge commits. No change to the app itself.
 

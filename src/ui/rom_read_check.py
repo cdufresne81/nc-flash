@@ -22,7 +22,9 @@ a genuine one, so such a shift is still missed.
 Read-only and pure: nothing here writes to the ROM or touches the ECU.
 """
 
+import re
 from dataclasses import dataclass
+from pathlib import PureWindowsPath
 
 from src.ecu.checksum import correct_rom_checksums
 from src.ecu.constants import (
@@ -153,3 +155,37 @@ def check_rom_read(rom: bytes) -> RomReadCheck:
     return RomReadCheck(
         OK, f"all {len(ranges)} checksummed regions match", regions=len(ranges)
     )
+
+
+# --- a saved read about to be flashed or edited ------------------------------
+
+# A read that fails check_rom_read is saved as "<CAL>_SUSPECT_<timestamp>.bin".
+# Matched as a word not glued to other letters, in any case, so a trimmed or
+# copied name ("LF9VEB_SUSPECT.bin", "lf9veb suspect(1).bin") is still caught
+# while "unsuspected" is not.
+_SUSPECT_NAME = re.compile(r"(?<![A-Za-z])SUSPECT(?![A-Za-z])", re.IGNORECASE)
+
+
+def suspect_image_reason(file_name: str | None, rom: bytes) -> str | None:
+    """Why a ROM file about to be flashed or opened looks like a corrupt read,
+    as a plain-English phrase; None when it doesn't.
+
+    Two signals only: the ``SUSPECT`` marker the read saves in the file name,
+    and the copied-block trace of the issue 169 shift (which also catches a suspect
+    read the user renamed). NOT the checksums: an edited ROM fails them until
+    the flash corrects them, so they would warn on every normal edited ROM.
+    """
+    reasons = []
+    if file_name and _SUSPECT_NAME.search(PureWindowsPath(file_name).name):
+        reasons.append(
+            "it was saved from a ROM read that failed NC Flash's corruption "
+            "check (SUSPECT in its name)"
+        )
+    if len(rom) == ROM_SIZE:
+        copied = _copied_block(bytes(rom))
+        if copied is not None:
+            reasons.append(
+                f"the 1 KB at 0x{copied:06X} is an exact copy of the 1 KB "
+                "before it, the trace a shifted read leaves"
+            )
+    return ", and ".join(reasons) or None

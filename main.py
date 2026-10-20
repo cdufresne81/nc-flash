@@ -64,6 +64,7 @@ from src.ui.table_viewer_window import TableViewerWindow
 from src.ui.log_console import LogConsole
 from src.ui.setup_wizard import SetupWizard
 from src.ui.rom_document import RomDocument
+from src.ui.rom_read_check import suspect_image_reason
 from src.core.project_manager import ProjectManager
 from src.core.change_tracker import ChangeTracker
 from src.core.table_undo_manager import (
@@ -1192,6 +1193,7 @@ class MainWindow(
                 f"Loaded: {file_name} - {rom_definition.romid.xmlid} "
                 f"({len(rom_definition.tables)} tables)"
             )
+            self._warn_if_suspect_rom(rom_document)
 
             self._update_compare_action()
             self._write_workspace_state()
@@ -1208,6 +1210,43 @@ class MainWindow(
                 "Error",
                 f"Unexpected error opening ROM file:\n{type(e).__name__}: {e}",
             )
+
+    def _warn_if_suspect_rom(self, document: RomDocument) -> None:
+        """Flag a ROM that looks like a corrupt ECU read when it is opened (issue 169).
+
+        A light notice only: a log line, a status-bar message and one dialog,
+        shown after the open finishes so it never holds up a session restore.
+        The hard stop (Cancel by default) is at flash time, in the ECU window.
+        """
+        try:
+            reason = suspect_image_reason(
+                document.file_name, document.rom_reader.rom_data or b""
+            )
+        except Exception:  # pragma: no cover - defensive: never block an open
+            logger.debug("Suspect-read check failed on open", exc_info=True)
+            return
+        if reason is None:
+            return
+        name = document.file_name
+        logger.warning(
+            "Opened %s, which looks like a corrupt ECU read: %s. Do not flash it.",
+            name,
+            reason,
+        )
+        self.statusBar().showMessage(
+            f"Warning: {name} looks like a corrupt ECU read. Do not flash it."
+        )
+        QTimer.singleShot(
+            0,
+            lambda: QMessageBox.warning(
+                self,
+                "Suspect ROM Read",
+                f"{name} looks like a corrupt ECU read: {reason}.\n\n"
+                "It may hold shifted or corrupt data. You can look at it and "
+                "edit it, but do not flash it or build a tune on it. Read the "
+                "ECU again instead.",
+            ),
+        )
 
     def _save(self):
         """Unified save: commit if project is open with changes, otherwise save ROM."""
