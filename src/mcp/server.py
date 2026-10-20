@@ -90,8 +90,11 @@ def _create_mcp(port: int = DEFAULT_HTTP_PORT) -> FastMCP:
     ) -> list:
         """List calibration tables with optional filtering.
 
-        Returns table name, category, type (1D/2D/3D), dimensions, address,
-        units, level. For 2D/3D tables, includes axis names and units.
+        Returns table name, lookup_name, category, type (1D/2D/3D),
+        dimensions, address, units, level. For 2D/3D tables, includes axis
+        names and units. ``lookup_name`` is the name to pass to the other
+        tools: the plain name, or "Name @ 0xADDR" when several tables share
+        the name (they sit at different addresses and hold different data).
         Requires the ROM to be open in NC Flash.
 
         Args:
@@ -103,7 +106,9 @@ def _create_mcp(port: int = DEFAULT_HTTP_PORT) -> FastMCP:
         return _get_ctx().list_tables(rom_path, category, search, level)
 
     @server.tool()
-    def read_table(rom_path: str, table_name: str) -> dict:
+    def read_table(
+        rom_path: str, table_name: str, address: Optional[str] = None
+    ) -> dict:
         """Read a table's current values from the running NC Flash app.
 
         1D → flat list of values.
@@ -121,17 +126,25 @@ def _create_mcp(port: int = DEFAULT_HTTP_PORT) -> FastMCP:
         Includes any pending (unsaved) edits.
         Requires the ROM to be open in NC Flash.
 
+        Some definitions give several tables the same name at different
+        addresses. A shared name is refused with an error listing each copy;
+        pick one with ``address`` or the "Name @ 0xADDR" form (the
+        ``lookup_name`` field of list_tables).
+
         Args:
             rom_path: Path to the ROM binary file (as shown in get_workspace).
-            table_name: Exact name of the table to read.
+            table_name: Exact name (or lookup_name) of the table to read.
+            address: Optional hex address (e.g. "0xC8FFC") selecting one copy
+                of a name shared by several tables.
         """
-        return _get_ctx().read_table(rom_path, table_name)
+        return _get_ctx().read_table(rom_path, table_name, address)
 
     @server.tool()
     def compare_tables(
         rom_path_a: str,
         rom_path_b: str,
         table_name: Optional[str] = None,
+        address: Optional[str] = None,
     ) -> dict:
         """Compare tables between two ROMs open in NC Flash.
 
@@ -143,28 +156,43 @@ def _create_mcp(port: int = DEFAULT_HTTP_PORT) -> FastMCP:
         (and delta) / value_b are "hex" or "decimal" text.
 
         Supports cross-definition comparison (tables matched by name).
+        Every copy of a shared name is compared separately and reported as
+        "Name @ 0xADDR" (cross-definition copies pair up by their order in
+        each definition, shown as "Name @ 0xA / 0xB" if the addresses differ).
         Both ROMs must be open in NC Flash.
 
         Args:
             rom_path_a: Path to the first ROM binary file (as shown in get_workspace).
             rom_path_b: Path to the second ROM binary file (as shown in get_workspace).
-            table_name: Optional table name for detailed comparison.
+            table_name: Optional table name (or a name as reported in the
+                summary) for detailed comparison. A shared name is refused
+                with the list of copies.
+            address: Optional hex address (e.g. "0xC8FFC") selecting one copy
+                of a shared name, matched against either ROM.
         """
-        return _get_ctx().compare_tables(rom_path_a, rom_path_b, table_name)
+        return _get_ctx().compare_tables(rom_path_a, rom_path_b, table_name, address)
 
     @server.tool()
-    def get_table_statistics(rom_path: str, table_name: str) -> dict:
+    def get_table_statistics(
+        rom_path: str, table_name: str, address: Optional[str] = None
+    ) -> dict:
         """Statistical analysis of a table's values.
 
         Returns min, max, mean, median, std dev, percentiles (p25/p75/p90/p95),
         and axis ranges.
         Requires the ROM to be open in NC Flash.
 
+        Some definitions give several tables the same name at different
+        addresses. A shared name is refused with an error listing each copy;
+        pick one with ``address`` or the "Name @ 0xADDR" form (the
+        ``lookup_name`` field of list_tables).
+
         Args:
             rom_path: Path to the ROM binary file (as shown in get_workspace).
-            table_name: Exact name of the table to analyze.
+            table_name: Exact name (or lookup_name) of the table to analyze.
+            address: Optional hex address selecting one copy of a shared name.
         """
-        return _get_ctx().get_table_statistics(rom_path, table_name)
+        return _get_ctx().get_table_statistics(rom_path, table_name, address)
 
     # ------------------------------------------------------------------
     # Live app bridge tools (require app running with MCP server enabled)
@@ -174,7 +202,7 @@ def _create_mcp(port: int = DEFAULT_HTTP_PORT) -> FastMCP:
     def list_modified_tables(rom_path: str) -> dict:
         """List tables with unsaved modifications in the running app.
 
-        Returns table names and change counts for the given ROM.
+        Returns table names, addresses and change counts for the given ROM.
         Requires the app to be running with MCP server enabled.
 
         Args:
@@ -183,21 +211,34 @@ def _create_mcp(port: int = DEFAULT_HTTP_PORT) -> FastMCP:
         return _get_ctx().list_modified_tables(rom_path)
 
     @server.tool()
-    def read_live_table(rom_path: str, table_name: str) -> dict:
+    def read_live_table(
+        rom_path: str, table_name: str, address: Optional[str] = None
+    ) -> dict:
         """Read a table's current in-memory values from the running app.
 
         Equivalent to read_table — both read from the app's in-memory state.
         Kept for backward compatibility.
         Requires the app to be running with MCP server enabled.
 
+        Some definitions give several tables the same name at different
+        addresses. A shared name is refused with an error listing each copy;
+        pick one with ``address`` or the "Name @ 0xADDR" form (the
+        ``lookup_name`` field of list_tables).
+
         Args:
             rom_path: Path to the ROM binary file (as shown in get_workspace).
-            table_name: Exact name of the table to read.
+            table_name: Exact name (or lookup_name) of the table to read.
+            address: Optional hex address selecting one copy of a shared name.
         """
-        return _get_ctx().read_live_table(rom_path, table_name)
+        return _get_ctx().read_live_table(rom_path, table_name, address)
 
     @server.tool()
-    def write_table(rom_path: str, table_name: str, cells: list) -> dict:
+    def write_table(
+        rom_path: str,
+        table_name: str,
+        cells: list,
+        address: Optional[str] = None,
+    ) -> dict:
         """Write values to a ROM table through the app's editing pipeline.
 
         Changes appear in the app with full undo support.
@@ -230,14 +271,21 @@ def _create_mcp(port: int = DEFAULT_HTTP_PORT) -> FastMCP:
         value now stored ("value" text and "numeric_value" number).
         Requires the app to be running with MCP server enabled.
 
+        Some definitions give several tables the same name at different
+        addresses. A shared name is refused with an error listing each copy
+        and nothing is written; pick one with ``address`` or the
+        "Name @ 0xADDR" form (the ``lookup_name`` field of list_tables).
+
         Args:
             rom_path: Path to the ROM binary file (as shown in get_workspace).
-            table_name: Exact name of the table to edit.
+            table_name: Exact name (or lookup_name) of the table to edit.
             cells: List of cell edits, each a dict with "row", "col", "value" keys.
                    Example: [{"row": 0, "col": 0, "value": 42.5}]
                    Hex table: [{"row": 0, "col": 0, "value": "0x2054517"}]
+            address: Optional hex address (e.g. "0xC8FFC") selecting one copy
+                of a name shared by several tables.
         """
-        return _get_ctx().write_table(rom_path, table_name, cells)
+        return _get_ctx().write_table(rom_path, table_name, cells, address)
 
     return server
 

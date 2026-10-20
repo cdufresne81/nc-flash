@@ -40,6 +40,7 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
 )
 
+from src.core.table_lookup import find_match, lookup_table, match_tables
 from src.ui.icons import make_icon
 from src.core.storage_types import (
     STORAGE_TYPE_BOUNDS,
@@ -454,7 +455,11 @@ class McpMixin:
         # normalization. Filter by the document's canonical rom_path so the key
         # comparison matches how the keys were created (mirrors the B3 commit fix).
         tables = [
-            {"name": tc.table_name, "changed_cells": len(tc.cell_changes)}
+            {
+                "name": tc.table_name,
+                "address": tc.table_address,
+                "changed_cells": len(tc.cell_changes),
+            }
             for tc in self.change_tracker.get_pending_changes_for_rom(
                 document.rom_reader.rom_path
             )
@@ -470,9 +475,11 @@ class McpMixin:
         if not document:
             return {"success": False, "error": f"ROM not open in app: {rom_path}"}
 
-        table = document.rom_definition.get_table_by_name(table_name)
+        table, error = lookup_table(
+            document.rom_definition, table_name, request.get("address")
+        )
         if table is None:
-            return {"success": False, "error": f"Table not found: {table_name}"}
+            return {"success": False, "error": error}
 
         data = document.rom_reader.read_table_data(table)
         if data is None:
@@ -592,9 +599,11 @@ class McpMixin:
         if not document:
             return {"success": False, "error": f"ROM not open in app: {rom_path}"}
 
-        table = document.rom_definition.get_table_by_name(table_name)
+        table, error = lookup_table(
+            document.rom_definition, table_name, request.get("address")
+        )
         if table is None:
-            return {"success": False, "error": f"Table not found: {table_name}"}
+            return {"success": False, "error": error}
 
         old_data = document.rom_reader.read_table_data(table)
         if old_data is None:
@@ -766,6 +775,9 @@ class McpMixin:
         scaling = defn.get_scaling(table.scaling)
         info = {
             "name": table.name,
+            # Unique handle for read/write/compare: "Name @ 0xADDR" when
+            # several tables share this name, else the plain name.
+            "lookup_name": defn.display_name(table),
             "category": table.category or "Uncategorized",
             "type": table.type.value,
             "address": table.address,
@@ -819,9 +831,11 @@ class McpMixin:
         if not document:
             return {"success": False, "error": f"ROM not open in app: {rom_path}"}
 
-        table = document.rom_definition.get_table_by_name(table_name)
+        table, error = lookup_table(
+            document.rom_definition, table_name, request.get("address")
+        )
         if table is None:
-            return {"success": False, "error": f"Table not found: {table_name}"}
+            return {"success": False, "error": error}
 
         data = document.rom_reader.read_table_data(table)
         if data is None:
@@ -890,7 +904,9 @@ class McpMixin:
             return {"success": False, "error": f"ROM not open in app: {rom_path_b}"}
 
         if table_name:
-            return self._api_compare_single_table(doc_a, doc_b, table_name)
+            return self._api_compare_single_table(
+                doc_a, doc_b, table_name, request.get("address")
+            )
         else:
             return self._api_compare_all_tables(doc_a, doc_b)
 
@@ -901,17 +917,24 @@ class McpMixin:
         defn_a = doc_a.rom_definition
         defn_b = doc_b.rom_definition
 
-        tables_a = {t.name: t for t in defn_a.tables if not t.is_axis}
-        tables_b = {t.name: t for t in defn_b.tables if not t.is_axis}
-
-        common_names = set(tables_a.keys()) & set(tables_b.keys())
-        a_only = sorted(set(tables_a.keys()) - set(tables_b.keys()))
-        b_only = sorted(set(tables_b.keys()) - set(tables_a.keys()))
+        # One match per table copy: names are not unique, so a name-keyed
+        # dict would hide all but the last copy of a duplicated name.
+        matches = match_tables(
+            [t for t in defn_a.tables if not t.is_axis],
+            [t for t in defn_b.tables if not t.is_axis],
+        )
+        common = sorted(
+            (m for m in matches if m.table_a is not None and m.table_b is not None),
+            key=lambda m: m.label,
+        )
+        a_only = sorted(m.label for m in matches if m.table_b is None)
+        b_only = sorted(m.label for m in matches if m.table_a is None)
 
         changed_tables = []
-        for name in sorted(common_names):
-            table_a = tables_a[name]
-            table_b = tables_b[name]
+        for match in common:
+            name = match.label
+            table_a = match.table_a
+            table_b = match.table_b
 
             try:
                 data_a = doc_a.rom_reader.read_table_data(table_a)
@@ -962,12 +985,19 @@ class McpMixin:
                     }
                 )
 
+        # The definitions list a different number of copies of these names,
+        # so which copy pairs with which is a guess; say so.
+        uncertain = {m.label for m in matches if m.uncertain}
+        for entry in changed_tables:
+            if entry["name"] in uncertain:
+                entry["pairing_uncertain"] = True
+
         return {
             "success": True,
             "rom_a": Path(doc_a.rom_reader.rom_path).name,
             "rom_b": Path(doc_b.rom_reader.rom_path).name,
             "summary": {
-                "total_common_tables": len(common_names),
+                "total_common_tables": len(common),
                 "changed_table_count": len(changed_tables),
                 "a_only_count": len(a_only),
                 "b_only_count": len(b_only),
@@ -977,21 +1007,27 @@ class McpMixin:
             "b_only_tables": b_only,
         }
 
-    def _api_compare_single_table(self, doc_a, doc_b, table_name: str) -> dict:
+    def _api_compare_single_table(
+        self, doc_a, doc_b, table_name: str, address=None
+    ) -> dict:
         """Cell-by-cell diff for a single table."""
         from src.core.rom_definition import TableType
 
         defn_a = doc_a.rom_definition
         defn_b = doc_b.rom_definition
 
-        table_a = defn_a.get_table_by_name(table_name)
-        table_b = defn_b.get_table_by_name(table_name)
+        match, error = find_match(
+            match_tables(
+                [t for t in defn_a.tables if not t.is_axis],
+                [t for t in defn_b.tables if not t.is_axis],
+            ),
+            table_name,
+            address,
+        )
+        if match is None:
+            return {"success": False, "error": error}
+        table_a, table_b = match.table_a, match.table_b
 
-        if table_a is None and table_b is None:
-            return {
-                "success": False,
-                "error": f"Table not found in either ROM: {table_name}",
-            }
         if table_a is None:
             return {
                 "success": False,
