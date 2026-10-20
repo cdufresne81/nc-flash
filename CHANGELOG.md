@@ -36,6 +36,7 @@ All notable changes to NC Flash are documented here.
 - **Fan temperature thresholds now store the temperature you type (#172).** The fan ECT threshold tables use an approximate formula to turn a typed temperature into the stored value. Below about 75°C it was badly off: typing 60°C stored a value that the ECU reads as 29°C, and 50°C read as −81°C. Higher up it was off by about 1°C either way, and by several degrees above 130°C. NC Flash now stores the value that reads back closest to what you typed, and Undo puts back the exact original value. If you set a fan threshold below 75°C in an earlier version, re-check it before flashing.
 - **Behind the scenes:** a release no longer fails to publish when its build reports a failure after every test has passed (#149, already fixed for the regular checks). No change to the app itself.
 - **Behind the scenes:** the development commit check no longer blocks commits to related repositories that have no changelog, or merge commits. No change to the app itself.
+- **Version history tells apart tables that share a name (#122).** When two tables have the same name, such as the two copies of "APP to TP Desired - 1st Gear", the list of changed tables now shows each one's address (for example "APP to TP Desired - 1st Gear @ 0xC8FFC"), the same way the compare window does. Before, the two rows looked identical.
 
 ## [v2.23.0] - 2026-10-15
 
