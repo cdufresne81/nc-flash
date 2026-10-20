@@ -86,6 +86,4 @@ Carried over from the old log on Sep 24, 2026. Verify an item is still open befo
   - Decision pending: `update_check._stream_to_file` duplicates `wican_http.download_to_file`'s read loop
     ("one pipeline copy"). Merging touches `src/ecu` → bench test. `wican_http` likely has the same
     blocking `read()` vs shutdown-wait problem the updater fixed with `read1` (untested).
-  - Low, unfixed: small TOCTOU between the last hash check and `os.startfile` in user-writable %TEMP%;
-    backport tags (e.g. v2.16.1 after v2.17.0) become GitHub "latest" (`make_latest` default);
-    installer.iss has no `[InstallDelete]`, so stale `_internal` files accumulate across upgrades.
+  - Low, unfixed: small TOCTOU between the last hash check and `os.startfile` in user-writable %TEMP%.
