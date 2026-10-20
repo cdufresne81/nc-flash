@@ -63,6 +63,22 @@ def test_shifted_read_is_suspect(genuine_rom, block_offset):
     assert check.status == SUSPECT, check.detail
 
 
+@pytest.mark.parametrize("block_offset", [0xFB400, 0xFB800])
+def test_shift_that_resyncs_in_the_unchecksummed_patch_area_is_suspect(
+    genuine_rom, block_offset
+):
+    # One late reply, then the read gets back in step: a single block holds a
+    # copy of the one before it. No checksum covers 0xFB000-0xFF3FF, where
+    # RomDrop patch code lives, so only the copied-block trace shows it.
+    rom = bytearray(genuine_rom)
+    rom[block_offset : block_offset + BLOCK_SIZE] = genuine_rom[
+        block_offset - BLOCK_SIZE : block_offset
+    ]
+    check = check_rom_read(bytes(rom))
+    assert check.status == SUSPECT, check.detail
+    assert f"0x{block_offset:06X}" in check.detail
+
+
 def test_flipped_byte_in_a_checksummed_region_is_suspect(genuine_rom):
     rom = bytearray(genuine_rom)
     rom[0x0E0E66] ^= 0x01

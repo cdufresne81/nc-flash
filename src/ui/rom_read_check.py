@@ -10,12 +10,14 @@ a garbage calibration on the ECU.
 The ECU ROM carries a checksum table (see ``src.ecu.checksum``) covering
 0x2000-0xFAFFF plus 0xFF800-0xFF9BF. A genuine read always matches it (the
 flash path writes corrected checksums, so whatever is on the ECU is
-self-consistent); a shifted read breaks it, or moves the table itself. Two
-cases the table can't see are checked by the shift's own trace, a 1 KB block
-that is an exact copy of the one before it: a shift starting at the
-second-to-last block (it only rewrites the last block, which the table doesn't
-cover), and one starting before 0x2000 (it moves the table and the generation
-byte, so the ROM no longer looks like an NC ROM at all).
+self-consistent); a shifted read breaks it, or moves the table itself. The
+whole ROM is also checked for the shift's own trace, a 1 KB block that is an
+exact copy of the one before it. That catches what the table can't see: a
+shift in the uncovered patch area (0xFB000-0xFF3FF) or the last block, one
+that re-syncs after a few blocks, and one starting before 0x2000 (it moves the
+table and the generation byte, so the ROM no longer looks like an NC ROM).
+A duplicated block of pure padding (e.g. 0xFF fill) can't be told apart from
+a genuine one, so such a shift is still missed.
 
 Read-only and pure: nothing here writes to the ROM or touches the ECU.
 """
@@ -136,12 +138,15 @@ def check_rom_read(rom: bytes) -> RomReadCheck:
             bad_regions=bad,
         )
 
-    # The table doesn't cover the last block: a shift starting at the block
-    # before it only rewrites that block, with a copy of the block before.
-    if _copied_block(rom, first=ROM_SIZE // BLOCK_SIZE - 1) is not None:
+    # The table doesn't cover everything: the last block, and the patch area
+    # 0xFB000-0xFF3FF (RomDrop code and tables). A shift there, or one that
+    # re-syncs after a few blocks, leaves the checksums intact but still
+    # leaves its trace: a block that is a copy of the block before it.
+    copied = _copied_block(rom)
+    if copied is not None:
         return RomReadCheck(
             SUSPECT,
-            "the last 1 KB of the ROM is a copy of the 1 KB before it",
+            f"the 1 KB at 0x{copied:06X} is a copy of the 1 KB before it",
             regions=len(ranges),
         )
 
