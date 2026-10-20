@@ -449,18 +449,26 @@ class WiCANLogSync(QObject):
         self.progress_changed.emit(done, total, name, rate_bps)
 
     @staticmethod
-    def _dispose(thread, worker):
-        """Common (thread, worker) teardown once a run's QThread has finished."""
-        if worker is not None:
-            worker.deleteLater()
+    def _join(thread):
+        """Wait for a finished worker thread to exit, then schedule its deletion.
+
+        ``QThread.finished`` is emitted by the worker thread just before it
+        exits, so its queued handler can run while that thread is still
+        shutting down: join it first (the wait is brief). The worker object is
+        never ``deleteLater()``-ed: the exiting worker thread would destroy it
+        (the crash fixed in the app updater) or, with no event loop left to run
+        the deferred delete, it would never be freed. The caller drops its last
+        reference after this call instead, so the worker is deleted on the GUI
+        thread once its thread has stopped.
+        """
         if thread is not None:
+            thread.wait()
             thread.deleteLater()
 
     def _on_thread_finished(self):
-        thread, worker = self._thread, self._worker
+        self._join(self._thread)
         self._thread = None
-        self._worker = None
-        self._dispose(thread, worker)
+        self._worker = None  # last reference: deleted here, on this thread
         self.running_changed.emit(False)
 
     # --- inventory-check signal handlers (GUI thread) -----------------------
@@ -491,8 +499,7 @@ class WiCANLogSync(QObject):
         self.inventory_failed.emit(message)
 
     def _on_check_thread_finished(self):
-        thread, worker = self._check_thread, self._check_worker
+        self._join(self._check_thread)
         self._check_thread = None
-        self._check_worker = None
-        self._dispose(thread, worker)
+        self._check_worker = None  # last reference: deleted here, on this thread
         self.checking_changed.emit(False)

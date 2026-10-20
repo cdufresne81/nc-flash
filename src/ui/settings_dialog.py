@@ -1762,13 +1762,22 @@ class SettingsDialog(QDialog):
         ``wait_ms`` is the join budget: it has to exceed the worker's own hard
         bound, which differs per job (the scan honours a cancel event promptly;
         the probe can be sitting in a socket wait for ~9 s).
+
+        The worker is not ``deleteLater()``-ed once its thread has stopped: a
+        stopped thread runs no event loop, so the deferred delete never ran and
+        every scan/probe leaked its worker. The caller drops its last reference
+        after this call instead, so the worker is deleted here, on the GUI
+        thread. Only if the join timed out (the worker may still be running)
+        does it keep the deferred delete, so it is never freed under itself.
         """
+        still_running = False
         if thread is not None:
             if thread.isRunning():
                 thread.quit()
-                thread.wait(wait_ms)
+                still_running = not thread.wait(wait_ms)
             thread.deleteLater()
-        if worker is not None:
+        if worker is not None and still_running:
+            logger.warning("Worker thread did not stop within %d ms", wait_ms)
             worker.deleteLater()
 
     def _present_scan_results(self, devices, host_edit):
