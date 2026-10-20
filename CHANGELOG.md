@@ -10,7 +10,7 @@ All notable changes to NC Flash are documented here.
 ### Fixed
 - **Behind the scenes:** a release no longer fails to publish when its build reports a failure after every test has passed (#149, already fixed for the regular checks). No change to the app itself.
 - **Behind the scenes:** the development commit check no longer blocks commits to related repositories that have no changelog, or merge commits. No change to the app itself.
-- **Windows updates now replace the old program files** — installing a new version used to leave the previous version's leftover program files in place, which could make the new version crash at start-up. Your settings, ROMs, reads and logs are kept: they are not stored in the program folder.
+- **Windows updates now replace the old program files** — installing a new version used to leave the previous version's leftover program files in place, which could, in rare cases, make the new version crash at start-up. Your settings, ROMs, reads and logs are kept: by default they are not stored in the program folder. Files you saved yourself inside the program folder's `_internal` folder are removed, unless an NC Flash setting or open ROM points there.
 - **Behind the scenes:** a fix release for an older version (for example 2.16.1 published after 2.17.0) no longer becomes GitHub's "latest" release, so the update check keeps offering the newest version.
 
 ## [v2.23.0] - 2026-10-15

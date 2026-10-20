@@ -247,6 +247,13 @@ jobs:
     name: Create GitHub Release
     needs: [build-windows, build-linux]
     runs-on: ubuntu-latest
+    # One publish at a time, so the "latest" decision below sees every release
+    # published before it (two tags pushed together could otherwise both decide
+    # "latest"). GitHub keeps only one waiting run per group: a third tag
+    # pushed at the same moment cancels the waiting one, which then needs a re-run.
+    concurrency:
+      group: release-publish
+      cancel-in-progress: false
 
     steps:
     - uses: actions/checkout@v5
@@ -315,7 +322,10 @@ jobs:
           echo "$TAG is the highest final release: marked latest."
         else
           echo "make_latest=false" >> "$GITHUB_OUTPUT"
-          echo "::notice::$TAG is older than the published $HIGHEST: not marked latest."
+          # A warning, not a notice: if $HIGHEST is a mistake (a typo tag),
+          # stable users stop getting updates until it is fixed. See
+          # docs/internal/RELEASE_CHANNELS.md.
+          echo "::warning title=Not marked latest::$TAG is older than the published $HIGHEST, which stays GitHub's latest release (what the stable updater offers)."
         fi
 
     - name: Create GitHub Release
@@ -328,4 +338,5 @@ jobs:
         # A tag like v2.18.0-rc1 must not become "latest": the in-app updater
         # only offers the latest final release.
         prerelease: ${{ contains(github.ref_name, '-') }}
-        make_latest: ${{ steps.latest.outputs.make_latest }}
+        # Never empty: an empty value would fall back to GitHub's default (true).
+        make_latest: ${{ steps.latest.outputs.make_latest || 'false' }}
