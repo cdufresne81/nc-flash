@@ -82,11 +82,6 @@ Carried over from the old log on Sep 24, 2026. Verify an item is still open befo
   data loss). A real fix needs per-document clean-state tracking across per-table undo stacks.
 - **Unconfirmed, from Jul 6**: retest-on-binary for B2/B5/B15 may already be done; decision D4
   (retire Option-A `WiCANFlasher`?) was still open.
-- **🔴 ECU window "Close anyway? → Yes" aborts a J2534 flash mid-write** (pre-existing, found in
-  the #104 updater review, confirmed by reading the code, not on hardware): `ecu_window.closeEvent` calls
-  `_current_manager.abort()` for ANY op (comment claims read-only only), and `flash_rom`'s ROM program
-  `transfer_data` honours `abort_check` → partly programmed ECU. The window may also be destroyed with
-  the flash QThread still running (`wait(3000)`). Needs its own change + WICAN_MANUAL_TEST-style bench pass.
 - **In-app updater (#104 item 1, shipped in v2.18.0) follow-ups:**
   - Decision pending: `update_check._stream_to_file` duplicates `wican_http.download_to_file`'s read loop
     ("one pipeline copy"). Merging touches `src/ecu` → bench test. `wican_http` likely has the same

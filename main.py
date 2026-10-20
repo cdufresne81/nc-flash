@@ -254,6 +254,18 @@ class MainWindow(
         Mixin methods named closeEvent are shadowed by QWidget's C++ slot in the MRO,
         so this explicit override is required.
         """
+        # Quitting with the ECU window mid-operation would destroy its worker
+        # thread (and cut a flash) without ever asking it. Let that window
+        # decide first: it refuses during a flash and asks during a read.
+        # close()'s return value is not trusted: Qt reports True for a close
+        # that arrives while the window's own close is still in progress
+        # (e.g. its refusal dialog is open). A worker still running vetoes.
+        ecu = self.ecu_window
+        if ecu is not None and ecu.is_busy:
+            ecu.close()
+            if ecu.operation_running:
+                event.ignore()
+                return
         self._handle_close(event)
         # Only after an accepted close (user may cancel on unsaved changes):
         # stop a running trip-log download so its QThread is never destroyed
@@ -268,9 +280,9 @@ class MainWindow(
     def _update_install_blocker(self):
         """Why the updater must not close the app right now, or None.
 
-        Closing during an ECU read or flash can brick the ECU, so any open ECU
-        Programming window blocks the install (not only a busy one: its close
-        path only asks "Close anyway?"). A running trip-log download blocks it
+        Closing during an ECU flash can brick the ECU, so any open ECU
+        Programming window blocks the install (not only a busy one), and the
+        user decides when to close it. A running trip-log download blocks it
         too, so the user decides when to stop it.
         """
         if self.ecu_window is not None:
@@ -1605,8 +1617,8 @@ class MainWindow(
 
     def _on_ecu_window_destroyed(self):
         self.ecu_window = None
-        # A destroyed ECU window cannot be mid-operation (close is confirmed
-        # while one runs) — release the Trip Logs hold.
+        # A destroyed ECU window cannot be mid-operation (its close is refused
+        # during a flash, and a read is stopped first) — release the hold.
         self._on_ecu_busy_changed(False)
         self._on_ecu_wican_link_changed(False)
 
