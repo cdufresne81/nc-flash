@@ -13,6 +13,7 @@ All notable changes to NC Flash are documented here.
 - **Behind the scenes:** a small tool now lists which beta changes are still waiting to reach Stable. No change to the app itself.
 
 ### Fixed
+- **Connecting to a WiCAN no longer crashes.** Beta 3 and 4 failed with an error as soon as you pressed Connect with a WiCAN adapter selected.
 - **A flash or ROM read no longer fails when the ECU is already unlocked.** If an earlier session left the ECU unlocked, it answers with an empty security seed; NC Flash sent a key anyway and the ECU refused it. NC Flash now skips the key in that case.
 - **Rare crash after an update check or update download.** NC Flash could close without warning when a check for updates (at startup or from Help > Check for Updates) or an update download finished (#154).
 - **Undo after Interpolate now puts the right values back in the ROM on the common scalings (#145).** On tables whose displayed value isn't the stored number as-is (lambda targets shown as `100/(100+x)`, `1-x` and similar), Undo used to show the original number on screen but write a wrong value to the ROM. The same fix applies when a failed write rolls an interpolation back. If you undid an interpolation on such a table in an earlier version and then saved, re-check that table against your last good copy.

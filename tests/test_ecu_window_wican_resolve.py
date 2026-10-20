@@ -84,7 +84,7 @@ class TestWifiSwitchWiring:
         s = _settings()
         s.get_ecu_adapter.return_value = "wican"
         log_sync = MagicMock()
-        log_sync.is_running.return_value = sync_running
+        log_sync.is_running = sync_running  # a property on the real object
         session = MagicMock()
         session.is_connected = connected
         win = SimpleNamespace(
