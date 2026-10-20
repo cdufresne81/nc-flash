@@ -142,6 +142,20 @@ def _eval_over_array(toexpr: str, raws: np.ndarray):
             return None
         if isinstance(node, ast.Name) and node.id != "x":
             return None
+        # Plain Python ints have no power limit: "9**9**9" would hang. Only a
+        # small constant exponent on a non-power base gets through.
+        if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Pow):
+            exponent = node.right
+            if (
+                not isinstance(exponent, ast.Constant)
+                or not isinstance(exponent.value, (int, float))
+                or abs(exponent.value) > 10
+                or (
+                    isinstance(node.left, ast.BinOp)
+                    and isinstance(node.left.op, ast.Pow)
+                )
+            ):
+                return None
     try:
         with np.errstate(all="ignore"):
             result = eval(  # noqa: S307
@@ -172,19 +186,6 @@ def _fast_forward_table(toexpr: str, storage_type: str):
         displays[sample], expected, rtol=1e-12, atol=0.0, equal_nan=True
     ):
         return None
-    displays = np.where(np.isfinite(displays), displays, np.nan)
-    displays.setflags(write=False)
-    return lo, displays
-
-
-@functools.lru_cache(maxsize=8)
-def _forward_table(toexpr: str, storage_type: str):
-    """Like _fast_forward_table, falling back to one evaluation per count."""
-    fast = _fast_forward_table(toexpr, storage_type)
-    if fast is not None:
-        return fast
-    lo, hi = STORAGE_TYPE_BOUNDS[STORAGE_TYPE_FORMAT[storage_type]]
-    displays = np.array([_exact_display(toexpr, r) for r in range(lo, hi + 1)])
     displays = np.where(np.isfinite(displays), displays, np.nan)
     displays.setflags(write=False)
     return lo, displays
@@ -361,14 +362,20 @@ class ScalingConverter:
         best = self._closest_raw(target, rounded)
         if best is None or not abs(self._display_of(best) - target) < error:
             return None
-        return best
+        # Only a count that genuinely displays the target: never a clamp to
+        # the far end of the range, or a far branch of a fitted curve that
+        # merely comes closest.
+        return best if self._represents(best, target) else None
 
     def _closest_raw(self, target: float, rounded: int):
         """Raw count whose display is closest to target (ties: nearest to
-        ``rounded``), with that display's error; None if nothing evaluates."""
-        table_lo, displays = _forward_table(
-            self._toexpr, self.scaling.storagetype.lower()
-        )
+        ``rounded``); None if the range can't be tabulated quickly (a custom
+        toexpr that isn't plain arithmetic: 65536 one-by-one evaluations
+        would freeze the window) or nothing evaluates."""
+        table = _fast_forward_table(self._toexpr, self.scaling.storagetype.lower())
+        if table is None:
+            return None
+        table_lo, displays = table
         with np.errstate(invalid="ignore"):
             errors = np.abs(displays - target)
         if np.all(np.isnan(errors)):
@@ -378,27 +385,36 @@ class ScalingConverter:
 
     def _search_representable(self, target: float, rounded: int):
         """frexpr fell outside the storage range. Use the closest raw count
-        only if it really displays the target (within half a raw step);
-        otherwise the value can't be stored and is left for the caller to
-        reject, never clamped."""
+        only if it really displays the target; otherwise the value can't be
+        stored and is left for the caller to reject, never clamped."""
         best = self._closest_raw(target, rounded)
-        if best is None:
+        if best is None or not self._represents(best, target):
             return None
+        return best
+
+    def _represents(self, raw: int, target: float) -> bool:
+        """True if ``raw`` is the count that displays ``target``: strictly
+        within half a raw step, measured on the side the target lies.
+
+        With an exact inverse, a value beyond the storage range is always at
+        least half a step past the edge count, so it is never accepted.
+        """
         lo, hi = STORAGE_TYPE_BOUNDS[
             STORAGE_TYPE_FORMAT[self.scaling.storagetype.lower()]
         ]
-        shown = self._display_of(best)
-        steps = [
-            abs(self._display_of(j) - shown)
-            for j in (best - 1, best + 1)
-            if lo <= j <= hi
-        ]
-        steps = [d for d in steps if np.isfinite(d)]
-        # Strictly under half a step: with an exact inverse an out-of-range
-        # value is always at least that far from the edge count.
-        if not steps or not abs(shown - target) < min(steps) / 2:
-            return None
-        return best
+        shown = self._display_of(raw)
+        error = abs(shown - target)
+        neighbours = [self._display_of(j) for j in (raw - 1, raw + 1) if lo <= j <= hi]
+        neighbours = [d for d in neighbours if np.isfinite(d) and d != shown]
+        if not np.isfinite(error) or not neighbours:
+            return False
+        between = [d for d in neighbours if min(d, shown) <= target <= max(d, shown)]
+        step = (
+            abs(between[0] - shown)
+            if between
+            else min(abs(d - shown) for d in neighbours)
+        )
+        return error < step / 2
 
     def _eval_expr(
         self,

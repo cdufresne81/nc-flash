@@ -14,7 +14,9 @@ import pytest
 
 from src.core.definition_parser import load_definition
 from src.core.rom_definition import Scaling
-from src.core.rom_reader import ScalingConverter, _forward_table
+import time
+
+from src.core.rom_reader import ScalingConverter, _eval_over_array, _fast_forward_table
 
 FAN_ECT = Scaling(
     name="FAN_ECT",
@@ -48,7 +50,9 @@ def _half_step(conv, raw):
     )
 
 
-@pytest.mark.parametrize("typed", [50, 60, 64, 70, 75, 90, 110, 120, 150])
+@pytest.mark.parametrize(
+    "typed", [50, 60, 64, 70, 75, 90, 110, 120, 150, 168.47, 169.77, 175.12, 179.29]
+)
 def test_fan_ect_typed_value_reads_back_within_half_a_step(typed):
     conv = ScalingConverter(FAN_ECT)
     raw = round(conv.from_display(float(typed)))
@@ -106,7 +110,7 @@ def test_float_tables_are_untouched():
 
 def test_forward_table_matches_to_display():
     conv = ScalingConverter(FAN_ECT)
-    lo, displays = _forward_table(conv._toexpr, "uint16")
+    lo, displays = _fast_forward_table(conv._toexpr, "uint16")
     for raw in (0, 1, 77, 186, 275, 699, 65535):
         assert displays[raw - lo] == pytest.approx(_shown(conv, raw), rel=1e-12)
 
@@ -138,3 +142,21 @@ def test_bundled_exact_scalings_give_the_same_raw_as_before(scaling):
         for typed in (shown, shown + 1e-3, shown * 1.0003 + 0.01):
             before = conv._eval_expr(conv._frexpr, None, typed, "from display")
             assert round(conv.from_display(typed)) == round(before)
+
+
+def test_custom_scaling_that_cannot_be_tabulated_does_not_freeze():
+    """A toexpr that isn't plain arithmetic can't be tabulated in one pass;
+    the search is skipped instead of evaluating 65536 values one by one."""
+    sc = _scaling("x*0.1 if x < 30000 else x*0.1", "x*20", "int16")
+    conv = ScalingConverter(sc)
+    start = time.perf_counter()
+    raw = conv.from_display(5000.0)  # frexpr: 100000, out of range
+    assert time.perf_counter() - start < 0.5
+    assert raw == 100000.0  # left for the caller to reject
+
+
+def test_array_evaluator_refuses_unbounded_powers():
+    raws = np.arange(4, dtype=float)
+    assert _eval_over_array("x*0+9**9**9", raws) is None
+    assert _eval_over_array("x**100", raws) is None
+    assert _eval_over_array("x**2", raws) is not None
