@@ -47,7 +47,12 @@ from src.ecu.dtc import dedup_dtcs
 from src.ui.error_helpers import ecu_error_message
 from src.ui.log_console import LogConsole
 from src.ui.wican_ap_switch import WiCANApSwitch
-from src.ui.rom_read_check import UNVERIFIED, RomReadCheck, check_rom_read
+from src.ui.rom_read_check import (
+    UNVERIFIED,
+    RomReadCheck,
+    check_rom_read,
+    suspect_image_reason,
+)
 from src.ui import theme
 
 logger = logging.getLogger(__name__)
@@ -1285,6 +1290,48 @@ class ECUProgrammingWindow(QMainWindow):
             return
         self._start_flash("scan_ram")
 
+    def _confirm_flash_image(self, source_name: str | None, rom_data) -> bool:
+        """Warn before flashing a ROM that looks like a corrupt read (issue 169).
+        True = go ahead.
+
+        A read that failed its corruption check is saved with ``SUSPECT`` in its
+        name, and a shifted read leaves a 1 KB block that copies the one before
+        it (this also catches a renamed one). Flashing such a file "works", since
+        the flash corrects the checksums, and puts a broken calibration on the
+        ECU. The user may know better (e.g. compared two reads), so they can
+        continue, but only by choosing to: Cancel is the default.
+        """
+        reason = suspect_image_reason(source_name, bytes(rom_data or b""))
+        if reason is None:
+            return True
+        logger.warning(
+            "Flash of %s held for confirmation: it looks like a corrupt read (%s)",
+            source_name,
+            reason,
+        )
+        reply = QMessageBox.warning(
+            self,
+            "Suspect ROM Read: Do Not Flash",
+            f"{source_name or 'This ROM'} looks like a corrupt ECU read: "
+            f"{reason}.\n\n"
+            "It may hold shifted or corrupt data. Flashing it would put that "
+            "data on the ECU, which can leave the car running badly or not "
+            "at all.\n\n"
+            "Do not flash this file. Read the ECU again and use a read that "
+            "passes the check.\n\n"
+            "Only continue if you have verified this file yourself, for example "
+            "by comparing it with a second, clean read.\n\n"
+            "Flash it anyway?",
+            QMessageBox.Yes | QMessageBox.Cancel,
+            QMessageBox.Cancel,
+        )
+        if reply != QMessageBox.Yes:
+            logger.info("Flash cancelled: suspect ROM read")
+            self._guard_override = False  # an RPM-gate override covers one flash
+            return False
+        logger.warning("Operator chose to flash suspect ROM %s anyway", source_name)
+        return True
+
     def _build_flash_driver(self, operation: str, source_name: str | None = None):
         """Select and prepare the flash/read driver for the current adapter.
 
@@ -1380,7 +1427,16 @@ class ECUProgrammingWindow(QMainWindow):
 
         ``source_name`` (kept out of ``**kwargs`` so it is not forwarded to the
         worker) names the staged SD image for the WiCAN write path.
+
+        Every flash passes here, so this is where a ROM that looks like a
+        corrupt read is stopped (issue 169): see :meth:`_confirm_flash_image`.
         """
+        if operation in ("flash", "dynamic_flash") and not self._confirm_flash_image(
+            source_name, kwargs.get("rom_data")
+        ):
+            self._ecu_busy = False
+            self._update_action_states()
+            return
         # A background trip-log download shares the WiCAN's SD/CPU/WiFi with
         # every ECU operation routed through the device — stop it first (fast
         # abort between chunks; completed files remain, the rest re-fetch on
