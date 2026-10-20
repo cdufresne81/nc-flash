@@ -40,6 +40,16 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
 Name: "binassoc"; Description: "Associate .bin files with NC Flash"; GroupDescription: "File associations:"; Flags: unchecked
 
+[InstallDelete]
+; Runs before [Files] copies the new build. Clears the previous version's
+; bundled runtime so a DLL or .pyd that the new build no longer ships can't
+; be loaded by it. _internal holds only files this installer put there:
+; settings, ROMs, reads and logs live in %APPDATA%\NCFlash, ~\.nc-flash and
+; the registry, never under {app}. ShouldClearRuntime (below) skips it unless
+; this upgrades an existing NC Flash install, and when a folder setting
+; points inside _internal.
+Type: filesandordirs; Name: "{app}\_internal"; Check: ShouldClearRuntime
+
 [Files]
 Source: "..\dist\NCFlash\{#MyAppExeName}"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\dist\NCFlash\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
@@ -58,4 +68,46 @@ Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; IconFilen
 
 [Run]
 Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#StringChange(MyAppName, '&', '&&')}}"; Flags: nowait postinstall skipifsilent
+
+[Code]
+const
+  // Where NC Flash keeps its folder settings (QSettings "NCFlash", "NCFlash").
+  SettingsPathsKey = 'Software\NCFlash\NCFlash\paths';
+
+function IsInsideDir(Path, Dir: String): Boolean;
+begin
+  StringChangeEx(Path, '/', '\', True);
+  Path := Lowercase(AddBackslash(Path));
+  Dir := Lowercase(AddBackslash(Dir));
+  Result := Copy(Path, 1, Length(Dir)) = Dir;
+end;
+
+// Check for the [InstallDelete] entry: clear {app}\_internal only when it is
+// an earlier NC Flash's runtime and no NC Flash folder setting (workspace,
+// ROMs, definitions, ...) points inside it. Otherwise leave it as it is.
+function ShouldClearRuntime: Boolean;
+var
+  Internal, Value: String;
+  Names: TArrayOfString;
+  I: Integer;
+begin
+  Result := False;
+  if not FileExists(ExpandConstant('{app}\{#MyAppExeName}')) then
+  begin
+    Log('No earlier NC Flash in this folder: _internal left alone.');
+    Exit;
+  end;
+  Internal := ExpandConstant('{app}\_internal');
+  if RegGetValueNames(HKCU, SettingsPathsKey, Names) then
+    for I := 0 to GetArrayLength(Names) - 1 do
+      if RegQueryStringValue(HKCU, SettingsPathsKey, Names[I], Value) and
+         IsInsideDir(Value, Internal) then
+      begin
+        Log('Setting ' + Names[I] + ' points inside _internal (' + Value +
+            '): _internal left alone.');
+        Exit;
+      end;
+  Log('Clearing the previous runtime in ' + Internal);
+  Result := True;
+end;
 
