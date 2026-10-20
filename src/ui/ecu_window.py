@@ -1479,8 +1479,10 @@ class ECUProgrammingWindow(QMainWindow):
                 wican_released = self._end_session_after_flash()
                 self._progress_state.setText("Flash complete")
                 self._progress_detail.setText(
-                    "The ECU has restarted. NC Flash has disconnected, so you can "
-                    "unplug or drive. Click Connect to reconnect."
+                    "The ECU restarts on its own. To be sure the new calibration "
+                    "is running, turn the key OFF, then ON, before starting the "
+                    "engine. NC Flash has disconnected, so you can unplug the "
+                    "adapter. Click Connect to reconnect."
                 )
                 QTimer.singleShot(
                     300,
@@ -1489,17 +1491,16 @@ class ECUProgrammingWindow(QMainWindow):
                         "Flash Complete",
                         "The ROM was written and every block was confirmed by the "
                         "ECU.\n\n"
-                        "The ECU reboots on its own after a valid flash, so you do "
-                        "not need to cycle the ignition — but it is recommended: turn "
-                        "the key OFF, then back ON to be sure the new calibration "
-                        "boots cleanly.\n\n"
+                        "The ECU restarts on its own after a valid flash. To be "
+                        "sure the new calibration is running, turn the key OFF, "
+                        "then back ON, before starting the engine.\n\n"
                         "NC Flash has disconnected from the ECU"
                         + (
-                            " and handed the WiCAN back to its datalogger"
+                            " and released the WiCAN for its datalogger"
                             if wican_released
                             else ""
                         )
-                        + ". You can unplug the adapter or drive. To reconnect, "
+                        + ". You can unplug the adapter. To reconnect, "
                         "click Connect.",
                     ),
                 )

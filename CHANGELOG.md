@@ -5,7 +5,7 @@ All notable changes to NC Flash are documented here.
 ## [Unreleased]
 
 ### Changed
-- **NC Flash no longer reconnects after a successful flash.** Most of the time you flash and then go drive, so the ECU window now disconnects and says the flash is complete: you can unplug the adapter or drive straight away, and a WiCAN goes back to logging the drive instead of staying reserved for NC Flash. Click Connect if you want to reconnect. After a ROM read, a RAM read or a failed flash, NC Flash still reconnects as before.
+- **NC Flash no longer reconnects after a successful flash.** Most of the time you flash and then go drive, so the ECU window now disconnects and says the flash is complete: you can unplug the adapter (turn the key off and on before starting the engine), and a WiCAN goes back to logging the drive instead of staying reserved for NC Flash. Click Connect if you want to reconnect. After a ROM read, a RAM read or a failed flash, NC Flash still reconnects as before.
 - **Behind the scenes:** a small tool now lists which beta changes are still waiting to reach Stable. No change to the app itself.
 
 ### Fixed

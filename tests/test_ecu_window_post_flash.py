@@ -94,6 +94,9 @@ def _session(adapter: str, state=ECUSessionState.BUSY):
 
 def _window(qtbot, connects, adapter: str, session):
     window = ECUProgrammingWindow(_MainWindow(adapter))
+    # On dev, closing the window offers to rejoin the previous Wi-Fi, which
+    # talks to the OS Wi-Fi service. Keep that out of these tests.
+    window._ap_switch = MagicMock()
     qtbot.addWidget(window)
     # Let the window's connect-on-open fire, then count from zero.
     qtbot.waitUntil(lambda: len(connects) == 1, timeout=2000)
@@ -144,7 +147,8 @@ def test_successful_flash_ends_session_and_done_does_not_reconnect(
 
     _assert_session_released(session, adapter, mocks)
     assert window._progress_state.text() == "Flash complete"
-    assert "unplug or drive" in window._progress_detail.text()
+    assert "unplug the adapter" in window._progress_detail.text()
+    assert "has restarted" not in window._progress_detail.text()
     assert window._conn_label.text() == "Disconnected — flash complete"
     assert not window._btn_done.isHidden()
     assert not window._poll_timer.isActive()
@@ -183,6 +187,7 @@ def test_successful_flash_closes_a_session_the_flash_did_not_release(qtbot, conn
     _assert_session_released(session, "wican", mocks)
     window._btn_done.click()
     assert connects == []
+    qtbot.wait(400)  # let the "Flash Complete" timer fire under this test's patch
 
 
 def test_successful_flash_never_closes_a_busy_session(qtbot, connects):
@@ -197,6 +202,7 @@ def test_successful_flash_never_closes_a_busy_session(qtbot, connects):
     assert session.state == ECUSessionState.BUSY
     session._wican_datalog.release_bus.assert_not_called()
     session._transport.close.assert_not_called()
+    qtbot.wait(400)  # let the "Flash Complete" timer fire under this test's patch
 
 
 @pytest.mark.parametrize("adapter", ["wican", "j2534"])
