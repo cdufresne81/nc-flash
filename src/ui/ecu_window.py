@@ -55,6 +55,16 @@ CONDITION_POLL_INTERVAL = 5000
 # disconnects. The reads run on the UI thread, so polling a silent ECU would
 # freeze the window for each read's timeout, every poll.
 POLL_MISSES_BEFORE_DISCONNECT = 2
+#: Operations that may be aborted: they only READ the ECU, so stopping one
+#: changes nothing on it. Every other operation (a flash, and any operation
+#: added later) changes the ECU and must run to the end: an abort mid-write
+#: leaves a partly programmed ECU that cannot boot until it is reflashed.
+ABORTABLE_OPERATIONS = frozenset({"read", "scan_ram"})
+#: How long closing the window waits for an aborted read to stop. The abort is
+#: checked between blocks, so a healthy link stops in well under a second; a
+#: block stuck in its retries can take longer, and then the close is refused
+#: (the window is never destroyed with the worker thread still running).
+CLOSE_JOIN_MS = 10000
 
 
 # --- Workers ---
@@ -1318,7 +1328,7 @@ class ECUProgrammingWindow(QMainWindow):
         self._progress_state.setStyleSheet("font-weight: bold; font-size: 13px;")
         self._progress_detail.setText("")
         # Only allow abort during read-only ops — aborting a flash risks bricking the ECU
-        allow_abort = operation in ("read", "scan_ram")
+        allow_abort = operation in ABORTABLE_OPERATIONS
         self._btn_abort.setEnabled(allow_abort)
         self._btn_abort.setVisible(allow_abort)
         self._btn_done.setVisible(False)
@@ -1359,7 +1369,7 @@ class ECUProgrammingWindow(QMainWindow):
             pass  # No previous connections
         # Only read-only FlashManager ops expose abort; WiCANSdFlasher (write)
         # does not, and abort is disabled for writes anyway (aborting risks a brick).
-        if hasattr(manager, "abort"):
+        if allow_abort and hasattr(manager, "abort"):
             self._btn_abort.clicked.connect(manager.abort)
 
         thread.started.connect(worker.run)
@@ -1502,6 +1512,41 @@ class ECUProgrammingWindow(QMainWindow):
         if thread and thread.isRunning():
             thread.quit()
             thread.wait(3000)
+
+    @property
+    def operation_running(self) -> bool:
+        """True while an operation's worker thread is running."""
+        return self._flash_thread is not None and self._flash_thread.isRunning()
+
+    @property
+    def write_in_progress(self) -> bool:
+        """True while a worker operation that changes the ECU (a flash) runs.
+
+        Anything not in ``ABORTABLE_OPERATIONS`` counts as a write, so an
+        operation added later is protected until it is explicitly marked
+        read-only. Such an operation must never be aborted or have its session
+        torn down, and the window must not close under it.
+        """
+        return (
+            self.operation_running
+            and self._current_operation not in ABORTABLE_OPERATIONS
+        )
+
+    def _join_flash_thread(self, timeout_ms: int) -> bool:
+        """Join the running operation's thread (GUI thread). True once stopped.
+
+        Used after a read-only operation was aborted. ``quit()`` first: the
+        thread's own ``worker.finished -> thread.quit`` hop is queued to this
+        (blocked) thread, so without it ``wait()`` would always time out. The
+        wait is bounded because an abort is only seen between blocks; on a
+        timeout the caller keeps the window, so the QThread is never destroyed
+        while it still runs.
+        """
+        thread = self._flash_thread
+        if thread is None or not thread.isRunning():
+            return True
+        thread.quit()
+        return thread.wait(timeout_ms)
 
     def _on_progress_done(self):
         """Return to actions page and reconnect if needed."""
@@ -1689,8 +1734,22 @@ class ECUProgrammingWindow(QMainWindow):
     # --- Cleanup ---
 
     def closeEvent(self, event):
+        if self.write_in_progress:
+            # Never abort a write and never tear down the session under it: an
+            # aborted J2534/OBDX flash leaves a partly programmed ECU, and
+            # closing the transport under a WiCAN SD-staged flash cuts its
+            # monitoring and hands the bus back mid-flash. The user waits.
+            QMessageBox.warning(
+                self,
+                "Flash in Progress",
+                "A flash is in progress. Closing now could leave the ECU "
+                "unbootable. Wait for it to finish.",
+            )
+            event.ignore()
+            return
         self._poll_timer.stop()
         if self._flash_thread and self._flash_thread.isRunning():
+            # Only a read-only operation gets here (write_in_progress above).
             reply = QMessageBox.question(
                 self,
                 "Operation in Progress",
@@ -1701,14 +1760,23 @@ class ECUProgrammingWindow(QMainWindow):
             if reply != QMessageBox.Yes:
                 event.ignore()
                 return
-            # Force-stop the running operation (read-only FlashManager ops only;
-            # WiCANSdFlasher writes have no abort — once staged, the firmware
-            # drives the flash to completion on its own).
             if self._current_manager and hasattr(self._current_manager, "abort"):
                 self._current_manager.abort()
-            if self._flash_thread and self._flash_thread.isRunning():
-                self._flash_thread.quit()
-                self._flash_thread.wait(3000)
+            if not self._join_flash_thread(CLOSE_JOIN_MS):
+                # Still inside a block's retries: keep the window (and the
+                # session the worker is using) until the thread has stopped.
+                logger.warning(
+                    "ECU operation did not stop within %d ms; close refused",
+                    CLOSE_JOIN_MS,
+                )
+                QMessageBox.information(
+                    self,
+                    "Still Stopping",
+                    "The ECU operation is still stopping. Close the window "
+                    "again in a moment.",
+                )
+                event.ignore()
+                return
         if self._session:
             self._session.cleanup()
             self._session = None
