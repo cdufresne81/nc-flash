@@ -4,12 +4,17 @@ All notable changes to NC Flash are documented here.
 
 ## [Unreleased]
 
-### Changed
-- **Behind the scenes:** a small tool now lists which beta changes are still waiting to reach Stable. No change to the app itself.
+## [v2.23.1] - 2026-10-24
+
+**Urgent safety fix: update before using Patch ROM.** Earlier versions could produce a patched ROM that bricks the ECU when flashed.
 
 ### Fixed
+- **Patch ROM now refuses any patch it can't verify.** Since v2.3.0, the installed app was missing the database that checks a patch against its stock ROM, so Patch ROM applied any patch file to any ROM and reported success with only a small warning. A wrong combination (for example an LFJ1ED ROM with the LFJ1EE patch, or a calibration RomDrop has no patch for) gave a scrambled ROM that bricks the ECU when flashed, and an edited or already-patched ROM gave a corrupted one. Patch ROM now works only with an unmodified factory ROM and the exact patch made for it, just like RomDrop, and saves nothing otherwise. **Made a patched ROM with an earlier version and haven't flashed it? Don't flash it. Patch your original stock ROM again with this version and flash the new file; if this version refuses it, don't flash that combination at all.**
 - **Behind the scenes:** a release no longer fails to publish when its build reports a failure after every test has passed (#149, already fixed for the regular checks). No change to the app itself.
 - **Behind the scenes:** the development commit check no longer blocks commits to related repositories that have no changelog, or merge commits. No change to the app itself.
+
+### Changed
+- **Behind the scenes:** a small tool now lists which beta changes are still waiting to reach Stable. No change to the app itself.
 
 ## [v2.23.0] - 2026-10-15
 

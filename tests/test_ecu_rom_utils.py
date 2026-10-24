@@ -23,6 +23,8 @@ from src.ecu.constants import (
     ROM_FLASH_START_MIN,
     DYNAMIC_THRESHOLD,
 )
+from src.ecu import rom_utils
+from src.ecu.crc_database import CRCDatabase, CRCEntry
 from src.ecu.exceptions import ROMValidationError, VehicleGenerationError
 
 EXAMPLES_DIR = Path(__file__).parent.parent / "examples"
@@ -269,6 +271,36 @@ class TestPatchRomGoldenFile:
         assert result.crc_warnings == []
 
 
+def _entry_for(cal_id: bytes, stock: bytes, patch: bytes) -> CRCEntry:
+    """A CRC database entry that the given stock ROM + patch pass exactly."""
+    patched = bytearray(stock)
+    patched[0xFFB00:0xFFB08] = b"\xff" * 8
+    for i in range(0x2000, ROM_SIZE):
+        patched[i] ^= patch[i]
+    return CRCEntry(
+        cal_id,
+        get_calibration_crc(stock, clear_flash_counter=True),
+        get_calibration_crc(patch),
+        get_calibration_crc(bytes(patched)),
+    )
+
+
+def _use_crc_db(monkeypatch, *entries: CRCEntry):
+    """Make patch_rom() see a database holding only these entries."""
+    db = CRCDatabase()
+    db.entries = list(entries)
+    monkeypatch.setattr(rom_utils, "_load_crc_database", lambda: db)
+
+
+def _with_cal_id(rom: bytes, cal_id: bytes) -> bytes:
+    """Rewrite the cal-ID wherever get_cal_id() would find one."""
+    rom = bytearray(rom)
+    for offset in CAL_ID_OFFSETS:
+        if rom[offset : offset + 1] == b"L":
+            rom[offset : offset + 6] = cal_id
+    return bytes(rom)
+
+
 class TestPatchRomValidation:
     """Test patch_rom() input validation."""
 
@@ -307,10 +339,11 @@ class TestPatchRomValidation:
         with pytest.raises(ROMValidationError, match="first byte is not 'L'"):
             patch_rom(self._make_stock_rom(), patch)
 
-    def test_xor_identity(self):
+    def test_xor_identity(self, monkeypatch):
         """Patching with all-zeros (except header) returns the stock ROM unchanged in the XOR region."""
         stock = self._make_stock_rom()
         patch = self._make_patch()  # L + zeros
+        _use_crc_db(monkeypatch, _entry_for(b"LTEST1", stock, patch))
 
         result = patch_rom(stock, patch)
 
@@ -385,3 +418,131 @@ class TestPatchRomCrossCalReject:
         """Applying LF9VEB patch to LF5AEG stock ROM raises ROMValidationError."""
         with pytest.raises(ROMValidationError, match="Patch file does not match"):
             patch_rom(STOCK_ROM_5AEG.read_bytes(), PATCH_FILE.read_bytes())
+
+
+class TestPatchRomRefusesUnverified:
+    """Every verification failure must block the patch, never just warn.
+
+    A patch is an XOR mask for ONE exact factory ROM. Applied to anything else
+    it scrambles the ECU program, and flashing that bricks the ECU. Releases
+    up to v2.23.0 only warned (and shipped without the database), so a user
+    could patch e.g. an LFJ1ED ROM with the LFJ1EE patch and get "patched
+    successfully".
+    """
+
+    def _stock(self):
+        rom = bytearray(ROM_SIZE)
+        rom[CAL_ID_OFFSETS[1] : CAL_ID_OFFSETS[1] + 6] = b"LTEST1"
+        rom[0x3000:0x3100] = bytes(range(256))  # "program code"
+        return bytes(rom)
+
+    def _patch(self):
+        patch = bytearray(ROM_SIZE)
+        patch[0] = ord("L")
+        patch[0x3000:0x3010] = b"\x5a" * 16
+        patch[0xFFC4C:0xFFC50] = b"\x21\x05\x30\x00"  # ROM ID
+        return bytes(patch)
+
+    def test_verified_patch_succeeds(self, monkeypatch):
+        stock, patch = self._stock(), self._patch()
+        _use_crc_db(monkeypatch, _entry_for(b"LTEST1", stock, patch))
+        result = patch_rom(stock, patch)
+        assert result.crc_verified is True
+        assert result.crc_warnings == []
+
+    def test_missing_database_blocks(self, monkeypatch):
+        monkeypatch.setattr(rom_utils, "_load_crc_database", lambda: None)
+        with pytest.raises(ROMValidationError, match="verification database"):
+            patch_rom(self._stock(), self._patch())
+
+    def test_unknown_cal_id_blocks(self, monkeypatch):
+        """The LFJ1ED case: a calibration RomDrop has no patch for."""
+        stock, patch = self._stock(), self._patch()
+        _use_crc_db(monkeypatch, _entry_for(b"LOTHER", stock, patch))
+        with pytest.raises(ROMValidationError, match="No patch exists for .*LTEST1"):
+            patch_rom(stock, patch)
+
+    def test_modified_stock_rom_blocks(self, monkeypatch):
+        stock, patch = self._stock(), self._patch()
+        _use_crc_db(monkeypatch, _entry_for(b"LTEST1", stock, patch))
+        edited = bytearray(stock)
+        edited[0x3005] ^= 0xFF
+        with pytest.raises(ROMValidationError, match="not an unmodified factory"):
+            patch_rom(bytes(edited), patch)
+
+    def test_wrong_patch_blocks(self, monkeypatch):
+        stock, patch = self._stock(), self._patch()
+        _use_crc_db(monkeypatch, _entry_for(b"LTEST1", stock, patch))
+        other = bytearray(patch)
+        other[0x3020] = 0x77
+        with pytest.raises(ROMValidationError, match="Patch file does not match"):
+            patch_rom(stock, bytes(other))
+
+    def test_patched_crc_mismatch_blocks(self, monkeypatch):
+        stock, patch = self._stock(), self._patch()
+        entry = _entry_for(b"LTEST1", stock, patch)
+        entry.patched_cal_crc ^= 1
+        _use_crc_db(monkeypatch, entry)
+        with pytest.raises(ROMValidationError, match="failed verification"):
+            patch_rom(stock, patch)
+
+
+_has_9veb_pair = STOCK_ROM.exists() and PATCH_FILE.exists()
+_skip_no_9veb_pair = pytest.mark.skipif(
+    not _has_9veb_pair, reason="Requires lf9veb.bin and lf9veb.patch"
+)
+
+
+class TestPatchRomBundledDatabase:
+    """The real romdrop.crc against the committed LF9VEB stock ROM + patch."""
+
+    def test_bundled_database_loads(self):
+        db = rom_utils._load_crc_database()
+        assert db is not None and len(db) == 103
+        assert db.find_entry(b"LFJ1EE") is not None
+        assert db.find_entry(b"LFJ1ED") is None
+
+    @_skip_no_9veb_pair
+    def test_genuine_pair_verifies(self):
+        result = patch_rom(STOCK_ROM.read_bytes(), PATCH_FILE.read_bytes())
+        assert result.crc_verified is True
+
+    @_skip_no_9veb_pair
+    def test_unlisted_cal_id_blocks(self):
+        """A ROM whose cal-ID has no RomDrop patch (LFJ1ED) is refused."""
+        stock = _with_cal_id(STOCK_ROM.read_bytes(), b"LFJ1ED")
+        with pytest.raises(ROMValidationError, match="No patch exists for .*LFJ1ED"):
+            patch_rom(stock, PATCH_FILE.read_bytes())
+
+    @_skip_no_9veb_pair
+    def test_rom_not_matching_listed_cal_id_blocks(self):
+        """A ROM claiming a listed cal-ID (LFJ1EE) that isn't its factory image is refused.
+
+        (A genuine ROM given another calibration's patch is
+        TestPatchRomRefusesUnverified.test_wrong_patch_blocks.)
+        """
+        stock = _with_cal_id(STOCK_ROM.read_bytes(), b"LFJ1EE")
+        with pytest.raises(ROMValidationError, match="not an unmodified factory"):
+            patch_rom(stock, PATCH_FILE.read_bytes())
+
+    @_skip_no_9veb_pair
+    def test_car_read_rom_with_flash_counter_accepted(self):
+        """A stock ROM read from a car (nonzero flash counter) still patches, identically."""
+        stock = STOCK_ROM.read_bytes()
+        read_from_car = bytearray(stock)
+        read_from_car[0xFFB00:0xFFB08] = bytes(range(1, 9))
+        expected = patch_rom(stock, PATCH_FILE.read_bytes()).patched_rom
+        result = patch_rom(bytes(read_from_car), PATCH_FILE.read_bytes())
+        assert result.patched_rom == expected
+
+    @_skip_no_9veb_pair
+    def test_already_patched_rom_blocks(self):
+        once = patch_rom(STOCK_ROM.read_bytes(), PATCH_FILE.read_bytes())
+        with pytest.raises(ROMValidationError, match="not an unmodified factory"):
+            patch_rom(bytes(once.patched_rom), PATCH_FILE.read_bytes())
+
+
+def test_release_build_bundles_crc_database():
+    """The installer must ship romdrop.crc next to rom_utils (missing in <= v2.23.0)."""
+    spec = (Path(__file__).parent.parent / "packaging" / "NCFlash.spec").read_text()
+    assert "'src', 'ecu', 'romdrop.crc'), os.path.join('src', 'ecu')" in spec
