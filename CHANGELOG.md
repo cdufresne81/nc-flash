@@ -11,6 +11,7 @@ All notable changes to NC Flash are documented here.
 
 ### Changed
 - **NC Flash no longer reconnects after a successful flash.** Most of the time you flash and then go drive, so the ECU window now disconnects and says the flash is complete: you can unplug the adapter (turn the key off and on before starting the engine), and a WiCAN goes back to logging the drive instead of staying reserved for NC Flash. Click Connect if you want to reconnect. After a ROM read, a RAM read or a failed flash, NC Flash still reconnects as before.
+- **Behind the scenes:** every build now checks that Patch ROM's output is byte-for-byte identical to RomDrop's, using a ROM patched by RomDrop itself. No change to the app itself.
 
 ### Fixed
 - **Connecting to a WiCAN no longer crashes.** Beta 3 and 4 failed with an error as soon as you pressed Connect with a WiCAN adapter selected.
