@@ -199,9 +199,11 @@ class PatchResult:
 
 def _load_crc_database():
     """Load the bundled romdrop.crc database. Returns None if not found."""
-    from pathlib import Path
+    from src.utils.paths import get_app_root
 
-    crc_path = Path(__file__).parent / "romdrop.crc"
+    # Same root as the bundled examples/: the repo in a checkout, _MEIPASS when
+    # frozen (packaging/NCFlash.spec copies the file to src/ecu there).
+    crc_path = get_app_root() / "src" / "ecu" / "romdrop.crc"
     if not crc_path.is_file():
         return None
     try:
@@ -221,9 +223,10 @@ def patch_rom(stock_rom: bytes, patch_data: bytes) -> PatchResult:
     1. Validate both are 1MB
     2. Validate stock ROM has a valid cal-ID (starts with 'L')
     3. Validate patch data has a valid header (starts with 'L')
-    4. XOR patch onto stock ROM from offset 0x2000 to end
-    5. Extract cal-ID and ROM-ID from the result
-    6. Verify CRCs against romdrop.crc database
+    4. Require the cal-ID in romdrop.crc, the factory stock CRC and the patch CRC
+    5. XOR patch onto stock ROM from offset 0x2000 to end
+    6. Extract cal-ID and ROM-ID from the result
+    7. Require the patched calibration CRC
 
     Args:
         stock_rom: Factory/stock ROM data (1MB)
@@ -233,7 +236,7 @@ def patch_rom(stock_rom: bytes, patch_data: bytes) -> PatchResult:
         PatchResult with patched ROM, identifiers, CRCs, and verification status
 
     Raises:
-        ROMValidationError: If inputs fail validation
+        ROMValidationError: If inputs fail validation or any CRC check fails
     """
     if not validate_rom_size(stock_rom):
         raise ROMValidationError(
@@ -265,6 +268,38 @@ def patch_rom(stock_rom: bytes, patch_data: bytes) -> PatchResult:
     stock_crc = get_calibration_crc(stock_rom, clear_flash_counter=True)
     patch_crc = get_calibration_crc(patch_data)
 
+    # Every check below is a hard stop, as in romdrop. A patch is an XOR mask
+    # built for ONE exact factory ROM: applied to any other ROM it scrambles
+    # the ECU program, and flashing that result bricks the ECU. Never relax
+    # these to warnings.
+    cal_str = stock_cal_id.decode("ascii", errors="replace").rstrip("\x00")
+    db = _load_crc_database()
+    if db is None:
+        raise ROMValidationError(
+            "Patching is disabled: NC Flash's patch verification database "
+            "(romdrop.crc) is missing, so the result can't be checked. "
+            "Reinstall NC Flash."
+        )
+    entry = db.find_entry(stock_cal_id)
+    if entry is None:
+        raise ROMValidationError(
+            f"No patch exists for calibration {cal_str}. It isn't in the patch "
+            "database, so the result can't be verified and patching is blocked "
+            "to protect your ECU."
+        )
+    if stock_crc != entry.factory_crc:
+        raise ROMValidationError(
+            f"This is not an unmodified factory {cal_str} ROM "
+            f"(CRC 0x{stock_crc:08X}, expected 0x{entry.factory_crc:08X}). "
+            "Patch the original stock ROM, not an edited or already-patched one."
+        )
+    if patch_crc != entry.patch_crc:
+        raise ROMValidationError(
+            f"Patch file does not match cal-ID {cal_str}: "
+            f"CRC 0x{patch_crc:08X}, expected 0x{entry.patch_crc:08X}. "
+            f"Use the {cal_str} patch."
+        )
+
     # Clear the factory checksum area (romdrop sets rom[0xFFB00:0xFFB08] = 0xFFFFFFFF)
     patched = bytearray(stock_rom)
     patched[0xFFB00:0xFFB04] = b"\xff\xff\xff\xff"
@@ -279,44 +314,12 @@ def patch_rom(stock_rom: bytes, patch_data: bytes) -> PatchResult:
     cal_id = get_cal_id(patched)
     rom_id_str = get_rom_id(patched)
     patched_crc = get_calibration_crc(patched)
-
-    # Verify against CRC database
-    crc_verified = False
-    crc_warnings = []
-
-    db = _load_crc_database()
-    if db is None:
-        crc_warnings.append(
-            "CRC database (romdrop.crc) not found — skipping verification"
+    if patched_crc != entry.patched_cal_crc:
+        raise ROMValidationError(
+            f"The patched {cal_str} ROM failed verification "
+            f"(CRC 0x{patched_crc:08X}, expected 0x{entry.patched_cal_crc:08X}). "
+            "Nothing was saved."
         )
-    else:
-        entry = db.find_entry(stock_cal_id)
-        if entry is None:
-            crc_warnings.append(
-                f"Cal-ID {stock_cal_id!r} not found in CRC database — "
-                "cannot verify this calibration"
-            )
-        else:
-            all_ok = True
-            if stock_crc != entry.factory_crc:
-                crc_warnings.append(
-                    f"Stock ROM CRC mismatch: got 0x{stock_crc:08X}, "
-                    f"expected 0x{entry.factory_crc:08X}"
-                )
-                all_ok = False
-            if patch_crc != entry.patch_crc:
-                raise ROMValidationError(
-                    f"Patch file does not match cal-ID {stock_cal_id!r}: "
-                    f"CRC 0x{patch_crc:08X}, expected 0x{entry.patch_crc:08X}"
-                )
-            if patched_crc != entry.patched_cal_crc:
-                crc_warnings.append(
-                    f"Patched ROM CRC mismatch: got 0x{patched_crc:08X}, "
-                    f"expected 0x{entry.patched_cal_crc:08X}"
-                )
-                all_ok = False
-            if all_ok:
-                crc_verified = True
 
     return PatchResult(
         patched_rom=patched,
@@ -325,6 +328,5 @@ def patch_rom(stock_rom: bytes, patch_data: bytes) -> PatchResult:
         stock_crc=stock_crc,
         patch_crc=patch_crc,
         patched_crc=patched_crc,
-        crc_verified=crc_verified,
-        crc_warnings=crc_warnings,
+        crc_verified=True,
     )

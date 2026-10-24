@@ -11,7 +11,6 @@ All notable changes to NC Flash are documented here.
 
 ### Changed
 - **NC Flash no longer reconnects after a successful flash.** Most of the time you flash and then go drive, so the ECU window now disconnects and says the flash is complete: you can unplug the adapter (turn the key off and on before starting the engine), and a WiCAN goes back to logging the drive instead of staying reserved for NC Flash. Click Connect if you want to reconnect. After a ROM read, a RAM read or a failed flash, NC Flash still reconnects as before.
-- **Behind the scenes:** a small tool now lists which beta changes are still waiting to reach Stable. No change to the app itself.
 
 ### Fixed
 - **Connecting to a WiCAN no longer crashes.** Beta 3 and 4 failed with an error as soon as you pressed Connect with a WiCAN adapter selected.
@@ -39,11 +38,21 @@ All notable changes to NC Flash are documented here.
 - **Closing the ECU Programming window during a flash no longer aborts it.** Before, answering "Close anyway?" stopped the flash partway, which could leave the ECU unable to start until it was flashed again. The window now stays open and asks you to wait until the flash finishes; quitting NC Flash during a flash is refused the same way. Closing during a ROM read or RAM scan still asks first, then stops the read cleanly.
 - **A ROM read is now checked before you rely on it (#169)** — On a weak link, a late reply from the ECU could shift part of a ROM read without anyone noticing, and flashing that backup later would put a broken calibration on the ECU. After every ROM read, NC Flash now checks the ROM against its own checksums and looks for a block read twice. If either check fails, it warns you not to flash the file and to read the ROM again, and saves the file with SUSPECT in its name so the read isn't lost.
 - **A suspect ROM read can no longer be flashed by accident (#169)** — Flashing a file saved from a read that failed that check, or any ROM that shows a block read twice (even renamed), now stops with a warning and Cancel as the default. You can still flash it if you've verified it yourself, for example against a second read. Opening such a file shows a notice, and starting a project from one asks first. Normal edited ROMs are not affected.
-- **Behind the scenes:** a release no longer fails to publish when its build reports a failure after every test has passed (#149, already fixed for the regular checks). No change to the app itself.
-- **Behind the scenes:** the development commit check no longer blocks commits to related repositories that have no changelog, or merge commits. No change to the app itself.
 - **Version history tells apart tables that share a name (#122).** When two tables have the same name, such as the two copies of "APP to TP Desired - 1st Gear", the list of changed tables now shows each one's address (for example "APP to TP Desired - 1st Gear @ 0xC8FFC"), the same way the compare window does. Before, the two rows looked identical.
 - **Windows updates now replace the old program files** — installing a new version used to leave the previous version's leftover program files in place, which could, in rare cases, make the new version crash at start-up. Your settings, ROMs, reads and logs are kept: by default they are not stored in the program folder. Files you saved yourself inside the program folder's `_internal` folder are removed, unless an NC Flash setting or open ROM points there.
 - **Behind the scenes:** a fix release for an older version (for example 2.16.1 published after 2.17.0) no longer becomes GitHub's "latest" release, so the update check keeps offering the newest version.
+
+## [v2.23.1] - 2026-10-24
+
+**Urgent safety fix: update before using Patch ROM.** Earlier versions could produce a patched ROM that bricks the ECU when flashed.
+
+### Fixed
+- **Patch ROM now refuses any patch it can't verify.** Since v2.3.0, the installed app was missing the database that checks a patch against its stock ROM, so Patch ROM applied any patch file to any ROM and reported success with only a small warning. A wrong combination (for example an LFJ1ED ROM with the LFJ1EE patch, or a calibration RomDrop has no patch for) gave a scrambled ROM that bricks the ECU when flashed, and an edited or already-patched ROM gave a corrupted one. Patch ROM now works only with an unmodified factory ROM and the exact patch made for it, just like RomDrop, and saves nothing otherwise. **Made a patched ROM with an earlier version and haven't flashed it? Don't flash it. Patch your original stock ROM again with this version and flash the new file; if this version refuses it, don't flash that combination at all.**
+- **Behind the scenes:** a release no longer fails to publish when its build reports a failure after every test has passed (#149, already fixed for the regular checks). No change to the app itself.
+- **Behind the scenes:** the development commit check no longer blocks commits to related repositories that have no changelog, or merge commits. No change to the app itself.
+
+### Changed
+- **Behind the scenes:** a small tool now lists which beta changes are still waiting to reach Stable. No change to the app itself.
 
 ## [v2.23.0] - 2026-10-15
 
