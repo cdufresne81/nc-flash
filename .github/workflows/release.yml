@@ -105,6 +105,11 @@ jobs:
           Write-Error "NCFlash.exe not found"
           exit 1
         }
+        # Patch ROM refuses to run without its verification database
+        if (!(Test-Path "dist\NCFlash\_internal\src\ecu\romdrop.crc")) {
+          Write-Error "romdrop.crc not bundled: Patch ROM would be disabled"
+          exit 1
+        }
         Write-Output "Build verified: dist\NCFlash\NCFlash.exe"
       shell: pwsh
 
@@ -221,6 +226,11 @@ jobs:
       run: |
         if [ ! -f "dist/NCFlash/NCFlash" ]; then
           echo "ERROR: NCFlash binary not found"
+          exit 1
+        fi
+        # Patch ROM refuses to run without its verification database
+        if [ ! -f "dist/NCFlash/_internal/src/ecu/romdrop.crc" ]; then
+          echo "ERROR: romdrop.crc not bundled: Patch ROM would be disabled"
           exit 1
         fi
         echo "Build verified: dist/NCFlash/NCFlash"

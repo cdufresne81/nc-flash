@@ -139,3 +139,32 @@ def test_flash_mixin_does_not_open_when_declined():
         FlashMixin._on_patch_rom(host)
 
     host._open_rom_file.assert_not_called()
+
+
+def test_unverifiable_patch_writes_nothing(tmp_path):
+    """A ROM the database can't vouch for is refused before anything is saved."""
+    from src.ecu.constants import CAL_ID_OFFSETS
+
+    stock = bytearray(STOCK_ROM.read_bytes())
+    for offset in CAL_ID_OFFSETS:
+        if stock[offset : offset + 1] == b"L":
+            stock[offset : offset + 6] = b"LFJ1ED"  # no RomDrop patch exists
+    stock_path = tmp_path / "lfj1ed.bin"
+    stock_path.write_bytes(bytes(stock))
+
+    output = tmp_path / "patched.bin"
+    dlg = _armed_dialog(output)
+    dlg._stock_path = str(stock_path)
+
+    with (
+        patch.object(QMessageBox, "warning") as warning,
+        patch.object(QMessageBox, "exec") as success,
+    ):
+        dlg._apply_patch()
+
+    warning.assert_called_once()
+    assert "LFJ1ED" in warning.call_args.args[2]
+    success.assert_not_called()
+    assert not output.exists()
+    assert dlg.patched_rom_path is None
+    dlg.deleteLater()
