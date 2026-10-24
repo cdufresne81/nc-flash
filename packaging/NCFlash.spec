@@ -22,6 +22,9 @@ bridge_dir = os.path.join(repo_root, 'dist', 'j2534_bridge_32')
 extra_datas = [
     (os.path.join(repo_root, 'colormaps'), 'colormaps'),
     (os.path.join(repo_root, 'examples'), 'examples'),
+    # Patch verification database: Patch ROM refuses to run without it.
+    # rom_utils looks for it at <app root>/src/ecu/romdrop.crc.
+    (os.path.join(repo_root, 'src', 'ecu', 'romdrop.crc'), os.path.join('src', 'ecu')),
 ]
 if sys.platform == 'win32':
     if not os.path.isdir(bridge_dir):
