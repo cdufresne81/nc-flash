@@ -6,7 +6,7 @@ All notable changes to NC Flash are documented here.
 
 ### Added
 - **OBDX Pro adapter over USB.** Pick "OBDX Pro (USB)" in Settings > ECU > Adapter to read and flash ROMs, scan RAM, and read or clear DTCs with an OBDX Pro. Only the VX has been tested; the GT and FT are untested, and NC Flash says so before flashing with one. Windows needs no driver for it, and NC Flash looks for the adapter's COM port itself (you can also set it). A full flash takes about a minute; NC Flash asks for confirmation before each OBDX flash.
-- **Recovering from an interrupted flash.** If a flash was cut off partway (cable pulled, app closed), the ECU refuses the next one with "Conditions not correct". NC Flash now explains this and offers to reset the ECU, which writes nothing, so you can flash again. This applies to every adapter.
+- **Recovering from an interrupted flash.** If a flash was cut off partway (cable pulled, app closed), the ECU refuses the next one with "Conditions not correct". NC Flash now explains this and offers to reset the ECU, which writes nothing, so you can flash again. This covers the OBDX Pro and the Tactrix (J2534); WiCAN flashes are not covered yet.
 
 ### Changed
 - **Behind the scenes:** a small tool now lists which beta changes are still waiting to reach Stable. No change to the app itself.
