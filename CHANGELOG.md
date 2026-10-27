@@ -17,6 +17,7 @@ All notable changes to NC Flash are documented here.
 - **Behind the scenes:** every build now checks that Patch ROM's output is byte-for-byte identical to RomDrop's, using a ROM patched by RomDrop itself. No change to the app itself.
 
 ### Fixed
+- **The log panel no longer drops text.** Parts of a log message inside angle brackets (`<...>`) disappeared, and messages spanning several lines were run together on one line (#202). The log file was not affected.
 - **Connecting to a WiCAN no longer crashes.** Beta 3 and 4 failed with an error as soon as you pressed Connect with a WiCAN adapter selected.
 - **A flash or ROM read no longer fails when the ECU is already unlocked.** If an earlier session left the ECU unlocked, it answers with an empty security seed; NC Flash sent a key anyway and the ECU refused it. NC Flash now skips the key in that case.
 - **Rare crash after an update check or update download.** NC Flash could close without warning when a check for updates (at startup or from Help > Check for Updates) or an update download finished (#154).
