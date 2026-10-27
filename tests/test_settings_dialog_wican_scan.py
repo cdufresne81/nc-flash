@@ -55,7 +55,7 @@ def _device(host="192.168.1.169", device_id="dcb4d91511b9", mac="DC:B4:D9:15:11:
 
 class TestPresentScanResults:
     def _self(self):
-        return SimpleNamespace(_pending_wican_device_id=None)
+        return SimpleNamespace(_pending_wican_device_id=None, _widgets={})
 
     def _present(self, fake, host_edit, devices):
         SettingsDialog._present_scan_results(fake, devices, host_edit)
@@ -119,6 +119,36 @@ class TestPresentScanResults:
             self._present(fake, edit, [dev])
         edit.setText.assert_called_once_with("192.168.1.169")
         assert fake._pending_wican_device_id == ""
+
+    def _pick_with_ap_field(self, ap_text, dev):
+        from PySide6.QtWidgets import QLineEdit
+
+        fake, edit = self._self(), MagicMock()
+        ap_edit = QLineEdit(ap_text)
+        fake._widgets["ecu.wican.ap_ssid"] = ap_edit
+        with (
+            patch("PySide6.QtWidgets.QInputDialog") as QID,
+            patch("PySide6.QtWidgets.QMessageBox"),
+        ):
+            QID.getItem.return_value = (dev.label, True)
+            self._present(fake, edit, [dev])
+        return ap_edit.text()
+
+    def test_pick_fills_the_access_point_name(self):
+        # The AP name comes from the mDNS device_id, not the (station) mac.
+        assert self._pick_with_ap_field("", _device()) == "WiCAN_dcb4d91511b9"
+
+    def test_pick_replaces_another_wican_ap_name(self):
+        assert (
+            self._pick_with_ap_field("WiCAN_aaaaaaaaaaaa", _device())
+            == "WiCAN_dcb4d91511b9"
+        )
+
+    def test_pick_keeps_a_custom_access_point_name(self):
+        assert self._pick_with_ap_field("MyCarWiFi", _device()) == "MyCarWiFi"
+
+    def test_pick_without_device_id_leaves_the_access_point_name(self):
+        assert self._pick_with_ap_field("", _device(device_id=None)) == ""
 
 
 # --------------------------------------------------------------------------- #
@@ -304,11 +334,14 @@ class TestCleanupThread:
     def test_quits_waits_and_disposes_running_thread(self):
         thread, worker = MagicMock(), MagicMock()
         thread.isRunning.return_value = True
+        thread.wait.return_value = True
         SettingsDialog._cleanup_thread(thread, worker, 3000)
         thread.quit.assert_called_once()
         thread.wait.assert_called_once_with(3000)
         thread.deleteLater.assert_called_once()
-        worker.deleteLater.assert_called_once()
+        # The thread has stopped, so a deferred delete would never run: the
+        # worker is released by the caller dropping its last reference.
+        worker.deleteLater.assert_not_called()
 
     def test_skips_quit_for_already_finished_thread(self):
         thread, worker = MagicMock(), MagicMock()
@@ -317,7 +350,48 @@ class TestCleanupThread:
         thread.quit.assert_not_called()
         thread.wait.assert_not_called()
         thread.deleteLater.assert_called_once()
+        worker.deleteLater.assert_not_called()
+
+    def test_join_timeout_leaves_the_worker_to_its_own_thread(self):
+        # The thread outlived the join budget: the worker may still be running
+        # on it, so it must not be freed here. It keeps the old deferred delete.
+        thread, worker = MagicMock(), MagicMock()
+        thread.isRunning.return_value = True
+        thread.wait.return_value = False
+        SettingsDialog._cleanup_thread(thread, worker, 3000)
         worker.deleteLater.assert_called_once()
+
+    def test_real_thread_worker_is_released_on_the_gui_thread(self, qtbot):
+        """Real QThread: after the join the worker is freed on the GUI thread
+        once the last reference drops (it used to leak, never deleted)."""
+        import weakref
+
+        from PySide6.QtCore import QObject, QThread, Signal
+
+        class _Worker(QObject):
+            finished = Signal(object)
+
+            def run(self):
+                self.finished.emit(None)
+
+        worker = _Worker()
+        thread = QThread()
+        worker.moveToThread(thread)
+        thread.started.connect(worker.run)
+        done = []
+        worker.finished.connect(lambda _r: done.append(1))
+        released_on = []
+        worker_ref = weakref.ref(
+            worker, lambda _ref: released_on.append(threading.get_ident())
+        )
+        thread.start()
+        qtbot.waitUntil(lambda: bool(done), timeout=5000)
+
+        SettingsDialog._cleanup_thread(thread, worker, 3000)
+        assert not thread.isRunning()
+        del worker
+        qtbot.waitUntil(lambda: worker_ref() is None, timeout=2000)
+        assert released_on == [threading.get_ident()]
 
 
 # --------------------------------------------------------------------------- #

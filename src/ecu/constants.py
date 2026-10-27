@@ -20,6 +20,15 @@ GEN_DETECT_OFFSET = 0x2030
 GEN_NC1 = 0x35
 GEN_NC2_A = 0x36
 GEN_NC2_B = 0x37
+# The ECU's boot block (0x0000-0x1FFF) is never written by a flash, so it tells
+# the ECU's real generation even when its program came from the wrong one (the
+# byte at GEN_DETECT_OFFSET is the "200x" of the program's copyright string and
+# is rewritten by every full flash). Its first 8 bytes are the reset vector and
+# initial stack pointer; they split cleanly by generation across every NC ROM
+# checked (21 distinct images, 2026-10-15).
+BOOT_SIGNATURE_LEN = 8
+BOOT_SIGNATURE_NC1 = bytes.fromhex("00000aacffffbfa0")
+BOOT_SIGNATURE_NC2 = bytes.fromhex("00000c0cffffbfa0")
 
 # --- Checksum ---
 CHECKSUM_MAGIC = 0x5AA5A55A
@@ -65,6 +74,18 @@ WICAN_DEDICATED_SLCAN_PORT = 35001
 #: adapter at all — the user is told to update the firmware. Both sides share
 #: this one contract.
 COEXIST_MIN_FW_REV = 6
+
+# --- WiCAN live datalog stream (firmware issue #3) ---
+#: TCP port of the read-only live tail of the trip CSV (wire protocol NCDLv1).
+#: The device only serves; NC Flash connects and reads. One client at a time and
+#: the NEWEST connection wins, so never open a second one as a "probe" while a
+#: stream runs. A stream connection is NOT host-presence and never touches the
+#: park/claim/lease machinery. MUST match firmware main/datalog_stream.h.
+WICAN_DATALOG_STREAM_PORT = 35002
+#: First line the device sends on every stream connection
+#: (``#hello NCDLv1 fw=<git_version>``). A refused connect or a different first
+#: line means firmware without the live stream.
+NCDL_BANNER_PREFIX = "#hello NCDLv1"
 #: Probe connect timeout (ms) for the coexist-port capability check. Short so a
 #: device WITHOUT the port fails fast instead of stalling the connect; a refusal
 #: that needs longer than this to surface is caught by the one confirming retry

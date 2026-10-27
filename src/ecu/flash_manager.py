@@ -22,6 +22,10 @@ from enum import Enum
 from typing import Callable, Optional
 
 from .constants import (
+    BOOT_SIGNATURE_LEN,
+    CAL_ID_OFFSETS,
+    GEN_DETECT_OFFSET,
+    SID_READ_MEM_BY_ADDR,
     ROM_SIZE,
     TIMEOUT_PROBE,
     ROM_FLASH_START_MIN,
@@ -36,6 +40,8 @@ from .constants import (
 )
 from .exceptions import (
     ECUError,
+    ECUGenerationMismatchError,
+    ECUGenerationUnverifiedError,
     FlashError,
     FlashAbortedError,
     EngineRunningError,
@@ -49,6 +55,9 @@ from .rom_utils import (
     validate_rom_size,
     find_first_difference,
     calculate_flash_start_index,
+    generation_from_boot_block,
+    generation_from_byte,
+    get_cal_id,
 )
 from .flash_prep import prepare_flash_image
 from .dtc import dedup_dtcs
@@ -173,6 +182,312 @@ def enforce_rpm_gate(
     return rpm
 
 
+#: Tries at reading the ECU's boot block for the generation check. Fewer than a
+#: ROM read gets: the check runs inside the unlocked session, so it must give up
+#: in seconds, not minutes.
+GENERATION_READ_ATTEMPTS = 3
+
+#: Seconds between the Tester Presents that keep the unlocked session alive
+#: while the operator answers "which car is this ECU from?".
+PROMPT_KEEPALIVE_S = 2.0
+
+#: Asked when the ECU's generation can't be read:
+#: ``(rom_generation, rom_cal_id, reason)`` -> the operator's answer for the car
+#: ("NC1" or "NC2"), or None to cancel. Blocks until answered.
+UnverifiedGenerationPrompt = Callable[[str, Optional[str], str], Optional[str]]
+
+
+def read_memory_with_retry(
+    uds,
+    offset: int,
+    size: int,
+    *,
+    attempts: int = READ_BLOCK_RETRIES,
+    on_recovered: Optional[Callable[[], None]] = None,
+) -> bytes:
+    """Read one memory block (ROM or RAM), retrying on a lost/garbled response.
+
+    A read is idempotent (re-requesting an address never changes ECU state),
+    so on a lossy link a block whose response is dropped or corrupted is
+    simply re-requested. Each attempt uses a tight per-block budget so a drop
+    fails in a few seconds rather than stalling the full response-pending
+    budget; between attempts the transport is flushed to discard any stale
+    frames from the failed attempt. On a reliable link the first attempt
+    always succeeds and this is a straight passthrough.
+
+    A negative response to THIS read is the ECU's answer and is raised at once.
+    One naming another service is a stray frame (e.g. a late reply to an
+    earlier request) and is retried like a lost reply.
+
+    Raises:
+        NegativeResponseError: The ECU refused the read.
+        FlashError: If every attempt fails (the read cannot continue), or a
+            block comes back the wrong size.
+    """
+    last_exc: Optional[Exception] = None
+    for attempt in range(1, attempts + 1):
+        try:
+            data = uds.read_memory_by_address(
+                offset,
+                size,
+                timeout=READ_BLOCK_TIMEOUT_MS,
+                pending_max=READ_BLOCK_PENDING_MAX_MS,
+            )
+            if len(data) != size:
+                raise FlashError(
+                    f"Short read at 0x{offset:06X}: got {len(data)} of " f"{size} bytes"
+                )
+            if attempt > 1:
+                if on_recovered is not None:
+                    on_recovered()
+                logger.debug(
+                    "memory read recovered block at 0x%06X on attempt %d",
+                    offset,
+                    attempt,
+                )
+            return data
+        except NegativeResponseError as exc:
+            if exc.service_id in (None, SID_READ_MEM_BY_ADDR):
+                raise
+            last_exc = exc
+            logger.debug(
+                "memory read block at 0x%06X got a stray refusal of SID 0x%02X "
+                "(attempt %d/%d); retrying",
+                offset,
+                exc.service_id,
+                attempt,
+                attempts,
+            )
+        except UDSTimeoutError as exc:
+            # Lost/garbled response (transport errors are wrapped as a
+            # timeout at the UDS seam). Re-requestable because reads are
+            # idempotent — flush stale frames and try again. This is routine
+            # on a lossy WiFi link (DEBUG, not WARNING): a block that never
+            # recovers raises FlashError below, which is the real signal.
+            last_exc = exc
+            logger.debug(
+                "memory read block at 0x%06X lost (attempt %d/%d); retrying",
+                offset,
+                attempt,
+                attempts,
+            )
+        try:
+            uds.flush()
+        except Exception as flush_exc:  # pragma: no cover - best-effort
+            logger.debug("Flush before read retry failed: %s", flush_exc)
+        # Space retries with a short, growing backoff: consecutive drops at
+        # one offset mean a transient link stall, and instant re-requests
+        # just hammer it. Only the failing block waits, and never after the
+        # final attempt.
+        if attempt < attempts:
+            time.sleep(
+                min(
+                    READ_BLOCK_RETRY_BACKOFF_S * attempt,
+                    READ_BLOCK_RETRY_BACKOFF_MAX_S,
+                )
+            )
+
+    raise FlashError(
+        f"memory read failed at 0x{offset:06X} after {attempts} "
+        f"attempts: {last_exc}"
+    )
+
+
+def security_unlock(uds) -> None:
+    """Security access (0x27): request a seed, send its key.
+
+    A zero seed means the ECU is already unlocked, so no key is sent: this ECU
+    refuses a key then (NRC 0x22, bench 2026-10-14)."""
+    seed = uds.security_access_request_seed()
+    if not any(seed):
+        logger.info("ECU is already unlocked (zero seed); no key sent")
+        return
+    key = compute_security_key(seed)
+    logger.info("Security key computed: [%s] from seed [%s]", key.hex(), seed.hex())
+    uds.security_access_send_key(key)
+
+
+def _read_ecu_boot_generation(uds) -> tuple[Optional[str], str]:
+    """The ECU's hardware generation from its boot block. Returns
+    ``(generation, "")``, or ``(None, reason)`` when it can't be determined.
+
+    Reads the same 1 KB block at address 0 a ROM read starts with."""
+    try:
+        boot = read_memory_with_retry(
+            uds, 0x0, BLOCK_SIZE, attempts=GENERATION_READ_ATTEMPTS
+        )
+    except NegativeResponseError as exc:
+        return None, f"the ECU refused the memory read ({exc})"
+    except ECUError as exc:
+        return None, f"the ECU did not answer the memory read ({exc})"
+    generation = generation_from_boot_block(boot)
+    if generation is None:
+        return None, (
+            "the ECU's boot code is not one NC Flash knows "
+            f"({bytes(boot[:BOOT_SIGNATURE_LEN]).hex()})"
+        )
+    return generation, ""
+
+
+def _read_ecu_program(uds) -> tuple[Optional[str], Optional[str]]:
+    """Best-effort ``(generation, cal ID)`` of the program the ECU holds now,
+    for the log only. One try per block; never raises."""
+
+    def block(offset: int) -> Optional[bytes]:
+        try:
+            return read_memory_with_retry(uds, offset, BLOCK_SIZE, attempts=1)
+        except ECUError as exc:
+            logger.info("ECU block 0x%06X unreadable (log only): %s", offset, exc)
+            return None
+
+    def base(offset: int) -> int:
+        return offset - offset % BLOCK_SIZE
+
+    generation = None
+    data = block(base(GEN_DETECT_OFFSET))
+    if data is not None:
+        generation = generation_from_byte(data[GEN_DETECT_OFFSET % BLOCK_SIZE])
+    cal_id = None
+    for offset in CAL_ID_OFFSETS:
+        data = block(base(offset))
+        if data is None:
+            break
+        start = offset % BLOCK_SIZE
+        raw = bytes(data[start : start + 6])
+        if raw[:1] == b"L":
+            cal_id = raw.decode("ascii", errors="replace")
+            break
+    return generation, cal_id
+
+
+def rom_cal_id_text(rom_data: bytes) -> Optional[str]:
+    """The ROM file's calibration ID as text, or None if it has none."""
+    try:
+        return get_cal_id(rom_data).decode("ascii", errors="replace").rstrip("\x00")
+    except ROMValidationError:
+        return None
+
+
+def _ask_with_keepalive(
+    uds, prompt: UnverifiedGenerationPrompt, *args
+) -> Optional[str]:
+    """Ask the operator while a side thread sends Tester Present, so the
+    unlocked session can't time out however long they take. The worker thread
+    is blocked in ``prompt`` meanwhile, so the link is never used by two
+    threads at once; the side thread is joined before this returns."""
+    stop = threading.Event()
+
+    def keepalive() -> None:
+        while not stop.wait(PROMPT_KEEPALIVE_S):
+            try:
+                uds.tester_present(timeout_ms=TIMEOUT_PROBE)
+            except ECUError as exc:
+                logger.debug("Keepalive during the generation prompt failed: %s", exc)
+
+    thread = threading.Thread(target=keepalive, name="gen-prompt-keepalive")
+    thread.daemon = True
+    thread.start()
+    try:
+        return prompt(*args)
+    finally:
+        stop.set()
+        thread.join()
+
+
+def verify_ecu_generation(
+    uds,
+    rom_generation: str,
+    rom_cal_id: Optional[str] = None,
+    *,
+    confirm_unverified: Optional[UnverifiedGenerationPrompt] = None,
+) -> None:
+    """Refuse to flash a ROM made for the other generation (NC1 vs NC2).
+
+    Call it on the unlocked session BEFORE the flash counter: after that
+    routine the ECU refuses memory reads until it is reset (bench 2026-10-14).
+    Nothing is erased yet. Both flash paths (J2534 and the WiCAN SD flash) call
+    this one function.
+
+    The ECU's generation comes from its boot block, which no flash writes, so
+    an ECU still holding a program from an earlier wrong-generation flash is
+    judged by its hardware; that disagreement is logged.
+
+    * Same generation: pass. NC2 ROMs are often cross-compatible (e.g. LF9KED
+      on an LF9KEC ECU), so a different cal ID is NOT refused; the log names
+      both.
+    * Other generation: raise :class:`ECUGenerationMismatchError`. No override:
+      the SBL is picked from the file, so the wrong one would be sent.
+    * Can't tell (the ECU refuses or doesn't answer the read, e.g. stuck in its
+      bootloader after a flash that didn't finish): ask ``confirm_unverified``
+      which car the ECU is from, keeping the session alive meanwhile. Without a
+      prompt, or on cancel, raise :class:`ECUGenerationUnverifiedError`. An
+      answer for the other generation raises
+      :class:`ECUGenerationMismatchError`. A matching answer re-enters the
+      programming session and unlock before returning.
+    """
+    ecu_generation, reason = _read_ecu_boot_generation(uds)
+    if ecu_generation is not None:
+        program_generation, ecu_cal_id = _read_ecu_program(uds)
+        if program_generation and program_generation != ecu_generation:
+            logger.warning(
+                "The ECU's boot code is %s but the program it holds is %s: likely "
+                "an earlier wrong-generation flash. Going by the boot code.",
+                ecu_generation,
+                program_generation,
+            )
+        if ecu_generation != rom_generation:
+            logger.error(
+                "Generation check BLOCKED flash: ROM is %s (%s), ECU is %s",
+                rom_generation,
+                rom_cal_id or "cal ID unknown",
+                ecu_generation,
+            )
+            raise ECUGenerationMismatchError(rom_generation, ecu_generation)
+        logger.info(
+            "Generation check OK: %s (file %s, ECU %s)",
+            ecu_generation,
+            rom_cal_id or "cal ID unknown",
+            ecu_cal_id or "cal ID unknown",
+        )
+        return
+
+    logger.warning("Generation check: could not read the ECU: %s", reason)
+    if confirm_unverified is None:
+        raise ECUGenerationUnverifiedError(rom_generation, reason)
+    answer = _ask_with_keepalive(
+        uds, confirm_unverified, rom_generation, rom_cal_id, reason
+    )
+    if answer is None:
+        raise ECUGenerationUnverifiedError(
+            rom_generation, f"{reason}; the flash was cancelled"
+        )
+    if answer != rom_generation:
+        logger.error(
+            "Generation check BLOCKED flash: ROM is %s (%s), operator says the "
+            "car is an %s",
+            rom_generation,
+            rom_cal_id or "cal ID unknown",
+            answer,
+        )
+        raise ECUGenerationMismatchError(rom_generation, answer, from_operator=True)
+    logger.warning(
+        "Operator says the car is an %s: flashing the %s ROM (%s) without "
+        "reading the ECU (%s)",
+        answer,
+        rom_generation,
+        rom_cal_id or "cal ID unknown",
+        reason,
+    )
+    try:
+        uds.diagnostic_session()
+        security_unlock(uds)
+    except ECUError as exc:
+        raise FlashError(
+            "The ECU stopped answering while NC Flash waited for your answer. "
+            "Nothing was written to the ECU. Start the flash again."
+        ) from exc
+
+
 class FlashState(Enum):
     """Flash operation state machine states."""
 
@@ -273,6 +588,16 @@ class FlashManager:
         # drops, all recovered). Reset per read_rom/scan_ram; surfaced as one
         # summary line instead of a per-block warning.
         self._block_retries = 0
+        # Asked when the ECU's generation can't be read before a flash; None
+        # refuses the flash instead (see verify_ecu_generation).
+        self._confirm_unverified_generation: Optional[UnverifiedGenerationPrompt] = None
+
+    def set_unverified_generation_prompt(
+        self, prompt: Optional[UnverifiedGenerationPrompt]
+    ) -> None:
+        """Set who is asked when the pre-flash generation check can't read the
+        ECU. Called from the worker thread; it must block until answered."""
+        self._confirm_unverified_generation = prompt
 
     def use_session(self, device, channel_id, filter_id, uds) -> None:
         """
@@ -499,15 +824,8 @@ class FlashManager:
         self._uds.diagnostic_session()
 
         # Step 3: Security Access
-        self._notify(callback, "Requesting security seed...", percent=12.0)
-        seed = self._uds.security_access_request_seed()
-
-        self._notify(callback, "Computing security key...", percent=14.0)
-        key = compute_security_key(seed)
-        logger.info("Security key computed: [%s] from seed [%s]", key.hex(), seed.hex())
-
-        self._notify(callback, "Sending security key...", percent=16.0)
-        self._uds.security_access_send_key(key)
+        self._notify(callback, "Unlocking the ECU...", percent=12.0)
+        security_unlock(self._uds)
 
         self._notify(callback, "Authentication complete", percent=20.0)
         logger.info("ECU authentication complete")
@@ -696,6 +1014,17 @@ class FlashManager:
         # --- Phase 3: Authenticate ---
         self._authenticate(callback)
 
+        # The file must be for this ECU's generation. Runs BEFORE the flash
+        # counter: once that routine has run, the ECU refuses every memory read
+        # (NRC 0x11) until it is reset, so the check could never read it.
+        self._notify(callback, "Checking the ROM matches the ECU...", percent=20.5)
+        verify_ecu_generation(
+            self._uds,
+            generation,
+            rom_cal_id_text(rom_data),
+            confirm_unverified=self._confirm_unverified_generation,
+        )
+
         # Flash-only: romdrop's Read ROM (0x0040530D) skips this step
         self._notify(callback, "Checking flash counter...", percent=21.0)
         self._uds.check_flash_counter()
@@ -806,75 +1135,13 @@ class FlashManager:
         logger.info("Flash operation completed successfully")
 
     def _read_block_with_retry(self, offset: int, size: int) -> bytes:
-        """Read one memory block (ROM or RAM), retrying on a lost/garbled response.
+        """Read one memory block with :func:`read_memory_with_retry`, counting
+        recovered blocks for the operation's summary line."""
 
-        A read is idempotent (re-requesting an address never changes ECU state),
-        so on a lossy link a block whose response is dropped or corrupted is
-        simply re-requested. Each attempt uses a tight per-block budget so a drop
-        fails in a few seconds rather than stalling the full response-pending
-        budget; between attempts the transport is flushed to discard any stale
-        frames from the failed attempt. On a reliable link the first attempt
-        always succeeds and this is a straight passthrough.
+        def recovered() -> None:
+            self._block_retries += 1
 
-        Raises:
-            FlashError: If every attempt fails (the read cannot continue), or a
-                block comes back the wrong size.
-        """
-        last_exc: Optional[Exception] = None
-        for attempt in range(1, READ_BLOCK_RETRIES + 1):
-            try:
-                data = self._uds.read_memory_by_address(
-                    offset,
-                    size,
-                    timeout=READ_BLOCK_TIMEOUT_MS,
-                    pending_max=READ_BLOCK_PENDING_MAX_MS,
-                )
-                if len(data) != size:
-                    raise FlashError(
-                        f"Short read at 0x{offset:06X}: got {len(data)} of "
-                        f"{size} bytes"
-                    )
-                if attempt > 1:
-                    self._block_retries += 1
-                    logger.debug(
-                        "memory read recovered block at 0x%06X on attempt %d",
-                        offset,
-                        attempt,
-                    )
-                return data
-            except UDSTimeoutError as exc:
-                # Lost/garbled response (transport errors are wrapped as a
-                # timeout at the UDS seam). Re-requestable because reads are
-                # idempotent — flush stale frames and try again. This is routine
-                # on a lossy WiFi link (DEBUG, not WARNING): a block that never
-                # recovers raises FlashError below, which is the real signal.
-                last_exc = exc
-                logger.debug(
-                    "memory read block at 0x%06X lost (attempt %d/%d); retrying",
-                    offset,
-                    attempt,
-                    READ_BLOCK_RETRIES,
-                )
-                try:
-                    self._uds.flush()
-                except Exception as flush_exc:  # pragma: no cover - best-effort
-                    logger.debug("Flush before read retry failed: %s", flush_exc)
-                # Space retries with a short, growing backoff: consecutive drops at
-                # one offset mean a transient link stall, and instant re-requests
-                # just hammer it. Only the failing block waits, and never after the
-                # final attempt.
-                if attempt < READ_BLOCK_RETRIES:
-                    time.sleep(
-                        min(
-                            READ_BLOCK_RETRY_BACKOFF_S * attempt,
-                            READ_BLOCK_RETRY_BACKOFF_MAX_S,
-                        )
-                    )
-
-        raise FlashError(
-            f"memory read failed at 0x{offset:06X} after {READ_BLOCK_RETRIES} "
-            f"attempts: {last_exc}"
-        )
+        return read_memory_with_retry(self._uds, offset, size, on_recovered=recovered)
 
     def read_rom(
         self,

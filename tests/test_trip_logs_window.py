@@ -39,14 +39,32 @@ class _FakeSync(QObject):
         self.cancel = MagicMock()
 
 
+class _FakeLive(QObject):
+    running_changed = Signal(bool)
+    status_changed = Signal(str)
+    capture_changed = Signal(str)
+
+    def __init__(self):
+        super().__init__()
+        self.is_running = False
+        self.current_capture = ""
+        self.start = MagicMock(return_value=True)
+        self.stop = MagicMock()
+        self.trail_in_mlv = MagicMock(return_value=True)
+
+
 def _window(qtbot, tmp_path, adapter="wican"):
     sync = _FakeSync()
+    live = _FakeLive()
     settings = MagicMock()
     settings.is_wican_adapter.return_value = adapter == "wican"
     settings.get_logs_directory.return_value = str(tmp_path / "logs")
     settings.get_wican_delete_logs_after_download.return_value = False
     settings.get_wican_keep_newest_logs.return_value = 5
-    main_window = SimpleNamespace(settings=settings, wican_log_sync=sync)
+    settings.get_live_datalog_auto_trail.return_value = True
+    main_window = SimpleNamespace(
+        settings=settings, wican_log_sync=sync, wican_live_datalog=live
+    )
     window = TripLogsWindow(main_window=main_window)
     qtbot.addWidget(window)
     return window, sync
@@ -199,3 +217,77 @@ def test_format_mtime_clockless_sanity():
     assert _format_mtime(0) == "—"
     assert _format_mtime(1000) == "—"  # 1970: clockless boot, not a real date
     assert _format_mtime(1750000000).startswith("2025-")
+
+
+# --- Live Datalog ---------------------------------------------------------
+
+
+def test_live_button_starts_and_stops_the_owner(qtbot, tmp_path):
+    window, _ = _window(qtbot, tmp_path)
+    live = window._main_window.wican_live_datalog
+    assert window._btn_live.isEnabled()
+    window._btn_live.click()
+    live.start.assert_called_once()
+
+    live.is_running = True
+    live.running_changed.emit(True)
+    assert window._btn_live.text() == "Stop Live Datalog"
+    assert window._btn_live.isEnabled()  # always stoppable
+    window._btn_live.click()
+    live.stop.assert_called_once()
+
+
+def test_ecu_link_holds_live_datalog_start(qtbot, tmp_path):
+    from src.ui.trip_logs_window import ECU_LINK_TIP
+
+    window, _ = _window(qtbot, tmp_path)
+    window.set_ecu_link(True)
+    assert not window._btn_live.isEnabled()
+    assert window._btn_live.toolTip() == ECU_LINK_TIP
+    window._on_live_toggle()  # backstop: no start even if invoked directly
+    window._main_window.wican_live_datalog.start.assert_not_called()
+    window.set_ecu_link(False)
+    assert window._btn_live.isEnabled()
+
+
+def test_live_datalog_and_download_lock_each_other(qtbot, tmp_path):
+    from src.ui.trip_logs_window import LIVE_RUNNING_TIP
+
+    window, sync = _window(qtbot, tmp_path)
+    live = window._main_window.wican_live_datalog
+    live.is_running = True
+    live.running_changed.emit(True)
+    assert not window._btn_download.isEnabled()
+    assert window._btn_download.toolTip() == LIVE_RUNNING_TIP
+
+    live.is_running = False
+    live.running_changed.emit(False)
+    sync.is_running = True
+    sync.running_changed.emit(True)
+    assert not window._btn_live.isEnabled()
+
+
+def test_trail_button_follows_the_current_capture(qtbot, tmp_path):
+    window, _ = _window(qtbot, tmp_path)
+    live = window._main_window.wican_live_datalog
+    assert not window._btn_trail.isEnabled()
+    live.current_capture = str(tmp_path / "live_1.csv")
+    live.capture_changed.emit(live.current_capture)
+    assert window._btn_trail.isEnabled()
+    window._btn_trail.click()
+    live.trail_in_mlv.assert_called_once()
+
+
+def test_live_status_text_is_shown(qtbot, tmp_path):
+    window, _ = _window(qtbot, tmp_path)
+    window._main_window.wican_live_datalog.status_changed.emit("Recording (5 rows)")
+    assert window._live_status.text() == "Recording (5 rows)"
+
+
+def test_start_download_refused_while_live_datalog_runs(qtbot, tmp_path):
+    # start_download is the single download path (the startup prompt uses it
+    # too), so the live lock must hold there, not only on the button.
+    window, sync = _window(qtbot, tmp_path)
+    window._main_window.wican_live_datalog.is_running = True
+    assert window.start_download() is False
+    sync.start.assert_not_called()
