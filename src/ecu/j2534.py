@@ -176,6 +176,11 @@ _builtin_lock = threading.Lock()
 _builtin_in_use = False
 
 
+def builtin_in_use() -> bool:
+    """True while any connection in this process holds the built-in driver."""
+    return _builtin_in_use
+
+
 def find_builtin_openport_dll() -> Optional[str]:
     """
     Find the bundled OpenPort 2.0 driver DLL.
@@ -735,7 +740,8 @@ class J2534Device:
         return (
             f"{message}. If the OpenPort is plugged in and Device Manager shows it "
             "with a warning (Code 39), Windows is blocking Tactrix's driver: switch "
-            f"the cable to WinUSB, see {OPENPORT_WINDOWS11_HELP}"
+            "the cable to NC Flash's driver in Settings > ECU > J2534 > Tactrix "
+            f"OpenPort Driver (details: {OPENPORT_WINDOWS11_HELP})"
         )
 
     @property

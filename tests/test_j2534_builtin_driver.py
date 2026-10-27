@@ -207,12 +207,12 @@ class TestNotFoundHint:
     def test_automatic_driver_points_at_the_winusb_fix(self, monkeypatch):
         monkeypatch.setattr(sys, "platform", "win32")
         message = self._open_failing(DEFAULT_J2534_DLL)
-        assert "Code 39" in message and "WinUSB" in message
+        assert "Code 39" in message and "Tactrix OpenPort Driver" in message
 
     def test_custom_driver_gets_no_hint(self, monkeypatch):
         monkeypatch.setattr(sys, "platform", "win32")
         message = self._open_failing(r"C:\Drivers\other_pt.dll")
-        assert "WinUSB" not in message
+        assert "Tactrix OpenPort Driver" not in message
 
     def test_tactrix_driver_not_installed_gets_the_hint(self, monkeypatch):
         """WinUSB user, cable unplugged, no Tactrix software: still pointed home."""
