@@ -385,8 +385,10 @@ SETTINGS_REGISTRY = [
         key="ecu.j2534.openport_driver",
         label="Tactrix OpenPort Driver",
         description=(
-            "Switch the Tactrix OpenPort between NC Flash's driver (WinUSB) and "
-            "Tactrix's. Needed where Windows blocks Tactrix's driver (Code 39)"
+            "Switches the Tactrix OpenPort between NC Flash's driver and "
+            "Tactrix's own. Use it if Windows blocks Tactrix's driver (the cable "
+            "isn't found, Device Manager shows Code 39), or to switch back for "
+            "EcuFlash or RomDrop. Windows asks for administrator permission."
         ),
         category="ECU",
         subcategory="J2534",
@@ -396,6 +398,7 @@ SETTINGS_REGISTRY = [
         widget_options={
             "text": "Tactrix OpenPort Driver...",
             "callback_name": "_manage_openport_driver",
+            "show_description": True,
         },
         keywords=["tactrix", "openport", "driver", "winusb", "zadig", "code 39"],
     ),
@@ -1089,8 +1092,10 @@ class SettingsDialog(QDialog):
             lo.addWidget(lbl)
             self._widgets[desc.key] = lbl
 
-        # Description text
-        if desc.description and wtype not in ("button",):
+        # Description text (buttons show theirs only when asked to)
+        if desc.description and (
+            wtype != "button" or desc.widget_options.get("show_description")
+        ):
             desc_lbl = QLabel(desc.description)
             desc_lbl.setWordWrap(True)
             desc_lbl.setStyleSheet("color: #555; font-size: 11px; padding-top: 2px;")
