@@ -9,6 +9,7 @@ on:
   push:
     paths:
       - '.github/workflows/build-openport-driver.yml'
+      - 'packaging/openport/**'
 
 permissions:
   contents: read
@@ -22,6 +23,12 @@ jobs:
   build:
     runs-on: windows-2022
     steps:
+      - name: Checkout NC Flash (driver patches)
+        uses: actions/checkout@v5
+        with:
+          path: ncflash
+          sparse-checkout: packaging/openport
+
       - name: Checkout J2534 driver source
         uses: actions/checkout@v5
         with:
@@ -35,6 +42,19 @@ jobs:
           repository: libusb/libusb
           ref: ${{ env.LIBUSB_SHA }}
           path: libusb-src
+
+      - name: Apply NC Flash driver patches
+        shell: pwsh
+        run: |
+          $patches = Get-ChildItem ncflash\packaging\openport -Filter *.patch | Sort-Object Name
+          if (-not $patches) { throw "no driver patches found" }
+          foreach ($p in $patches) {
+            git -C j2534 apply --check $p.FullName
+            if ($LASTEXITCODE) { throw "patch does not apply: $($p.Name)" }
+            git -C j2534 apply $p.FullName
+            "applied $($p.Name)"
+          }
+          git -C j2534 diff --stat
 
       - name: Set up MSBuild
         uses: microsoft/setup-msbuild@v2
@@ -67,6 +87,7 @@ jobs:
           Copy-Item libusb-src\COPYING "$dist\COPYING-libusb.txt"
           @(
             "j2534.dll   from https://github.com/$env:J2534_REPO @ $env:J2534_SHA"
+            "  + NC Flash patches: $((Get-ChildItem ncflash\packaging\openport -Filter *.patch | Sort-Object Name).Name -join ', ')"
             "libusb-1.0.dll from https://github.com/libusb/libusb @ $env:LIBUSB_SHA (v1.0.30)"
             "Built by $env:GITHUB_SERVER_URL/$env:GITHUB_REPOSITORY/actions/runs/$env:GITHUB_RUN_ID"
           ) | Set-Content "$dist\SOURCES.txt"
