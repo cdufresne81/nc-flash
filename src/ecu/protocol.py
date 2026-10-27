@@ -27,6 +27,7 @@ from .constants import (
     DIAG_SESSION_PROGRAMMING,
     RESET_HARD,
     SECURITY_REQUEST_SEED,
+    SECURITY_SEED_LEN,
     SECURITY_SEND_KEY,
     TESTER_PRESENT_SUB,
     NRC_CONDITIONS_NOT_CORRECT,
@@ -439,7 +440,7 @@ class UDSConnection:
         Request security access seed from ECU.
 
         Returns:
-            8-byte seed value
+            3-byte seed value (all zeros when the ECU is already unlocked)
         """
         response = self.send_request(
             SID_SECURITY_ACCESS,
@@ -449,8 +450,11 @@ class UDSConnection:
         if len(response) < 2:
             raise SecurityAccessDenied("Seed response too short")
 
-        # Response: sub_function(1) + seed(N)
+        # Response: sub_function(1) + seed(3). Reject anything else here, so a
+        # malformed reply can never pass as an all-zero "already unlocked" seed.
         seed = response[1:]
+        if response[0] != SECURITY_REQUEST_SEED or len(seed) != SECURITY_SEED_LEN:
+            raise SecurityAccessDenied(f"Malformed seed response: {response.hex()}")
         logger.info(
             "ECU >> Security seed: %d bytes [%s]",
             len(seed),

@@ -117,6 +117,7 @@ python main.py
 - Read ROM from ECU — dump the current calibration
 - Scan RAM — dump ECU RAM for diagnostics
 - Read and clear Diagnostic Trouble Codes (DTCs)
+- **OBDX Pro (USB)** adapter: read, flash, RAM scan and DTCs over an OBDX Pro (tested on the VX), no driver needed (select it in Settings > ECU > Adapter)
 - Seed-key security access authentication
 - SBL (Secondary Boot Loader) upload for programming session
 - 1 KB block transfers with CRC32 validation
@@ -230,6 +231,7 @@ nc-flash/
 │   │   ├── flash_manager.py           # Flash read/write orchestration
 │   │   ├── j2534.py                   # J2534 passthru driver interface
 │   │   ├── j2534_bridge.py            # J2534 DLL bridge
+│   │   ├── obdx.py                    # OBDX Pro USB-serial transport
 │   │   ├── protocol.py                # UDS/ISO-TP protocol layer
 │   │   ├── rom_utils.py               # ROM validation utilities
 │   │   └── session.py                 # ECU session manager
