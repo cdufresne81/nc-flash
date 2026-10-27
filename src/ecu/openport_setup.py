@@ -29,7 +29,10 @@ from .j2534 import BUILTIN_OPENPORT_DIR, find_builtin_openport_dll
 
 logger = logging.getLogger(__name__)
 
-OPENPORT_HARDWARE_ID = r"USB\VID_0403&PID_CC4D"
+# The cable's J2534 part: the whole device without a microSD card (CC4D), or
+# the first function of the composite device it becomes with one (CC4C). The
+# card's own function (CC4C&MI_02) stays on Windows' storage driver.
+OPENPORT_HARDWARE_IDS = (r"USB\VID_0403&PID_CC4D", r"USB\VID_0403&PID_CC4C&MI_00")
 SETUP_SCRIPT = "openport_winusb.ps1"
 
 # Exit codes of the elevated run (the script's own, plus 2 from the launcher).
@@ -130,8 +133,13 @@ def _find_present_instances() -> list[str]:
             raise OSError("CM_Get_Device_ID_ListW failed")
     else:
         raise OSError("CM_Get_Device_ID_ListW: the device list kept changing")
-    prefix = OPENPORT_HARDWARE_ID.lower() + "\\"
-    return [i for i in buf[: size.value].split("\0") if i.lower().startswith(prefix)]
+    return [i for i in buf[: size.value].split("\0") if is_openport_instance(i)]
+
+
+def is_openport_instance(instance: str) -> bool:
+    """True for the device instance NC Flash's driver talks to (not the SD card)."""
+    prefixes = tuple(hw.lower() + "\\" for hw in OPENPORT_HARDWARE_IDS)
+    return instance.lower().startswith(prefixes)
 
 
 def _read_devnode(instance: str) -> tuple[Optional[str], int]:

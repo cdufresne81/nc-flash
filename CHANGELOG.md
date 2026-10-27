@@ -7,6 +7,10 @@ All notable changes to NC Flash are documented here.
 ### Added
 - **Tactrix OpenPort works again on Windows 11.** 2026 Windows 11 updates block Tactrix's own OpenPort 2.0 driver (Device Manager shows Code 39 and NC Flash found no device), on genuine cables and clones alike. NC Flash now includes its own OpenPort driver, built from open-source code with a fix for long ECU replies, that works through Microsoft's WinUSB driver. When Windows blocks the cable, NC Flash offers to switch it to its own driver: one click and one Windows administrator prompt (Windows names it "Windows PowerShell"), once per PC, with no extra tools. You can also switch it, or switch back for EcuFlash and RomDrop, in Settings > ECU > J2534 > Tactrix OpenPort Driver, where a short note explains what the button does. Where Tactrix's driver still works, nothing changes.
 
+### Fixed
+- **The Tactrix OpenPort now works with a microSD card in the cable.** With a card inserted, the cable shows up as a different USB device, so neither the driver switch nor NC Flash's built-in driver found it, and Windows kept blocking it (Code 39). Both now handle the cable with or without a card, and the card stays readable as a drive.
+- **NC Flash's built-in Tactrix driver no longer loses an ECU reply that arrives next to a cable error message,** and it now handles damaged or cut-off USB data safely instead of misreading it.
+
 ## [v2.23.1] - 2026-10-24
 
 **Urgent safety fix: update before using Patch ROM.** Earlier versions could produce a patched ROM that bricks the ECU when flashed.

@@ -33,7 +33,7 @@ When NC Flash can't connect because Windows blocks the cable's driver, it offers
 
 Other Tactrix software, such as EcuFlash and RomDrop, doesn't see the cable while it uses NC Flash's driver. Switch it back from the same Settings button when you need them (on PCs where Windows blocks Tactrix's driver, they can't use the cable either way).
 
-The switch adds a small Windows setup file for the cable, signed with a certificate made on your PC for that purpose only; its private key is deleted right away, so it can't sign anything else. Switching back removes both. ([Zadig](https://zadig.akeo.ie/), set to WinUSB for the "Tactrix Openport 2.0" device, does the same thing by hand.)
+The switch adds a small Windows setup file for the cable, signed with a certificate made on your PC for that purpose only; its private key is deleted right away, so it can't sign anything else. Switching back removes both. ([Zadig](https://zadig.akeo.ie/), set to WinUSB for the "Tactrix Openport 2.0" device, does the same thing by hand. With a microSD card in the cable, pick its "Interface 0" entry, not the storage one, or the card becomes unreadable.)
 
 ### Linux
 Download the `.tar.gz` archive, extract it, and run the `NCFlash` binary:
