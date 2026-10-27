@@ -40,6 +40,18 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
 Name: "binassoc"; Description: "Associate .bin files with NC Flash"; GroupDescription: "File associations:"; Flags: unchecked
 
+[InstallDelete]
+; Runs before [Files] copies the new build. Clears the previous version's
+; bundled runtime so a DLL or .pyd that the new build no longer ships can't
+; be loaded by it. _internal holds only files this installer put there:
+; settings, ROMs, reads and logs live in %APPDATA%\NCFlash, ~\.nc-flash and
+; the registry, never under {app}. ShouldClearRuntime (below) skips it unless
+; this upgrades an existing NC Flash install, and when any NC Flash setting
+; (a folder, the J2534 DLL, a recent or open ROM) points inside _internal.
+; Inno does not roll deletions back: a cancelled or failed upgrade leaves
+; NC Flash unable to start until the installer is run again.
+Type: filesandordirs; Name: "{app}\_internal"; Check: ShouldClearRuntime
+
 [Files]
 Source: "..\dist\NCFlash\{#MyAppExeName}"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\dist\NCFlash\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
@@ -59,3 +71,95 @@ Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; IconFilen
 [Run]
 Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#StringChange(MyAppName, '&', '&&')}}"; Flags: nowait postinstall skipifsilent
 
+[Code]
+const
+  // NC Flash's settings: QSettings("NCFlash", "NCFlash") under HKCU.
+  SettingsKey = 'Software\NCFlash\NCFlash';
+
+var
+  // {app}\_internal, lowercased with a trailing backslash.
+  InternalPrefix: String;
+
+function NormalizedPath(Path: String): String;
+begin
+  StringChangeEx(Path, '/', '\', True);
+  Result := AnsiLowercase(AddBackslash(Path));
+end;
+
+// True when Path is _internal itself or anything under it. The bundled
+// default color map is the one exception: the new build installs it again.
+function PointsInside(Path: String): Boolean;
+begin
+  Result := False;
+  if Path = '' then
+    Exit;
+  Path := NormalizedPath(Path);
+  if Path = InternalPrefix + 'colormaps\default.map\' then
+    Exit;
+  Result := Copy(Path, 1, Length(InternalPrefix)) = InternalPrefix;
+end;
+
+// Every string and string-list value under Key and its subkeys (folders,
+// the J2534 DLL, recent and open ROMs, ...). True if any points inside.
+function SettingPointsInside(Key: String): Boolean;
+var
+  Names: TArrayOfString;
+  I, Sep: Integer;
+  Value, Item: String;
+begin
+  Result := False;
+  if RegGetValueNames(HKCU, Key, Names) then
+    for I := 0 to GetArrayLength(Names) - 1 do
+    begin
+      if RegQueryStringValue(HKCU, Key, Names[I], Value) then
+        Value := Value + #0
+      else if not RegQueryMultiStringValue(HKCU, Key, Names[I], Value) then
+        Continue
+      else
+        Value := Value + #0;
+      while Value <> '' do
+      begin
+        Sep := Pos(#0, Value);
+        Item := Copy(Value, 1, Sep - 1);
+        Delete(Value, 1, Sep);
+        if PointsInside(Item) then
+        begin
+          Log('Setting ' + Key + '\' + Names[I] + ' points inside _internal (' +
+              Item + '): _internal left alone.');
+          Result := True;
+          Exit;
+        end;
+      end;
+    end;
+  if RegGetSubkeyNames(HKCU, Key, Names) then
+    for I := 0 to GetArrayLength(Names) - 1 do
+      if SettingPointsInside(Key + '\' + Names[I]) then
+      begin
+        Result := True;
+        Exit;
+      end;
+end;
+
+// Check for the [InstallDelete] entry: clear {app}\_internal only when it is
+// an earlier NC Flash's runtime (NCFlash.exe next to it, NC Flash's own
+// bundled folders inside it) and no NC Flash setting points inside it.
+// Otherwise leave it as it is: stale files are the safe failure.
+function ShouldClearRuntime: Boolean;
+var
+  Internal: String;
+begin
+  Result := False;
+  Internal := ExpandConstant('{app}\_internal');
+  if not FileExists(ExpandConstant('{app}\{#MyAppExeName}')) or
+     not (DirExists(Internal + '\examples\metadata') or
+          DirExists(Internal + '\j2534_bridge_32')) then
+  begin
+    Log('No earlier NC Flash in this folder: _internal left alone.');
+    Exit;
+  end;
+  InternalPrefix := NormalizedPath(Internal);
+  if SettingPointsInside(SettingsKey) then
+    Exit;
+  Log('Clearing the previous runtime in ' + Internal);
+  Result := True;
+end;

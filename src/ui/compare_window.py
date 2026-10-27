@@ -43,6 +43,7 @@ from PySide6.QtGui import (
 
 from ..core.rom_definition import Table, TableType, AxisType, RomDefinition
 from ..core.rom_reader import RomReader
+from ..core.table_lookup import match_tables
 from ..utils.colormap import value_to_color
 from .theme import get_toolbar_stylesheet
 from ..utils.formatting import (
@@ -143,22 +144,24 @@ class CompareWindow(QMainWindow):
         return len(self._modified_tables) > 0
 
     def _match_tables(self):
-        """Build name-based lookup matching tables across two definitions."""
-        by_name_a = {t.name: t for t in self._definition_a.tables}
-        by_name_b = {t.name: t for t in self._definition_b.tables}
-        all_names = sorted(set(by_name_a) | set(by_name_b))
-        matched = []
-        for name in all_names:
-            ta = by_name_a.get(name)
-            tb = by_name_b.get(name)
-            cat = (ta or tb).category or ""
-            matched.append((name, cat, ta, tb))
+        """Pair every table of the two definitions (see core.table_lookup).
+
+        Names are not unique, so each duplicate-named copy gets its own row,
+        labelled "Name @ 0xADDR"; a plain name-keyed dict would hide all but
+        the last copy and report differing ROMs as identical. A pair whose
+        name has a different copy count in each definition is "uncertain":
+        shown and compared, but never offered for copying.
+        """
+        matched = [
+            (m.label, m.category, m.table_a, m.table_b, m.uncertain)
+            for m in match_tables(self._definition_a.tables, self._definition_b.tables)
+        ]
         matched.sort(key=lambda m: (m[1], m[0]))
         return matched
 
     def _compute_diffs(self):
         """Compare all tables between the two ROMs and collect differences."""
-        for name, category, table_a, table_b in self._match_tables():
+        for name, category, table_a, table_b, uncertain in self._match_tables():
             a_only = table_a is not None and table_b is None
             b_only = table_b is not None and table_a is None
 
@@ -322,6 +325,9 @@ class CompareWindow(QMainWindow):
                     "shape_mismatch": shape_mismatch,
                     "a_only": False,
                     "b_only": False,
+                    # Copy count of this name differs between definitions:
+                    # the pairing is a guess, so copying is refused.
+                    "pairing_uncertain": uncertain,
                 }
             )
 
@@ -855,6 +861,11 @@ class CompareWindow(QMainWindow):
         else:
             addr = table_a.address if table_a else table_b.address
             status = f"  {name} ({addr}) \u2014 {count} changed {suffix}"
+        if entry.get("pairing_uncertain"):
+            status += (
+                "  \u2014 copy disabled: the two definitions list a different"
+                " number of tables with this name"
+            )
         self._status_label.setText(status)
 
         # Update copy button state
@@ -982,6 +993,7 @@ class CompareWindow(QMainWindow):
             and entry["table_b"] is not None
             and entry["data_a"] is not None
             and not entry["shape_mismatch"]
+            and not entry.get("pairing_uncertain")
         )
         # Can copy B→A only if B has data and A's table exists (to write into)
         self._copy_b_to_a_btn.setEnabled(
@@ -989,6 +1001,7 @@ class CompareWindow(QMainWindow):
             and entry["table_b"] is not None
             and entry["data_b"] is not None
             and not entry["shape_mismatch"]
+            and not entry.get("pairing_uncertain")
         )
 
     def _copy_table(self, direction: str):
@@ -1021,6 +1034,8 @@ class CompareWindow(QMainWindow):
 
         if src_data is None or dst_table is None:
             return
+        if entry.get("pairing_uncertain"):
+            return  # pairing is a guess; never write into a maybe-wrong table
 
         name = entry["name"]
 
@@ -1058,6 +1073,8 @@ class CompareWindow(QMainWindow):
         eligible = []
         for i, entry in enumerate(self._modified_tables):
             if entry["shape_mismatch"] or entry["a_only"] or entry["b_only"]:
+                continue
+            if entry.get("pairing_uncertain"):
                 continue
             if entry["table_a"] is None or entry["table_b"] is None:
                 continue

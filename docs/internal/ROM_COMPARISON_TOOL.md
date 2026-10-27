@@ -112,6 +112,8 @@ self.compare_action.setEnabled(False)  # Enable when 2+ ROMs open
    - Set of changed cell coordinates `{(row, col), ...}`
    - Count of changed cells
 
+**Table identity:** names are NOT unique — every NC definition reuses some names at different addresses. Tables are paired by `core.table_lookup.match_tables`, never by a `{t.name: t}` dict (which hides all but the last copy, so a ROM whose hidden copy differs was reported identical). Each copy of a shared name is its own row, labelled `Name @ 0xADDR`. Across different definitions, unique names match by name and duplicate copies pair by their order in each definition; extras become one-sided rows. The MCP `compare_tables` endpoint uses the same matcher.
+
 **Performance:** Pre-compute all diffs on window open. Tables are small (typically <100x20), so comparing all tables in a ROM takes <50ms.
 
 ### 3. CompareWindow

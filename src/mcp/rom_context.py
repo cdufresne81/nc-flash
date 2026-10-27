@@ -136,14 +136,19 @@ class RomContext:
     # Tool 3: read_table
     # ------------------------------------------------------------------
 
-    def read_table(self, rom_path: str, table_name: str) -> Dict[str, Any]:
+    def read_table(
+        self, rom_path: str, table_name: str, address: Optional[str] = None
+    ) -> Dict[str, Any]:
         """Read a table's scaled display values with full axis context."""
         result = self._post_to_app(
-            {
-                "endpoint": "/api/read-table",
-                "rom_path": rom_path,
-                "table_name": table_name,
-            }
+            _with_address(
+                {
+                    "endpoint": "/api/read-table",
+                    "rom_path": rom_path,
+                    "table_name": table_name,
+                },
+                address,
+            )
         )
         return self._require_success(result)
 
@@ -156,6 +161,7 @@ class RomContext:
         rom_path_a: str,
         rom_path_b: str,
         table_name: Optional[str] = None,
+        address: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Compare tables between two ROMs (both must be open in the app)."""
         payload: Dict[str, Any] = {
@@ -165,6 +171,7 @@ class RomContext:
         }
         if table_name is not None:
             payload["table_name"] = table_name
+            _with_address(payload, address)
         result = self._post_to_app(payload)
         return self._require_success(result)
 
@@ -172,14 +179,19 @@ class RomContext:
     # Tool 5: get_table_statistics
     # ------------------------------------------------------------------
 
-    def get_table_statistics(self, rom_path: str, table_name: str) -> Dict[str, Any]:
+    def get_table_statistics(
+        self, rom_path: str, table_name: str, address: Optional[str] = None
+    ) -> Dict[str, Any]:
         """Statistical analysis of a table's values."""
         result = self._post_to_app(
-            {
-                "endpoint": "/api/table-statistics",
-                "rom_path": rom_path,
-                "table_name": table_name,
-            }
+            _with_address(
+                {
+                    "endpoint": "/api/table-statistics",
+                    "rom_path": rom_path,
+                    "table_name": table_name,
+                },
+                address,
+            )
         )
         return self._require_success(result)
 
@@ -196,26 +208,47 @@ class RomContext:
             }
         )
 
-    def read_live_table(self, rom_path: str, table_name: str) -> dict:
+    def read_live_table(
+        self, rom_path: str, table_name: str, address: Optional[str] = None
+    ) -> dict:
         """Read a table's current in-memory values from the running app.
 
         Note: now equivalent to read_table — both read from the app.
         """
         return self._post_to_app(
-            {
-                "endpoint": "/api/read-table",
-                "rom_path": rom_path,
-                "table_name": table_name,
-            }
+            _with_address(
+                {
+                    "endpoint": "/api/read-table",
+                    "rom_path": rom_path,
+                    "table_name": table_name,
+                },
+                address,
+            )
         )
 
-    def write_table(self, rom_path: str, table_name: str, cells: list) -> dict:
+    def write_table(
+        self,
+        rom_path: str,
+        table_name: str,
+        cells: list,
+        address: Optional[str] = None,
+    ) -> dict:
         """Write values to a ROM table through the app's editing pipeline."""
         return self._post_to_app(
-            {
-                "endpoint": "/api/edit-table",
-                "rom_path": rom_path,
-                "table_name": table_name,
-                "cells": cells,
-            }
+            _with_address(
+                {
+                    "endpoint": "/api/edit-table",
+                    "rom_path": rom_path,
+                    "table_name": table_name,
+                    "cells": cells,
+                },
+                address,
+            )
         )
+
+
+def _with_address(payload: Dict[str, Any], address: Optional[str]) -> Dict[str, Any]:
+    """Add the optional table address (picks one copy of a shared name)."""
+    if address is not None and str(address).strip():
+        payload["address"] = str(address).strip()
+    return payload

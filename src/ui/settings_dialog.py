@@ -39,6 +39,7 @@ from PySide6.QtWidgets import (
 from ..ecu.constants import WICAN_DEDICATED_SLCAN_PORT
 from ..utils.settings import get_settings
 from ..utils.colormap import reload_colormap
+from ..utils import wifi_switch
 
 logger = logging.getLogger(__name__)
 
@@ -334,7 +335,8 @@ SETTINGS_REGISTRY = [
         description=(
             "Which adapter NC Flash uses to talk to the ECU. J2534 (wired, e.g. "
             "Tactrix OpenPort) is the default and recommended for flashing. WiCAN "
-            "(wireless WiFi/SLCAN) is opt-in; WiCAN flashing is experimental."
+            "(wireless WiFi/SLCAN) is opt-in; WiCAN flashing is experimental. "
+            "OBDX Pro (USB) is a wired alternative that reads and flashes too."
         ),
         category="ECU",
         subcategory="Adapter",
@@ -342,9 +344,22 @@ SETTINGS_REGISTRY = [
         getter="get_ecu_adapter",
         setter="set_ecu_adapter",
         widget_options={
-            "items": [("J2534 (wired)", "j2534"), ("WiCAN (WiFi)", "wican")]
+            "items": [
+                ("J2534 (wired)", "j2534"),
+                ("WiCAN (WiFi)", "wican"),
+                ("OBDX Pro (USB)", "obdx"),
+            ]
         },
-        keywords=["adapter", "j2534", "wican", "wifi", "transport", "connection"],
+        keywords=[
+            "adapter",
+            "j2534",
+            "wican",
+            "wifi",
+            "obdx",
+            "usb",
+            "transport",
+            "connection",
+        ],
     ),
     # -- ECU > J2534 --
     SettingDescriptor(
@@ -402,6 +417,41 @@ SETTINGS_REGISTRY = [
         },
         keywords=["tactrix", "openport", "driver", "winusb", "zadig", "code 39"],
     ),
+    # -- ECU > OBDX Pro --
+    SettingDescriptor(
+        key="ecu.obdx.port",
+        label="OBDX COM port",
+        description=(
+            "Leave empty to find the OBDX Pro on USB automatically. Set it (e.g. "
+            "COM7) only if more than one OBDX adapter is plugged in. Windows "
+            "needs no driver for it."
+        ),
+        category="ECU",
+        subcategory="OBDX Pro",
+        widget_type="text",
+        getter="get_obdx_port",
+        setter="set_obdx_port",
+        widget_options={"placeholder": "auto-detect"},
+        keywords=["obdx", "com", "port", "usb", "serial", "adapter"],
+    ),
+    SettingDescriptor(
+        key="ecu.obdx.test_connection",
+        label="Test Connection",
+        description=(
+            "Checks that the OBDX Pro answers and shows its firmware and the "
+            "voltage at the OBD port. Does not contact the ECU."
+        ),
+        category="ECU",
+        subcategory="OBDX Pro",
+        widget_type="button",
+        getter="",
+        setter=None,
+        widget_options={
+            "text": "Test Connection",
+            "callback_name": "_test_obdx_connection",
+        },
+        keywords=["obdx", "test", "connection", "usb"],
+    ),
     # -- ECU > WiCAN --
     SettingDescriptor(
         key="ecu.wican.host",
@@ -441,6 +491,55 @@ SETTINGS_REGISTRY = [
             "callback_name": "_test_wican_connection",
         },
         keywords=["wican", "test", "connection", "link", "ping", "quality"],
+    ),
+    SettingDescriptor(
+        key="ecu.wican.section_access_point",
+        label="WiCAN Wi-Fi",
+        description="",
+        category="ECU",
+        subcategory="WiCAN",
+        widget_type="section",
+        getter="",
+        setter=None,
+    ),
+    SettingDescriptor(
+        key="ecu.wican.ap_switch",
+        label="When the WiCAN can't be found",
+        description=(
+            "On Connect, if the WiCAN isn't reachable on your current Wi-Fi "
+            "(for example in the car, away from home) but its own Wi-Fi is in "
+            "range, offer to switch this PC to it. You are always asked first, "
+            "since the PC loses internet while joined, and offered your "
+            "previous network back on Disconnect. Windows only."
+        ),
+        category="ECU",
+        subcategory="WiCAN",
+        widget_type="combobox",
+        getter="get_wican_ap_switch",
+        setter="set_wican_ap_switch",
+        widget_options={
+            "items": [
+                ("Offer to join its Wi-Fi", "ask"),
+                ("Do nothing", "off"),
+            ]
+        },
+        keywords=["wican", "wifi", "wi-fi", "access point", "ap", "hotspot", "car"],
+    ),
+    SettingDescriptor(
+        key="ecu.wican.ap_ssid",
+        label="WiCAN Wi-Fi name",
+        description=(
+            "The name of the WiCAN's own Wi-Fi network. Filled in when you pick "
+            "the adapter with Scan; type it here if you gave it a custom name. "
+            "Left empty, NC Flash offers the strongest WiCAN_ network in range."
+        ),
+        category="ECU",
+        subcategory="WiCAN",
+        widget_type="text",
+        getter="get_wican_ap_ssid",
+        setter="set_wican_ap_ssid",
+        widget_options={"placeholder": "WiCAN_..."},
+        keywords=["wican", "wifi", "wi-fi", "ssid", "access point", "ap", "name"],
     ),
     SettingDescriptor(
         key="ecu.wican.section_trip_logs",
@@ -1397,6 +1496,27 @@ class SettingsDialog(QDialog):
         else:
             QMessageBox.warning(self, "Tactrix OpenPort Driver", message)
 
+    def _test_obdx_connection(self):
+        from PySide6.QtWidgets import QMessageBox
+        from src.ecu.obdx import probe_adapter
+
+        edit = self._widgets.get("ecu.obdx.port")
+        port = edit.text().strip() if edit else ""
+        try:
+            info = probe_adapter(port)
+        except Exception as e:
+            QMessageBox.warning(
+                self, "Connection Failed", f"Could not reach the OBDX Pro:\n{e}"
+            )
+            return
+        QMessageBox.information(
+            self,
+            "Connection OK",
+            f"{info['name']} on {info['port']}\n"
+            f"Firmware {info['firmware']}\n"
+            f"OBD port voltage: {info['voltage']:.1f} V",
+        )
+
     def _test_wican_connection(self):
         """Probe the adapter's SLCAN port and grade its firmware (off-thread).
 
@@ -1757,13 +1877,22 @@ class SettingsDialog(QDialog):
         ``wait_ms`` is the join budget: it has to exceed the worker's own hard
         bound, which differs per job (the scan honours a cancel event promptly;
         the probe can be sitting in a socket wait for ~9 s).
+
+        The worker is not ``deleteLater()``-ed once its thread has stopped: a
+        stopped thread runs no event loop, so the deferred delete never ran and
+        every scan/probe leaked its worker. The caller drops its last reference
+        after this call instead, so the worker is deleted here, on the GUI
+        thread. Only if the join timed out (the worker may still be running)
+        does it keep the deferred delete, so it is never freed under itself.
         """
+        still_running = False
         if thread is not None:
             if thread.isRunning():
                 thread.quit()
-                thread.wait(wait_ms)
+                still_running = not thread.wait(wait_ms)
             thread.deleteLater()
-        if worker is not None:
+        if worker is not None and still_running:
+            logger.warning("Worker thread did not stop within %d ms", wait_ms)
             worker.deleteLater()
 
     def _present_scan_results(self, devices, host_edit):
@@ -1803,6 +1932,14 @@ class SettingsDialog(QDialog):
         # stage below is not immediately cleared by our manual-edit guard.
         host_edit.setText(chosen.host)
         self._pending_wican_device_id = chosen.stable_id or ""
+        # Remember the adapter's default access-point name for the Wi-Fi
+        # switch. A custom name (not WiCAN_...) typed by the user is kept.
+        ap_edit = self._widgets.get("ecu.wican.ap_ssid")
+        ap_ssid = wifi_switch.ap_ssid_for_device_id(chosen.device_id)
+        if ap_edit is not None and ap_ssid:
+            current = ap_edit.text().strip()
+            if not current or current.startswith(wifi_switch.WICAN_AP_PREFIX):
+                ap_edit.setText(ap_ssid)
 
     # ------------------------------------------------------------------ #
     # Load / Apply settings

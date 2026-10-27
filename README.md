@@ -120,16 +120,19 @@ python main.py
 - Dedicated ECU Programming window (Tools > ECU Programming)
 - Native J2534/UDS flash — read and write ECU ROMs directly via Tactrix OpenPort 2.0
 - **WiCAN PRO wireless flashing (Wi-Fi)** — read and flash the ECU over a WiCAN PRO adapter with no cable. Flash is SD-staged and firmware-driven (the adapter runs the program sequence locally over CAN) for brick-safety, and can coexist with the on-device datalogger. Select the adapter in Settings > ECU > Adapter; auto-discovers the adapter on the LAN via mDNS. After a successful flash, only the newest few staged ROMs are kept on the SD card (Settings > ECU > WiCAN).
+- **Joins the WiCAN's own Wi-Fi when needed (Windows)** — if the WiCAN can't be reached on your current network (in the car, away from home) but its own Wi-Fi is in range, Connect offers to switch the PC to it, and Disconnect offers your previous network back. Always asks first; can be turned off in Settings > ECU > WiCAN.
 - **WiCAN Trip Logs window** (Tools > WiCAN Trip Logs) — while the WiCAN adapter is selected, browse the datalog CSVs on the device's SD card (name/size/date, new vs downloaded vs recording) and pull the new ones into a local `logs/` folder with live progress (download speed, time left) and cancel. When a download finishes, NC Flash offers to open the new logs in MegaLogViewerHD, if it's installed. At app launch NC Flash can check for new logs and offer to download them (toggle in Settings > ECU > WiCAN). Incremental and atomic; needs no ECU connection. Optionally (off by default) deletes trips from the device once their local copy is verified, keeping the newest few on the card (Settings > ECU > WiCAN).
+- **WiCAN live datalog** (Trip Logs window > Live Datalog) — follow the trip the WiCAN is recording, live, into a local CSV that MegaLogViewerHD trails as it grows (opened automatically or with one click). Reconnects by itself after a Wi-Fi drop. Needs WiCAN firmware with the live stream.
 - Flash ROM to ECU with progress tracking and abort support (`Ctrl+Shift+F`)
 - Read ROM from ECU — dump the current calibration
 - Scan RAM — dump ECU RAM for diagnostics
 - Read and clear Diagnostic Trouble Codes (DTCs)
+- **OBDX Pro (USB)** adapter: read, flash, RAM scan and DTCs over an OBDX Pro (tested on the VX), no driver needed (select it in Settings > ECU > Adapter)
 - Seed-key security access authentication
 - SBL (Secondary Boot Loader) upload for programming session
 - 1 KB block transfers with CRC32 validation
 - ROM validation: size check, vehicle generation detection, checksum correction
-- Safety: battery voltage check, engine-off requirement, state machine prevents step-skipping
+- Safety: battery voltage check, engine-off requirement, NC1/NC2 ROM-vs-ECU check before erase, state machine prevents step-skipping
 - Auto-saves unsaved changes before flashing
 - Configurable J2534 DLL path (auto-detects Tactrix OpenPort via registry)
 - Built-in OpenPort 2.0 driver for Windows 11 PCs that block Tactrix's own driver (see [Tactrix OpenPort on Windows 11](#tactrix-openport-on-windows-11))
@@ -239,6 +242,7 @@ nc-flash/
 │   │   ├── flash_manager.py           # Flash read/write orchestration
 │   │   ├── j2534.py                   # J2534 passthru driver interface
 │   │   ├── j2534_bridge.py            # J2534 DLL bridge
+│   │   ├── obdx.py                    # OBDX Pro USB-serial transport
 │   │   ├── protocol.py                # UDS/ISO-TP protocol layer
 │   │   ├── rom_utils.py               # ROM validation utilities
 │   │   └── session.py                 # ECU session manager
