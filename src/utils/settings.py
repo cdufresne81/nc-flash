@@ -316,15 +316,20 @@ class AppSettings:
     def set_j2534_dll_path(self, path: str):
         self.settings.setValue("ecu/j2534_dll_path", path)
 
-    # -- Adapter selection (J2534 wired default; WiCAN opt-in) --
+    # -- Adapter selection (J2534 wired default; WiCAN / OBDX opt-in) --
+
+    _ECU_ADAPTERS = ("j2534", "wican", "obdx")
 
     def get_ecu_adapter(self) -> str:
-        """Get the selected ECU adapter kind: ``"j2534"`` (default) or ``"wican"``."""
+        """Get the selected ECU adapter kind: ``"j2534"`` (default), ``"wican"``
+        or ``"obdx"``."""
         value = self.settings.value("ecu/adapter", "j2534")
-        return value if value in ("j2534", "wican") else "j2534"
+        return value if value in self._ECU_ADAPTERS else "j2534"
 
     def set_ecu_adapter(self, kind: str):
-        self.settings.setValue("ecu/adapter", "wican" if kind == "wican" else "j2534")
+        self.settings.setValue(
+            "ecu/adapter", kind if kind in self._ECU_ADAPTERS else "j2534"
+        )
 
     def is_wican_adapter(self) -> bool:
         """True when the WiCAN adapter is selected.
@@ -334,6 +339,15 @@ class AppSettings:
         adapter string.
         """
         return self.get_ecu_adapter() == "wican"
+
+    # -- OBDX Pro (USB serial) settings --
+
+    def get_obdx_port(self) -> str:
+        """COM port of the OBDX Pro adapter; empty = auto-detect over USB."""
+        return self.settings.value("ecu/obdx_port", "") or ""
+
+    def set_obdx_port(self, port: str):
+        self.settings.setValue("ecu/obdx_port", (port or "").strip())
 
     # -- WiCAN (SLCAN-over-TCP) settings --
 
@@ -356,6 +370,31 @@ class AppSettings:
 
     def set_wican_device_id(self, device_id: str):
         self.settings.setValue("ecu/wican_device_id", device_id or "")
+
+    def get_wican_ap_switch(self) -> str:
+        """Whether to offer joining the WiCAN's own Wi-Fi when it can't be
+        reached: ``"ask"`` (default) or ``"off"``."""
+        value = self.settings.value("ecu/wican_ap_switch", "ask", type=str)
+        return value if value in ("ask", "off") else "ask"
+
+    def set_wican_ap_switch(self, mode: str):
+        self.settings.setValue("ecu/wican_ap_switch", "off" if mode == "off" else "ask")
+
+    def get_wican_ap_ssid(self) -> str:
+        """The WiCAN access point's Wi-Fi name ("" = not known yet)."""
+        return self.settings.value("ecu/wican_ap_ssid", "", type=str).strip()
+
+    def set_wican_ap_ssid(self, ssid: str):
+        self.settings.setValue("ecu/wican_ap_ssid", (ssid or "").strip())
+
+    def get_wican_ap_prev_profile(self) -> str:
+        """The Wi-Fi profile NC Flash left to join the WiCAN AP ("" = none).
+
+        Saved at switch time so the offer to rejoin it survives a crash."""
+        return self.settings.value("ecu/wican_ap_prev_profile", "", type=str)
+
+    def set_wican_ap_prev_profile(self, profile: str):
+        self.settings.setValue("ecu/wican_ap_prev_profile", profile or "")
 
     def get_wican_auto_download_logs(self) -> bool:
         """Whether to check the WiCAN for new SD trip logs at launch. The check
@@ -410,6 +449,14 @@ class AppSettings:
 
     def set_offer_open_logs_in_mlv(self, enabled: bool):
         self.settings.setValue("ecu/offer_open_logs_in_mlv", bool(enabled))
+
+    def get_live_datalog_auto_trail(self) -> bool:
+        """Whether a WiCAN live datalog opens MegaLogViewerHD (Trail Live File
+        mode) on its own when the first capture of a run starts."""
+        return self.settings.value("ecu/live_datalog_auto_trail", True, type=bool)
+
+    def set_live_datalog_auto_trail(self, enabled: bool):
+        self.settings.setValue("ecu/live_datalog_auto_trail", bool(enabled))
 
 
 # Global settings instance

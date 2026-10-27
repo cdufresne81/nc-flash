@@ -6,10 +6,11 @@ that describe how to interpret ECU ROM binary files.
 """
 
 from dataclasses import dataclass, field
-from typing import Optional, Dict, List
+from typing import Optional, Dict, List, Union
 from enum import Enum
 
 from .storage_types import STORAGE_TYPE_BYTES, DEFAULT_BYTE_SIZE
+from .table_lookup import parse_address, qualified_name, split_qualified_name
 
 
 class TableType(Enum):
@@ -164,7 +165,12 @@ class RomDefinition:
     _cache_by_category: Optional[Dict[str, List["Table"]]] = field(
         default=None, init=False, repr=False, compare=False
     )
-    _cache_by_name: Optional[Dict[str, "Table"]] = field(
+    # name -> every table with that exact name, in definition order
+    _cache_by_name: Optional[Dict[str, List["Table"]]] = field(
+        default=None, init=False, repr=False, compare=False
+    )
+    # stripped name -> tables whose name differs from it only by whitespace
+    _cache_by_stripped_name: Optional[Dict[str, List["Table"]]] = field(
         default=None, init=False, repr=False, compare=False
     )
 
@@ -184,19 +190,21 @@ class RomDefinition:
             categories[category].append(table)
         return categories
 
-    def _build_name_cache(self) -> Dict[str, Table]:
-        """Build and cache the table-by-name lookup dict.
+    def _build_name_cache(self) -> None:
+        """Build and cache the table-by-name lookup dicts.
 
-        Stores both the original name and the stripped name so lookups
+        Names are NOT unique (definitions reuse some at different addresses),
+        so each key maps to every copy. The stripped-name dict lets lookups
         work regardless of trailing whitespace in the XML definition.
         """
-        cache: Dict[str, Table] = {}
+        exact: Dict[str, List[Table]] = {}
+        stripped: Dict[str, List[Table]] = {}
         for table in self.tables:
-            cache[table.name] = table
-            stripped = table.name.strip()
-            if stripped != table.name:
-                cache[stripped] = table
-        return cache
+            exact.setdefault(table.name, []).append(table)
+            if table.name.strip() != table.name:
+                stripped.setdefault(table.name.strip(), []).append(table)
+        self._cache_by_name = exact
+        self._cache_by_stripped_name = stripped
 
     def get_tables_by_category(self) -> Dict[str, List[Table]]:
         """Group tables by category for UI display (cached after first call)"""
@@ -204,8 +212,62 @@ class RomDefinition:
             self._cache_by_category = self._build_category_cache()
         return self._cache_by_category
 
-    def get_table_by_name(self, name: str) -> Optional[Table]:
-        """Find table by name (O(1) via cached dict)"""
+    def get_tables_by_name(self, name: str) -> List[Table]:
+        """Every table called ``name``, in definition order (may be several)."""
         if self._cache_by_name is None:
-            self._cache_by_name = self._build_name_cache()
-        return self._cache_by_name.get(name)
+            self._build_name_cache()
+        found = self._cache_by_name.get(name)
+        if found is None:
+            found = self._cache_by_stripped_name.get(name, [])
+        return list(found)
+
+    def is_name_ambiguous(self, name: str) -> bool:
+        """True when more than one table carries this name."""
+        return len(self.get_tables_by_name(name)) > 1
+
+    def display_name(self, table: Table) -> str:
+        """The table's name, or "Name @ 0xADDR" when other tables share it."""
+        if self.is_name_ambiguous(table.name):
+            return qualified_name(table)
+        return table.name
+
+    def get_table_by_name(
+        self, name: str, address: Optional[Union[int, str]] = None
+    ) -> Optional[Table]:
+        """Find one table by name.
+
+        Several tables can share a name. A unique name returns its table, as
+        it always has. A shared name raises AmbiguousTableNameError (listing
+        each copy) unless the copy is picked by ``address`` or by the
+        "Name @ 0xADDR" form. Returns None when nothing matches; raises
+        ValueError for a malformed ``address``.
+        """
+        from .exceptions import AmbiguousTableNameError
+
+        wanted = parse_address(address) if address is not None else None
+        copies = self.get_tables_by_name(name)
+        if not copies:
+            base, suffix_addr = split_qualified_name(name)
+            if suffix_addr is None:
+                return None
+            if wanted is not None and wanted != suffix_addr:
+                return None
+            wanted = suffix_addr
+            copies = self.get_tables_by_name(base)
+
+        if wanted is not None:
+            copies = [t for t in copies if _table_address(t) == wanted]
+            if len(copies) > 1:
+                raise AmbiguousTableNameError(name, copies)
+            return copies[0] if copies else None
+
+        if len(copies) > 1:
+            raise AmbiguousTableNameError(name, copies)
+        return copies[0]
+
+
+def _table_address(table: Table) -> Optional[int]:
+    try:
+        return table.address_int
+    except (TypeError, ValueError):
+        return None
