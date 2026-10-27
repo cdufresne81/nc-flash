@@ -4,6 +4,9 @@ All notable changes to NC Flash are documented here.
 
 ## [Unreleased]
 
+### Changed
+- **Behind the scenes:** a new build job compiles an open-source Tactrix OpenPort 2.0 driver from its source code, as the first step towards using the Tactrix on Windows 11 PCs that now block Tactrix's own driver. No change to the app itself yet.
+
 ## [v2.23.1] - 2026-10-24
 
 **Urgent safety fix: update before using Patch ROM.** Earlier versions could produce a patched ROM that bricks the ECU when flashed.
