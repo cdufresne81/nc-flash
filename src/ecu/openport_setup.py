@@ -15,6 +15,7 @@ from __future__ import annotations
 import base64
 import ctypes
 import logging
+import ntpath
 import os
 import sys
 import uuid
@@ -178,7 +179,7 @@ def find_setup_script() -> Optional[str]:
 def powershell_path() -> str:
     """Windows PowerShell by full path, never a copy found on PATH or nearby."""
     root = os.environ.get("SystemRoot", r"C:\Windows")
-    return os.path.join(root, "System32", "WindowsPowerShell", "v1.0", "powershell.exe")
+    return ntpath.join(root, "System32", "WindowsPowerShell", "v1.0", "powershell.exe")
 
 
 def setup_log_dir() -> str:

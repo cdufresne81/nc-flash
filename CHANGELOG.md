@@ -5,7 +5,7 @@ All notable changes to NC Flash are documented here.
 ## [Unreleased]
 
 ### Added
-- **Tactrix OpenPort works again on Windows 11.** 2026 Windows 11 updates block Tactrix's own OpenPort 2.0 driver (Device Manager shows Code 39 and NC Flash found no device), on genuine cables and clones alike. NC Flash now includes its own OpenPort driver, built from open-source code with a fix for long ECU replies, that works through Microsoft's WinUSB driver. When Windows blocks the cable, NC Flash offers to switch it to its own driver: one click and one Windows administrator prompt, once per PC, with no extra tools. You can also switch it, or switch back for EcuFlash and RomDrop, in Settings > ECU > J2534 > Tactrix OpenPort Driver. Where Tactrix's driver still works, nothing changes.
+- **Tactrix OpenPort works again on Windows 11.** 2026 Windows 11 updates block Tactrix's own OpenPort 2.0 driver (Device Manager shows Code 39 and NC Flash found no device), on genuine cables and clones alike. NC Flash now includes its own OpenPort driver, built from open-source code with a fix for long ECU replies, that works through Microsoft's WinUSB driver. When Windows blocks the cable, NC Flash offers to switch it to its own driver: one click and one Windows administrator prompt (Windows names it "Windows PowerShell"), once per PC, with no extra tools. You can also switch it, or switch back for EcuFlash and RomDrop, in Settings > ECU > J2534 > Tactrix OpenPort Driver. Where Tactrix's driver still works, nothing changes.
 
 ## [v2.23.1] - 2026-10-24
 
