@@ -351,7 +351,8 @@ SETTINGS_REGISTRY = [
         key="ecu.j2534.dll_path",
         label="J2534 DLL override",
         description=(
-            "Leave empty for Tactrix OpenPort 2.0 (op20pt32.dll is found automatically). "
+            "Leave empty for Tactrix OpenPort 2.0: NC Flash uses its built-in driver "
+            "when the cable is set to WinUSB, otherwise Tactrix's op20pt32.dll. "
             "Only set this if you use a different J2534 adapter."
         ),
         category="ECU",

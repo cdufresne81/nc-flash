@@ -10,12 +10,23 @@ permissions:
   contents: write
 
 jobs:
+  openport-driver:
+    name: Build OpenPort driver
+    uses: ./.github/workflows/build-openport-driver.yml
+
   build-windows:
     name: Build Windows Installer
+    needs: openport-driver
     runs-on: windows-latest
 
     steps:
     - uses: actions/checkout@v5
+
+    - name: Download OpenPort driver
+      uses: actions/download-artifact@v4
+      with:
+        name: openport-j2534-x64
+        path: dist/openport
 
     - name: Checkout secure module
       uses: actions/checkout@v5
@@ -109,6 +120,13 @@ jobs:
         if (!(Test-Path "dist\NCFlash\_internal\src\ecu\romdrop.crc")) {
           Write-Error "romdrop.crc not bundled: Patch ROM would be disabled"
           exit 1
+        }
+        # Built-in OpenPort driver: the Tactrix's only route where Windows blocks openport.sys
+        foreach ($f in "j2534.dll", "libusb-1.0.dll") {
+          if (!(Test-Path "dist\NCFlash\_internal\openport\$f")) {
+            Write-Error "openport\$f not bundled"
+            exit 1
+          }
         }
         Write-Output "Build verified: dist\NCFlash\NCFlash.exe"
       shell: pwsh

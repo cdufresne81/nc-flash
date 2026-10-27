@@ -2,7 +2,8 @@
 J2534 PassThru DLL Wrapper
 
 Provides a ctypes-based interface to J2534 PassThru device drivers on Windows.
-Default target: Tactrix OpenPort 2.0 (op20pt32.dll).
+Default target: Tactrix OpenPort 2.0 — NC Flash's built-in driver when the
+cable is bound to WinUSB, otherwise Tactrix's op20pt32.dll.
 
 This is safety-critical code used for ECU communication and flash operations.
 All function calls validate return codes and raise descriptive exceptions on failure.
@@ -155,6 +156,61 @@ def _find_bridge_exe() -> Optional[str]:
             return str(candidate)
 
     return None
+
+
+# NC Flash's own OpenPort 2.0 driver (open-source j2534.dll + libusb, x64), built
+# from pinned source by .github/workflows/build-openport-driver.yml. It talks to
+# an OpenPort bound to Microsoft's WinUSB driver, so it still works where Windows
+# blocks Tactrix's openport.sys (Device Manager Code 39).
+BUILTIN_OPENPORT_DIR = "openport"
+BUILTIN_OPENPORT_DLL = "j2534.dll"
+OPENPORT_WINDOWS11_HELP = (
+    "https://github.com/cdufresne81/nc-flash#tactrix-openport-on-windows-11"
+)
+_ERR_DEVICE_IN_USE = 0x0E
+
+# The built-in driver keeps one global connection per process: a second
+# PassThruOpen while one is live must never reach the DLL. Owned here, not by
+# any device object, because every J2534Device shares the one loaded DLL.
+_builtin_lock = threading.Lock()
+_builtin_in_use = False
+
+
+def find_builtin_openport_dll() -> Optional[str]:
+    """
+    Find the bundled OpenPort 2.0 driver DLL.
+
+    Searches the PyInstaller bundle first, then dist/openport/ in a development
+    checkout (download the "openport-j2534-x64" artifact of the latest
+    "Build OpenPort J2534 driver" run into dist/openport).
+
+    Returns:
+        Path to the DLL if found, None otherwise (always None off Windows).
+    """
+    if sys.platform != "win32":
+        return None
+
+    candidates = []
+    if getattr(sys, "frozen", False):
+        meipass = Path(getattr(sys, "_MEIPASS", ""))
+        if meipass.is_dir():
+            candidates.append(meipass / BUILTIN_OPENPORT_DIR / BUILTIN_OPENPORT_DLL)
+        candidates.append(
+            Path(sys.executable).parent / BUILTIN_OPENPORT_DIR / BUILTIN_OPENPORT_DLL
+        )
+    repo_root = Path(__file__).resolve().parent.parent.parent
+    candidates.append(repo_root / "dist" / BUILTIN_OPENPORT_DIR / BUILTIN_OPENPORT_DLL)
+
+    for candidate in candidates:
+        if candidate.is_file():
+            return str(candidate)
+    return None
+
+
+def is_automatic_driver(dll_path: str) -> bool:
+    """True when the J2534 driver setting is left at its default, which lets
+    NC Flash pick the built-in OpenPort driver when the cable is on WinUSB."""
+    return (dll_path or DEFAULT_J2534_DLL).lower() == DEFAULT_J2534_DLL.lower()
 
 
 def _find_matching_python() -> Optional[list[str]]:
@@ -358,6 +414,9 @@ class J2534Device:
 
     def __init__(self, dll_path: str = DEFAULT_J2534_DLL):
         self._dll_path = dll_path
+        # Default setting: open() tries the built-in OpenPort driver first.
+        self._automatic = is_automatic_driver(dll_path)
+        self._holds_builtin = False  # this device holds the built-in driver
         self._dll = None
         self._funcs: dict = {}
         self._device_id: Optional[int] = None
@@ -590,6 +649,100 @@ class J2534Device:
                 pass
             self._bridge = None
 
+    def _open_builtin_openport(self) -> bool:
+        """
+        Automatic driver choice: open the OpenPort with the built-in driver.
+
+        Runs only for the default driver setting, when the built-in driver is
+        bundled. It can only open an OpenPort bound to WinUSB, so where Tactrix's
+        own driver still works it fails at once and open() carries on with that
+        driver exactly as before.
+
+        Returns:
+            True if the device is now open on the built-in driver.
+
+        Raises:
+            J2534DeviceNotFound: the built-in driver is already open in this
+                process (one connection at a time), or the cable is in use.
+        """
+        global _builtin_in_use
+        if not self._automatic or self._dll is not None or self._bridge is not None:
+            return False
+        builtin = find_builtin_openport_dll()
+        if builtin is None:
+            return False
+
+        with _builtin_lock:
+            if _builtin_in_use:
+                raise J2534DeviceNotFound(
+                    "The OpenPort is already in use by another NC Flash connection "
+                    "(for example the ECU window). Disconnect it first."
+                )
+            try:
+                self._dll = ctypes.WinDLL(builtin)
+            except OSError as e:
+                logger.warning("Built-in OpenPort driver failed to load: %s", e)
+                self._dll = None
+                return False
+            self._resolve_functions()
+
+            device_id = c_ulong()
+            try:
+                result = self._require_func("PassThruOpen")(None, byref(device_id))
+            except (J2534Error, OSError) as e:
+                result = None
+                reason = str(e)
+            else:
+                reason = _ERROR_DESCRIPTIONS.get(result, f"0x{result:02X}")
+            if result != J2534_STATUS_NOERROR:
+                # Back to Tactrix's driver. The built-in DLL stays loaded, unused.
+                self._dll = None
+                self._funcs = {}
+                if result == _ERR_DEVICE_IN_USE:
+                    raise J2534DeviceNotFound(
+                        f"The OpenPort is already in use ({reason}). "
+                        "Disconnect the other connection first."
+                    )
+                logger.info(
+                    "No WinUSB OpenPort for the built-in driver (%s); using %s",
+                    reason,
+                    self._dll_path,
+                )
+                return False
+
+            _builtin_in_use = True
+            self._holds_builtin = True
+
+        self._dll_path = builtin
+        self._device_id = device_id.value
+        logger.info(
+            "Opened OpenPort with NC Flash's built-in driver (ID=%d)", self._device_id
+        )
+        return True
+
+    def _release_builtin(self) -> None:
+        """Let the next connection open the built-in driver."""
+        global _builtin_in_use
+        if getattr(self, "_holds_builtin", False):
+            with _builtin_lock:
+                _builtin_in_use = False
+            self._holds_builtin = False
+
+    def _not_found_hint(self, message: str) -> str:
+        """Add the Windows 11 driver-block fix to a 'no OpenPort found' error."""
+        if not self._automatic or sys.platform != "win32":
+            return message
+        return (
+            f"{message}. If the OpenPort is plugged in and Device Manager shows it "
+            "with a warning (Code 39), Windows is blocking Tactrix's driver: switch "
+            f"the cable to WinUSB, see {OPENPORT_WINDOWS11_HELP}"
+        )
+
+    @property
+    def driver_path(self) -> str:
+        """The driver in use: the built-in OpenPort DLL once open() picked it."""
+        return self._dll_path
+
     def _resolve_functions(self) -> None:
         """Resolve all 14 PassThru function pointers from the loaded DLL."""
         for name in _PASSTHRU_FUNCTIONS:
@@ -654,13 +807,20 @@ class J2534Device:
         Stores the device ID for subsequent operations.
         Raises J2534DeviceNotFound if the device cannot be opened.
         """
-        self._ensure_dll()
+        if self._open_builtin_openport():
+            return
+
+        try:
+            self._ensure_dll()
+        except J2534DLLNotFound as e:
+            # e.g. Tactrix's software not installed and no WinUSB cable found
+            raise J2534DLLNotFound(self._not_found_hint(str(e))) from e
 
         if self._bridge:
             try:
                 resp = self._bridge_call("open")
             except J2534Error as e:
-                raise J2534DeviceNotFound(str(e)) from e
+                raise J2534DeviceNotFound(self._not_found_hint(str(e))) from e
             self._device_id = resp["device_id"]
             logger.info("Opened J2534 device via bridge (ID=%d)", self._device_id)
             return
@@ -678,7 +838,7 @@ class J2534Device:
         try:
             self._check_error(result, "PassThruOpen")
         except J2534Error as e:
-            raise J2534DeviceNotFound(str(e)) from e
+            raise J2534DeviceNotFound(self._not_found_hint(str(e))) from e
 
         self._device_id = device_id.value
         logger.info("Opened J2534 device (ID=%d)", self._device_id)
@@ -725,6 +885,7 @@ class J2534Device:
 
         logger.info("Closed J2534 device (ID=%d)", self._device_id)
         self._device_id = None
+        self._release_builtin()
 
     def connect(self, protocol: int, flags: int, baudrate: int) -> int:
         """

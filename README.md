@@ -25,6 +25,16 @@ Download the `.exe` installer and run it.
 
 Once installed, NC Flash can update itself: see **Help > Check for Updates**.
 
+#### Tactrix OpenPort on Windows 11
+
+Windows 11 updates from 2026 block Tactrix's own OpenPort 2.0 driver, on genuine cables and clones alike. Device Manager then shows the cable with a warning (Code 39), and NC Flash reports "no devices available". NC Flash ships its own OpenPort driver, built from open-source code, which works through Microsoft's WinUSB driver instead. To use it, switch the cable to WinUSB once per PC:
+
+1. Download [Zadig](https://zadig.akeo.ie/) and run it (it asks for administrator rights).
+2. In **Options**, tick **List All Devices**.
+3. Pick **Tactrix Openport 2.0 J2534 Vehicle Interface** (USB ID `0403 CC4D`), set the target driver to **WinUSB**, and click **Replace Driver**.
+
+NC Flash then picks its built-in driver on its own (leave Settings > ECU > J2534 DLL override empty). Other Tactrix software, such as EcuFlash, no longer sees the cable while it's on WinUSB. To go back, open the cable in Device Manager, choose **Update driver**, and pick the Tactrix driver.
+
 ### Linux
 Download the `.tar.gz` archive, extract it, and run the `NCFlash` binary:
 ```bash
@@ -122,6 +132,7 @@ python main.py
 - Safety: battery voltage check, engine-off requirement, state machine prevents step-skipping
 - Auto-saves unsaved changes before flashing
 - Configurable J2534 DLL path (auto-detects Tactrix OpenPort via registry)
+- Built-in OpenPort 2.0 driver for Windows 11 PCs that block Tactrix's own driver (see [Tactrix OpenPort on Windows 11](#tactrix-openport-on-windows-11))
 
 ### ROM Comparison
 - Side-by-side comparison of two ROMs (`Ctrl+Shift+D`)

@@ -34,6 +34,23 @@ if sys.platform == 'win32':
         )
     extra_datas.append((bridge_dir, 'j2534_bridge_32'))
 
+    # Built-in OpenPort 2.0 driver (x64 j2534.dll + libusb, with licences), built
+    # from pinned source by .github/workflows/build-openport-driver.yml.
+    # Required in CI (a release must ship it); a local build without it only warns,
+    # and the app then uses Tactrix's driver alone.
+    openport_dir = os.path.join(repo_root, 'dist', 'openport')
+    if os.path.isfile(os.path.join(openport_dir, 'j2534.dll')):
+        extra_datas.append((openport_dir, 'openport'))
+    else:
+        message = (
+            f"OpenPort driver not found at {openport_dir}. Download the "
+            "'openport-j2534-x64' artifact of the latest 'Build OpenPort J2534 "
+            "driver' run into dist/openport."
+        )
+        if os.environ.get('CI'):
+            raise FileNotFoundError(message)
+        print(f"WARNING: {message} Building without the built-in OpenPort driver.")
+
 a = Analysis(
     [os.path.join(repo_root, 'main.py')],
     pathex=[repo_root],

@@ -1,2 +1,0 @@
-# Patches against CRLF upstream sources: keep their bytes exactly as committed.
-packaging/openport/*.patch -text

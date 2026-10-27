@@ -4,8 +4,8 @@ All notable changes to NC Flash are documented here.
 
 ## [Unreleased]
 
-### Changed
-- **Behind the scenes:** a new build job compiles an open-source Tactrix OpenPort 2.0 driver from its source code, with a fix so it passes long ECU replies through intact, as the first step towards using the Tactrix on Windows 11 PCs that now block Tactrix's own driver. No change to the app itself yet.
+### Added
+- **Tactrix OpenPort works again on Windows 11.** 2026 Windows 11 updates block Tactrix's own OpenPort 2.0 driver (Device Manager shows Code 39 and NC Flash found no device), on genuine cables and clones alike. NC Flash now includes its own OpenPort driver, built from open-source code with a fix for long ECU replies, that works through Microsoft's WinUSB driver. Switch the cable to WinUSB once with Zadig (steps in the README) and NC Flash uses it automatically; where Tactrix's driver still works, nothing changes. If no cable is found, the error now explains the Windows block and the fix.
 
 ## [v2.23.1] - 2026-10-24
 

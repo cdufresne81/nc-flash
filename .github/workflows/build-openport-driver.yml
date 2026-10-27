@@ -2,62 +2,46 @@
 # pinned source, so NC Flash never ships or runs a prebuilt third-party binary.
 # Windows 11 (2026 cross-certificate policy) blocks Tactrix's own openport.sys
 # (Code 39); with the cable bound to WinUSB, this DLL talks to it over libusb.
+# Driver source: our fork of NikolaKozina/j2534 (BSD-3-Clause); NC Flash's fixes
+# are commits there. To pick up a fix, bump J2534_SHA.
 name: Build OpenPort J2534 driver
 
 on:
+  workflow_call:   # release.yml bundles the result into the installer
   workflow_dispatch:
   push:
+    branches: ['**']   # not tags: release.yml builds the driver for those
     paths:
       - '.github/workflows/build-openport-driver.yml'
-      - 'packaging/openport/**'
 
 permissions:
   contents: read
 
 env:
-  J2534_REPO: NikolaKozina/j2534
-  J2534_SHA: 22ae8e85aa421dd74b2a3678bd9bf0f0db8ff55a   # BSD-3-Clause, 2025-10-03
+  J2534_REPO: cdufresne81/nc-flash-j2534
+  J2534_SHA: 030277f1c20d67800f929c954c338405ef0b4c71   # CAN-ID fix + one open, bounded writes
   LIBUSB_SHA: 87a55632db62c9bdc58cd31d3ccfa673f1bb017f  # libusb v1.0.30, LGPL-2.1
 
 jobs:
   build:
     runs-on: windows-2022
     steps:
-      - name: Checkout NC Flash (driver patches)
-        uses: actions/checkout@v5
-        with:
-          path: ncflash
-          sparse-checkout: packaging/openport
-
       - name: Checkout J2534 driver source
-        uses: actions/checkout@v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09  # v5
         with:
           repository: ${{ env.J2534_REPO }}
           ref: ${{ env.J2534_SHA }}
           path: j2534
 
       - name: Checkout libusb source
-        uses: actions/checkout@v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09  # v5
         with:
           repository: libusb/libusb
           ref: ${{ env.LIBUSB_SHA }}
           path: libusb-src
 
-      - name: Apply NC Flash driver patches
-        shell: pwsh
-        run: |
-          $patches = Get-ChildItem ncflash\packaging\openport -Filter *.patch | Sort-Object Name
-          if (-not $patches) { throw "no driver patches found" }
-          foreach ($p in $patches) {
-            git -C j2534 apply --check $p.FullName
-            if ($LASTEXITCODE) { throw "patch does not apply: $($p.Name)" }
-            git -C j2534 apply $p.FullName
-            "applied $($p.Name)"
-          }
-          git -C j2534 diff --stat
-
       - name: Set up MSBuild
-        uses: microsoft/setup-msbuild@v2
+        uses: microsoft/setup-msbuild@6fb02220983dee41ce7ae257b6f4d8f9bf5ed4ce  # v2
 
       - name: Build libusb (x64)
         run: msbuild libusb-src\msvc\libusb_dll.vcxproj /m /p:Configuration=Release /p:Platform=x64 /p:PlatformToolset=v143
@@ -87,7 +71,6 @@ jobs:
           Copy-Item libusb-src\COPYING "$dist\COPYING-libusb.txt"
           @(
             "j2534.dll   from https://github.com/$env:J2534_REPO @ $env:J2534_SHA"
-            "  + NC Flash patches: $((Get-ChildItem ncflash\packaging\openport -Filter *.patch | Sort-Object Name).Name -join ', ')"
             "libusb-1.0.dll from https://github.com/libusb/libusb @ $env:LIBUSB_SHA (v1.0.30)"
             "Built by $env:GITHUB_SERVER_URL/$env:GITHUB_REPOSITORY/actions/runs/$env:GITHUB_RUN_ID"
           ) | Set-Content "$dist\SOURCES.txt"
@@ -96,8 +79,13 @@ jobs:
           } | Set-Content "$dist\SHA256SUMS.txt"
           Get-Content "$dist\SOURCES.txt", "$dist\SHA256SUMS.txt"
 
+      - name: Check the driver loads and exports the J2534 API
+        shell: pwsh
+        run: |
+          python -c "import ctypes, os, sys; d = ctypes.WinDLL(os.path.abspath(r'dist\j2534.dll')); names = 'Open Close Connect Disconnect ReadMsgs WriteMsgs StartPeriodicMsg StopPeriodicMsg StartMsgFilter StopMsgFilter SetProgrammingVoltage ReadVersion GetLastError Ioctl'.split(); missing = [n for n in names if not hasattr(d, 'PassThru' + n)]; print('missing:', missing) if missing else print('all 14 J2534 functions exported'); sys.exit(1 if missing else 0)"
+
       - name: Upload
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4
         with:
           name: openport-j2534-x64
           path: dist/
