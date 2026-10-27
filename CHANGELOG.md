@@ -17,6 +17,8 @@ All notable changes to NC Flash are documented here.
 - **Behind the scenes:** every build now checks that Patch ROM's output is byte-for-byte identical to RomDrop's, using a ROM patched by RomDrop itself. No change to the app itself.
 
 ### Fixed
+- **The Tactrix OpenPort now works with a microSD card in the cable.** With a card inserted, the cable shows up as a different USB device, so neither the driver switch nor NC Flash's built-in driver found it, and Windows kept blocking it (Code 39). Both now handle the cable with or without a card, and the card stays readable as a drive.
+- **NC Flash's built-in Tactrix driver no longer loses an ECU reply that arrives next to a cable error message,** and it now handles damaged or cut-off USB data safely instead of misreading it.
 - **The log panel no longer drops text.** Parts of a log message inside angle brackets (`<...>`) disappeared, and messages spanning several lines were run together on one line (#202). The log file was not affected.
 - **Connecting to a WiCAN no longer crashes.** Beta 3 and 4 failed with an error as soon as you pressed Connect with a WiCAN adapter selected.
 - **A flash or ROM read no longer fails when the ECU is already unlocked.** If an earlier session left the ECU unlocked, it answers with an empty security seed; NC Flash sent a key anyway and the ECU refused it. NC Flash now skips the key in that case.

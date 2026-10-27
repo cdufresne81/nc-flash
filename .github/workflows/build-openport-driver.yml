@@ -19,7 +19,7 @@ permissions:
 
 env:
   J2534_REPO: cdufresne81/nc-flash-j2534
-  J2534_SHA: 030277f1c20d67800f929c954c338405ef0b4c71   # CAN-ID fix + one open, bounded writes
+  J2534_SHA: 39b9a54c0059a6b1469fd466b3445a1c602c8cf2   # v1.0.3 (SD card in the cable, 0403:CC4C; includes v1.0.0-v1.0.2)
   LIBUSB_SHA: 87a55632db62c9bdc58cd31d3ccfa673f1bb017f  # libusb v1.0.30, LGPL-2.1
 
 jobs:
