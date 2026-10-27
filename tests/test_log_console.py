@@ -190,3 +190,23 @@ class TestAllowlist:
             assert any("info kept" in m for m, _ in captured)
         finally:
             console.unregister_logging()
+
+
+class TestMessageText:
+    """Messages are shown as plain text, not parsed as HTML (#202)."""
+
+    def test_angle_brackets_and_ampersand_shown_as_written(self, qapp):
+        console = LogConsole(auto_register=False)
+        console.append_log(
+            "state: OpenPortState(driver=<OpenPortDriver.WINUSB: 'winusb'>) & more",
+            logging.INFO,
+        )
+        assert (
+            "state: OpenPortState(driver=<OpenPortDriver.WINUSB: 'winusb'>) & more"
+            in console.console.toPlainText()
+        )
+
+    def test_line_breaks_kept(self, qapp):
+        console = LogConsole(auto_register=False)
+        console.append_log("first line\nsecond line", logging.INFO)
+        assert "first line\nsecond line" in console.console.toPlainText()

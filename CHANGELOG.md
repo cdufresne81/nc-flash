@@ -4,6 +4,9 @@ All notable changes to NC Flash are documented here.
 
 ## [Unreleased]
 
+### Fixed
+- **The log panel no longer drops text.** Parts of a log message inside angle brackets (`<...>`) disappeared, and messages spanning several lines were run together on one line (#202). The log file was not affected.
+
 ## [v2.23.1] - 2026-10-24
 
 **Urgent safety fix: update before using Patch ROM.** Earlier versions could produce a patched ROM that bricks the ECU when flashed.

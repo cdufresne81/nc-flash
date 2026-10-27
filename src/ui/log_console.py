@@ -5,6 +5,7 @@ Displays application logs and messages in a console-like interface.
 Similar to ECUFlash's message window.
 """
 
+import html
 import logging
 from ..utils.constants import (
     LOG_CONSOLE_MAX_LINES,
@@ -220,8 +221,10 @@ class LogConsole(QWidget):
 
         color = colors.get(level, "#d4d4d4")  # Default white
 
-        # Format with HTML for colors
-        html_message = f'<span style="color: {color};">{message}</span>'
+        # Format with HTML for colors. Escape the text so "<...>" and "&" in a
+        # message show as written, and keep its line breaks.
+        text = html.escape(message, quote=False).replace("\n", "<br>")
+        html_message = f'<span style="color: {color};">{text}</span>'
 
         # Append to console
         self.console.append(html_message)
