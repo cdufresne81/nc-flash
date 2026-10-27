@@ -366,7 +366,8 @@ SETTINGS_REGISTRY = [
         key="ecu.j2534.dll_path",
         label="J2534 DLL override",
         description=(
-            "Leave empty for Tactrix OpenPort 2.0 (op20pt32.dll is found automatically). "
+            "Leave empty for Tactrix OpenPort 2.0: NC Flash uses its built-in driver "
+            "when the cable is set to WinUSB, otherwise Tactrix's op20pt32.dll. "
             "Only set this if you use a different J2534 adapter."
         ),
         category="ECU",
@@ -394,6 +395,24 @@ SETTINGS_REGISTRY = [
             "callback_name": "_test_j2534_connection",
         },
         keywords=["test", "connection", "j2534", "device"],
+    ),
+    SettingDescriptor(
+        key="ecu.j2534.openport_driver",
+        label="Tactrix OpenPort Driver",
+        description=(
+            "Switch the Tactrix OpenPort between NC Flash's driver (WinUSB) and "
+            "Tactrix's. Needed where Windows blocks Tactrix's driver (Code 39)"
+        ),
+        category="ECU",
+        subcategory="J2534",
+        widget_type="button",
+        getter="",
+        setter=None,
+        widget_options={
+            "text": "Tactrix OpenPort Driver...",
+            "callback_name": "_manage_openport_driver",
+        },
+        keywords=["tactrix", "openport", "driver", "winusb", "zadig", "code 39"],
     ),
     # -- ECU > OBDX Pro --
     SettingDescriptor(
@@ -819,8 +838,14 @@ class SettingsDialog(QDialog):
 
     settings_changed = Signal()
 
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, openport_setup=None):
         super().__init__(parent)
+        # App-wide Tactrix driver switch (None in tests and standalone use).
+        self._openport_setup = openport_setup
+        # Dialogs outlive exec(); only this one reacts to its own requests.
+        self._openport_requester = f"settings:{id(self)}"
+        if openport_setup is not None:
+            openport_setup.finished.connect(self._on_openport_setup_done)
         self.setWindowTitle("Settings")
         self.setMinimumSize(720, 560)
         # Tall enough for the longest page (General > Paths) without a scroll
@@ -1450,6 +1475,21 @@ class SettingsDialog(QDialog):
                 "Connection Failed",
                 f"Could not connect to J2534 device:\n{e}",
             )
+
+    def _manage_openport_driver(self):
+        """Show the OpenPort's Windows driver and offer to switch it."""
+        if self._openport_setup is not None:
+            self._openport_setup.choose_and_start(self, self._openport_requester)
+
+    def _on_openport_setup_done(self, ok: bool, message: str, requester: str):
+        from PySide6.QtWidgets import QMessageBox
+
+        if requester != self._openport_requester:
+            return
+        if ok:
+            QMessageBox.information(self, "Tactrix OpenPort Driver", message)
+        else:
+            QMessageBox.warning(self, "Tactrix OpenPort Driver", message)
 
     def _test_obdx_connection(self):
         from PySide6.QtWidgets import QMessageBox

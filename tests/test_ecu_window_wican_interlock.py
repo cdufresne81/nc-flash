@@ -43,6 +43,7 @@ def _fake_window(
         _ecu_busy=ecu_busy,
         _rpm=None,
         _main_window=main_window,
+        _openport_setup=SimpleNamespace(is_running=False),
         _last_busy_broadcast=None,
         busy_changed=MagicMock(),
         _last_link_broadcast=None,
