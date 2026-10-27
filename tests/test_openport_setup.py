@@ -92,6 +92,21 @@ class TestDetect:
         )
         assert detect_openport().driver is OpenPortDriver.BLOCKED
 
+    @pytest.mark.parametrize(
+        "instance, ours",
+        [
+            (r"USB\VID_0403&PID_CC4D\TAHJALXT", True),  # no microSD card
+            (r"usb\vid_0403&pid_cc4d\tahjalxt", True),
+            (r"USB\VID_0403&PID_CC4C&MI_00\6&1FEF8493&1&0000", True),  # with a card
+            (r"USB\VID_0403&PID_CC4C&MI_02\6&1FEF8493&1&0002", False),  # the card
+            (r"USB\VID_0403&PID_CC4C\TAHJALXT", False),  # composite parent
+            (r"USB\VID_0403&PID_CC4B\TAHJALXT", False),  # bootloader
+            (r"USB\VID_0403&PID_CC4DX\1", False),
+        ],
+    )
+    def test_only_the_j2534_part_of_the_cable_is_matched(self, instance, ours):
+        assert openport_setup.is_openport_instance(instance) is ours
+
     def test_windows_api_error_reads_as_not_found(self, monkeypatch):
         monkeypatch.setattr(sys, "platform", "win32")
 
@@ -218,8 +233,56 @@ class TestScript:
     def test_inf_targets_only_the_openport(self):
         r = self._call("New-OpenPortInf 'marker-1' (Get-Date)")
         inf = r.stdout
-        assert "USB\\VID_0403&PID_CC4D" in inf and "marker-1" in inf
+        assert "marker-1" in inf
         assert "Include = winusb.inf" in inf and "CoInstallers" not in inf
+        ids = re.findall(r"USB_Install, (\S+)", inf)
+        # every architecture: the cable without and with a microSD card, never
+        # the card's own storage function
+        assert ids == ["USB\\VID_0403&PID_CC4D", "USB\\VID_0403&PID_CC4C&MI_00"] * 3
+
+    @pytest.mark.parametrize(
+        "devices, expected",
+        [
+            ([], "not plugged in"),
+            (["USB\\VID_0403&PID_CC4C\\TAHJALXT"], "not plugged in"),  # parent
+            (["USB\\VID_0403&PID_CC4C&MI_02\\6&1&0002"], "not plugged in"),  # card
+            (
+                ["USB\\VID_0403&PID_CC4DX\\1", "USB\\VID_0403&PID_CC4C&MI_001\\x"],
+                "not plugged in",
+            ),
+            (["USB\\VID_0403&PID_CC4D\\TAHJALXT"], "CC4D present"),
+            (
+                [
+                    "USB\\VID_0403&PID_CC4C\\TAHJALXT",
+                    "USB\\VID_0403&PID_CC4C&MI_02\\6&1&0002",
+                    "usb\\vid_0403&pid_cc4c&mi_00\\6&1&0000",
+                ],
+                "CC4C&MI_00 present",
+            ),
+            (
+                ["USB\\VID_0403&PID_CC4D\\A", "USB\\VID_0403&PID_CC4C&MI_00\\B"],
+                "CC4D present,CC4C&MI_00 present",
+            ),
+        ],
+    )
+    def test_cable_state_reads_only_the_j2534_part(self, devices, expected):
+        # Stub Windows' device list; the service name echoes the instance found.
+        listed = ",".join("'" + d.replace("'", "''") + "'" for d in devices)
+        r = self._call(
+            f"$devs = @({listed}); "
+            "function Get-PnpDevice { param([switch]$PresentOnly, $ErrorAction) "
+            "$devs | ForEach-Object { [pscustomobject]@{ InstanceId = $_ } } }; "
+            "function Get-PnpDeviceProperty { param($InstanceId, $KeyName) "
+            "if ($KeyName -eq 'DEVPKEY_Device_Service') "
+            "{ [pscustomobject]@{ Data = $InstanceId } } "
+            "else { [pscustomobject]@{ Data = 0 } } }; "
+            "$found = @($HardwareIds | Where-Object "
+            "{ (Get-CableState @($_)) -ne 'not plugged in' }); "
+            "if ($found.Count) { ($found | ForEach-Object "
+            "{ ($_ -replace '^USB\\\\VID_0403&PID_', '') + ' present' }) -join ',' } "
+            "else { Get-CableState }"
+        )
+        assert r.stdout.strip() == expected, r.stdout + r.stderr
 
     @pytest.mark.parametrize(
         "text, ours",
@@ -234,6 +297,16 @@ class TestScript:
             ('USB\\VID_0403&PID_CC4D\nProvider = "Tactrix Inc."\nopenport.sys', False),
             # someone else's WinUSB setup for the same cable
             ('USB\\VID_0403&PID_CC4D\nInclude = winusb.inf\nProvider = "Acme"', False),
+            # Zadig's setup for the cable with a microSD card
+            (
+                'USB\\VID_0403&PID_CC4C&MI_00\nInclude = winusb.inf\nProvider = "libwdi"',
+                True,
+            ),
+            # a WinUSB setup for the card itself is not ours
+            (
+                'USB\\VID_0403&PID_CC4C&MI_02\nInclude = winusb.inf\nProvider = "libwdi"',
+                False,
+            ),
         ],
     )
     def test_restore_only_removes_ncflash_or_zadig_setups(self, text, ours):
