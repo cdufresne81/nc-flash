@@ -27,13 +27,13 @@ Once installed, NC Flash can update itself: see **Help > Check for Updates**.
 
 #### Tactrix OpenPort on Windows 11
 
-Windows 11 updates from 2026 block Tactrix's own OpenPort 2.0 driver, on genuine cables and clones alike. Device Manager then shows the cable with a warning (Code 39), and NC Flash reports "no devices available". NC Flash ships its own OpenPort driver, built from open-source code, which works through Microsoft's WinUSB driver instead. To use it, switch the cable to WinUSB once per PC:
+Windows 11 updates from 2026 block Tactrix's own OpenPort 2.0 driver, on genuine cables and clones alike. Device Manager then shows the cable with a warning (Code 39). NC Flash ships its own OpenPort driver, built from open-source code, which works through Microsoft's WinUSB driver instead.
 
-1. Download [Zadig](https://zadig.akeo.ie/) and run it (it asks for administrator rights).
-2. In **Options**, tick **List All Devices**.
-3. Pick **Tactrix Openport 2.0 J2534 Vehicle Interface** (USB ID `0403 CC4D`), set the target driver to **WinUSB**, and click **Replace Driver**.
+When NC Flash can't connect because Windows blocks the cable's driver, it offers to switch the cable to its own driver. Click **Yes**, then **Yes** on the Windows administrator prompt; this happens once per PC. You can also do it, or switch back, from **Settings > ECU > J2534 > Tactrix OpenPort Driver**. Leave the J2534 DLL override empty so NC Flash picks the right driver on its own.
 
-NC Flash then picks its built-in driver on its own (leave Settings > ECU > J2534 DLL override empty). Other Tactrix software, such as EcuFlash, no longer sees the cable while it's on WinUSB. To go back, open the cable in Device Manager, choose **Update driver**, and pick the Tactrix driver.
+Other Tactrix software, such as EcuFlash and RomDrop, doesn't see the cable while it uses NC Flash's driver. Switch it back from the same Settings button when you need them (on PCs where Windows blocks Tactrix's driver, they can't use the cable either way).
+
+The switch adds a small Windows setup file for the cable, signed with a certificate made on your PC for that purpose only; its private key is deleted right away, so it can't sign anything else. Switching back removes both. ([Zadig](https://zadig.akeo.ie/), set to WinUSB for the "Tactrix Openport 2.0" device, does the same thing by hand.)
 
 ### Linux
 Download the `.tar.gz` archive, extract it, and run the `NCFlash` binary:

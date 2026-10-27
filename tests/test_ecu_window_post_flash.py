@@ -37,6 +37,14 @@ class _Utility(QObject):
         pass
 
 
+class _DriverSwitch(QObject):
+    """Stand-in for the main window's Tactrix driver switch (never running)."""
+
+    finished = Signal(bool, str, str)
+
+    is_running = False
+
+
 class _MainWindow:
     def __init__(self, adapter: str):
         self.settings = MagicMock()
@@ -45,6 +53,7 @@ class _MainWindow:
         self.settings.get_j2534_dll_path.return_value = ""
         self.wican_log_sync = _Utility()
         self.wican_live_datalog = _Utility()
+        self.openport_setup = _DriverSwitch()
 
     def get_current_document(self):
         return None

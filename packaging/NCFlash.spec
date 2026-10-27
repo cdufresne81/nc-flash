@@ -36,6 +36,11 @@ if sys.platform == 'win32':
 
     # Built-in OpenPort 2.0 driver (x64 j2534.dll + libusb, with licences), built
     # from pinned source by .github/workflows/build-openport-driver.yml.
+    # The script NC Flash runs (elevated) to switch the cable to WinUSB.
+    extra_datas.append(
+        (os.path.join(repo_root, 'packaging', 'openport', 'openport_winusb.ps1'), 'openport')
+    )
+
     # Required in CI (a release must ship it); a local build without it only warns,
     # and the app then uses Tactrix's driver alone.
     openport_dir = os.path.join(repo_root, 'dist', 'openport')

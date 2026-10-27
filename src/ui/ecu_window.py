@@ -45,6 +45,8 @@ from src.ecu.exceptions import ECUError, FlashAbortedError, ROMValidationError
 from src.ecu.rom_utils import get_cal_id
 from src.ecu.dtc import dedup_dtcs
 from src.ui.error_helpers import ecu_error_message
+from src.ecu.j2534 import is_automatic_driver
+from src.ecu.openport_setup import detect_openport
 from src.ui.log_console import LogConsole
 from src.ui.wican_ap_switch import WiCANApSwitch
 from src.ui.rom_read_check import (
@@ -236,6 +238,11 @@ class ECUProgrammingWindow(QMainWindow):
         self._poll_timer.timeout.connect(self._poll_conditions)
         # Joins the WiCAN's own Wi-Fi when it can't be reached (asks first).
         self._ap_switch = WiCANApSwitch(self, main_window.settings)
+
+        # App-wide Tactrix driver switch: offered when Windows blocks the cable.
+        self._openport_setup = main_window.openport_setup
+        self._openport_setup.finished.connect(self._on_openport_setup_done)
+        self._openport_fix_offered = False
 
         self.setWindowTitle("ECU Programming")
         self.setMinimumSize(700, 500)
@@ -489,8 +496,23 @@ class ECUProgrammingWindow(QMainWindow):
         # returns.
         QApplication.processEvents()
 
+    def holds_ecu_link(self) -> bool:
+        """True while this window has an ECU connection or an operation running."""
+        session = self._session
+        return bool(
+            self.is_busy
+            or (
+                session is not None
+                and (session.is_connected or session.state == ECUSessionState.BUSY)
+            )
+        )
+
     def _on_connect(self):
         if self._session and self._session.is_connected:
+            return
+        if self._openport_setup.is_running:
+            # The cable is being switched to another Windows driver.
+            self._conn_label.setText("Tactrix driver switch running...")
             return
 
         # Tear down any previous (non-connected) session before replacing it, so
@@ -530,6 +552,30 @@ class ECUProgrammingWindow(QMainWindow):
         self._session.connection_lost.connect(self._on_connection_lost)
         self._session.progress.connect(self._on_connect_progress)
         self._session.connect_ecu()
+        if adapter["kind"] == "j2534" and not self._session.is_connected:
+            self._offer_openport_fix(adapter["dll_path"])
+
+    def _offer_openport_fix(self, dll_path: str):
+        """A Tactrix connect failed: if Windows blocks the cable's driver, offer
+        (once per window) to switch it to NC Flash's driver."""
+        if self._openport_fix_offered or not is_automatic_driver(dll_path):
+            return
+        state = detect_openport()
+        if not state.needs_winusb:
+            return
+        self._openport_fix_offered = True
+        self._openport_setup.offer_fix(state, self, "ecu_window")
+
+    def _on_openport_setup_done(self, ok: bool, message: str, requester: str):
+        if requester != "ecu_window":
+            return
+        if ok:
+            QMessageBox.information(self, "Tactrix OpenPort", message)
+            adapter = self._build_adapter_config()
+            if not self.is_busy and adapter["kind"] == "j2534":
+                self._on_connect()
+        else:
+            QMessageBox.warning(self, "Tactrix OpenPort", message)
 
     def _on_disconnect(self):
         self._poll_timer.stop()
