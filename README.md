@@ -25,6 +25,16 @@ Download the `.exe` installer and run it.
 
 Once installed, NC Flash can update itself: see **Help > Check for Updates**.
 
+#### Tactrix OpenPort on Windows 11
+
+Windows 11 updates from 2026 block Tactrix's own OpenPort 2.0 driver, on genuine cables and clones alike. Device Manager then shows the cable with a warning (Code 39). NC Flash ships its own OpenPort driver, built from open-source code, which works through Microsoft's WinUSB driver instead.
+
+When NC Flash can't connect because Windows blocks the cable's driver, it offers to switch the cable to its own driver. Click **Yes**, then **Yes** on the Windows administrator prompt; this happens once per PC. You can also do it, or switch back, from **Settings > ECU > J2534 > Tactrix OpenPort Driver**. Leave the J2534 DLL override empty so NC Flash picks the right driver on its own.
+
+Other Tactrix software, such as EcuFlash and RomDrop, doesn't see the cable while it uses NC Flash's driver. Switch it back from the same Settings button when you need them (on PCs where Windows blocks Tactrix's driver, they can't use the cable either way).
+
+The switch adds a small Windows setup file for the cable, signed with a certificate made on your PC for that purpose only; its private key is deleted right away, so it can't sign anything else. Switching back removes both. ([Zadig](https://zadig.akeo.ie/), set to WinUSB for the "Tactrix Openport 2.0" device, does the same thing by hand.)
+
 ### Linux
 Download the `.tar.gz` archive, extract it, and run the `NCFlash` binary:
 ```bash
@@ -124,6 +134,7 @@ python main.py
 - Safety: battery voltage check, engine-off requirement, state machine prevents step-skipping
 - Auto-saves unsaved changes before flashing
 - Configurable J2534 DLL path (auto-detects Tactrix OpenPort via registry)
+- Built-in OpenPort 2.0 driver for Windows 11 PCs that block Tactrix's own driver (see [Tactrix OpenPort on Windows 11](#tactrix-openport-on-windows-11))
 
 ### ROM Comparison
 - Side-by-side comparison of two ROMs (`Ctrl+Shift+D`)

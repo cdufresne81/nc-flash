@@ -82,6 +82,7 @@ from src.ui.mcp_mixin import McpMixin
 from src.ui.flash_mixin import FlashMixin
 from src.ui.wican_live_datalog import WiCANLiveDatalog
 from src.ui.wican_log_sync import WiCANLogSync
+from src.ui.openport_driver_setup import OpenPortDriverSetup
 from src.ui.app_updater import UpdateController
 
 from src.ui.error_helpers import handle_rom_operation_error
@@ -212,6 +213,12 @@ class MainWindow(
         # WiCAN live datalog — single owner of the live stream (firmware #3),
         # driven by the Trip Logs window.
         self.wican_live_datalog = WiCANLiveDatalog(self.settings, parent=self)
+
+        # Tactrix OpenPort driver switch (WinUSB): one owner for the ECU window
+        # and Settings, refused while the ECU window holds an ECU link.
+        self.openport_setup = OpenPortDriverSetup(
+            self, blocker=self._openport_switch_blocker
+        )
 
         # In-app updater (GitHub issue 104). Installing closes the app, so it asks
         # _update_install_blocker first and refuses while ECU work could run.
@@ -1602,6 +1609,18 @@ class MainWindow(
         window.wican_link_changed.connect(self._on_ecu_wican_link_changed)
         self.ecu_window = window
         window.show()
+
+    def _openport_switch_blocker(self):
+        """Why the OpenPort driver can't be switched now, or None."""
+        from src.ecu import j2534
+
+        window = self.ecu_window
+        if (window is not None and window.holds_ecu_link()) or j2534.builtin_in_use():
+            return (
+                "Disconnect in the ECU Programming window first: switching the "
+                "driver unplugs the cable from Windows' point of view."
+            )
+        return None
 
     def _on_ecu_window_destroyed(self):
         self.ecu_window = None

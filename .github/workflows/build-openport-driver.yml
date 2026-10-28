@@ -1,0 +1,92 @@
+# Builds the open-source Tactrix OpenPort 2.0 J2534 driver (WinUSB + libusb) from
+# pinned source, so NC Flash never ships or runs a prebuilt third-party binary.
+# Windows 11 (2026 cross-certificate policy) blocks Tactrix's own openport.sys
+# (Code 39); with the cable bound to WinUSB, this DLL talks to it over libusb.
+# Driver source: our fork of NikolaKozina/j2534 (BSD-3-Clause); NC Flash's fixes
+# are commits there. To pick up a fix, bump J2534_SHA.
+name: Build OpenPort J2534 driver
+
+on:
+  workflow_call:   # release.yml bundles the result into the installer
+  workflow_dispatch:
+  push:
+    branches: ['**']   # not tags: release.yml builds the driver for those
+    paths:
+      - '.github/workflows/build-openport-driver.yml'
+
+permissions:
+  contents: read
+
+env:
+  J2534_REPO: cdufresne81/nc-flash-j2534
+  J2534_SHA: 030277f1c20d67800f929c954c338405ef0b4c71   # CAN-ID fix + one open, bounded writes
+  LIBUSB_SHA: 87a55632db62c9bdc58cd31d3ccfa673f1bb017f  # libusb v1.0.30, LGPL-2.1
+
+jobs:
+  build:
+    runs-on: windows-2022
+    steps:
+      - name: Checkout J2534 driver source
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09  # v5
+        with:
+          repository: ${{ env.J2534_REPO }}
+          ref: ${{ env.J2534_SHA }}
+          path: j2534
+
+      - name: Checkout libusb source
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09  # v5
+        with:
+          repository: libusb/libusb
+          ref: ${{ env.LIBUSB_SHA }}
+          path: libusb-src
+
+      - name: Set up MSBuild
+        uses: microsoft/setup-msbuild@6fb02220983dee41ce7ae257b6f4d8f9bf5ed4ce  # v2
+
+      - name: Build libusb (x64)
+        run: msbuild libusb-src\msvc\libusb_dll.vcxproj /m /p:Configuration=Release /p:Platform=x64 /p:PlatformToolset=v143
+
+      - name: Stage libusb where the driver project expects it
+        shell: pwsh
+        run: |
+          $lib = Get-ChildItem libusb-src -Recurse -Filter libusb-1.0.lib | Where-Object { $_.FullName -match 'x64' } | Select-Object -First 1
+          $dll = Get-ChildItem libusb-src -Recurse -Filter libusb-1.0.dll | Where-Object { $_.FullName -match 'x64' } | Select-Object -First 1
+          if (-not $lib -or -not $dll) { throw "libusb build output not found" }
+          $inc = New-Item -ItemType Directory -Force j2534\libusb\include\libusb-1.0
+          $out = New-Item -ItemType Directory -Force j2534\libusb\MS64\Release\dll
+          Copy-Item libusb-src\libusb\libusb.h $inc
+          Copy-Item $lib.FullName, $dll.FullName $out
+
+      - name: Build J2534 driver (x64)
+        run: msbuild j2534\j2534\j2534.vcxproj /m /p:Configuration=Release /p:Platform=x64 /p:PlatformToolset=v143 /p:SolutionDir=${{ github.workspace }}\j2534\
+
+      - name: Collect DLLs, checksums and licences
+        shell: pwsh
+        run: |
+          $drv = Get-ChildItem j2534 -Recurse -Filter j2534.dll | Where-Object { $_.FullName -match 'x64\\Release' } | Select-Object -First 1
+          if (-not $drv) { throw "j2534.dll build output not found" }
+          $dist = New-Item -ItemType Directory -Force dist
+          Copy-Item $drv.FullName, j2534\libusb\MS64\Release\dll\libusb-1.0.dll $dist
+          Copy-Item j2534\LICENSE "$dist\LICENSE-j2534.txt"
+          Copy-Item libusb-src\COPYING "$dist\COPYING-libusb.txt"
+          @(
+            "j2534.dll   from https://github.com/$env:J2534_REPO @ $env:J2534_SHA"
+            "libusb-1.0.dll from https://github.com/libusb/libusb @ $env:LIBUSB_SHA (v1.0.30)"
+            "Built by $env:GITHUB_SERVER_URL/$env:GITHUB_REPOSITORY/actions/runs/$env:GITHUB_RUN_ID"
+          ) | Set-Content "$dist\SOURCES.txt"
+          Get-ChildItem $dist -Filter *.dll | ForEach-Object {
+            "$((Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower())  $($_.Name)"
+          } | Set-Content "$dist\SHA256SUMS.txt"
+          Get-Content "$dist\SOURCES.txt", "$dist\SHA256SUMS.txt"
+
+      - name: Check the driver loads and exports the J2534 API
+        shell: pwsh
+        run: |
+          python -c "import ctypes, os, sys; d = ctypes.WinDLL(os.path.abspath(r'dist\j2534.dll')); names = 'Open Close Connect Disconnect ReadMsgs WriteMsgs StartPeriodicMsg StopPeriodicMsg StartMsgFilter StopMsgFilter SetProgrammingVoltage ReadVersion GetLastError Ioctl'.split(); missing = [n for n in names if not hasattr(d, 'PassThru' + n)]; print('missing:', missing) if missing else print('all 14 J2534 functions exported'); sys.exit(1 if missing else 0)"
+
+      - name: Upload
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4
+        with:
+          name: openport-j2534-x64
+          path: dist/
+          if-no-files-found: error
