@@ -23,19 +23,24 @@ What is on `dev` awaiting `master`: run `python tools/dev_status.py` (asks GitHu
 
 ## Open items (not tracked in an issue)
 
-- **Datalogger (branch `feature/datalogger`, PR into `dev`; plan:
-  `~/.claude/plans/i-m-ok-with-the-snug-clover.md`).** Branched from master with
-  `feature/live-datalog-v2`, `feature/obdx-pro-adapter`, `feature/openport-winusb-driver` and
-  `fix/openport-sd-card` merged in, so it can only reach master after those four.
-  - Bench-proven on the Tactrix only (built-in x64 driver, engine off): 10 PIDs 37.8 rows/s
-    packed, 29.9 unpacked, 0 empty cells; mode 0x23 answered on the bench ECU.
-  - NOT tested on hardware: the WiCAN push (`/load_auto_pid`, `/store_auto_data`,
-    `/poll_status` were read from the `feature/3-live-stream` firmware source; the WiCAN was
-    offline), the OBDX engine, a cable pulled mid-log, and an engine-running rate.
-  - Known LOW gaps (re-review, Oct 28): a late NRC for an earlier same-service request can
-    drop the current channel; a late positive reply can turn packing off; the device file
-    isn't compared between preview and push; a Start landing inside the ECU window's
-    connect event pump can pass the blocker (one opener then fails).
+- **Datalogger: PR #211 (`feature/datalogger` -> `dev`), open.** Worktree
+  `C:\Users\dufre\Projets\nc-rom-editor-datalogger` (has the built-in OpenPort driver in
+  `dist/openport/`; run `..\nc-rom-editor\venv-windows\Scripts\python.exe main.py` there).
+  Plan: `~/.claude/plans/i-m-ok-with-the-snug-clover.md`. Merges `feature/live-datalog-v2`,
+  `feature/obdx-pro-adapter`, `feature/openport-winusb-driver`, `fix/openport-sd-card`, so it
+  reaches master only after those four. Refs #105 (standalone recording still open).
+  - Proven: Tactrix bench (engine off) 38.5 rows/s packed / 29.9 unpacked, 0 empty cells;
+    the user's own bench test passed (Oct 28). Two Opus reviews: 1st DO-NOT-SHIP (fixed),
+    2nd SHIP.
+  - Next: merge #211 + cut a beta when the user says so; then the board cards (WiCAN push
+    bench test once the WiCAN is online: snapshot `/load_auto_pid` + `/csv_status` first,
+    restore after; in-car Tactrix drive with the engine running; OBDX untested).
+  - No "Apply Now" for a list sent mid-trip: released WiCAN firmware has no `op=auto`, and
+    `op=start` leaves its logger forced ON. Needs `op=auto` in the firmware to bring it back.
+  - Known LOW gaps (2nd review): a late NRC for an earlier same-service request can drop the
+    current channel; a late positive reply can turn packing off; the device file isn't
+    compared between preview and push; a Start landing inside the ECU window's connect event
+    pump can pass the blocker (one opener then fails).
   - No "Apply Now" for a list sent mid-trip: released firmware has no `op=auto`, and
     `op=start` would leave the logger forced ON for good. Adding `op=auto` to the firmware
     would allow it (then restore the exact prior `manual_mode`).
