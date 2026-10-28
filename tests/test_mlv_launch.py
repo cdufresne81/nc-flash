@@ -123,3 +123,28 @@ def test_offer_is_silent_when_it_does_not_apply(tmp_path, monkeypatch, case):
     settings = _settings(offer=case != "offer-off")
     assert mlv_launch.offer_to_open(None, paths, settings) is False
     ask.assert_not_called()  # no dialog at all
+
+
+def test_trail_properties_escape_non_ascii_for_java(tmp_path):
+    # Java Properties.load reads ISO-8859-1: an accented folder must go in as
+    # \\uXXXX escapes or MLV opens a mangled path.
+    folder = tmp_path / "Données"
+    folder.mkdir()
+    capture = folder / "live_1.csv"
+    capture.write_text("h\n", encoding="utf-8")
+    props = mlv_launch.write_trail_properties(capture)
+    raw = props.read_bytes()
+    assert raw.isascii()
+    text = raw.decode("ascii")
+    assert "Donn\\u00e9es/live_1.csv" in text
+    assert "\\" not in text.replace("\\u", "")  # no Windows backslashes left
+    assert "trailFile=true" in text
+
+
+def test_launch_trail_passes_the_properties_file(tmp_path, exe, launches):
+    capture = tmp_path / "live_1.csv"
+    capture.write_text("h\n", encoding="utf-8")
+    assert mlv_launch.launch_trail(capture, exe) is True
+    program, args, _workdir = launches[0]
+    assert program == str(exe)
+    assert args == [str(capture.with_suffix(".mlv.properties"))]

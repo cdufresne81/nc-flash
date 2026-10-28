@@ -23,6 +23,17 @@ What is on `dev` awaiting `master`: run `python tools/dev_status.py` (asks GitHu
 
 ## Open items (not tracked in an issue)
 
+- **WiCAN live datalog (fw #3, PR from `feature/live-datalog-v2`) follow-ups** (design:
+  `docs/internal/WICAN_LIVE_STREAM.md`):
+  - User's in-car test pending; MegaLogViewerHD trail launch not exercised in a bench run.
+  - Overnight soak with a client connected not done (the July build's crash-loop was never pinned).
+  - Internal-RAM headroom: largest block 23,552 B while recording + streaming vs the 22,528 B CSV
+    queue; only matters for a manual trip start with csv_log off at boot. No release baseline.
+  - `#bye replaced` is sent MSG_DONTWAIT, so a full send buffer can truncate it → the two-client
+    swap can recur. Any stray 35002 connection stops NC Flash's stream (by design).
+  - mDNS re-resolve can't be cancelled (`resolve_host_with_fallback` doesn't pass `cancel_event`;
+    the fix touches `src/ecu`); app close waits up to 10 s for it.
+
 - **Bench-test #130/#131 on the Tactrix clone (J2534)** (owner: user). Only tested over
   WiCAN so far. Check: ignition OFF → Connect fails in ~3 s, not 60 s; right after a ROM
   read or RAM scan, Flash waits ~6.5 s then reads RPM and voltage (no false refusal);

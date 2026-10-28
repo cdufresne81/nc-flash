@@ -4,6 +4,9 @@ All notable changes to NC Flash are documented here.
 
 ## [Unreleased]
 
+### Added
+- **Live datalog from the WiCAN (Trip Logs window > Live Datalog).** NC Flash follows the trip the WiCAN is recording as it records, and writes it to a CSV in the `live` folder inside your logs folder. MegaLogViewerHD can follow that file live: it opens on its own once rows arrive (you can turn that off), or use **Open in MegaLogViewerHD**. If the trip ends and a new one starts with the same channels, the same file keeps growing, so MegaLogViewerHD keeps following. A Wi-Fi drop reconnects by itself. The trip on the WiCAN's SD card is always the complete record. Needs WiCAN firmware with the live stream; while it runs, the ECU Programming window can't connect over the WiCAN (connecting would pause the trip being followed).
+
 ## [v2.23.1] - 2026-10-24
 
 **Urgent safety fix: update before using Patch ROM.** Earlier versions could produce a patched ROM that bricks the ECU when flashed.

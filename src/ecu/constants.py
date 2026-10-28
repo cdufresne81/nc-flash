@@ -65,6 +65,18 @@ WICAN_DEDICATED_SLCAN_PORT = 35001
 #: adapter at all — the user is told to update the firmware. Both sides share
 #: this one contract.
 COEXIST_MIN_FW_REV = 6
+
+# --- WiCAN live datalog stream (firmware issue #3) ---
+#: TCP port of the read-only live tail of the trip CSV (wire protocol NCDLv1).
+#: The device only serves; NC Flash connects and reads. One client at a time and
+#: the NEWEST connection wins, so never open a second one as a "probe" while a
+#: stream runs. A stream connection is NOT host-presence and never touches the
+#: park/claim/lease machinery. MUST match firmware main/datalog_stream.h.
+WICAN_DATALOG_STREAM_PORT = 35002
+#: First line the device sends on every stream connection
+#: (``#hello NCDLv1 fw=<git_version>``). A refused connect or a different first
+#: line means firmware without the live stream.
+NCDL_BANNER_PREFIX = "#hello NCDLv1"
 #: Probe connect timeout (ms) for the coexist-port capability check. Short so a
 #: device WITHOUT the port fails fast instead of stalling the connect; a refusal
 #: that needs longer than this to surface is caught by the one confirming retry
