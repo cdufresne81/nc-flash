@@ -1,7 +1,11 @@
-# Switches a Tactrix OpenPort 2.0 (USB 0403:CC4D) between Microsoft's WinUSB
-# driver, which NC Flash's built-in OpenPort driver uses, and Tactrix's own
-# driver. NC Flash runs it elevated (one UAC prompt) instead of Zadig. NC Flash
-# passes the script text itself (-EncodedCommand), never a path to it.
+# Switches a Tactrix OpenPort 2.0 between Microsoft's WinUSB driver, which NC
+# Flash's built-in OpenPort driver uses, and Tactrix's own driver. NC Flash runs
+# it elevated (one UAC prompt) instead of Zadig. NC Flash passes the script text
+# itself (-EncodedCommand), never a path to it.
+#
+# The cable is USB 0403:CC4D without a microSD card. With one it is the
+# composite device 0403:CC4C: its J2534 function (MI_00) is switched, its card
+# (MI_02) stays on Windows' storage driver.
 #
 # -Action Install : bind the cable to WinUSB. Writes a WinUSB setup file that
 #   reuses Windows' own winusb.inf (Windows 8 and later need nothing else),
@@ -20,7 +24,7 @@ param(
     [ValidatePattern('^[A-Za-z0-9_-]*\.log$|^$')][string]$LogName = ''
 )
 
-$HardwareId = 'USB\VID_0403&PID_CC4D'
+$HardwareIds = @('USB\VID_0403&PID_CC4D', 'USB\VID_0403&PID_CC4C&MI_00')
 $InterfaceGuid = '{41ac5a38-49af-4a2a-bb46-271995d78bd9}'
 $CertSubject = 'CN=NC Flash OpenPort WinUSB setup (this PC only)'
 $InfName = 'ncflash_openport.inf'
@@ -45,7 +49,9 @@ function New-OpenPortInf([string]$Marker, [datetime]$Date) {
         ''
     )
     foreach ($arch in 'NTamd64', 'NTx86', 'NTarm64') {
-        $lines += "[OpenPort.$arch]", "%DeviceName% = USB_Install, $HardwareId", ''
+        $lines += "[OpenPort.$arch]"
+        $lines += $HardwareIds | ForEach-Object { "%DeviceName% = USB_Install, $_" }
+        $lines += ''
     }
     $lines += @(
         '[USB_Install]', 'Include = winusb.inf', 'Needs   = WINUSB.NT', '',
@@ -59,7 +65,7 @@ function New-OpenPortInf([string]$Marker, [datetime]$Date) {
 
 function Test-OurPackage([string]$Text) {
     # A WinUSB setup for the cable made by NC Flash or by Zadig (libwdi).
-    return $Text -match 'VID_0403&PID_CC4D' -and $Text -match '(?i)winusb\.inf' -and
+    return $Text -match '(?i)VID_0403&PID_(CC4D|CC4C&MI_00)' -and $Text -match '(?i)winusb\.inf' -and
         ($Text -match '(?im)^\s*Provider\s*=\s*"?libwdi' -or $Text -match '(?im)^\s*Provider\s*=\s*"NC Flash"')
 }
 
@@ -89,11 +95,12 @@ function Write-Log([string]$Message) {
     if ($script:LogPath) { Add-Content -LiteralPath $script:LogPath -Value $Message -Encoding UTF8 }
 }
 
-function Get-CableState {
+function Get-CableState([string[]]$Ids = $HardwareIds) {
     # 'WinUSB (problem 0)', 'openport (problem 39)', ... or 'not plugged in'.
     try {
         $dev = Get-PnpDevice -PresentOnly -ErrorAction Stop |
-            Where-Object { $_.InstanceId -like "$HardwareId\*" } | Select-Object -First 1
+            Where-Object { $i = $_.InstanceId; $Ids | Where-Object { $i -like "$_\*" } } |
+            Select-Object -First 1
         if (-not $dev) { return 'not plugged in' }
         $svc = (Get-PnpDeviceProperty -InstanceId $dev.InstanceId -KeyName DEVPKEY_Device_Service).Data
         $problem = (Get-PnpDeviceProperty -InstanceId $dev.InstanceId -KeyName DEVPKEY_Device_ProblemCode).Data
@@ -183,15 +190,22 @@ function Install-WinUsb([string]$RunDir) {
 public static extern bool UpdateDriverForPlugAndPlayDevicesW(
     IntPtr hwnd, string hardwareId, string fullInfPath, uint flags, out bool reboot);
 '@
-        $ok = [NCFlash.NewDev]::UpdateDriverForPlugAndPlayDevicesW(
-            [IntPtr]::Zero, $HardwareId, $inf, 1, [ref]$reboot)  # 1 = INSTALLFLAG_FORCE
-        $err = [Runtime.InteropServices.Marshal]::GetLastWin32Error()
-        Write-Log "UpdateDriverForPlugAndPlayDevices -> $ok (error $err, restart needed $reboot)"
-        if (-not $ok) { throw "Windows refused to apply the setup to the cable (error $err)" }
+        $present = @($HardwareIds | Where-Object { (Get-CableState @($_)) -ne 'not plugged in' })
+        foreach ($id in $present) {
+            $idReboot = $false
+            $ok = [NCFlash.NewDev]::UpdateDriverForPlugAndPlayDevicesW(
+                [IntPtr]::Zero, $id, $inf, 1, [ref]$idReboot)  # 1 = INSTALLFLAG_FORCE
+            $err = [Runtime.InteropServices.Marshal]::GetLastWin32Error()
+            Write-Log "UpdateDriverForPlugAndPlayDevices $id -> $ok (error $err, restart needed $idReboot)"
+            if (-not $ok) { throw "Windows refused to apply the setup to the cable (error $err)" }
+            $reboot = $reboot -or $idReboot
+        }
         Start-Sleep -Seconds 2
-        $state = Get-CableState
-        if (-not $reboot -and $state -notlike 'WinUSB (problem 0)') {
-            throw "the cable reports '$state' after the switch"
+        foreach ($id in $present) {
+            $state = Get-CableState @($id)
+            if (-not $reboot -and $state -notlike 'WinUSB (problem 0)') {
+                throw "the cable reports '$state' after the switch"
+            }
         }
     }
 

@@ -12,6 +12,8 @@ All notable changes to NC Flash are documented here.
 
 ### Fixed
 - **Read ROM, Read RAM or Flash started right after another one no longer fails with "Conditions not correct".** The ECU was still unlocked from the previous operation and refused a second unlock; NC Flash now recognises that and carries on.
+- **The Tactrix OpenPort now works with a microSD card in the cable.** With a card inserted, the cable shows up as a different USB device, so neither the driver switch nor NC Flash's built-in driver found it, and Windows kept blocking it (Code 39). Both now handle the cable with or without a card, and the card stays readable as a drive.
+- **NC Flash's built-in Tactrix driver no longer loses an ECU reply that arrives next to a cable error message,** and it now handles damaged or cut-off USB data safely instead of misreading it.
 
 ## [v2.23.1] - 2026-10-24
 
