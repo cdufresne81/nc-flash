@@ -236,11 +236,16 @@ def elevated_setup_command(action: str, script_text: str, log_name: str) -> list
     inner = f"& {{\n{body}\n}} -Action '{action}' -LogName '{log_name}'"
     encoded = base64.b64encode(inner.encode("utf-16-le")).decode("ascii")
     ps = powershell_path().replace("'", "''")
+    # Process.Start, not Start-Process: in Windows PowerShell 5.1 Start-Process
+    # reports a declined prompt without its Win32Exception, so it looked like a
+    # launch failure (#209).
     outer = (
-        f"try {{ $p = Start-Process -FilePath '{ps}' -Verb RunAs -Wait -PassThru "
-        "-WindowStyle Hidden -ArgumentList '-NoProfile','-NonInteractive',"
-        f"'-ExecutionPolicy','Bypass','-EncodedCommand','{encoded}'; "
-        "exit $p.ExitCode } catch { $e = $_.Exception; "
+        f"$si = New-Object Diagnostics.ProcessStartInfo '{ps}'; "
+        "$si.Arguments = '-NoProfile -NonInteractive -ExecutionPolicy Bypass "
+        f"-EncodedCommand {encoded}'; "
+        "$si.Verb = 'runas'; $si.UseShellExecute = $true; $si.WindowStyle = 'Hidden'; "
+        "try { $p = [Diagnostics.Process]::Start($si); if (-not $p) { exit 4 }; "
+        "$p.WaitForExit(); exit $p.ExitCode } catch { $e = $_.Exception; "
         "while ($e -and -not ($e -is [ComponentModel.Win32Exception])) "
         "{ $e = $e.InnerException }; "
         # 1223 = ERROR_CANCELLED: the user said No to the UAC prompt.

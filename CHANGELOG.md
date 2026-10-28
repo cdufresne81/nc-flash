@@ -17,6 +17,7 @@ All notable changes to NC Flash are documented here.
 - **Behind the scenes:** every build now checks that Patch ROM's output is byte-for-byte identical to RomDrop's, using a ROM patched by RomDrop itself. No change to the app itself.
 
 ### Fixed
+- **Saying No to Windows' administrator prompt for the Tactrix driver switch now says so.** It used to report "Windows couldn't start the driver switch". Nothing was changed either way (#209).
 - **The Tactrix OpenPort now works with a microSD card in the cable.** With a card inserted, the cable shows up as a different USB device, so neither the driver switch nor NC Flash's built-in driver found it, and Windows kept blocking it (Code 39). Both now handle the cable with or without a card, and the card stays readable as a drive.
 - **NC Flash's built-in Tactrix driver no longer loses an ECU reply that arrives next to a cable error message,** and it now handles damaged or cut-off USB data safely instead of misreading it.
 - **The log panel no longer drops text.** Parts of a log message inside angle brackets (`<...>`) disappeared, and messages spanning several lines were run together on one line (#202). The log file was not affected.

@@ -119,7 +119,7 @@ class TestDetect:
 
 class TestElevatedCommand:
     def _inner(self, cmd):
-        encoded = re.search(r"'-EncodedCommand','([A-Za-z0-9+/=]+)'", cmd[4]).group(1)
+        encoded = re.search(r"-EncodedCommand ([A-Za-z0-9+/=]+)'", cmd[4]).group(1)
         return base64.b64decode(encoded).decode("utf-16-le")
 
     def test_runs_the_script_text_elevated_with_full_paths(self):
@@ -128,7 +128,7 @@ class TestElevatedCommand:
             r"system32\windowspowershell\v1.0\powershell.exe"
         )
         outer = cmd[4]
-        assert "-Verb RunAs -Wait -PassThru" in outer
+        assert "$si.Verb = 'runas'" in outer and "$p.WaitForExit()" in outer
         assert "exit $p.ExitCode" in outer
         # Only a cancelled UAC prompt (1223) is "declined"; other failures differ.
         assert "NativeErrorCode -eq 1223) { exit 2 } else { exit 4 }" in outer
@@ -171,6 +171,22 @@ class TestElevatedCommand:
     def test_unknown_action_is_refused(self):
         with pytest.raises(ValueError):
             elevated_setup_command("Format", "", "setup_x.log")
+
+    @windows_only
+    def test_launch_errors_keep_their_windows_error_code(self):
+        # #209: the error code is what tells a declined prompt (1223) from a
+        # launch failure. A missing program fails the same way without a
+        # prompt (2 = file not found); the old Start-Process lost the code.
+        cmd = elevated_setup_command("Install", "", "setup_x.log")
+        outer = cmd[4].replace(powershell_path().replace("'", "''"), r"C:\no\such.exe")
+        assert r"C:\no\such.exe" in outer  # never launch the real elevated one
+        outer = outer.replace(
+            "else { exit 4 }", "else { exit (100 + $e.NativeErrorCode) }"
+        )
+        r = subprocess.run(
+            cmd[:4] + [outer], capture_output=True, text=True, timeout=60
+        )
+        assert r.returncode == 102, r.stdout + r.stderr
 
     @windows_only
     def test_decoded_command_parses(self, tmp_path):
