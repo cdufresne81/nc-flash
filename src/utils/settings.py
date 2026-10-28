@@ -316,15 +316,20 @@ class AppSettings:
     def set_j2534_dll_path(self, path: str):
         self.settings.setValue("ecu/j2534_dll_path", path)
 
-    # -- Adapter selection (J2534 wired default; WiCAN opt-in) --
+    # -- Adapter selection (J2534 wired default; WiCAN / OBDX opt-in) --
+
+    _ECU_ADAPTERS = ("j2534", "wican", "obdx")
 
     def get_ecu_adapter(self) -> str:
-        """Get the selected ECU adapter kind: ``"j2534"`` (default) or ``"wican"``."""
+        """Get the selected ECU adapter kind: ``"j2534"`` (default), ``"wican"``
+        or ``"obdx"``."""
         value = self.settings.value("ecu/adapter", "j2534")
-        return value if value in ("j2534", "wican") else "j2534"
+        return value if value in self._ECU_ADAPTERS else "j2534"
 
     def set_ecu_adapter(self, kind: str):
-        self.settings.setValue("ecu/adapter", "wican" if kind == "wican" else "j2534")
+        self.settings.setValue(
+            "ecu/adapter", kind if kind in self._ECU_ADAPTERS else "j2534"
+        )
 
     def is_wican_adapter(self) -> bool:
         """True when the WiCAN adapter is selected.
@@ -334,6 +339,15 @@ class AppSettings:
         adapter string.
         """
         return self.get_ecu_adapter() == "wican"
+
+    # -- OBDX Pro (USB serial) settings --
+
+    def get_obdx_port(self) -> str:
+        """COM port of the OBDX Pro adapter; empty = auto-detect over USB."""
+        return self.settings.value("ecu/obdx_port", "") or ""
+
+    def set_obdx_port(self, port: str):
+        self.settings.setValue("ecu/obdx_port", (port or "").strip())
 
     # -- WiCAN (SLCAN-over-TCP) settings --
 

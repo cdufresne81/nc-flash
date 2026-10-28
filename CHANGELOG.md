@@ -6,6 +6,11 @@ All notable changes to NC Flash are documented here.
 
 ### Added
 - **Live datalog from the WiCAN (Trip Logs window > Live Datalog).** NC Flash follows the trip the WiCAN is recording as it records, and writes it to a CSV in the `live` folder inside your logs folder. MegaLogViewerHD can follow that file live: it opens on its own once rows arrive (you can turn that off), or use **Open in MegaLogViewerHD**. If the trip ends and a new one starts with the same channels, the same file keeps growing, so MegaLogViewerHD keeps following. A Wi-Fi drop reconnects by itself. The trip on the WiCAN's SD card is always the complete record. Needs WiCAN firmware with the live stream; while it runs, the ECU Programming window can't connect over the WiCAN (connecting would pause the trip being followed).
+- **OBDX Pro adapter over USB.** Pick "OBDX Pro (USB)" in Settings > ECU > Adapter to read and flash ROMs, scan RAM, and read or clear DTCs with an OBDX Pro. Only the VX has been tested; the GT and FT are untested, and NC Flash says so before flashing with one. Windows needs no driver for it, and NC Flash looks for the adapter's COM port itself (you can also set it). A full flash takes about a minute; NC Flash asks for confirmation before each OBDX flash.
+- **Recovering from an interrupted flash.** If a flash was cut off partway (cable pulled, app closed), the ECU refuses the next one with "Conditions not correct". NC Flash now explains this and offers to reset the ECU, which writes nothing, so you can flash again. This covers the OBDX Pro and the Tactrix (J2534); WiCAN flashes are not covered yet.
+
+### Fixed
+- **Read ROM, Read RAM or Flash started right after another one no longer fails with "Conditions not correct".** The ECU was still unlocked from the previous operation and refused a second unlock; NC Flash now recognises that and carries on.
 
 ## [v2.23.1] - 2026-10-24
 
