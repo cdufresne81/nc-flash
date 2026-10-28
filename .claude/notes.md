@@ -23,6 +23,22 @@ What is on `dev` awaiting `master`: run `python tools/dev_status.py` (asks GitHu
 
 ## Open items (not tracked in an issue)
 
+- **Live table cursor: branch `feature/live-table-cursor` (off `feature/datalogger`), uncommitted
+  in the datalogger worktree.** Open tables show where the Datalogger's live values fall: a compact
+  cross + dot on the exact point, nearest cell outlined, values tagged on the axis headers
+  (`src/ui/table_viewer_helpers/live_overlay.py`), plus a graph marker. Axis -> channel map in
+  `examples/axis_channels.json` (exact axis names; TCM definitions use only their own `logparam`).
+  Bench (Tactrix, engine off) + 3 Opus reviews (1st DO-NOT-SHIP, fixed; 2nd and 3rd SHIP).
+  - Perf (5 tables with GPU graphs fed at 10 Hz): UI lag p95 28 ms. Needed: compact cross (each
+    repainted cell costs ~0.5 ms in the styled delegate), background windows throttled to 0.4 s,
+    GPU 3D skips the label fit when nothing moved. Don't tune the matplotlib fallback (user: unused).
+  - Axis-name suffixes (`RPM_6DD8`) are NOT RAM addresses: lf9veb Load Scaling reads RPM from
+    float 0xFFFF6D84 and loads 0xFFFF6E80/6F24/6F40 (3 lookups). LOAD mappings stay `approx`
+    until the in-car comparison card answers whether PID 0x43 matches.
+  - Next: commit + PR (into `dev` after #211 merges, else draft on `feature/datalogger`).
+  - LOW leftovers: no message when a NaN/zig-zag axis refuses the cursor; duplicate-breakpoint
+    cell (first vs last) unconfirmed vs the ECU; TCM detection keys on "TCM" in romid.model; axis
+    tags cover half of the two breakpoint labels they sit between.
 - **Datalogger: PR #211 (`feature/datalogger` -> `dev`), open.** Worktree
   `C:\Users\dufre\Projets\nc-rom-editor-datalogger` (has the built-in OpenPort driver in
   `dist/openport/`; run `..\nc-rom-editor\venv-windows\Scripts\python.exe main.py` there).

@@ -50,7 +50,10 @@ def _window(qtbot, adapter="j2534"):
     settings.set_datalog_channels.side_effect = lambda d: setattr(settings, "saved", d)
     settings.get_live_datalog_auto_trail.return_value = True
     dl = _FakeDatalogger(settings)
-    main_window = SimpleNamespace(settings=settings, datalogger=dl)
+    live_cursor = SimpleNamespace(enabled=True, set_enabled=MagicMock())
+    main_window = SimpleNamespace(
+        settings=settings, datalogger=dl, live_cursor=live_cursor
+    )
     window = DataloggerWindow(main_window=main_window)
     qtbot.addWidget(window)
     return window, dl, settings

@@ -298,6 +298,18 @@ class DataloggerWindow(QMainWindow):
         self._chk_auto_trail.toggled.connect(self._settings.set_live_datalog_auto_trail)
         root.addWidget(self._chk_auto_trail)
 
+        router = self._main_window.live_cursor
+        self._chk_live_cursor = QCheckBox(
+            "Show the live position on open tables (e.g. RPM and LOAD on Load Scaling)"
+        )
+        self._chk_live_cursor.setToolTip(
+            "Tables whose axes match logged channels light up the cells the "
+            "engine is using, in the table and its graph."
+        )
+        self._chk_live_cursor.setChecked(router.enabled)
+        self._chk_live_cursor.toggled.connect(router.set_enabled)
+        root.addWidget(self._chk_live_cursor)
+
     def _fill_table(self):
         self._filling = True
         try:

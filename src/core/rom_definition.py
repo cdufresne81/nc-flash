@@ -116,6 +116,9 @@ class Table:
     flipx: bool = False  # Reverse X axis order
     flipy: bool = False  # Reverse Y axis order
     layout: TableLayout = TableLayout.CONTIGUOUS  # Memory layout
+    # Datalogger channel behind this axis (live table cursor); overrides the
+    # shipped axis map (src/core/axis_channels.py). Axis children only.
+    logparam: str = ""
 
     # Child tables (axes for 2D/3D tables)
     children: List["Table"] = field(default_factory=list)

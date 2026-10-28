@@ -81,6 +81,7 @@ from src.ui.session_mixin import SessionMixin
 from src.ui.mcp_mixin import McpMixin
 from src.ui.flash_mixin import FlashMixin
 from src.ui.datalogger import Datalogger
+from src.ui.live_cursor_router import LiveCursorRouter
 from src.ui.wican_log_sync import WiCANLogSync
 from src.ui.openport_driver_setup import OpenPortDriverSetup
 from src.ui.app_updater import UpdateController
@@ -216,6 +217,13 @@ class MainWindow(
             self.settings, parent=self, blocker=self._datalogger_blocker
         )
         self.datalogger_window = None
+        # Live table cursor: the Datalogger's latest values on open tables.
+        self.live_cursor = LiveCursorRouter(
+            self.datalogger.live_values,
+            lambda: self.open_table_windows,
+            self.settings,
+            parent=self,
+        )
 
         # Tactrix OpenPort driver switch (WinUSB): one owner for the ECU window
         # and Settings, refused while the ECU window holds an ECU link.
@@ -1832,6 +1840,7 @@ class MainWindow(
 
                 # Track the window (removed in TableViewerWindow.closeEvent)
                 self.open_table_windows.append(viewer_window)
+                self.live_cursor.attach(viewer_window)
 
                 # Log to console
                 rom_label = Path(rom_path).stem

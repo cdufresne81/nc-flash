@@ -52,6 +52,19 @@ GRAPH_MARKER_RING = "#ffffff"
 GRAPH_CROSSHAIR = "#ffffff"  # row/column guide through the selected cell
 GRAPH_CALLOUT = "#ffffff"  # axis values of the selected cell
 
+# --- Live table cursor (Datalogger values on an open table) -------------------
+# Crosshair through the operating point: dark lines on a white halo read on any
+# cell color; the dot is magenta, which stands apart from the blue-green-red
+# cell colors in the table and the graph. Axis tags are dark chips.
+LIVE_CURSOR = "#ff00e6"  # the dot (table) and the marker (graph)
+LIVE_CURSOR_LINE = "#000000"
+LIVE_CURSOR_HALO = "#ffffff"
+LIVE_TAG_BG = "#1c2029"
+LIVE_TAG_TEXT = "#ffffff"
+LIVE_TAG_OFF = "#ffb340"  # tag text when the value is off the table
+LIVE_CURSOR_EDGE = LIVE_CURSOR_LINE  # classic graph marker edge
+GRAPH_LIVE_MARKER = LIVE_CURSOR
+
 
 def get_graph_readout_stylesheet() -> str:
     """Hover readout chip floating over the graph (value under the cursor)."""

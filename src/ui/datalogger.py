@@ -35,6 +35,7 @@ from src.core.datalog_channels import (
     to_firmware_row,
 )
 from src.core.live_csv import LiveCsvCapture, StatusThrottle, live_capture_dir
+from src.ui.live_values import EMIT_EVERY_S, LiveValues
 from src.ui.wican_live_datalog import WiCANLiveDatalog
 
 logger = logging.getLogger(__name__)
@@ -71,6 +72,7 @@ class _HostPollWorker(QObject):
     capture_opened = Signal(str)
     capture_ready = Signal(str)
     channel_dropped = Signal(str, str)  # channel name, why
+    values = Signal(dict)  # {channel name: value}, at most every EMIT_EVERY_S
     error = Signal(str)
     finished = Signal()
 
@@ -114,6 +116,8 @@ class _HostPollWorker(QObject):
             self.capture_opened.emit(path)
             reported: set[str] = set()
             throttle = StatusThrottle(every_rows=10**9, every_s=1.0)
+            values_throttle = StatusThrottle(every_rows=10**9, every_s=EMIT_EVERY_S)
+            names = [c.name for c in poller.channels]
             t0 = time.monotonic()
             window_t, window_rows, rate = t0, 0, 0.0
             rows = 0
@@ -124,6 +128,10 @@ class _HostPollWorker(QObject):
                     self.capture_ready.emit(path)
                 rows += 1
                 window_rows += 1
+                if values_throttle.due(rows):
+                    self.values.emit(
+                        {n: v for n, v in zip(names, result.values) if v is not None}
+                    )
                 for name, why in poller.unsupported.items():
                     if name not in reported:
                         reported.add(name)
@@ -201,7 +209,11 @@ class Datalogger(QObject):
         super().__init__(parent)
         self._settings = settings
         self._blocker = blocker
-        self.wican = wican or WiCANLiveDatalog(settings, parent=self)
+        #: Latest logged values (both engines), for the live table cursor.
+        self.live_values = LiveValues(self)
+        self.wican = wican or WiCANLiveDatalog(
+            settings, parent=self, live_values=self.live_values
+        )
         self.wican.running_changed.connect(self._on_wican_running)
         self.wican.status_changed.connect(self.status_changed)
         self.wican.capture_changed.connect(self.capture_changed)
@@ -293,6 +305,7 @@ class Datalogger(QObject):
         worker.capture_opened.connect(self._on_capture_opened, Qt.QueuedConnection)
         worker.capture_ready.connect(self._on_capture_ready, Qt.QueuedConnection)
         worker.channel_dropped.connect(self._on_channel_dropped, Qt.QueuedConnection)
+        worker.values.connect(self._on_values, Qt.QueuedConnection)
         worker.error.connect(self._on_error, Qt.QueuedConnection)
         worker.finished.connect(self._on_finished, Qt.QueuedConnection)
         thread.started.connect(worker.run)
@@ -373,6 +386,10 @@ class Datalogger(QObject):
     def _on_channel_dropped(self, name: str, why: str):
         self.channel_dropped.emit(name, why)
 
+    def _on_values(self, values: dict):
+        if self._thread is not None:  # not a late one after the stop
+            self.live_values.update(values)
+
     def _on_error(self, message: str):
         self.status_changed.emit(f"Stopped: {message}")
 
@@ -388,6 +405,7 @@ class Datalogger(QObject):
         if thread is not None:
             thread.deleteLater()
         self._capture = ""
+        self.live_values.clear()
         self.capture_changed.emit(self.wican.current_capture)
         self.running_changed.emit(self.is_running)
 

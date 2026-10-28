@@ -369,3 +369,19 @@ def test_module_has_no_sender_walks():
 
     src = inspect.getsource(dl_mod)
     assert "sender()" not in src and ".parent()" not in src
+
+
+def test_host_run_feeds_live_values_and_clears_them(
+    qtbot, tmp_path, fake_session, no_real_mlv, qt_thread_guard
+):
+    dl = Datalogger(_settings(tmp_path, channels=_two_channels()))
+    seen = []
+    dl.live_values.changed.connect(seen.append)
+    assert dl.start() is True
+    qtbot.waitUntil(lambda: any(v for v in seen), timeout=5000)
+    first = next(v for v in seen if v)
+    assert first["RPM"] == pytest.approx(1750.0)
+    assert set(first) == {"RPM", "KNOCKR"}
+    dl.stop()
+    qtbot.waitUntil(lambda: not dl.is_running, timeout=5000)
+    assert seen[-1] == {} and dl.live_values.current() == {}

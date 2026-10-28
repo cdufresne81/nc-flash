@@ -407,3 +407,38 @@ def test_a_clean_reconnect_skips_the_host_lookup(
     qtbot.waitUntil(lambda: dev.accepted == 2, timeout=10000)
     _stop(qtbot, live)
     assert len(lookups) == 1
+
+
+def test_rows_feed_the_live_table_cursor(qtbot, settings, device, qt_thread_guard):
+    from src.ui.live_values import LiveValues
+
+    values = LiveValues()
+    seen = []
+    values.changed.connect(seen.append)
+    dev = device([b"#session file=t1.csv cols=2\n", HEADER])
+    live = WiCANLiveDatalog(settings, port=dev.port, live_values=values)
+    assert live.start() is True
+    qtbot.waitUntil(lambda: bool(live.current_capture), timeout=5000)
+    dev.feed(*_rows(3))
+    qtbot.waitUntil(lambda: any(seen), timeout=5000)
+    assert next(v for v in seen if v) == {"RPM": 800.0}  # no device columns
+    _stop(qtbot, live)
+    assert seen[-1] == {}
+
+
+def test_no_column_names_no_live_cursor(qtbot, settings, device, qt_thread_guard):
+    # "#nohdr": the capture may reuse an older header when the count matches,
+    # but the cursor must not guess which column is RPM.
+    from src.ui.live_values import LiveValues
+
+    values = LiveValues()
+    seen = []
+    values.changed.connect(seen.append)
+    dev = device([b"#session file=t1.csv cols=2\n", b"#nohdr\n"])
+    live = WiCANLiveDatalog(settings, port=dev.port, live_values=values)
+    assert live.start() is True
+    qtbot.waitUntil(lambda: bool(live.current_capture), timeout=5000)
+    dev.feed(*_rows(3))
+    qtbot.wait(400)
+    _stop(qtbot, live)
+    assert not any(seen)

@@ -15,8 +15,8 @@ measured (``tools/graph_eval``):
 Backend contract (shared with ``graph_classic.ClassicGraphView``):
 ``widget``, ``engine_name``, ``show_model``, ``update_data``, ``update_colors``,
 ``is_3d``, ``get_view``, ``set_view``, ``zoom``, ``get_zoom``,
-``reset_view``, ``request_draw``, ``grab``, ``shutdown``, counters
-``n_data_updates`` / ``n_color_updates``.
+``reset_view``, ``request_draw``, ``grab``, ``shutdown``, ``set_live_point``,
+counters ``n_data_updates`` / ``n_color_updates`` / ``n_live_updates``.
 """
 
 import math
@@ -134,6 +134,34 @@ class Surface3D:
         self._layout_key = None  # skip re-placing labels when unchanged
         self._crosshair = None  # (row, col) of the single selected cell
         self._zgrid = None
+        # Live table cursor: a dot on the surface + a drop line to the floor.
+        # Built once on root (survives static.clear()); drawn over the surface
+        # and never picked, so it neither hides nor steals the hover.
+        self._live = None  # (fr, fc) in data coordinates
+        self._live_dot = gfx.Points(
+            gfx.Geometry(positions=np.zeros((1, 3), np.float32)),
+            gfx.PointsMarkerMaterial(
+                size=16.0,
+                color=theme.GRAPH_LIVE_MARKER,
+                edge_width=2.0,
+                edge_color=theme.GRAPH_MARKER_RING,
+                depth_test=False,
+                render_queue=4000,
+            ),
+        )
+        self._live_drop = gfx.Line(
+            gfx.Geometry(positions=np.zeros((2, 3), np.float32)),
+            gfx.LineMaterial(
+                color=theme.GRAPH_LIVE_MARKER,
+                thickness=2.0,
+                aa=True,
+                depth_test=False,
+                render_queue=4000,
+            ),
+        )
+        for obj in (self._live_dot, self._live_drop):
+            obj.visible = False
+            self.root.add(obj)
 
     # -- geometry -------------------------------------------------------------
     def _zw(self, v):
@@ -287,6 +315,43 @@ class Surface3D:
         self._callouts = {r[1]: r for r in self._labels if r[1][0] == "h"}
         self._layout_key = None
         self.set_crosshair(self._crosshair)
+        self.set_live_point(self._live)  # heights changed with the model
+
+    def live_position(self, fr: float, fc: float) -> Tuple[float, float, float]:
+        """World point ON the drawn surface for data position ``(fr, fc)``.
+
+        Vertex (i, j) of the drawn grid sits at a cell corner, so data cell
+        centre (r, c) is grid point (r + 0.5, c + 0.5). The height comes from
+        the triangle the point is in (cells split along the (r,c)-(r+1,c+1)
+        diagonal, as in ``set_model``), so the dot lies on the surface.
+        """
+        g = self._zgrid
+        rows, cols = g.shape[0] - 1, g.shape[1] - 1
+        gy = min(max(fr + 0.5, 0.0), float(rows))
+        gx = min(max(fc + 0.5, 0.0), float(cols))
+        r, c = min(int(gy), rows - 1), min(int(gx), cols - 1)
+        v, u = gy - r, gx - c
+        z00, z01, z10, z11 = g[r, c], g[r, c + 1], g[r + 1, c], g[r + 1, c + 1]
+        if u >= v:
+            z = z00 + u * (z01 - z00) + v * (z11 - z01)
+        else:
+            z = z00 + v * (z10 - z00) + u * (z11 - z10)
+        return gx / cols * BX, gy / rows * BY, float(z)
+
+    def set_live_point(self, point):
+        """Show the live cursor at ``(fr, fc)`` (data coordinates), or hide it."""
+        self._live = point
+        show = point is not None and self._zgrid is not None
+        self._live_dot.visible = self._live_drop.visible = show
+        if not show:
+            return
+        x, y, z = self.live_position(*point)
+        self._live_dot.geometry.positions.data[:] = np.array([(x, y, z)], np.float32)
+        self._live_dot.geometry.positions.update_full()
+        self._live_drop.geometry.positions.data[:] = np.array(
+            [(x, y, 0.0), (x, y, z)], np.float32
+        )
+        self._live_drop.geometry.positions.update_full()
 
     def _crosshair_paths(self, r, c):
         """Row/column guide polylines lying exactly ON the surface.
@@ -458,6 +523,8 @@ class Line2D:
         self._selected = []
         self.points = None
         self._sel_obj = None  # blue selected-point markers
+        self._live = None  # live table cursor: fractional index, or None
+        self._live_objs = None  # (dot, drop line) while shown
         self._guide = None  # dashed guides of the single selected point
         self.cross = None  # (x, y) of the single selected point
         self._overlay_key = None  # skip rebuilding labels when unchanged
@@ -546,6 +613,57 @@ class Line2D:
         )
         self.plot.add(self.points)
         self._build_selection()
+        self._live_objs = None  # removed by plot.clear()
+        self.set_live_point(self._live)
+
+    def live_position(self, fr: float) -> Tuple[float, float]:
+        """Data point on the line at fractional index *fr*."""
+        idx = np.arange(len(self.model.values), dtype=float)
+        x = float(np.interp(fr, idx, np.asarray(self.model.x_values, float)))
+        y = float(
+            np.interp(fr, idx, np.nan_to_num(np.asarray(self.model.values, float)))
+        )
+        return x, y
+
+    def set_live_point(self, point):
+        """Live cursor at ``(fr, _)`` (a 2D table has one axis), or hide it.
+
+        Built once per model (``set_model`` clears the plot) and then moved in
+        place, so a 10 Hz feed creates no GPU objects."""
+        gfx = self.gfx
+        self._live = point
+        show = point is not None and self.model is not None and len(self.model.values)
+        if not show:
+            if self._live_objs is not None:
+                for obj in self._live_objs:
+                    obj.visible = False
+            return
+        x, y = self.live_position(point[0])
+        y0 = self.base_rect[2]
+        drop_pos = np.array([(x, y0, 0.15), (x, y, 0.15)], np.float32)
+        dot_pos = np.array([(x, y, 0.2)], np.float32)
+        if self._live_objs is not None:
+            drop, dot = self._live_objs
+            for obj, pos in ((drop, drop_pos), (dot, dot_pos)):
+                obj.geometry.positions.data[:] = pos
+                obj.geometry.positions.update_full()
+                obj.visible = True
+            return
+        dot = gfx.Points(
+            gfx.Geometry(positions=dot_pos),
+            gfx.PointsMarkerMaterial(
+                size=16.0,
+                color=theme.GRAPH_LIVE_MARKER,
+                edge_width=2.0,
+                edge_color=theme.GRAPH_MARKER_RING,
+            ),
+        )
+        drop = gfx.Line(
+            gfx.Geometry(positions=drop_pos),
+            gfx.LineMaterial(color=theme.GRAPH_LIVE_MARKER, thickness=2.0, aa=True),
+        )
+        self._live_objs = (drop, dot)
+        self.plot.add(drop, dot)
 
     def _build_selection(self):
         gfx = self.gfx
@@ -717,8 +835,12 @@ class GpuGraphView(QObject):
         self.model: Optional[GraphModel] = None
         self.autofit = True
         self._fit = (1.0, 0.0, 0.0)  # scale, cx, cy (base px, from centre)
+        # Inputs of the last 3D fit/declutter: a frame where none changed (a
+        # live-cursor move, a hover) reuses it instead of laying out again.
+        self._fit_key = None
         self.n_data_updates = 0
         self.n_color_updates = 0
+        self.n_live_updates = 0
         self._vp = None  # 2D plot viewport (logical px), set by _draw
         # hover readout
         self.readout = QLabel(parent)
@@ -804,6 +926,15 @@ class GpuGraphView(QObject):
             self.surface.set_crosshair(single_cell(selected_cells))
         elif self.line is not None and self.model is not None:
             self.line.set_selection(colors, selected_cells)
+        self.request_draw()
+
+    def set_live_point(self, point):
+        """Live table cursor at ``(fr, fc)`` (data coordinates), or None."""
+        self.n_live_updates += 1
+        if self.surface is not None and self.is_3d():
+            self.surface.set_live_point(point)
+        elif self.line is not None and self.model is not None:
+            self.line.set_live_point(point)
         self.request_draw()
 
     # -- view -----------------------------------------------------------------
@@ -928,7 +1059,21 @@ class GpuGraphView(QObject):
         size = self._logical_size()
         self.renderer.render(self.bg_scene, self.screen_cam, flush=False)
         if self.is_3d():
-            self._fit_3d(size)
+            cam = self.camera
+            key = (
+                cam.world.matrix.tobytes(),
+                float(cam.zoom),
+                float(cam.fov),
+                tuple(size),
+                id(self.surface),
+                id(self.surface.model),
+                self.surface._crosshair,
+                self.autofit,
+                self._fit if not self.autofit else None,
+            )
+            if key != self._fit_key:
+                self._fit_3d(size)
+                self._fit_key = key
             self.renderer.render(self.scene, self.camera, flush=False)
         else:
             W, H = size

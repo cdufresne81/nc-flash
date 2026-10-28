@@ -7,6 +7,7 @@ Features an embedded graph panel that can be toggled with G key.
 """
 
 import logging
+import time
 from pathlib import Path
 
 from PySide6.QtWidgets import (
@@ -42,10 +43,18 @@ from .graph_viewer import GraphWidget
 from .scaling_edit_dialog import TableScalingDialog
 from ..core.rom_definition import Table, RomDefinition
 from ..core.metadata_writer import update_scaling
+from ..core import axis_channels
+from ..core.live_cursor import locate
+from .table_viewer_helpers.live_overlay import LiveCursorState
 
 #: Graph needs some height to be readable; showing it grows shorter windows.
 GRAPH_MIN_HEIGHT = 420
 GRAPH_MIN_WIDTH = 340
+#: Live table cursor: a table window in the background moves its cursor at
+#: most this often (the window being worked in follows every update, 10/s).
+#: Each move repaints cells and the graph; at full rate in every window, 3-5
+#: open tables with graphs used a whole CPU core and the UI lagged.
+LIVE_BACKGROUND_INTERVAL_S = 0.4
 
 
 class TableViewerWindow(QMainWindow):
@@ -114,6 +123,15 @@ class TableViewerWindow(QMainWindow):
         self.rom_path = rom_path
         self._diff_mode = diff_mode
         self._graph_visible = False
+        # Live table cursor: the channel behind each axis (None = no cursor on
+        # this table) and the last point shown (data coordinates).
+        self._live_maps = self._resolve_live_maps(table, diff_mode, rom_definition)
+        self._live_point = None
+        self._live_pending: dict = {}
+        self._live_applied_at = 0.0
+        self._live_timer = QTimer(self)
+        self._live_timer.setSingleShot(True)
+        self._live_timer.timeout.connect(self._apply_live_values)
         self._table_only_size = None  # Store size when graph is hidden
 
         # Remove minimize/maximize buttons, keep only close button
@@ -463,6 +481,114 @@ class TableViewerWindow(QMainWindow):
         act.setToolTip("Screenshot  (F12)")
         act.triggered.connect(self._take_screenshot)
 
+    # --- live table cursor ----------------------------------------------------
+
+    @staticmethod
+    def _resolve_live_maps(table, diff_mode, rom_definition):
+        """The channel behind each axis, or None when this table gets no cursor."""
+        from ..core.rom_definition import TableType
+
+        if diff_mode or table.type == TableType.ONE_D:
+            return None
+        shared = axis_channels.uses_shared_map(getattr(rom_definition, "romid", None))
+        y_map = axis_channels.resolve(table.y_axis, shared=shared)
+        x_map = axis_channels.resolve(table.x_axis, shared=shared)
+        if y_map is None or (table.type == TableType.THREE_D and x_map is None):
+            return None
+        return x_map, y_map
+
+    @property
+    def has_live_cursor_axes(self) -> bool:
+        """Every axis of this table has a logged channel behind it."""
+        return self._live_maps is not None
+
+    def set_live_values(self, values: dict):
+        """Show where the live values ({channel: value}) fall; {} hides it.
+
+        The window being worked in follows every update; one in the
+        background at most every LIVE_BACKGROUND_INTERVAL_S (the latest values
+        win), and a minimized one waits until it is restored.
+        """
+        if self._live_maps is None:
+            return
+        self._live_pending = values
+        if not values:
+            self._live_timer.stop()
+            self._apply_live_values()  # hiding is never delayed
+            return
+        if self.isMinimized():
+            return
+        if not self.isActiveWindow():
+            wait = self._live_applied_at + LIVE_BACKGROUND_INTERVAL_S - time.monotonic()
+            if wait > 0:
+                if not self._live_timer.isActive():
+                    self._live_timer.start(int(wait * 1000) + 1)
+                return
+        self._live_timer.stop()
+        self._apply_live_values()
+
+    def _apply_live_values(self):
+        from ..core.rom_definition import TableType
+
+        values = self._live_pending
+        self._live_applied_at = time.monotonic()
+        is_3d = self.table.type == TableType.THREE_D
+        status = locate(self.data, is_3d, *self._live_maps, values) if values else None
+        point = status.point if status is not None else None
+        self.viewer.set_live_cursor(self._cursor_state(status, is_3d))
+        self._set_graph_live_point(point)
+
+    def _cursor_state(self, status, is_3d):
+        """What the table draws: the crosshair + axis tags, or a hint."""
+        if status is None:
+            return None
+        rows = len(self.data["y_axis"])
+        cols = len(self.data["x_axis"]) if is_3d else 1
+        values = self.data.get("values")
+        shape = getattr(values, "shape", None)
+        if shape != ((rows, cols) if is_3d else (rows,)):
+            return None  # values don't line up with the axes: point at nothing
+        if status.missing:
+            return LiveCursorState(
+                rows,
+                cols,
+                message="Live cursor needs: "
+                + ", ".join(status.missing)
+                + " (not being logged)",
+            )
+        point = status.point
+        if point is None:
+            return None  # an axis can't place a point (unreadable / mid-edit)
+        tags = [
+            (f"{'≈' if approx else ''}{value:.4g}", clamped)
+            for _, value, approx, clamped in point.readings
+        ]
+        return LiveCursorState(
+            rows,
+            cols,
+            fr=point.fr,
+            fc=point.fc,
+            y_tag=tags[0],
+            x_tag=tags[1] if len(tags) > 1 else ("", False),
+        )
+
+    def _set_graph_live_point(self, point):
+        old = self._live_point
+        self._live_point = point
+        if self.graph_widget is None or not self._graph_visible:
+            return
+        if point is None:
+            if old is not None:
+                self.graph_widget.set_live_point(None)
+            return
+        if (
+            old is not None
+            and abs(old.fr - point.fr) < 1e-3
+            and abs(old.fc - point.fc) < 1e-3
+        ):
+            return
+        self.graph_widget.set_live_point((point.fr, point.fc))
+
     def _on_toggle_diff_highlights(self):
         """Toggle diff highlighting visibility"""
         self.viewer.toggle_diff_highlights()
@@ -632,6 +758,10 @@ class TableViewerWindow(QMainWindow):
         selected_cells = self._get_selected_data_cells()
         self.graph_widget.set_data(
             self.table, self.data, self.rom_definition, selected_cells
+        )
+        point = self._live_point
+        self.graph_widget.set_live_point(
+            (point.fr, point.fc) if point is not None else None
         )
         # Set focus on graph so arrow keys work immediately
         self.graph_widget.setFocus()
@@ -855,6 +985,7 @@ class TableViewerWindow(QMainWindow):
         # Stop debounce timers to prevent callbacks on destroyed widget
         self._refresh_timer.stop()
         self._selection_timer.stop()
+        self._live_timer.stop()
         main_window = self.parent()
         if main_window and hasattr(main_window, "table_undo_manager"):
             main_window.table_undo_manager.set_active_stack(None)

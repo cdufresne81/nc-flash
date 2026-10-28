@@ -777,6 +777,29 @@ class TestRunner:
         self._log("Opened the Datalogger window")
         return self.main_window.datalogger_window is not None
 
+    def live_values(self, args) -> bool:
+        """Feed the live table cursor as if the Datalogger logged these
+        values: ``live_values RPM=3000 LOAD=0.5`` (no arguments clears)."""
+        if not self.main_window:
+            self._log("ERROR: No main window")
+            return False
+        values = {}
+        for arg in args:
+            name, _, text = arg.partition("=")
+            try:
+                values[name] = float(text)
+            except ValueError:
+                self._log(f"ERROR: live_values expects NAME=number, got {arg!r}")
+                return False
+        live = self.main_window.datalogger.live_values
+        if values:
+            live.update(values, expire=False)
+        else:
+            live.clear()
+        self._process_events()
+        self._log(f"Live values: {values or 'cleared'}")
+        return True
+
     def close_table(self) -> bool:
         """
         Close current table window
@@ -1219,6 +1242,7 @@ class TestRunner:
             "assert_width_restored": (lambda s, a: s._cmd_assert_width_restored(a), 0),
             "resize_window": (lambda s, a: s._cmd_resize_window(a), 2),
             "open_datalogger": (lambda s, a: s.open_datalogger(), 0),
+            "live_values": (lambda s, a: s.live_values(a), 0),
         }
         return cls._COMMANDS
 
@@ -1376,6 +1400,7 @@ class TestRunner:
         print("  rotate_graph <elev> <azim> - Rotate 3D graph view")
         print("  screenshot [name] [target] - Take screenshot")
         print("  open_datalogger          - Open the Datalogger window")
+        print("  live_values [NAME=v ...] - Feed the live table cursor (none clears)")
         print("  list_screenshots         - List all screenshots")
         print("  cleanup [pattern] [hours] - Delete screenshots")
         print("  undo / redo              - Undo/redo last change")
