@@ -223,15 +223,16 @@ class ECUProgrammingWindow(QMainWindow):
         # window locks ECU ops on the sync's running_changed.
         self._last_busy_broadcast = None
         self._last_link_broadcast = None
+        # Connect was disabled for a Datalogger run on a wired adapter; give
+        # it back once the run ends.
+        self._connect_held_by_datalogger = False
 
         self._build_ui()
 
         # Re-lock the ECU op buttons as the main-window-owned trip-log sync
         # starts/stops (Qt auto-disconnects when this window is destroyed).
         main_window.wican_log_sync.running_changed.connect(self._update_action_states)
-        main_window.wican_live_datalog.running_changed.connect(
-            self._update_action_states
-        )
+        main_window.datalogger.running_changed.connect(self._update_action_states)
 
         self._update_action_states()
 
@@ -390,6 +391,7 @@ class ECUProgrammingWindow(QMainWindow):
                 "src.ui.ecu_window",
                 "src.ui.wican_log_sync",
                 "src.ui.wican_live_datalog",
+                "src.ui.datalogger",
                 "__main__",
             ],
             drop_qt_logger=True,
@@ -410,9 +412,9 @@ class ECUProgrammingWindow(QMainWindow):
                 "kind": "wican",
                 "host": self._resolve_wican_host(s),
             }
-        if s.get_ecu_adapter() == "obdx":
-            return {"kind": "obdx", "port": s.get_obdx_port()}
-        return {"kind": "j2534", "dll_path": self._get_dll_path()}
+        from src.ui.datalogger import wired_adapter_config
+
+        return wired_adapter_config(s)
 
     def _resolve_wican_host(self, s) -> str:
         """Return the WiCAN host, re-resolving its IP over mDNS when possible.
@@ -465,13 +467,18 @@ class ECUProgrammingWindow(QMainWindow):
         QApplication.processEvents()
 
     def holds_ecu_link(self) -> bool:
-        """True while this window has an ECU connection or an operation running."""
+        """True while this window has an ECU connection (or is opening one) or
+        an operation running."""
         session = self._session
         return bool(
             self.is_busy
             or (
                 session is not None
-                and (session.is_connected or session.state == ECUSessionState.BUSY)
+                and (
+                    session.is_connected
+                    or session.state
+                    in (ECUSessionState.BUSY, ECUSessionState.CONNECTING)
+                )
             )
         )
 
@@ -496,16 +503,13 @@ class ECUProgrammingWindow(QMainWindow):
             self._session.cleanup()
             self._session = None
 
-        adapter = self._build_adapter_config()
-        if (
-            adapter["kind"] == "wican"
-            and self._main_window.wican_live_datalog.is_running
-        ):
-            # Connecting reserves the WiCAN's bus, which pauses the very trip
-            # the live datalog is following. The user stops it first.
-            logger.info("Stop the WiCAN live datalog (Trip Logs window) to connect")
+        if self._main_window.datalogger.is_running:
+            # The Datalogger holds the cable (Tactrix/OBDX) or follows the
+            # WiCAN's trip, which an ECU session would pause. Stop it first.
+            logger.info("Stop the Datalogger to connect")
             self._update_action_states()
             return
+        adapter = self._build_adapter_config()
         if adapter["kind"] == "wican":
             connecting_msg = "Connecting to WiCAN..."
         elif adapter["kind"] == "obdx":
@@ -873,10 +877,11 @@ class ECUProgrammingWindow(QMainWindow):
         is_wican_adapter = self._main_window.settings.is_wican_adapter()
         log_sync = self._main_window.wican_log_sync
         sync_running = log_sync.is_running
-        # The live datalog follows the device's own trip; an ECU session would
-        # reserve the bus and pause that trip, so the two never mix either.
-        live_running = self._main_window.wican_live_datalog.is_running
-        wican_contended = is_wican_adapter and (sync_running or live_running)
+        # The Datalogger either holds the cable (Tactrix/OBDX) or follows the
+        # WiCAN's own trip, which an ECU session would pause: never mixed,
+        # whatever the adapter.
+        live_running = self._main_window.datalogger.is_running
+        wican_contended = (is_wican_adapter and sync_running) or live_running
 
         # An ECU connect during a download would contend for the WiCAN's
         # SD/CPU/WiFi (and connecting re-parks the datalogger). Gate Connect
@@ -886,13 +891,14 @@ class ECUProgrammingWindow(QMainWindow):
         disconnected = self._session is None or (
             getattr(self._session, "state", None) == ECUSessionState.DISCONNECTED
         )
-        if is_wican_adapter and disconnected:
+        if disconnected and (
+            is_wican_adapter or live_running or self._connect_held_by_datalogger
+        ):
             self._btn_connect.setEnabled(not (sync_running or live_running))
             self._btn_connect.setToolTip(
-                "Stop the WiCAN live datalog first (Trip Logs window)"
-                if live_running
-                else ""
+                "Stop the Datalogger first" if live_running else ""
             )
+            self._connect_held_by_datalogger = live_running
 
         holds_wican = bool(is_wican_adapter and not disconnected)
         if holds_wican != self._last_link_broadcast:
@@ -911,7 +917,7 @@ class ECUProgrammingWindow(QMainWindow):
             if not wican_contended or busy:
                 tip = ""
             elif live_running:
-                tip = "Stop the WiCAN live datalog first"
+                tip = "Stop the Datalogger first"
             else:
                 tip = "Stop the WiCAN trip-log download first"
             self._btn_full_flash.setToolTip(tip)
@@ -1448,9 +1454,9 @@ class ECUProgrammingWindow(QMainWindow):
         if self._is_wican() and log_sync.is_running:
             logger.info("Stopping WiCAN trip-log sync for the ECU operation")
             log_sync.shutdown()
-        live = self._main_window.wican_live_datalog
-        if self._is_wican() and live.is_running:
-            logger.info("Stopping WiCAN live datalog for the ECU operation")
+        live = self._main_window.datalogger
+        if live.is_running:
+            logger.info("Stopping the Datalogger for the ECU operation")
             live.shutdown()
 
         self._poll_timer.stop()
@@ -1728,9 +1734,9 @@ class ECUProgrammingWindow(QMainWindow):
         started in the gap (connecting would pause the trip it follows)."""
         if self._session is None:
             return
-        if self._main_window.wican_live_datalog.is_running:
-            logger.info("Not reconnecting: the WiCAN live datalog is running")
-            self._progress_detail.setText("Not reconnected: live datalog running")
+        if self._main_window.datalogger.is_running:
+            logger.info("Not reconnecting: the Datalogger is running")
+            self._progress_detail.setText("Not reconnected: Datalogger running")
             self._update_action_states()
             return
         self._session.connect_ecu()

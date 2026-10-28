@@ -23,6 +23,23 @@ What is on `dev` awaiting `master`: run `python tools/dev_status.py` (asks GitHu
 
 ## Open items (not tracked in an issue)
 
+- **Datalogger (branch `feature/datalogger`, PR into `dev`; plan:
+  `~/.claude/plans/i-m-ok-with-the-snug-clover.md`).** Branched from master with
+  `feature/live-datalog-v2`, `feature/obdx-pro-adapter`, `feature/openport-winusb-driver` and
+  `fix/openport-sd-card` merged in, so it can only reach master after those four.
+  - Bench-proven on the Tactrix only (built-in x64 driver, engine off): 10 PIDs 37.8 rows/s
+    packed, 29.9 unpacked, 0 empty cells; mode 0x23 answered on the bench ECU.
+  - NOT tested on hardware: the WiCAN push (`/load_auto_pid`, `/store_auto_data`,
+    `/poll_status` were read from the `feature/3-live-stream` firmware source; the WiCAN was
+    offline), the OBDX engine, a cable pulled mid-log, and an engine-running rate.
+  - Known LOW gaps (re-review, Oct 28): a late NRC for an earlier same-service request can
+    drop the current channel; a late positive reply can turn packing off; the device file
+    isn't compared between preview and push; a Start landing inside the ECU window's
+    connect event pump can pass the blocker (one opener then fails).
+  - No "Apply Now" for a list sent mid-trip: released firmware has no `op=auto`, and
+    `op=start` would leave the logger forced ON for good. Adding `op=auto` to the firmware
+    would allow it (then restore the exact prior `manual_mode`).
+
 - **WiCAN live datalog (fw #3, PR from `feature/live-datalog-v2`) follow-ups** (design:
   `docs/internal/WICAN_LIVE_STREAM.md`):
   - User's in-car test pending; MegaLogViewerHD trail launch not exercised in a bench run.

@@ -4,6 +4,7 @@ Application Settings Management
 Handles loading, saving, and accessing application settings using QSettings.
 """
 
+import json
 import os
 from pathlib import Path
 
@@ -426,12 +427,28 @@ class AppSettings:
         self.settings.setValue("ecu/offer_open_logs_in_mlv", bool(enabled))
 
     def get_live_datalog_auto_trail(self) -> bool:
-        """Whether a WiCAN live datalog opens MegaLogViewerHD (Trail Live File
-        mode) on its own when the first capture of a run starts."""
+        """Whether a live datalog (any adapter) opens MegaLogViewerHD (Trail
+        Live File mode) on its own when the first capture of a run starts."""
         return self.settings.value("ecu/live_datalog_auto_trail", True, type=bool)
 
     def set_live_datalog_auto_trail(self, enabled: bool):
         self.settings.setValue("ecu/live_datalog_auto_trail", bool(enabled))
+
+    def get_datalog_channels(self) -> dict:
+        """The Datalogger's saved channel list (see
+        :func:`src.core.datalog_channels.channels_to_saved`); {} when unset or
+        unreadable, which means the built-in defaults."""
+        raw = self.settings.value("ecu/datalog_channels", "", type=str)
+        if not raw:
+            return {}
+        try:
+            data = json.loads(raw)
+        except ValueError:
+            return {}
+        return data if isinstance(data, dict) else {}
+
+    def set_datalog_channels(self, saved: dict):
+        self.settings.setValue("ecu/datalog_channels", json.dumps(saved))
 
 
 # Global settings instance

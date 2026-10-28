@@ -80,7 +80,7 @@ from src.ui.project_mixin import ProjectMixin
 from src.ui.session_mixin import SessionMixin
 from src.ui.mcp_mixin import McpMixin
 from src.ui.flash_mixin import FlashMixin
-from src.ui.wican_live_datalog import WiCANLiveDatalog
+from src.ui.datalogger import Datalogger
 from src.ui.wican_log_sync import WiCANLogSync
 from src.ui.openport_driver_setup import OpenPortDriverSetup
 from src.ui.app_updater import UpdateController
@@ -210,9 +210,12 @@ class MainWindow(
         # Finished download: offer to open the new logs in MegaLogViewerHD.
         self.wican_log_sync.download_finished.connect(self._on_trip_logs_downloaded)
 
-        # WiCAN live datalog — single owner of the live stream (firmware #3),
-        # driven by the Trip Logs window.
-        self.wican_live_datalog = WiCANLiveDatalog(self.settings, parent=self)
+        # Datalogger — single owner of live logging for every adapter (it owns
+        # the WiCAN live stream too), driven by the Datalogger window.
+        self.datalogger = Datalogger(
+            self.settings, parent=self, blocker=self._datalogger_blocker
+        )
+        self.datalogger_window = None
 
         # Tactrix OpenPort driver switch (WinUSB): one owner for the ECU window
         # and Settings, refused while the ECU window holds an ECU link.
@@ -269,7 +272,7 @@ class MainWindow(
             self.wican_log_sync.shutdown()
             # 10 s: a stop can land inside a 3 s mDNS lookup plus its teardown,
             # and Qt aborts if the thread is destroyed still running.
-            self.wican_live_datalog.shutdown(10000)
+            self.datalogger.shutdown(10000)
             self.update_controller.shutdown()
 
     def _update_install_blocker(self):
@@ -549,6 +552,10 @@ class MainWindow(
         self.trip_logs_action = tools_menu.addAction("WiCAN &Trip Logs...")
         self.trip_logs_action.triggered.connect(self._on_open_trip_logs_window)
         tools_menu.aboutToShow.connect(self._update_trip_logs_visibility)
+
+        datalogger_action = tools_menu.addAction("&Datalogger...")
+        datalogger_action.setShortcut("Ctrl+Shift+L")
+        datalogger_action.triggered.connect(self.open_datalogger_window)
 
         tools_menu.addSeparator()
 
@@ -1614,6 +1621,8 @@ class MainWindow(
         """Why the OpenPort driver can't be switched now, or None."""
         from src.ecu import j2534
 
+        if self.datalogger.host_running:
+            return "Stop the Datalogger first: it is using the cable."
         window = self.ecu_window
         if (window is not None and window.holds_ecu_link()) or j2534.builtin_in_use():
             return (
@@ -1621,6 +1630,40 @@ class MainWindow(
                 "driver unplugs the cable from Windows' point of view."
             )
         return None
+
+    def _datalogger_blocker(self):
+        """Why the Datalogger can't start now, or None.
+
+        Wired adapters: the ECU window's connection holds the cable (the
+        built-in OpenPort driver allows one per app). WiCAN: an ECU session
+        reserves the bus, which pauses the very trip the run would follow, and
+        a trip-log download competes for the device.
+        """
+        window = self.ecu_window
+        if window is not None and window.holds_ecu_link():
+            return (
+                "Disconnect in the ECU Programming window first: it is using "
+                "the adapter."
+            )
+        if self.openport_setup.is_running and not self.settings.is_wican_adapter():
+            return "Wait for the Tactrix driver switch to finish."
+        if self.settings.is_wican_adapter() and self.wican_log_sync.is_running:
+            return "Wait for the WiCAN trip-log download to finish."
+        return None
+
+    def open_datalogger_window(self):
+        """Open the Datalogger window (singleton)."""
+        from src.ui.datalogger_window import DataloggerWindow
+
+        if self.datalogger_window is not None:
+            self.datalogger_window.raise_()
+            self.datalogger_window.activateWindow()
+            return
+        window = DataloggerWindow(main_window=self, parent=self)
+        window.setAttribute(Qt.WA_DeleteOnClose)
+        window.destroyed.connect(lambda: setattr(self, "datalogger_window", None))
+        self.datalogger_window = window
+        window.show()
 
     def _on_ecu_window_destroyed(self):
         self.ecu_window = None
