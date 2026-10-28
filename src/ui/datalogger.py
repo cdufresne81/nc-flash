@@ -65,6 +65,24 @@ def wired_adapter_config(settings) -> dict:
     }
 
 
+#: After a lost connection mid-run, the next reconnect attempt waits this long.
+RECONNECT_DELAY_S = 2.0
+
+
+def _not_a_connection_loss():
+    from src.ecu.datalog_poller import DatalogNothingToPoll
+
+    # Programming errors must stop the run, not loop on reconnects.
+    return (
+        DatalogNothingToPoll,
+        TypeError,
+        AttributeError,
+        NameError,
+        AssertionError,
+        ImportError,
+    )
+
+
 class _HostPollWorker(QObject):
     """Connects to the ECU, polls the channels, writes the capture."""
 
@@ -93,24 +111,62 @@ class _HostPollWorker(QObject):
             thread is not None and thread.isInterruptionRequested()
         )
 
+    def _connect(self):
+        """Open a session to the ECU, or raise with a reason a user can act on."""
+        from src.ecu.session import ECUSession
+
+        lost: list[str] = []
+        session = ECUSession(adapter_config=self._adapter_config)
+        session.connection_lost.connect(lost.append, Qt.DirectConnection)
+        try:
+            session.connect_ecu()
+        except Exception:
+            self._close(session)
+            raise
+        if not session.is_connected:
+            self._close(session)
+            raise RuntimeError(
+                (lost[0] if lost else "Could not connect to the ECU")
+                + ". Check the ignition is on and the cable is plugged in."
+            )
+        return session
+
+    @staticmethod
+    def _close(session):
+        try:
+            session.cleanup()
+        except Exception:
+            logger.debug("Datalog session cleanup failed", exc_info=True)
+
+    def _reconnect(self, reason: str):
+        """Retry every RECONNECT_DELAY_S until connected; None once stopped."""
+        attempt = 0
+        while not self._stopping():
+            attempt += 1
+            self.status.emit(f"Connection lost ({reason}). Reconnecting...")
+            if self._stop.wait(RECONNECT_DELAY_S) or self._stopping():
+                return None
+            try:
+                session = self._connect()
+            except Exception as exc:  # still gone: try again
+                reason = str(exc) or type(exc).__name__
+                logger.info("Datalog reconnect attempt %d failed: %s", attempt, reason)
+                continue
+            logger.info("Datalog reconnected after %d attempt(s)", attempt)
+            return session
+        return None
+
     def run(self):
         from src.ecu.datalog_poller import DatalogPoller, format_row
-        from src.ecu.session import ECUSession
 
         session = None
         capture = LiveCsvCapture(self._live_dir, label="Datalog")
         failure: Optional[str] = None
         try:
             self.status.emit("Connecting to the ECU...")
-            lost: list[str] = []
-            session = ECUSession(adapter_config=self._adapter_config)
-            session.connection_lost.connect(lost.append, Qt.DirectConnection)
-            session.connect_ecu()
-            if not session.is_connected:
-                raise RuntimeError(
-                    (lost[0] if lost else "Could not connect to the ECU")
-                    + ". Check the ignition is on and the cable is plugged in."
-                )
+            # A first connect that fails stops the run (ignition off, wrong
+            # cable): the user gets the reason at once, not endless retries.
+            session = self._connect()
             poller = DatalogPoller(session.uds, self._channels)
             path = capture.open(poller.header)
             self.capture_opened.emit(path)
@@ -121,8 +177,28 @@ class _HostPollWorker(QObject):
             t0 = time.monotonic()
             window_t, window_rows, rate = t0, 0, 0.0
             rows = 0
+            reconnects = 0
             while not self._stopping():
-                result = poller.sweep()
+                try:
+                    result = poller.sweep()
+                except _not_a_connection_loss():
+                    raise  # every channel refused, or a bug: stop, don't loop
+                except Exception as exc:
+                    # Lost the adapter or the ECU mid-run (USB hiccup, ECU
+                    # silent): reconnect and keep growing the same capture.
+                    reason = str(exc) or type(exc).__name__
+                    logger.warning("Datalog connection lost: %s; reconnecting", reason)
+                    self._close(session)
+                    session = self._reconnect(reason)
+                    if session is None:
+                        break  # stopped while reconnecting
+                    reconnects += 1
+                    dropped = dict(poller.unsupported)
+                    poller = DatalogPoller(session.uds, self._channels)
+                    poller.unsupported.update(dropped)  # same columns, same drops
+                    window_t, window_rows = time.monotonic(), 0
+                    self.status.emit("Reconnected, logging again")
+                    continue
                 now = time.monotonic()
                 if capture.write_row(format_row(now - t0, result.values)):
                     self.capture_ready.emit(path)
@@ -140,7 +216,10 @@ class _HostPollWorker(QObject):
                     if now - window_t > 0:
                         rate = window_rows / (now - window_t)
                     window_t, window_rows = now, 0
-                    self.status.emit(f"Logging: {rate:.1f} rows/s, {rows} rows")
+                    text = f"Logging: {rate:.1f} rows/s, {rows} rows"
+                    if reconnects:
+                        text += f" (reconnected {reconnects}x)"
+                    self.status.emit(text)
             logger.info("Datalog stopped after %d rows", rows)
         except Exception as exc:  # nothing may raise out of a Qt worker slot
             failure = str(exc) or type(exc).__name__
@@ -148,10 +227,7 @@ class _HostPollWorker(QObject):
         finally:
             capture.close()
             if session is not None:
-                try:
-                    session.cleanup()
-                except Exception:
-                    logger.debug("Datalog session cleanup failed", exc_info=True)
+                self._close(session)
         if failure is not None and not self._stopping():
             self.error.emit(failure)
         else:

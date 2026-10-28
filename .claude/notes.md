@@ -30,8 +30,16 @@ What is on `dev` awaiting `master`: run `python tools/dev_status.py` (asks GitHu
   `examples/axis_channels.json` (exact axis names; TCM definitions use only their own `logparam`).
   Bench (Tactrix, engine off) + 3 Opus reviews (1st DO-NOT-SHIP, fixed; 2nd and 3rd SHIP).
   - Perf (5 tables with GPU graphs fed at 10 Hz): UI lag p95 28 ms. Needed: compact cross (each
-    repainted cell costs ~0.5 ms in the styled delegate), background windows throttled to 0.4 s,
-    GPU 3D skips the label fit when nothing moved. Don't tune the matplotlib fallback (user: unused).
+    repainted cell costs ~0.5 ms in the styled delegate), up to 3 tables all get 10 Hz (router
+    FULL_RATE_TABLES); with more, the table clicked LAST gets 10 Hz (not the OS-active window: focus
+    on MLV once made every table 2.5 Hz, the user's "worse after a second window"), others 0.2 s; GPU 3D skips the label fit when nothing moved. Don't tune the
+    matplotlib fallback (user: unused). Redraws are skipped for moves < 3 px (table) / < 0.05 cell
+    (graph): steady-signal CPU 49% -> 30% with 3 graphs. Bigger future win if needed: a cheaper
+    Python cell delegate (~70 us of ~175 us per cell; Qt's own drawing is ~100 us).
+  - Oct 28 in-car test: USB write failed after 3 min (LIBUSB_ERROR_IO, no USB unplug event) and
+    Windows logged "low on virtual memory" 16 s later (a screen recorder was running); NC Flash
+    itself is flat at ~700 MB with 3 graphs. Host engine now auto-reconnects mid-run (every 2 s
+    until Stop, same CSV); untested on hardware: pull the USB cable mid-log and plug it back.
   - Axis-name suffixes (`RPM_6DD8`) are NOT RAM addresses: lf9veb Load Scaling reads RPM from
     float 0xFFFF6D84 and loads 0xFFFF6E80/6F24/6F40 (3 lookups). LOAD mappings stay `approx`
     until the in-car comparison card answers whether PID 0x43 matches.

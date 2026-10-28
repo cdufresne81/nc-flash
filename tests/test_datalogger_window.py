@@ -241,3 +241,36 @@ def test_custom_channel_add_and_remove(qtbot, monkeypatch):
     assert window._btn_remove.isEnabled()
     window._on_remove()
     assert settings.saved["custom"] == []
+
+
+def test_open_live_logs_folder_creates_and_opens_it(qtbot, tmp_path, monkeypatch):
+    window, dl, settings = _window(qtbot)
+    settings.get_logs_directory.return_value = str(tmp_path / "logs")
+    dl.current_capture = ""
+    opened = []
+    monkeypatch.setattr(
+        win_mod.QDesktopServices, "openUrl", lambda url: opened.append(url)
+    )
+    window._btn_folder.click()
+    live = tmp_path / "logs" / "live"
+    assert live.is_dir()
+    assert [u.toLocalFile() for u in opened] == [live.as_posix()]
+
+
+def test_open_live_logs_folder_selects_the_capture_being_written(
+    qtbot, tmp_path, monkeypatch
+):
+    window, dl, settings = _window(qtbot)
+    settings.get_logs_directory.return_value = str(tmp_path / "logs")
+    capture = tmp_path / "logs" / "live" / "live_1.csv"
+    capture.parent.mkdir(parents=True)
+    capture.write_text("Time,RPM\n")
+    dl.current_capture = str(capture)
+    calls = []
+    monkeypatch.setattr(win_mod.sys, "platform", "win32")
+    monkeypatch.setattr(win_mod.subprocess, "Popen", lambda args: calls.append(args))
+    monkeypatch.setattr(
+        win_mod.QDesktopServices, "openUrl", lambda url: calls.append(url)
+    )
+    window._btn_folder.click()
+    assert calls == [["explorer", "/select,", str(capture)]]

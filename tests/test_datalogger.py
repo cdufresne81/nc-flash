@@ -385,3 +385,104 @@ def test_host_run_feeds_live_values_and_clears_them(
     dl.stop()
     qtbot.waitUntil(lambda: not dl.is_running, timeout=5000)
     assert seen[-1] == {} and dl.live_values.current() == {}
+
+
+class FlakyEcu(FakeEcu):
+    """Answers, then fails like a USB transfer error after *fail_after* sends."""
+
+    def __init__(self, fail_after):
+        super().__init__()
+        self.fail_after = fail_after
+
+    def send_message(self, payload, timeout_ms):
+        if self.fail_after is not None and len(self.sent) >= self.fail_after:
+            raise RuntimeError("USB data transfer error: LIBUSB_ERROR_IO")
+        return super().send_message(payload, timeout_ms)
+
+
+@pytest.fixture
+def flaky_session(fake_session, monkeypatch):
+    """The first session's adapter dies mid-run; later ones work (or, with
+    ``answers`` False, never connect)."""
+    monkeypatch.setattr(dl_mod, "RECONNECT_DELAY_S", 0.05)
+    state = {"answers": True}
+
+    class Flaky(fake_session):
+        def __init__(self, adapter_config=None):
+            super().__init__(adapter_config)
+            if len(fake_session.instances) == 1:
+                self.ecu = FlakyEcu(fail_after=200)
+                self.uds = UDSConnection(self.ecu)
+
+        def connect_ecu(self):
+            if len(fake_session.instances) > 1 and not state["answers"]:
+                self.connection_lost.emit("Connect failed: no reply")
+                return
+            super().connect_ecu()
+
+    monkeypatch.setattr(session_mod, "ECUSession", Flaky)
+    fake_session.state = state
+    return fake_session
+
+
+def _rows_in(path):
+    return len(Path(path).read_text(encoding="utf-8").splitlines()) - 1
+
+
+def test_lost_adapter_reconnects_into_the_same_capture(
+    qtbot, tmp_path, flaky_session, qt_thread_guard
+):
+    dl = Datalogger(_settings(tmp_path, channels=_two_channels()))
+    statuses, captures = [], []
+    dl.status_changed.connect(statuses.append)
+    dl.capture_changed.connect(lambda p: p and captures.append(p))
+    assert dl.start() is True
+    qtbot.waitUntil(lambda: len(flaky_session.instances) >= 2, timeout=5000)
+    qtbot.waitUntil(lambda: any("reconnected 1x" in s for s in statuses), timeout=5000)
+    first = flaky_session.instances[0]
+    assert first.cleaned == 1  # the dead session was released first
+    assert dl.is_running
+    assert any(s.startswith("Connection lost (USB data transfer") for s in statuses)
+    rows_at_reconnect = _rows_in(captures[0])
+    qtbot.waitUntil(lambda: _rows_in(captures[0]) > rows_at_reconnect, timeout=5000)
+    dl.stop()
+    qtbot.waitUntil(lambda: not dl.is_running, timeout=5000)
+    assert len(set(captures)) == 1  # one capture across the reconnect
+    assert not any(s.startswith("Stopped:") for s in statuses)
+
+
+def test_reconnect_keeps_trying_until_stopped(
+    qtbot, tmp_path, flaky_session, qt_thread_guard
+):
+    flaky_session.state["answers"] = False
+    dl = Datalogger(_settings(tmp_path, channels=_two_channels()))
+    statuses = []
+    dl.status_changed.connect(statuses.append)
+    dl.start()
+    qtbot.waitUntil(lambda: len(flaky_session.instances) >= 4, timeout=5000)
+    assert dl.is_running
+    assert "Reconnecting" in statuses[-1]
+    t0 = time.monotonic()
+    dl.stop()
+    assert time.monotonic() - t0 < 2.0
+    qtbot.waitUntil(lambda: not dl.is_running, timeout=5000)
+    assert statuses[-1] == "Stopped"  # a user stop, not an error
+    assert all(s.cleaned == 1 for s in flaky_session.instances)
+
+
+def test_a_bug_while_polling_stops_instead_of_reconnecting(
+    qtbot, tmp_path, fake_session, monkeypatch, qt_thread_guard
+):
+    from src.ecu import datalog_poller
+
+    def broken(self):
+        raise TypeError("bug")
+
+    monkeypatch.setattr(datalog_poller.DatalogPoller, "sweep", broken)
+    dl = Datalogger(_settings(tmp_path, channels=_two_channels()))
+    statuses = []
+    dl.status_changed.connect(statuses.append)
+    dl.start()
+    qtbot.waitUntil(lambda: not dl.is_running, timeout=5000)
+    assert statuses[-1] == "Stopped: bug"
+    assert len(fake_session.instances) == 1

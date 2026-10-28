@@ -250,12 +250,15 @@ def test_live_values_clear_is_quiet_when_empty(qtbot):
 
 
 class _Win:
-    def __init__(self, axes=True):
+    def __init__(self, axes=True, focus_at=0.0):
         self.has_live_cursor_axes = axes
+        self.live_focus_at = focus_at
         self.calls = []
+        self.foreground = []
 
-    def set_live_values(self, values):
+    def set_live_values(self, values, foreground=True):
         self.calls.append(values)
+        self.foreground.append(foreground)
 
 
 def _router(windows, enabled=True):
@@ -297,7 +300,7 @@ def test_router_disabled_hides_and_saves(qtbot):
 
 
 class _Broken(_Win):
-    def set_live_values(self, values):
+    def set_live_values(self, values, foreground=True):
         self.calls.append(values)
         if values:
             raise ValueError("bad axis")
@@ -311,6 +314,28 @@ def test_one_failing_table_never_freezes_the_others(qtbot):
     assert good.calls == [{"RPM": 1.0}, {"RPM": 2.0}]
     assert broken.calls[-1] == {}  # its cursor is taken down, not left stale
     router.attach(_Broken())  # opening one mid-run doesn't raise either
+
+
+def test_a_few_tables_all_get_the_full_rate(qtbot):
+    from src.ui import live_cursor_router as lcr
+
+    wins = [_Win(focus_at=float(i)) for i in range(lcr.FULL_RATE_TABLES)]
+    router, live, _ = _router(wins)
+    live.update({"RPM": 1.0})
+    assert all(w.foreground == [True] for w in wins)
+
+
+def test_with_many_tables_the_one_clicked_last_gets_the_full_rate(qtbot):
+    # Even while MegaLogViewerHD or the Datalogger has focus: the router picks
+    # the table window activated most recently, not the active window.
+    from src.ui import live_cursor_router as lcr
+
+    wins = [_Win(focus_at=float(i)) for i in range(lcr.FULL_RATE_TABLES + 1)]
+    old, latest = wins[0], wins[-1]
+    router, live, _ = _router(wins)
+    live.update({"RPM": 1.0})
+    assert old.foreground == [False] and latest.foreground == [True]
+    router.attach(_Win(focus_at=0.0))  # a window just opened shows at once
 
 
 def test_router_never_mutates_the_window_list(qtbot):

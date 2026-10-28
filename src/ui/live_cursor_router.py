@@ -16,6 +16,13 @@ from .live_values import LiveValues
 
 logger = logging.getLogger(__name__)
 
+#: Up to this many tables with a cursor all follow every update (10/s). With
+#: more, only the one clicked last does; the others move a few times a second.
+#: Measured with the redraw skip: 3 tables + GPU graphs at full rate stayed
+#: under ~22 ms UI lag (p95) and 60% of a core even while the point moved
+#: constantly, with the poller at full speed.
+FULL_RATE_TABLES = 3
+
 
 class LiveCursorRouter(QObject):
     """Live table cursor on/off and the fan-out to table windows."""
@@ -56,21 +63,26 @@ class LiveCursorRouter(QObject):
         """A table window just opened: show the cursor at once if logging."""
         values = self.current()
         if values and window.has_live_cursor_axes:
-            self._show(window, values)
+            self._show(window, values, True)
 
     def _on_values(self, values: dict):
         if self._enabled:
             self._push(values)
 
     def _push(self, values: dict):
-        for window in list(self._windows()):
-            if window.has_live_cursor_axes:
-                self._show(window, values)
+        """Every table with a cursor, at full rate up to FULL_RATE_TABLES;
+        past that, only the one clicked last (it stays the focus while the
+        user looks at MegaLogViewerHD, say)."""
+        windows = [w for w in list(self._windows()) if w.has_live_cursor_axes]
+        latest = max(windows, key=lambda w: w.live_focus_at, default=None)
+        everyone = len(windows) <= FULL_RATE_TABLES
+        for window in windows:
+            self._show(window, values, everyone or window is latest)
 
-    def _show(self, window, values: dict):
+    def _show(self, window, values: dict, foreground: bool):
         """Update one window; a failure there must not freeze the others."""
         try:
-            window.set_live_values(values)
+            window.set_live_values(values, foreground)
         except Exception:  # noqa: BLE001 - the cursor is display-only
             if id(window) not in self._failed:
                 self._failed.add(id(window))

@@ -508,9 +508,18 @@ def live_window(qapp, mock_settings, request):
     win = TableViewerWindow(
         _live_3d_table(flipx, flipy), data, _make_definition(), rom_path="/t.bin"
     )
-    win.isActiveWindow = lambda: True  # the window being worked in: no throttle
     yield win
     win.close()
+
+
+@pytest.mark.parametrize(
+    "value, text",
+    [(3250.4, "3250"), (-40.0, "-40"), (55.25, "55.2"), (0.47123, "0.471"), (0.0, "0")],
+)
+def test_live_tags_show_readable_numbers(value, text):
+    from src.ui.table_viewer_window import _tag_number
+
+    assert _tag_number(value) == text
 
 
 class TestLiveCursor:
@@ -587,14 +596,50 @@ class TestLiveCursor:
         pixel = image.pixelColor(int(geo["x"] * ratio), int(geo["y"] * ratio))
         assert pixel.name() == QColor(theme.LIVE_CURSOR).name()
 
+    def test_a_move_nobody_can_see_repaints_nothing(self, live_window):
+        viewport = live_window.viewer.table_widget.viewport()
+        overlay = live_window.viewer.live_cursor
+        live_window.set_live_values({"RPM": 150.0, "LOAD": 20.0})
+        drawn = overlay.state
+        with patch.object(viewport, "update") as update:
+            live_window.set_live_values({"RPM": 150.2, "LOAD": 20.01})
+            update.assert_not_called()  # same tags, sub-pixel move
+        assert (overlay.state.fr, overlay.state.fc) == (drawn.fr, drawn.fc)
+
+    def test_only_a_changed_tag_is_repainted(self, live_window):
+        viewport = live_window.viewer.table_widget.viewport()
+        live_window.set_live_values({"RPM": 150.0, "LOAD": 20.0})
+        tag_rect = live_window.viewer.live_cursor.geometry()["tags"][0][0]
+        with patch.object(viewport, "update") as update:
+            live_window.set_live_values({"RPM": 151.0, "LOAD": 20.0})
+        (region,), _ = update.call_args
+        assert region.boundingRect() == tag_rect.toAlignedRect()  # the RPM tag only
+        assert live_window.viewer.live_cursor.state.y_tag == ("151", False)
+
+    def test_a_slow_drift_still_moves_the_cross(self, live_window):
+        overlay = live_window.viewer.live_cursor
+        live_window.set_live_values({"RPM": 100.0, "LOAD": 20.0})
+        start_y = overlay.geometry()["y"]
+        rpm = 100.0
+        while rpm < 150.0:  # each step is far below a pixel
+            rpm += 0.5
+            live_window.set_live_values({"RPM": rpm, "LOAD": 20.0})
+        y = overlay.geometry()["y"]
+        assert y != start_y  # it moved once the drift added up
+        rows = [_ui_cell(live_window, r, 0)[0] for r in (0, 1)]
+        px_per_row = abs(
+            _center(live_window, rows[1], 0)[1] - _center(live_window, rows[0], 0)[1]
+        )
+        true_fr = 0.5  # RPM 150 on a 100/200 axis
+        assert abs(overlay.state.fr - true_fr) * px_per_row < overlay.MOVE_PX
+
     def test_background_window_moves_at_most_every_interval(self, live_window, qtbot):
         from src.ui import table_viewer_window as tvw
 
-        live_window.isActiveWindow = lambda: False
-        live_window.set_live_values({"RPM": 150.0, "LOAD": 20.0})
+        live_window.set_live_values({"RPM": 150.0, "LOAD": 20.0}, False)
         first = live_window.viewer.live_cursor.state
-        live_window.set_live_values({"RPM": 160.0, "LOAD": 20.0})
-        live_window.set_live_values({"RPM": 170.0, "LOAD": 20.0})
+        live_window.set_live_values({"RPM": 160.0, "LOAD": 20.0}, False)
+        live_window.set_live_values({"RPM": 170.0, "LOAD": 20.0}, False)
         assert live_window.viewer.live_cursor.state == first  # held back
         qtbot.waitUntil(
             lambda: live_window.viewer.live_cursor.state.y_tag[0] == "170",
@@ -602,10 +647,9 @@ class TestLiveCursor:
         )  # then the latest values, not each one
 
     def test_hiding_is_never_delayed(self, live_window):
-        live_window.isActiveWindow = lambda: False
-        live_window.set_live_values({"RPM": 150.0, "LOAD": 20.0})
-        live_window.set_live_values({"RPM": 160.0, "LOAD": 20.0})  # held back
-        live_window.set_live_values({})
+        live_window.set_live_values({"RPM": 150.0, "LOAD": 20.0}, False)
+        live_window.set_live_values({"RPM": 160.0, "LOAD": 20.0}, False)  # held
+        live_window.set_live_values({}, False)
         assert live_window.viewer.live_cursor.state is None
         assert not live_window._live_timer.isActive()
 

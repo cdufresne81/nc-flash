@@ -617,6 +617,11 @@ class MainWindow(
         act.triggered.connect(self._on_open_ecu_window)
         self._toolbar_flash = act
 
+        act = tb.addAction(make_icon(self, "datalogger"), "")
+        act.setToolTip("Datalogger (Ctrl+Shift+L)")
+        act.triggered.connect(self.open_datalogger_window)
+        self._toolbar_datalogger = act
+
         act = tb.addAction(make_icon(self, "trip_logs"), "")
         act.setToolTip("WiCAN Trip Logs")
         act.triggered.connect(self._on_open_trip_logs_window)

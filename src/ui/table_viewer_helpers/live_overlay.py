@@ -11,6 +11,7 @@ cell delegate, so full-length crosshair lines (a whole row + column per move,
 per window) cost most of a CPU core with three tables open.
 """
 
+import dataclasses
 import logging
 import math
 from dataclasses import dataclass
@@ -66,6 +67,12 @@ class LiveCursorOverlay:
     HALO = 3.0  # white halo under the dark lines: readable on any cell color
     DOT = 6.0  # dot radius
     ARM = 0.5  # cross arm length, in cells (from the centre)
+    #: A move smaller than this (logical px) from where the cross is drawn
+    #: leaves it there: a redraw repaints ~10 cells, and sensor noise would
+    #: otherwise redraw on nearly every update (a cell is ~70 x 24 px; the
+    #: nearest-cell outline still moves the moment the nearest cell changes).
+    #: 3 px cut CPU 49% -> 30% with 3 tables + graphs on a steady signal.
+    MOVE_PX = 3.0
 
     def __init__(self, table: QTableWidget, to_ui: Callable[[int, int], tuple]):
         self._tw = table
@@ -78,12 +85,63 @@ class LiveCursorOverlay:
     # --- state ------------------------------------------------------------------
 
     def set_state(self, state: Optional[LiveCursorState]):
-        """Show *state* (None hides); repaints only what changed."""
+        """Show *state* (None hides); repaints only what changed.
+
+        If the point moved less than MOVE_PX from where the cross is drawn
+        (and the nearest cell is the same), the cross stays put and only a tag
+        whose text changed is repainted. The comparison is with the drawn
+        position, so a slow drift still moves the cross once it adds up.
+        """
         if state == self.state:
+            return
+        old_state = self.state
+        if self._same_spot(old_state, state):
+            state = dataclasses.replace(state, fr=old_state.fr, fc=old_state.fc)
+            changed = self._changed_tag_region(old_state, state)
+            self.state = state
+            if not changed.isEmpty():
+                self._tw.viewport().update(changed)
             return
         old = self._safe_region()
         self.state = state
         self._tw.viewport().update(old.united(self._safe_region()))
+
+    def _same_spot(self, old, new) -> bool:
+        if (
+            old is None
+            or new is None
+            or old.fr is None
+            or new.fr is None
+            or (old.rows, old.cols, old.message) != (new.rows, new.cols, new.message)
+        ):
+            return False
+        try:
+            drawn = self.geometry()
+            self.state = new
+            moved = self.geometry()
+        except Exception:  # noqa: BLE001 - let the normal path handle it
+            return False
+        finally:
+            self.state = old
+        return (
+            abs(moved["x"] - drawn["x"]) < self.MOVE_PX
+            and abs(moved["y"] - drawn["y"]) < self.MOVE_PX
+            and moved["peak"] == drawn["peak"]
+        )
+
+    def _changed_tag_region(self, old, new) -> QRegion:
+        """The tags (same positions: the cross didn't move) whose text changed."""
+        region = QRegion()
+        if (old.y_tag, old.x_tag) == (new.y_tag, new.x_tag):
+            return region
+        geo = self.geometry()  # self.state is still *old*: same tag rects
+        texts = [old.y_tag != new.y_tag, old.x_tag != new.x_tag]
+        if new.cols <= 1 or not new.x_tag[0]:
+            texts = texts[:1]
+        for (rect, _, _), changed in zip(geo["tags"], texts):
+            if changed:
+                region = region.united(QRegion(rect.toAlignedRect()))
+        return region
 
     def _safe_region(self) -> QRegion:
         """The area to repaint; the whole viewport if it can't be worked out,

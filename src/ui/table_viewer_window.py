@@ -50,11 +50,24 @@ from .table_viewer_helpers.live_overlay import LiveCursorState
 #: Graph needs some height to be readable; showing it grows shorter windows.
 GRAPH_MIN_HEIGHT = 420
 GRAPH_MIN_WIDTH = 340
-#: Live table cursor: a table window in the background moves its cursor at
-#: most this often (the window being worked in follows every update, 10/s).
-#: Each move repaints cells and the graph; at full rate in every window, 3-5
-#: open tables with graphs used a whole CPU core and the UI lagged.
-LIVE_BACKGROUND_INTERVAL_S = 0.4
+#: Live table cursor: the table window clicked last follows every update
+#: (10/s); the other table windows move at most this often. Each move repaints
+#: cells and the graph; at full rate in every window, 3-5 open tables with
+#: graphs used a whole CPU core and the UI lagged.
+LIVE_BACKGROUND_INTERVAL_S = 0.2
+#: The graph marker skips moves smaller than this (in cells): barely visible,
+#: and each redraw costs ~10 ms (sensor noise would redraw nearly every time).
+GRAPH_MOVE_CELLS = 0.05
+
+
+def _tag_number(value: float) -> str:
+    """A live value as a readable axis tag: no digits that only flicker."""
+    if abs(value) >= 100:
+        return f"{value:.0f}"
+    if abs(value) >= 10:
+        text = f"{value:.1f}"
+        return text[:-2] if text.endswith(".0") else text  # 25, not 25.0
+    return f"{value:.3g}"
 
 
 class TableViewerWindow(QMainWindow):
@@ -129,6 +142,9 @@ class TableViewerWindow(QMainWindow):
         self._live_point = None
         self._live_pending: dict = {}
         self._live_applied_at = 0.0
+        #: When this window was last activated (the router gives the most
+        #: recent one the full live rate, even while another app has focus).
+        self.live_focus_at = time.monotonic()
         self._live_timer = QTimer(self)
         self._live_timer.setSingleShot(True)
         self._live_timer.timeout.connect(self._apply_live_values)
@@ -502,12 +518,12 @@ class TableViewerWindow(QMainWindow):
         """Every axis of this table has a logged channel behind it."""
         return self._live_maps is not None
 
-    def set_live_values(self, values: dict):
+    def set_live_values(self, values: dict, foreground: bool = True):
         """Show where the live values ({channel: value}) fall; {} hides it.
 
-        The window being worked in follows every update; one in the
-        background at most every LIVE_BACKGROUND_INTERVAL_S (the latest values
-        win), and a minimized one waits until it is restored.
+        A *foreground* window (the table clicked last) follows every update;
+        the others at most every LIVE_BACKGROUND_INTERVAL_S (the latest
+        values win), and a minimized one waits until it is restored.
         """
         if self._live_maps is None:
             return
@@ -518,7 +534,7 @@ class TableViewerWindow(QMainWindow):
             return
         if self.isMinimized():
             return
-        if not self.isActiveWindow():
+        if not foreground:
             wait = self._live_applied_at + LIVE_BACKGROUND_INTERVAL_S - time.monotonic()
             if wait > 0:
                 if not self._live_timer.isActive():
@@ -560,7 +576,7 @@ class TableViewerWindow(QMainWindow):
         if point is None:
             return None  # an axis can't place a point (unreadable / mid-edit)
         tags = [
-            (f"{'≈' if approx else ''}{value:.4g}", clamped)
+            (f"{'≈' if approx else ''}{_tag_number(value)}", clamped)
             for _, value, approx, clamped in point.readings
         ]
         return LiveCursorState(
@@ -583,9 +599,10 @@ class TableViewerWindow(QMainWindow):
             return
         if (
             old is not None
-            and abs(old.fr - point.fr) < 1e-3
-            and abs(old.fc - point.fc) < 1e-3
+            and abs(old.fr - point.fr) < GRAPH_MOVE_CELLS
+            and abs(old.fc - point.fc) < GRAPH_MOVE_CELLS
         ):
+            self._live_point = old  # compare the next one with what's drawn
             return
         self.graph_widget.set_live_point((point.fr, point.fc))
 
@@ -1010,5 +1027,6 @@ class TableViewerWindow(QMainWindow):
 
         # WindowActivate is fired when the window gains focus (clicked, alt-tabbed to, etc.)
         if event.type() == QEvent.WindowActivate:
+            self.live_focus_at = time.monotonic()
             self.window_focused.emit(make_table_key(self.rom_path, self.table.address))
         return super().event(event)
