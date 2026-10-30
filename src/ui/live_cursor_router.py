@@ -39,6 +39,7 @@ class LiveCursorRouter(QObject):
         self._windows = windows
         self._settings = settings
         self._enabled = settings.get_live_cursor_enabled()
+        self._estimate = bool(settings.get_live_value_estimate())
         self._failed = set()  # id() of windows already logged as failing
         live_values.changed.connect(self._on_values)
 
@@ -59,8 +60,26 @@ class LiveCursorRouter(QObject):
         """The values a table window should show now ({} = no cursor)."""
         return self._live.current() if self._enabled else {}
 
+    def reload_settings(self):
+        """The settings were saved: apply the estimated-value option."""
+        estimate = bool(self._settings.get_live_value_estimate())
+        if estimate == self._estimate:
+            return
+        self._estimate = estimate
+        for window in list(self._windows()):
+            if window.has_live_cursor_axes:
+                self._set_estimate(window)
+
+    def _set_estimate(self, window):
+        try:
+            window.set_live_estimate(self._estimate)
+        except Exception:  # noqa: BLE001 - the cursor is display-only
+            logger.exception("Live table cursor failed on a table window")
+
     def attach(self, window):
         """A table window just opened: show the cursor at once if logging."""
+        if window.has_live_cursor_axes:
+            self._set_estimate(window)
         values = self.current()
         if values and window.has_live_cursor_axes:
             self._show(window, values, True)

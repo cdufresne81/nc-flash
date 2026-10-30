@@ -186,6 +186,25 @@ SETTINGS_REGISTRY = [
         keywords=["font", "text", "size", "pixels"],
     ),
     SettingDescriptor(
+        key="appearance.table_display.live_value_estimate",
+        label="Show the estimated table value at the live cursor",
+        description=(
+            "While the Datalogger runs, a tag next to the live cursor on an open "
+            "table shows the table's value at that point. It is an estimate, not "
+            "a value read from the ECU: NC Flash blends the four surrounding "
+            "cells of the ROM open in NC Flash, at the logged RPM, load, etc. It "
+            "is only right if that ROM is the one in the car and the logged "
+            "values are the ones the ECU uses for this table (marked with ≈ "
+            "when they may not be)."
+        ),
+        category="Appearance",
+        subcategory="Table Display",
+        widget_type="checkbox",
+        getter="get_live_value_estimate",
+        setter="set_live_value_estimate",
+        keywords=["live", "cursor", "datalog", "estimate", "value", "interpolated"],
+    ),
+    SettingDescriptor(
         key="appearance.table_display.gradient_mode",
         label="Cell gradient coloring",
         description=(

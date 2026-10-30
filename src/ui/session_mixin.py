@@ -144,6 +144,7 @@ class SessionMixin:
         """Handle settings changes"""
         # Trip Logs entry points follow the selected ECU adapter (WiCAN-only)
         self._update_trip_logs_visibility()
+        self.live_cursor.reload_settings()
 
         # Reinitialize ROM detector with new metadata path
         try:

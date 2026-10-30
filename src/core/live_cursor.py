@@ -80,3 +80,31 @@ def locate(
         pos[key] = found[0]
         readings.append((m.channel, value, m.approx, found[1]))
     return LiveStatus(LivePoint(pos["y"], pos.get("x", 0.0), tuple(readings)))
+
+
+def table_value(values, fr: float, fc: float = 0.0) -> Optional[float]:
+    """The table's value at a fractional point, blended linearly between the
+    (up to four) surrounding cells; None if one of them isn't a number.
+
+    *values* as read (2D tables: one value per row, *fc* unused).
+    """
+    v = np.asarray(values, dtype=float)
+    if v.ndim == 1:
+        v = v[:, None]
+        fc = 0.0
+    if v.ndim != 2 or v.size == 0:
+        return None
+
+    def bracket(f, n):
+        lo = min(max(int(np.floor(f)), 0), n - 1)
+        hi = min(lo + 1, n - 1)
+        return lo, hi, (min(max(f - lo, 0.0), 1.0) if hi != lo else 0.0)
+
+    r0, r1, tr = bracket(fr, v.shape[0])
+    c0, c1, tc = bracket(fc, v.shape[1])
+    corners = v[[r0, r0, r1, r1], [c0, c1, c0, c1]]
+    if not np.all(np.isfinite(corners)):
+        return None
+    top = corners[0] + tc * (corners[1] - corners[0])
+    bottom = corners[2] + tc * (corners[3] - corners[2])
+    return float(top + tr * (bottom - top))

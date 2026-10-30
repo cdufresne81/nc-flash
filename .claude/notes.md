@@ -23,8 +23,9 @@ What is on `dev` awaiting `master`: run `python tools/dev_status.py` (asks GitHu
 
 ## Open items (not tracked in an issue)
 
-- **Live table cursor: branch `feature/live-table-cursor` (off `feature/datalogger`), uncommitted
-  in the datalogger worktree.** Open tables show where the Datalogger's live values fall: a compact
+- **Live table cursor: branch `feature/live-table-cursor` (off `feature/datalogger`), pushed
+  (e01505e), datalogger worktree. Faster cell drawing on `feature/poller-process` (off it, worktree
+  `nc-rom-editor-poller`).** Open tables show where the Datalogger's live values fall: a compact
   cross + dot on the exact point, nearest cell outlined, values tagged on the axis headers
   (`src/ui/table_viewer_helpers/live_overlay.py`), plus a graph marker. Axis -> channel map in
   `examples/axis_channels.json` (exact axis names; TCM definitions use only their own `logparam`).
@@ -34,8 +35,13 @@ What is on `dev` awaiting `master`: run `python tools/dev_status.py` (asks GitHu
     FULL_RATE_TABLES); with more, the table clicked LAST gets 10 Hz (not the OS-active window: focus
     on MLV once made every table 2.5 Hz, the user's "worse after a second window"), others 0.2 s; GPU 3D skips the label fit when nothing moved. Don't tune the
     matplotlib fallback (user: unused). Redraws are skipped for moves < 3 px (table) / < 0.05 cell
-    (graph): steady-signal CPU 49% -> 30% with 3 graphs. Bigger future win if needed: a cheaper
-    Python cell delegate (~70 us of ~175 us per cell; Qt's own drawing is ~100 us).
+    (graph): steady-signal CPU 49% -> 30% with 3 graphs. Cell marks moved from a Python delegate
+    paint() to one pass after Qt draws the cells (`cell_delegate.py`, `feature/poller-process`):
+    169 -> 125 us per cell, 3-window lag p95 23 -> ~20 ms; pixel-identical except a 1 px notch the
+    old order cut into mark corners. What's left: Qt's own cell drawing (~125 us, windows11 style;
+    Fusion ~86 but looks different) and the GPU graph draw (~9.5 ms each, about half the lag).
+    Polling in a separate process was measured and dropped (Oct 28, real Tactrix): it frees ~10% of
+    a core (2.1 ms CPU per row) but the UI lag didn't change.
   - Oct 28 in-car test: USB write failed after 3 min (LIBUSB_ERROR_IO, no USB unplug event) and
     Windows logged "low on virtual memory" 16 s later (a screen recorder was running); NC Flash
     itself is flat at ~700 MB with 3 graphs. Host engine now auto-reconnects mid-run (every 2 s
@@ -44,6 +50,15 @@ What is on `dev` awaiting `master`: run `python tools/dev_status.py` (asks GitHu
     float 0xFFFF6D84 and loads 0xFFFF6E80/6F24/6F40 (3 lookups). LOAD mappings stay `approx`
     until the in-car comparison card answers whether PID 0x43 matches.
   - Next: commit + PR (into `dev` after #211 merges, else draft on `feature/datalogger`).
+  - Value chip (Oct 30, `feature/poller-process`), opt-in setting `ecu/live_value_estimate` (off by
+    default: it is NC Flash's estimate from the open ROM, not an ECU reading): the table's value at the live point, blended
+    linearly between the 4 surrounding cells (assumed to match the ECU's own lookup, not checked
+    in the disassembly); it follows the live value even when the cross holds still (<3 px). The
+    nearest cell's number is redrawn over the cross via `DecoratedTable.cell_text_layout`.
+  - Pre-existing test failures on master too (Oct 30): PySide6 6.10.1 returns a tuple stored in
+    Qt.UserRole as a list, so tuple comparisons fail (test_clipboard_paste x3); the hex paste test
+    `test_copied_text_pastes_into_another_rom` (and `test_decimal_editor_still_rejects_letters`)
+    fail for a reason not found yet. Earlier sessions wrote these off as a clipboard glitch.
   - LOW leftovers: no message when a NaN/zig-zag axis refuses the cursor; duplicate-breakpoint
     cell (first vs last) unconfirmed vs the ECU; TCM detection keys on "TCM" in romid.model; axis
     tags cover half of the two breakpoint labels they sit between.

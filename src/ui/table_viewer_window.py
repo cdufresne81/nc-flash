@@ -44,7 +44,8 @@ from .scaling_edit_dialog import TableScalingDialog
 from ..core.rom_definition import Table, RomDefinition
 from ..core.metadata_writer import update_scaling
 from ..core import axis_channels
-from ..core.live_cursor import locate
+from ..core.live_cursor import locate, table_value
+from ..utils.formatting import format_value
 from .table_viewer_helpers.live_overlay import LiveCursorState
 
 #: Graph needs some height to be readable; showing it grows shorter windows.
@@ -141,6 +142,7 @@ class TableViewerWindow(QMainWindow):
         self._live_maps = self._resolve_live_maps(table, diff_mode, rom_definition)
         self._live_point = None
         self._live_pending: dict = {}
+        self._live_estimate = False  # show the estimated table value (setting)
         self._live_applied_at = 0.0
         #: When this window was last activated (the router gives the most
         #: recent one the full live rate, even while another app has focus).
@@ -543,6 +545,15 @@ class TableViewerWindow(QMainWindow):
         self._live_timer.stop()
         self._apply_live_values()
 
+    def set_live_estimate(self, enabled: bool):
+        """Show (or not) the estimated table value next to the live cursor."""
+        enabled = bool(enabled)
+        if enabled == self._live_estimate:
+            return
+        self._live_estimate = enabled
+        if self._live_maps is not None and self._live_pending:
+            self._apply_live_values()
+
     def _apply_live_values(self):
         from ..core.rom_definition import TableType
 
@@ -586,7 +597,22 @@ class TableViewerWindow(QMainWindow):
             fc=point.fc,
             y_tag=tags[0],
             x_tag=tags[1] if len(tags) > 1 else ("", False),
+            value_tag=(
+                self._live_value_text(values, point) if self._live_estimate else ""
+            ),
         )
+
+    def _live_value_text(self, values, point) -> str:
+        """NC Flash's estimate of the table's value at the live point (the
+        surrounding cells of the open ROM blended, not read from the ECU),
+        formatted like its cells ("≈" when an axis input is approximate); ""
+        if it isn't a number."""
+        value = table_value(values, point.fr, point.fc)
+        if value is None:
+            return ""
+        approx = any(reading[2] for reading in point.readings)
+        text = format_value(value, self.viewer.cell_format((0, 0)))
+        return f"{'≈' if approx else ''}{text}"
 
     def _set_graph_live_point(self, point):
         old = self._live_point

@@ -69,6 +69,17 @@ class TableEditState:
         key = self._axis_key(table_address, axis_type)
         return index in self._modified_cells.get(key, ())
 
+    def has_modified(self, table_address: str) -> bool:
+        """True if any cell or axis cell of the table is marked."""
+        return any(
+            self._modified_cells.get(key)
+            for key in (
+                table_address,
+                self._axis_key(table_address, "x_axis"),
+                self._axis_key(table_address, "y_axis"),
+            )
+        )
+
     # ── capture-once originals ──────────────────────────────────────────
     def capture_originals(self, table_address: str, data: dict):
         """Snapshot on-disk values once per table (later calls are no-ops).

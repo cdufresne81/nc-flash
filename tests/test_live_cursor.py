@@ -14,6 +14,7 @@ from src.core.definition_parser import DefinitionParser
 from src.core.live_cursor import (
     axis_position,
     locate,
+    table_value,
 )
 from src.core.rom_definition import AxisType, Table, TableType
 from src.ui import live_values as live_values_mod
@@ -88,6 +89,27 @@ DATA_3D = {
     "x_axis": np.array([0.2, 0.4, 0.6, 0.8]),  # LOAD (columns)
     "y_axis": np.array([1000.0, 2000.0, 3000.0]),  # RPM (rows)
 }
+
+
+def test_table_value_blends_the_four_surrounding_cells():
+    values = np.array([[1.0, 2.0], [3.0, 5.0]])
+    assert table_value(values, 0.0, 0.0) == 1.0  # on a cell: that cell
+    assert table_value(values, 0.0, 0.5) == pytest.approx(1.5)
+    assert table_value(values, 0.5, 0.5) == pytest.approx((1 + 2 + 3 + 5) / 4)
+    assert table_value(values, 1.0, 1.0) == 5.0  # last cell, no overrun
+
+
+def test_table_value_2d_and_edges():
+    values = np.array([10.0, 20.0, 40.0])
+    assert table_value(values, 1.5) == pytest.approx(30.0)
+    assert table_value(values, 2.0) == 40.0
+    assert table_value(values, -1.0) == 10.0  # clamped like the cursor
+
+
+def test_table_value_with_a_non_number_nearby_is_none():
+    values = np.array([[1.0, np.nan], [3.0, 4.0]])
+    assert table_value(values, 0.5, 0.5) is None
+    assert table_value(values, 1.0, 0.0) == 3.0  # the NaN isn't involved
 
 
 def test_locate_3d_places_the_point_and_reads_each_axis():
@@ -256,14 +278,20 @@ class _Win:
         self.calls = []
         self.foreground = []
 
+        self.estimate = []
+
     def set_live_values(self, values, foreground=True):
         self.calls.append(values)
         self.foreground.append(foreground)
 
+    def set_live_estimate(self, enabled):
+        self.estimate.append(enabled)
 
-def _router(windows, enabled=True):
+
+def _router(windows, enabled=True, estimate=False):
     settings = MagicMock()
     settings.get_live_cursor_enabled.return_value = enabled
+    settings.get_live_value_estimate.return_value = estimate
     live = LiveValues()
     return LiveCursorRouter(live, lambda: windows, settings), live, settings
 
@@ -345,3 +373,21 @@ def test_router_never_mutates_the_window_list(qtbot):
     live.update({"RPM": 1.0})
     assert windows == snapshot
     assert isinstance(router.current(), dict)
+
+
+def test_a_new_table_gets_the_estimate_setting(qtbot):
+    window = _Win()
+    router, _, _ = _router([window], estimate=True)
+    router.attach(window)
+    assert window.estimate == [True]
+
+
+def test_saved_settings_turn_the_estimate_on_for_open_tables(qtbot):
+    mapped, unmapped = _Win(), _Win(axes=False)
+    router, _, settings = _router([mapped, unmapped])
+    router.reload_settings()  # unchanged: nothing to do
+    assert mapped.estimate == []
+    settings.get_live_value_estimate.return_value = True
+    router.reload_settings()
+    assert mapped.estimate == [True]
+    assert unmapped.estimate == []

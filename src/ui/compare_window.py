@@ -58,7 +58,7 @@ logger = logging.getLogger(__name__)
 
 
 class _CompareCellDelegate(QStyledItemDelegate):
-    """Draws a 2px gray border around changed cells, matching ModifiedCellDelegate."""
+    """Draws a 2px gray border around changed cells, matching the table viewer's modified-cell border."""
 
     BORDER_COLOR = QColor(100, 100, 100)
     BORDER_WIDTH = 2

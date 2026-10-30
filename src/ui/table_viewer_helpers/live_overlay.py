@@ -4,11 +4,13 @@ Live table cursor drawn over the table cells.
 Where the Datalogger's live values fall on the table, the way tuning tools mark
 an operating point: a compact cross on the exact (interpolated) point with a dot
 at its centre, a bold outline on the nearest cell, and the live values tagged
-on the axis headers. Drawn after the cells (``LiveCursorTable.paintEvent``), so
+on the axis headers. A chip next to the cross gives the table's own value at
+that point (blended between the surrounding cells), and the nearest cell's
+number is redrawn over the cross so the cursor never hides it. Drawn after the
+cells (``DecoratedTable.paintEvent``), so
 cell colors, selection and editing are untouched. A move repaints only the few
-cells the cross left and entered: every repainted cell goes through the Python
-cell delegate, so full-length crosshair lines (a whole row + column per move,
-per window) cost most of a CPU core with three tables open.
+cells the cross left and entered: full-length crosshair lines (a whole row +
+column per move, per window) cost most of a CPU core with three tables open.
 """
 
 import dataclasses
@@ -17,7 +19,7 @@ import math
 from dataclasses import dataclass
 from typing import Callable, Optional, Tuple
 
-from PySide6.QtCore import QPointF, QRectF, Qt
+from PySide6.QtCore import QPointF, QRect, QRectF, Qt
 from PySide6.QtGui import QColor, QFont, QFontMetrics, QPainter, QPen, QRegion
 from PySide6.QtWidgets import QTableWidget
 
@@ -37,28 +39,7 @@ class LiveCursorState:
     y_tag: Tuple[str, bool] = ("", False)  # (text, off the table)
     x_tag: Tuple[str, bool] = ("", False)
     message: str = ""  # e.g. "Live cursor needs: LOAD (not being logged)"
-
-
-class LiveCursorTable(QTableWidget):
-    """The table widget, plus the live cursor painted over its cells."""
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.live_overlay: Optional["LiveCursorOverlay"] = None
-
-    def paintEvent(self, event):  # noqa: N802 - Qt override
-        super().paintEvent(event)
-        overlay = self.live_overlay
-        if overlay is not None and overlay.state is not None:
-            painter = QPainter(self.viewport())
-            try:
-                overlay.paint(painter)
-            except Exception:  # noqa: BLE001 - never break the table's paint
-                logger.exception("Live table cursor could not be drawn; hiding it")
-                overlay.state = None
-                self.viewport().update()
-            finally:
-                painter.end()
+    value_tag: str = ""  # the table's value at the point, formatted like a cell
 
 
 class LiveCursorOverlay:
@@ -81,6 +62,7 @@ class LiveCursorOverlay:
         self._font = QFont(table.font())
         self._font.setBold(True)
         self._metrics = QFontMetrics(self._font)
+        self._last_value_rect = QRect()  # where the value chip was last drawn
 
     # --- state ------------------------------------------------------------------
 
@@ -99,6 +81,10 @@ class LiveCursorOverlay:
             state = dataclasses.replace(state, fr=old_state.fr, fc=old_state.fc)
             changed = self._changed_tag_region(old_state, state)
             self.state = state
+            if old_state.value_tag != state.value_tag:
+                changed = changed.united(self._value_region()).united(
+                    QRegion(self._last_value_rect)
+                )
             if not changed.isEmpty():
                 self._tw.viewport().update(changed)
             return
@@ -142,6 +128,16 @@ class LiveCursorOverlay:
             if changed:
                 region = region.united(QRegion(rect.toAlignedRect()))
         return region
+
+    def _value_region(self) -> QRegion:
+        """Where the value chip of the current state is drawn."""
+        try:
+            geo = self.geometry()
+        except Exception:  # noqa: BLE001 - display only
+            return QRegion(self._tw.viewport().rect())
+        if geo is None or geo["value"] is None:
+            return QRegion()
+        return QRegion(geo["value"][0].toAlignedRect().adjusted(-1, -1, 1, 1))
 
     def _safe_region(self) -> QRegion:
         """The area to repaint; the whole viewport if it can't be worked out,
@@ -199,7 +195,17 @@ class LiveCursorOverlay:
         arm_x = self.ARM * self._tw.columnWidth(to_ui(0, c0)[1])
         arm_y = self.ARM * self._tw.rowHeight(to_ui(r0, 0)[0])
         cross = QRectF(x - arm_x, y - arm_y, 2 * arm_x, 2 * arm_y).intersected(area)
-        geo = {"x": x, "y": y, "cross": cross, "peak": peak, "tags": []}
+        geo = {
+            "x": x,
+            "y": y,
+            "cross": cross,
+            "peak": peak,
+            "peak_ui": to_ui(nearest_r, nearest_c),
+            "tags": [],
+            "value": None,
+        }
+        if s.value_tag:
+            geo["value"] = (self._value_rect(x, y, s.value_tag), s.value_tag)
         y_text, y_off = s.y_tag
         if y_text:  # Y tag in the Y-axis column (UI column 0)
             band = self._cell_rect(to_ui(r0, 0)[0], 0)
@@ -209,6 +215,27 @@ class LiveCursorOverlay:
             band = self._cell_rect(0, to_ui(0, c0)[1])
             geo["tags"].append((self._tag_rect(band, x, None), x_text, x_off))
         return geo
+
+    def _value_rect(self, x: float, y: float, text: str) -> QRectF:
+        """The value chip: up and right of the dot, clear of the axis headers
+        (row 0 of a 3D table, column 0) and the viewport edges; flipped left /
+        down where it wouldn't fit."""
+        tw = self._tw
+        w = self._metrics.horizontalAdvance(text) + 10
+        h = self._metrics.height() + 4
+        free = QRectF(tw.viewport().rect())
+        free.setLeft(tw.columnViewportPosition(0) + tw.columnWidth(0))
+        if self.state.cols > 1:
+            free.setTop(tw.rowViewportPosition(0) + tw.rowHeight(0))
+        gap = self.DOT + 3
+        left, top = x + gap, y - gap - h
+        if left + w > free.right():
+            left = x - gap - w
+        if top < free.top():
+            top = y + gap
+        left = max(free.left(), min(left, free.right() - w))
+        top = max(free.top(), min(top, free.bottom() - h))
+        return QRectF(left, top, w, h)
 
     def _tag_rect(self, band: QRectF, x, y) -> QRectF:
         """A tag sized to its band (axis header cell), centred on x or y."""
@@ -246,6 +273,8 @@ class LiveCursorOverlay:
             geo["peak"],
         ]
         strips += [rect for rect, _, _ in geo["tags"]]
+        if geo["value"] is not None:
+            strips.append(geo["value"][0].adjusted(-1, -1, 1, 1))
         for rect in strips:
             region = region.united(QRegion(rect.toAlignedRect()))
         return region
@@ -284,9 +313,33 @@ class LiveCursorOverlay:
         painter.setBrush(QColor(theme.LIVE_CURSOR))
         painter.drawEllipse(QPointF(x, y), self.DOT, self.DOT)
         painter.setBrush(Qt.NoBrush)
+        self._paint_peak_text(painter, geo["peak_ui"])
         for rect, text, off in geo["tags"]:
             color = theme.LIVE_TAG_OFF if off else theme.LIVE_TAG_TEXT
             self._paint_chip(painter, rect, text, color)
+        self._last_value_rect = QRect()
+        if geo["value"] is not None:
+            rect, text = geo["value"]
+            self._paint_chip(painter, rect, text, theme.LIVE_TAG_TEXT)
+            self._last_value_rect = rect.toAlignedRect().adjusted(-1, -1, 1, 1)
+
+    def _paint_peak_text(self, painter: QPainter, ui_cell):
+        """The nearest cell's own number, redrawn where Qt drew it, over the
+        lines and the dot, with a halo of the cell's color so it stays
+        readable."""
+        layout = getattr(self._tw, "cell_text_layout", None)
+        item = self._tw.item(*ui_cell)
+        if layout is None or item is None or not item.text():
+            return
+        rect, align, font, text, color, halo = layout(self._tw.indexFromItem(item))
+        painter.save()
+        painter.setFont(font)
+        painter.setPen(halo)
+        for dx, dy in ((-1, 0), (1, 0), (0, -1), (0, 1)):
+            painter.drawText(rect.translated(dx, dy), align, text)
+        painter.setPen(color)
+        painter.drawText(rect, align, text)
+        painter.restore()
 
     def _paint_chip(self, painter: QPainter, rect: QRectF, text: str, color: str):
         painter.setPen(Qt.NoPen)
@@ -301,3 +354,8 @@ class LiveCursorOverlay:
         """The tag texts as drawn (tests)."""
         geo = self.geometry()
         return [text for _, text, _ in geo["tags"]] if geo else []
+
+    def value_text(self) -> str:
+        """The value chip's text as drawn, "" when none (tests)."""
+        geo = self.geometry()
+        return geo["value"][1] if geo and geo["value"] else ""
