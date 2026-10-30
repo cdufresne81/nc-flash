@@ -386,7 +386,7 @@ def _first_data_coords(tw):
     ids=["above_xml_max", "placeholder_zero_max"],
 )
 def test_paste_ignores_scaling_min_max_clamp(
-    qapp, mock_settings, scaling_max, pasted, expected
+    qapp, mock_settings, fake_clipboard, scaling_max, pasted, expected
 ):
     """
     Regression: paste_selection used to silently skip cells whose value fell

@@ -30,6 +30,9 @@ from src.ui.table_viewer_helpers.clipboard import CELLS_MIME
 from src.ui.table_viewer_window import TableViewerWindow
 from src.utils.formatting import is_hex_format, parse_cell_text
 
+# Every test here copies and pastes through an in-memory clipboard (conftest)
+pytestmark = pytest.mark.usefixtures("fake_clipboard")
+
 # ---------------------------------------------------------------------------
 # parse_cell_text
 # ---------------------------------------------------------------------------
@@ -235,7 +238,8 @@ class TestPasteIntoAxis:
         assert list(viewer.current_data["x_axis"]) == [100.0, 200.0, 300.0]
         assert viewer.table_widget.item(0, 1).text() == "100.00"
         assert data_signals == []
-        assert axis_signals == [
+        # PySide6 can hand the tuples back as lists (it varies by version)
+        assert [[tuple(c) for c in batch] for batch in axis_signals] == [
             [
                 ("x_axis", 0, 1.0, 100.0, 1.0, 100.0),
                 ("x_axis", 1, 2.0, 200.0, 2.0, 200.0),
@@ -406,7 +410,9 @@ class TestStorageFit:
 
             assert list(viewer.current_data["x_axis"]) == [1.0, 200.0, 3.0]
             assert list(viewer.current_data["values"][0]) == [11.0, 12.0, 0.0]
-            assert [c[:4] for c in axis_signals[0]] == [("x_axis", 1, 2.0, 200.0)]
+            assert [tuple(c[:4]) for c in axis_signals[0]] == [
+                ("x_axis", 1, 2.0, 200.0)
+            ]
             assert len(data_signals[0]) == 2
         finally:
             win.close()
@@ -517,7 +523,7 @@ class TestHexCells:
     def test_decimal_editor_still_rejects_letters(self, window_3d):
         tw = window_3d.viewer.table_widget
         index = tw.model().index(1, 1)
-        assert index.data(Qt.UserRole) == (0, 0)
+        assert tuple(index.data(Qt.UserRole)) == (0, 0)
         editor = tw.itemDelegate().createEditor(tw, None, index)
         try:
             assert editor.validator().validate("1a", 0)[0] == QValidator.Invalid

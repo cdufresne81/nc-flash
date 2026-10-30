@@ -239,7 +239,7 @@ class TestCellEditRejectsNonNumeric:
 
 
 class TestPasteRejectsNonNumeric:
-    def test_paste_skips_non_numeric_cells(self, window_2d, qapp):
+    def test_paste_skips_non_numeric_cells(self, window_2d, qapp, fake_clipboard):
         tw = window_2d.viewer.table_widget
         tw.clearSelection()
         tw.setRangeSelected(QTableWidgetSelectionRange(0, 1, 2, 1), True)

@@ -113,6 +113,46 @@ def isolated_settings(tmp_path, monkeypatch):
     return s
 
 
+class FakeClipboard:
+    """In-memory stand-in for the system clipboard (text and mime data)."""
+
+    def __init__(self):
+        from PySide6.QtCore import QMimeData
+
+        self._mime = QMimeData()
+
+    def setMimeData(self, mime, mode=None):  # noqa: N802 - QClipboard API
+        self._mime = mime
+
+    def mimeData(self, mode=None):  # noqa: N802
+        return self._mime
+
+    def setText(self, text, mode=None):  # noqa: N802
+        from PySide6.QtCore import QMimeData
+
+        self._mime = QMimeData()
+        self._mime.setText(text)
+
+    def text(self, mode=None):
+        return self._mime.text()
+
+
+@pytest.fixture
+def fake_clipboard(monkeypatch):
+    """Copy/paste through an in-memory clipboard, never the system one.
+
+    On Windows another program can hold the clipboard for a moment (a
+    clipboard manager, a remote-desktop clipboard sync): a paste right after
+    setText() then reads nothing and the test fails at random. The real
+    clipboard also belongs to the user, whose copied text a test would wipe.
+    """
+    from PySide6.QtWidgets import QApplication
+
+    board = FakeClipboard()
+    monkeypatch.setattr(QApplication, "clipboard", staticmethod(lambda: board))
+    return board
+
+
 # --- graph-engine tests: off by default on local runs ----------------------
 
 
