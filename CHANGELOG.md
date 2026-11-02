@@ -4,6 +4,9 @@ All notable changes to NC Flash are documented here.
 
 ## [Unreleased]
 
+### Added
+- **Warning when opening an unpatched ROM.** NC Flash now tells you when a ROM has not been patched yet (a factory ROM), so you know to patch it before flashing. It also warns if the ROM was patched with a different patch revision than its definition was written for, since tables could then show or write the wrong data.
+
 ### Changed
 - **Behind the scenes:** a small tool now lists which beta changes are still waiting to reach Stable. No change to the app itself.
 
