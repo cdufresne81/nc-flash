@@ -4,6 +4,9 @@ All notable changes to NC Flash are documented here.
 
 ## [Unreleased]
 
+### Fixed
+- **Damping filter tables marked "DO NOT EDIT" on 14 late NC3 manual definitions.** On LFLEEC, LFLGEC, LFLMEA, LFLMEC, LFLMED, LFLNEC, LFLPE0, LFLPEA, LFLPEB, LFLPEC, LFLPED, LFLREA, LFLVEB and LFLWEB, Mazda turned the driveline damping filter off with a setting in the ECU, so its coefficient, gain, Q, mode and bypass tables no longer change the torque request. The ECU still reads some of them elsewhere (the Data Integrity copies in its safety recalculation, the coefficients in a second damping stage Mazda set to zero), so editing them could make the two disagree. Their names now say so. The shuffle-frequency and multiplier tables, Tip-In Shaping, and the six automatic definitions (LFLXE0, LFLXEC, LFMAE0, LFMAEB, LFMAEC, LFMSEA, where the filter runs) are unchanged.
+
 ## [v2.23.1] - 2026-10-24
 
 **Urgent safety fix: update before using Patch ROM.** Earlier versions could produce a patched ROM that bricks the ECU when flashed.
