@@ -72,6 +72,7 @@ python main.py
 
 ### Core Features
 - Automatic ROM ID detection and XML definition matching
+- Warns when an opened ROM is unpatched, or was patched with a different patch revision than its definition expects
 - Definitions for about 100 NC ECU calibrations included (from speeps' RomDrop set, with permission)
 - New and corrected definitions reach existing installs on update; your own edits and added tables are kept, and the previous files are backed up
 - Read NC Miata ECU ROM binary files
@@ -223,6 +224,7 @@ nc-flash/
 │   │   ├── rom_definition.py          # Data structures for tables
 │   │   ├── definition_parser.py       # XML parser for ROM definitions
 │   │   ├── rom_reader.py              # Binary ROM reader/writer
+│   │   ├── patch_check.py             # Unpatched / patch-revision check on open
 │   │   ├── rom_detector.py            # Automatic ROM ID detection
 │   │   ├── exceptions.py              # Custom exception hierarchy
 │   │   ├── storage_types.py           # Storage type constants
