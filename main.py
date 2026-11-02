@@ -52,6 +52,7 @@ from src.utils.constants import (
 from src.core.definition_parser import load_definition
 from src.core.rom_reader import RomReader
 from src.core.rom_detector import RomDetector
+from src.core.patch_check import check_patch_state
 from src.core.exceptions import (
     DefinitionError,
     RomFileError,
@@ -1180,6 +1181,25 @@ class MainWindow(
                     f"Expected: {rom_definition.romid.internalidstring}\n"
                     f"This may indicate a detection bug.",
                 )
+
+            # Warn on an unpatched ROM or a patch revision that doesn't match
+            # the definition. open(), not exec(): the open still completes, so
+            # session restore, IPC opens and the GUI test runner don't stall on it.
+            patch_warning = check_patch_state(
+                rom_reader.rom_data, rom_definition.romid.checksummodule
+            ).warning(Path(file_path).name, rom_definition.romid.xmlid)
+            if patch_warning:
+                logger.warning(patch_warning.replace("\n\n", " "))
+                box = QMessageBox(
+                    QMessageBox.Warning,
+                    "ROM Patch Warning",
+                    patch_warning,
+                    QMessageBox.Ok,
+                    self,
+                )
+                box.setAttribute(Qt.WA_DeleteOnClose)
+                box.setObjectName("romPatchWarning")
+                box.open()
 
             # Create ROM document widget
             rom_document = RomDocument(file_path, rom_definition, rom_reader, self)
