@@ -13,6 +13,9 @@ from .constants import (
     GEN_NC1,
     GEN_NC2_A,
     GEN_NC2_B,
+    BOOT_SIGNATURE_LEN,
+    BOOT_SIGNATURE_NC1,
+    BOOT_SIGNATURE_NC2,
     DYNAMIC_ALIGN_SMALL,
     DYNAMIC_ALIGN_LARGE,
     DYNAMIC_THRESHOLD,
@@ -42,14 +45,39 @@ def detect_vehicle_generation(rom_data: bytes) -> str:
         raise VehicleGenerationError("ROM too small to detect vehicle generation")
 
     gen_byte = rom_data[GEN_DETECT_OFFSET]
-    if gen_byte == GEN_NC1:
-        return "NC1"
-    elif gen_byte in (GEN_NC2_A, GEN_NC2_B):
-        return "NC2"
-    else:
+    generation = generation_from_byte(gen_byte)
+    if generation is None:
         raise VehicleGenerationError(
             f"Unknown generation byte 0x{gen_byte:02X} at offset 0x{GEN_DETECT_OFFSET:X}"
         )
+    return generation
+
+
+def generation_from_byte(gen_byte: int) -> str | None:
+    """Map the byte at ``GEN_DETECT_OFFSET`` to "NC1"/"NC2", or None if unknown.
+
+    This is the generation of the PROGRAM (it picks the SBL for a file). For the
+    ECU's hardware generation use :func:`generation_from_boot_block`.
+    """
+    if gen_byte == GEN_NC1:
+        return "NC1"
+    if gen_byte in (GEN_NC2_A, GEN_NC2_B):
+        return "NC2"
+    return None
+
+
+def generation_from_boot_block(boot: bytes) -> str | None:
+    """Map the first ``BOOT_SIGNATURE_LEN`` bytes of a boot block (address 0) to
+    "NC1"/"NC2", or None if they match neither known signature.
+
+    A flash never writes the boot block, so on an ECU this is the generation of
+    the hardware the SBL must suit, whatever program it currently holds."""
+    signature = bytes(boot[:BOOT_SIGNATURE_LEN])
+    if signature == BOOT_SIGNATURE_NC1:
+        return "NC1"
+    if signature == BOOT_SIGNATURE_NC2:
+        return "NC2"
+    return None
 
 
 def get_rom_id(rom_data: bytes) -> str:

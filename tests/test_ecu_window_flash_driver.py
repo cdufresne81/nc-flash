@@ -23,8 +23,11 @@ from src.ui.ecu_window import ECUProgrammingWindow
 class _FakeWindow:
     """Minimal stand-in exposing only what ``_build_flash_driver`` touches."""
 
-    def __init__(self, *, wican: bool, connected: bool = True, trim_roms=True):
+    def __init__(
+        self, *, wican: bool, connected: bool = True, trim_roms=True, obdx=False
+    ):
         self._wican = wican
+        self._obdx = obdx
         settings = MagicMock()
         settings.get_wican_trim_staged_roms.return_value = trim_roms
         settings.get_wican_keep_staged_roms.return_value = 5
@@ -41,6 +44,9 @@ class _FakeWindow:
 
     def _is_wican(self) -> bool:
         return self._wican
+
+    def _is_obdx(self) -> bool:
+        return self._obdx
 
     def _get_dll_path(self) -> str:
         return "fake.dll"
@@ -114,6 +120,58 @@ class TestWiCANWriteRouting:
         with patch("src.ui.ecu_window.FlashManager") as MockFM:
             driver = _build(fake, operation)
         assert driver is MockFM.return_value
+
+
+def _obdx_window(name, tested):
+    transport = SimpleNamespace(adapter_name=name, is_tested_model=tested)
+    return SimpleNamespace(
+        _is_obdx=lambda: True,
+        _is_wican=lambda: False,
+        _session=SimpleNamespace(transport=transport),
+    )
+
+
+class TestObdxRouting:
+    @pytest.mark.parametrize(
+        "operation", ["flash", "dynamic_flash", "read", "scan_ram"]
+    )
+    def test_obdx_borrows_the_session_uds(self, operation):
+        fake = _FakeWindow(wican=False, obdx=True)
+        uds = fake._session.acquire.return_value[3]
+        with patch("src.ui.ecu_window.FlashManager") as MockFM:
+            driver = _build(fake, operation)
+        assert driver is MockFM.return_value
+        MockFM.assert_called_once_with()  # no J2534 DLL for OBDX
+        driver.use_uds.assert_called_once_with(uds)
+
+    @pytest.mark.parametrize("answer, proceeds", [("Yes", True), ("No", False)])
+    def test_obdx_flash_asks_first(self, answer, proceeds):
+        from PySide6.QtWidgets import QMessageBox
+
+        fake = _obdx_window("OBDX Pro VX", tested=True)
+        with patch(
+            "src.ui.ecu_window.QMessageBox.warning",
+            return_value=getattr(QMessageBox, answer),
+        ) as warn:
+            assert ECUProgrammingWindow._confirm_adapter_flash(fake) is proceeds
+        warn.assert_called_once()
+        assert "not the" not in warn.call_args.args[2]
+
+    def test_untested_obdx_model_is_named_in_the_prompt(self):
+        from PySide6.QtWidgets import QMessageBox
+
+        fake = _obdx_window("OBDX Pro GT", tested=False)
+        with patch(
+            "src.ui.ecu_window.QMessageBox.warning", return_value=QMessageBox.No
+        ) as warn:
+            ECUProgrammingWindow._confirm_adapter_flash(fake)
+        assert "not the OBDX Pro GT" in warn.call_args.args[2]
+
+    def test_j2534_flash_needs_no_prompt(self):
+        fake = SimpleNamespace(_is_obdx=lambda: False, _is_wican=lambda: False)
+        with patch("src.ui.ecu_window.QMessageBox.warning") as warn:
+            assert ECUProgrammingWindow._confirm_adapter_flash(fake) is True
+        warn.assert_not_called()
 
 
 class TestWorkerFinishedHandlers:

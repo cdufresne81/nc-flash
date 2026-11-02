@@ -9,6 +9,8 @@ Two bugs:
      like '02054517' was stored as decimal 2054517 (0x001F5975).
 """
 
+import json
+
 import numpy as np
 import pytest
 from unittest.mock import patch, MagicMock
@@ -523,3 +525,164 @@ class TestHexCells:
             assert editor.validator().validate("1a", 0)[0] == QValidator.Invalid
         finally:
             editor.deleteLater()
+
+
+# ---------------------------------------------------------------------------
+# Ctrl+click (multi-range) selections: copy and paste follow the selected
+# cells, never the rectangle around them
+# ---------------------------------------------------------------------------
+
+
+def _select_cells(viewer, *cells):
+    """Ctrl+click selection: one 1x1 range per (row, col)."""
+    tw = viewer.table_widget
+    tw.clearSelection()
+    for row, col in cells:
+        tw.setRangeSelected(QTableWidgetSelectionRange(row, col, row, col), True)
+
+
+def _set_exact(rows):
+    mime = QMimeData()
+    mime.setText("")
+    mime.setData(CELLS_MIME, json.dumps(rows).encode("utf-8"))
+    QApplication.clipboard().setMimeData(mime)
+
+
+@pytest.fixture
+def window_values(qapp, mock_settings):
+    """3x3 data 0..8; UI (1,1)..(3,3) hold data (0,0)..(2,2)."""
+    win = _make_3d_window(
+        [1.0, 2.0, 3.0], [10.0, 20.0, 30.0], np.arange(9.0).reshape(3, 3)
+    )
+    yield win
+    win.close()
+
+
+class TestMultiRangeCopy:
+    def test_gaps_copy_as_blanks(self, window_values):
+        viewer = window_values.viewer
+        _select_cells(viewer, (1, 1), (2, 3))  # data (0,0) and (1,2)
+
+        viewer.copy_selection()
+
+        mime = QApplication.clipboard().mimeData()
+        exact = json.loads(bytes(mime.data(CELLS_MIME)).decode("utf-8"))
+        assert exact == [[0.0, None, None], [None, None, 5.0]]
+        assert QApplication.clipboard().text() == "0.00\t\t\n\t\t5.00"
+
+    def test_rectangle_copy_unchanged(self, window_values):
+        viewer = window_values.viewer
+        _select(viewer, 1, 1, 2, 2)
+        viewer.copy_selection()
+        assert QApplication.clipboard().text() == "0.00\t1.00\n3.00\t4.00"
+
+    def test_copy_back_writes_only_the_cells_copied(self, window_values):
+        """Paste a Ctrl+click copy at one cell: the gaps change nothing."""
+        src = window_values.viewer
+        _select_cells(src, (1, 1), (2, 3))
+        src.copy_selection()
+
+        dst_win = _make_3d_window([1.0, 2.0, 3.0], [1.0, 2.0, 3.0], np.full((3, 3), 50))
+        try:
+            dst = dst_win.viewer
+            _select(dst, 1, 1, 1, 1)
+            dst.paste_selection()
+            expected = np.full((3, 3), 50.0)
+            expected[0, 0] = 0.0
+            expected[1, 2] = 5.0
+            np.testing.assert_array_equal(dst.current_data["values"], expected)
+        finally:
+            dst_win.close()
+
+
+class TestMultiRangePaste:
+    def test_single_value_fills_only_selected_cells(self, window_values):
+        viewer = window_values.viewer
+        signals = []
+        viewer.bulk_changes.connect(lambda t, c: signals.append(c))
+        _select_cells(viewer, (1, 1), (3, 3), (2, 2))
+
+        _paste(viewer, "99")
+
+        expected = np.arange(9.0).reshape(3, 3)
+        expected[0, 0] = expected[2, 2] = expected[1, 1] = 99.0
+        np.testing.assert_array_equal(viewer.current_data["values"], expected)
+        assert len(signals) == 1 and len(signals[0]) == 3  # one undo step
+
+    def test_block_of_outline_size_writes_only_selected_cells(self, window_values):
+        viewer = window_values.viewer
+        _select_cells(viewer, (1, 1), (2, 2))  # outline 2x2, two cells
+
+        _paste(viewer, "10\t11\n12\t13")
+
+        values = viewer.current_data["values"]
+        assert values[0, 0] == 10.0 and values[1, 1] == 13.0
+        assert values[0, 1] == 1.0 and values[1, 0] == 3.0  # gaps untouched
+
+    @pytest.mark.parametrize("text", ["1\t2", "1\t2\t3\n4\t5\t6\n7\t8\t9"])
+    def test_other_block_shape_is_refused(self, window_values, text):
+        viewer = window_values.viewer
+        signals = []
+        viewer.bulk_changes.connect(lambda t, c: signals.append(c))
+        viewer.axis_bulk_changes.connect(lambda t, c: signals.append(c))
+        _select_cells(viewer, (1, 1), (2, 2))
+
+        with patch(
+            "src.ui.table_viewer_helpers.clipboard.QMessageBox.information"
+        ) as info:
+            _paste(viewer, text)
+
+        info.assert_called_once()
+        assert signals == []
+        np.testing.assert_array_equal(
+            viewer.current_data["values"], np.arange(9.0).reshape(3, 3)
+        )
+
+    def test_top_left_of_outline_is_not_written_when_unselected(self, window_values):
+        """Old behaviour pasted at the outline's top-left, an unselected cell."""
+        viewer = window_values.viewer
+        _select_cells(viewer, (1, 2), (2, 1))  # outline top-left (1,1) unselected
+
+        _paste(viewer, "77")
+
+        values = viewer.current_data["values"]
+        assert values[0, 0] == 0.0
+        assert values[0, 1] == 77.0 and values[1, 0] == 77.0
+
+    @pytest.mark.parametrize("text", ["nan", "inf", "-inf", "abc", "1e999", ""])
+    def test_unusable_text_writes_nothing(self, window_values, text):
+        viewer = window_values.viewer
+        _select_cells(viewer, (1, 1), (3, 3))
+        _paste(viewer, text)
+        np.testing.assert_array_equal(
+            viewer.current_data["values"], np.arange(9.0).reshape(3, 3)
+        )
+
+    def test_non_finite_exact_values_write_nothing(self, window_values):
+        viewer = window_values.viewer
+        _select(viewer, 1, 1, 1, 1)
+        _set_exact([[float("nan"), float("inf")], [True, "7"]])
+
+        viewer.paste_selection()
+
+        np.testing.assert_array_equal(
+            viewer.current_data["values"], np.arange(9.0).reshape(3, 3)
+        )
+
+
+class TestRectanglePaste:
+    def test_single_value_fills_rectangle(self, window_values):
+        viewer = window_values.viewer
+        _select(viewer, 1, 1, 2, 2)
+        _paste(viewer, "42")
+        values = viewer.current_data["values"]
+        assert values[0, 0] == values[0, 1] == values[1, 0] == values[1, 1] == 42.0
+        assert values[0, 2] == 2.0 and values[2, 0] == 6.0
+
+    def test_block_stops_at_table_edge(self, window_values):
+        viewer = window_values.viewer
+        _select(viewer, 3, 3, 3, 3)  # last data cell
+        _paste(viewer, "1\t2\n3\t4")
+        expected = np.arange(9.0).reshape(3, 3)
+        expected[2, 2] = 1.0
+        np.testing.assert_array_equal(viewer.current_data["values"], expected)

@@ -188,12 +188,15 @@ class TestRunner:
             self._log("ERROR: No ROM loaded")
             return False
 
-        # Find the table
-        table = None
-        for t in self.rom_definition.tables:
-            if t.name == table_name:
-                table = t
-                break
+        # Find the table. Some names are shared by several tables; refuse
+        # those unless the "Name @ 0xADDR" form picks one copy.
+        from src.core.exceptions import AmbiguousTableNameError
+
+        try:
+            table = self.rom_definition.get_table_by_name(table_name)
+        except AmbiguousTableNameError as e:
+            self._log(f"ERROR: {e}")
+            return False
 
         if table is None:
             self._log(f"ERROR: Table not found: {table_name}")
@@ -216,7 +219,7 @@ class TestRunner:
 
             # Find the opened table window
             for window in self.main_window.open_table_windows:
-                if window.table.name == table_name:
+                if window.table.address == table.address:
                     self.current_table_window = window
                     break
 

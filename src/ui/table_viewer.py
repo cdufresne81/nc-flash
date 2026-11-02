@@ -40,6 +40,7 @@ from .table_viewer_helpers import (
     TableClipboardHelper,
     ModifiedCellDelegate,
 )
+from .table_viewer_helpers.operations import selected_cells
 
 logger = logging.getLogger(__name__)
 
@@ -136,7 +137,7 @@ class TableViewer(QWidget):
         self._display = TableDisplayHelper(self._ctx)
         self._edit = TableEditHelper(self._ctx, self._display)
         self._ops = TableOperationsHelper(self._ctx, self._display, self._edit)
-        self._interp = TableInterpolationHelper(self._ctx, self._display)
+        self._interp = TableInterpolationHelper(self._ctx, self._display, self._edit)
         self._clipboard = TableClipboardHelper(self._ctx, self._display, self._edit)
 
         # Set up delegate for modified cell borders
@@ -309,7 +310,7 @@ class TableViewer(QWidget):
             return
 
         # Convert display values to raw
-        old_raw = self._edit.display_to_raw(old_value)
+        old_raw = self._edit.display_to_raw(old_value, current=True)
         new_raw = self._edit.display_to_raw(new_value)
         if old_raw is None or new_raw is None:
             return
@@ -435,19 +436,18 @@ class TableViewer(QWidget):
     def selected_data_cells(self) -> list:
         """Selected DATA cells as (data_row, data_col); axis/blank cells excluded.
 
-        2D tables report column 0. The one copy of this walk: the window's graph
-        selection and the axis-header highlight both use it.
+        2D tables report column 0. Walks the selection with ``selected_cells``,
+        the same walk bulk edits use; the window's graph selection and the
+        axis-header highlight both use it.
         """
         cells = []
         tw = self.table_widget
-        for rng in tw.selectedRanges():
-            for row in range(rng.topRow(), rng.bottomRow() + 1):
-                for col in range(rng.leftColumn(), rng.rightColumn() + 1):
-                    item = tw.item(row, col)
-                    coords = item.data(Qt.UserRole) if item is not None else None
-                    if coords is None or isinstance(coords[0], str):
-                        continue
-                    cells.append((coords[0], coords[1] if len(coords) > 1 else 0))
+        for row, col in selected_cells(tw.selectedRanges()):
+            item = tw.item(row, col)
+            coords = item.data(Qt.UserRole) if item is not None else None
+            if coords is None or isinstance(coords[0], str):
+                continue
+            cells.append((coords[0], coords[1] if len(coords) > 1 else 0))
         return cells
 
     def _update_axis_highlight(self):

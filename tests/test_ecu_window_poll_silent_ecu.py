@@ -161,7 +161,7 @@ def _action_fake(answers):
         _ecu_answers=lambda: calls.append("probe") or answers,
         _check_voltage_warning=lambda *a, **k: calls.append("voltage") or True,
         _check_rpm_gate=lambda: calls.append("rpm") or False,
-        _confirm_wican_flash=lambda: True,
+        _confirm_adapter_flash=lambda: True,
         _start_flash=lambda *a, **k: calls.append("start"),
         _update_action_states=MagicMock(),
         _main_window=SimpleNamespace(get_current_document=lambda: None),

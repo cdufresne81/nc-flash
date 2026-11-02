@@ -110,6 +110,20 @@ class GuardReadError(FlashError):
     The flash must not start unless the operator explicitly overrides."""
 
 
+class ECUStillProgrammingError(FlashError):
+    """The ECU refused to start a flash (NRC 0x22 on the flash-counter check or
+    RequestDownload) because it is still in programming mode, typically from an
+    earlier flash that was interrupted. Raised before anything is written in
+    this attempt. A reset (session + security + ECUReset) clears it."""
+
+    def __init__(self):
+        super().__init__(
+            "The ECU refused to start the flash: it is still in programming "
+            "mode, probably from an earlier flash that was interrupted. "
+            "Nothing was written this time."
+        )
+
+
 class EngineRunningError(FlashError):
     """Raised by the RPM gate when a flash is attempted with the engine running.
 
@@ -131,6 +145,45 @@ class VehicleGenerationError(ROMValidationError):
     """Raised when the vehicle generation cannot be determined from ROM data."""
 
     pass
+
+
+class ECUGenerationMismatchError(FlashError):
+    """The ROM file is for the other generation than the ECU (NC1 vs NC2).
+
+    NC1 and NC2 ROMs are not interchangeable, and the SBL NC Flash sends is
+    picked from the FILE, so the flash is refused before anything is erased.
+    There is no override.
+    """
+
+    def __init__(
+        self, rom_generation: str, ecu_generation: str, *, from_operator=False
+    ):
+        self.rom_generation = rom_generation
+        self.ecu_generation = ecu_generation
+        self.from_operator = from_operator
+        where = (
+            f"you said this car is an {ecu_generation}"
+            if from_operator
+            else f"the ECU is an {ecu_generation}"
+        )
+        super().__init__(
+            f"This ROM is for an {rom_generation}, but {where}. NC1 and NC2 "
+            "ROMs are not compatible: flashing it can brick the ECU. Nothing "
+            "was written to the ECU."
+        )
+
+
+class ECUGenerationUnverifiedError(FlashError):
+    """The ECU's generation could not be read before the flash (it refused or
+    did not answer), and nobody confirmed which car it is from."""
+
+    def __init__(self, rom_generation: str, reason: str):
+        self.rom_generation = rom_generation
+        self.reason = reason
+        super().__init__(
+            f"Could not check that this {rom_generation} ROM matches the ECU: "
+            f"{reason}. Nothing was written to the ECU."
+        )
 
 
 class ChecksumError(FlashError):

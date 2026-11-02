@@ -34,6 +34,7 @@ from src.ecu.exceptions import (
 )
 
 from ecu_test_helpers import build_positive_response
+from src.ecu.constants import BOOT_SIGNATURE_NC1
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -55,9 +56,14 @@ def _build_flash_responses(num_sbl_blocks: int, num_program_blocks: int) -> list
     """Build the read_msgs side_effect list for a full flash_rom flow.
 
     Sequence: tester_present, diag_session, seed_request, key_send,
-    flash_counter, request_download, N×sbl_transfer, N×program_transfer,
-    transfer_exit, ecu_reset.
+    generation check (boot block, program block, cal-ID block), flash_counter,
+    request_download, N×sbl_transfer, N×program_transfer, transfer_exit,
+    ecu_reset.
     """
+    program_block = bytearray(BLOCK_SIZE)
+    program_block[GEN_DETECT_OFFSET % BLOCK_SIZE] = GEN_NC1_BYTE
+    cal_block = bytearray(BLOCK_SIZE)
+    cal_block[0x46:0x4C] = b"LFDJEA"
     responses = [
         # Tester Present
         [build_positive_response(SID_TESTER_PRESENT, b"\x01")],
@@ -67,6 +73,16 @@ def _build_flash_responses(num_sbl_blocks: int, num_program_blocks: int) -> list
         [build_positive_response(SID_SECURITY_ACCESS, b"\x01\xaa\xbb\xcc")],
         # Security key accepted
         [build_positive_response(SID_SECURITY_ACCESS, b"\x02")],
+        # Generation check: the ECU's boot block says NC1, like the ROM...
+        [
+            build_positive_response(
+                SID_READ_MEM_BY_ADDR,
+                BOOT_SIGNATURE_NC1 + bytes(BLOCK_SIZE - len(BOOT_SIGNATURE_NC1)),
+            )
+        ],
+        # ...then the program and cal-ID blocks, for the log
+        [build_positive_response(SID_READ_MEM_BY_ADDR, bytes(program_block))],
+        [build_positive_response(SID_READ_MEM_BY_ADDR, bytes(cal_block))],
         # Flash counter (routine control)
         [build_positive_response(SID_ROUTINE_CONTROL, b"\x00\xb2\x00\x01")],
         # Request Download

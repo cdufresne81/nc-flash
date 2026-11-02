@@ -1,8 +1,7 @@
 """Open datalog CSVs in MegaLogViewerHD (GitHub issue 109).
 
-THE single MLV-launch pipeline. (The parked live-datalog branch carries a
-``mlv_trail`` launcher for Trail Live File mode; when it lands it must fold
-into this module rather than add a second launcher.)
+THE single MLV-launch pipeline: finished trip logs (:func:`open_logs`) and the
+live datalog's growing capture in Trail Live File mode (:func:`launch_trail`).
 
 Behavior of the installed MLV HD 4.6.06, from its decompiled launcher
 (``MegaLogViewer.main``) and verified with live launches on 2026-09-24:
@@ -147,3 +146,68 @@ def open_logs(paths, exe: Optional[Path] = None) -> bool:
             logger.warning("MegaLogViewerHD failed to launch (%s) for %s", exe, names)
             ok = False
     return ok
+
+
+def write_trail_properties(csv_path: Path) -> Path:
+    """Write the MLV launch properties next to a live capture; return its path.
+
+    MLV's documented automation hook (TunerStudio support manual 123) is a
+    properties file passed as the executable's single argument;
+    ``trailFile=true`` is "Trail Live File" mode (keep loading while the file
+    grows). Java ``.properties`` treats backslash as an escape, so the path is
+    always written with forward slashes. MLV only engages the trail once the
+    file holds 50 rows (it gives up after 60 s), so launch it on a capture
+    that is actually receiving rows.
+    """
+    props_path = csv_path.with_suffix(".mlv.properties")
+    file_name = _properties_escape(str(csv_path.resolve()).replace("\\", "/"))
+    props_path.write_text(
+        f"fileName={file_name}\ntrailFile=true\nstartPlayback=true\n",
+        encoding="ascii",
+    )
+    return props_path
+
+
+def _properties_escape(value: str) -> str:
+    """Java ``Properties.load`` reads ISO-8859-1, so anything outside ASCII
+    (an accented user folder) goes in as a ``\\uXXXX`` escape."""
+    out = []
+    for ch in value:
+        code = ord(ch)
+        if code < 0x80:
+            out.append(ch)
+        elif code <= 0xFFFF:
+            out.append(f"\\u{code:04x}")
+        else:  # outside the BMP: a UTF-16 surrogate pair
+            code -= 0x10000
+            out.append(
+                f"\\u{0xD800 + (code >> 10):04x}\\u{0xDC00 + (code & 0x3FF):04x}"
+            )
+    return "".join(out)
+
+
+def launch_trail(csv_path, exe: Optional[Path] = None) -> bool:
+    """Open a growing capture in MegaLogViewerHD in Trail Live File mode.
+
+    Returns True when the detached process started; False (with a log line,
+    never a dialog) when MLV is not installed or the launch failed.
+    """
+    csv_path = Path(csv_path)
+    exe = exe or find_mlv()
+    if exe is None:
+        logger.info(
+            "MegaLogViewerHD not found (looked in %s)",
+            " and ".join(str(c.parent) for c in _CANDIDATES),
+        )
+        return False
+    try:
+        props_path = write_trail_properties(csv_path)
+    except OSError as exc:
+        logger.warning("Could not write the MegaLogViewerHD launch file: %s", exc)
+        return False
+    started, _pid = QProcess.startDetached(str(exe), [str(props_path)], str(exe.parent))
+    if started:
+        logger.info("Trailing %s live in MegaLogViewerHD", csv_path.name)
+    else:
+        logger.warning("MegaLogViewerHD failed to launch (%s)", exe)
+    return bool(started)

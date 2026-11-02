@@ -294,7 +294,7 @@ def create_ecu_transport(config: Mapping[str, object]) -> EcuTransport:
 
     This is the single place that knows how to map a transport selection
     (e.g. saved in app settings) to a concrete transport. J2534 is the
-    default everywhere; WiCAN is opt-in.
+    default everywhere; WiCAN and OBDX are opt-in.
 
     Config schema (``config["kind"]`` selects the transport):
 
@@ -309,6 +309,10 @@ def create_ecu_transport(config: Mapping[str, object]) -> EcuTransport:
           ``connect_timeout_ms``, and ``padding`` are forwarded to the
           constructor. The caller is responsible for calling
           :meth:`~EcuTransport.open` / :meth:`~EcuTransport.close`.
+
+        - ``{"kind": "obdx", "port": <str>}``
+          Builds a :class:`~src.ecu.obdx.ObdxTransport` on a USB COM port
+          (empty/missing ``port`` = auto-detect). The caller opens/closes it.
 
     Args:
         config: Mapping with a ``"kind"`` key and kind-specific parameters.
@@ -358,5 +362,10 @@ def create_ecu_transport(config: Mapping[str, object]) -> EcuTransport:
             ),  # type: ignore[arg-type]
             padding=int(config.get("padding", 0x00)),  # type: ignore[arg-type]
         )
+
+    if kind == "obdx":
+        from .obdx import ObdxTransport
+
+        return ObdxTransport(port=str(config.get("port") or ""))
 
     raise ValueError(f"unknown transport kind: {kind!r}")

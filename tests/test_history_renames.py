@@ -100,3 +100,45 @@ def test_two_tables_that_shared_a_name_get_one_row_each():
         "APP 2nd (pair with f8618) (1 cells) - was: APP 2nd",
         "APP 2nd DI (2 cells) - was: APP 2nd",
     ]
+
+
+def _labels(widget):
+    return [
+        widget.tables_list.item(i).text() for i in range(widget.tables_list.count())
+    ]
+
+
+def test_name_shared_in_definition_shows_address():
+    # The current definition has two "APP 1st" tables (#122)
+    names = {0xC8FFC: ["APP 1st"], 0xF8618: ["APP 1st"], 0xC5944: ["Unique"]}
+    widget = CommitDetailsWidget(names_by_address=names)
+    widget.show_commit(_commit(("APP 1st", "c8ffc"), ("Unique", "c5944")))
+    assert _labels(widget) == ["APP 1st @ 0xC8FFC (1 cells)", "Unique (1 cells)"]
+    # Signals still carry the plain stored name
+    assert widget.tables_list.item(0).data(0x0100) == "APP 1st"
+
+
+def test_both_copies_in_one_commit_are_told_apart():
+    names = {0xC8FFC: ["APP 1st"], 0xF8618: ["APP 1st"]}
+    widget = CommitDetailsWidget(names_by_address=names)
+    widget.show_commit(_commit(("APP 1st", "c8ffc"), ("APP 1st", "f8618")))
+    assert _labels(widget) == [
+        "APP 1st @ 0xC8FFC (1 cells)",
+        "APP 1st @ 0xF8618 (1 cells)",
+    ]
+
+
+def test_shared_name_in_commit_without_definition_shows_address():
+    widget = CommitDetailsWidget(names_by_address={})
+    widget.show_commit(_commit(("APP 1st", "c8ffc"), ("APP 1st", "f8618")))
+    assert _labels(widget) == [
+        "APP 1st @ 0xC8FFC (1 cells)",
+        "APP 1st @ 0xF8618 (1 cells)",
+    ]
+
+
+def test_renamed_to_a_shared_name_shows_address_and_old_name():
+    names = {0xC8FFC: ["APP 1st"], 0xF8618: ["APP 1st"]}
+    widget = CommitDetailsWidget(names_by_address=names)
+    widget.show_commit(_commit(("Old APP", "c8ffc")))
+    assert _labels(widget) == ["APP 1st @ 0xC8FFC (1 cells) - was: Old APP"]

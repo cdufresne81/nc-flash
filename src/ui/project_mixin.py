@@ -13,6 +13,7 @@ This is a mixin class — it has no __init__ and relies on MainWindow providing:
 - self._reset_document_edit_baseline(document) method
 - self._open_rom_file(path) method
 - self._update_project_ui() method
+- self._warn_if_suspect_rom(document) method
 - self.table_undo_manager (TableUndoManager instance)
 - self.open_table_windows (list)
 - self.tab_bar (QTabBar)
@@ -28,6 +29,7 @@ from PySide6.QtWidgets import QDialog, QMessageBox
 
 from src.utils.logging_config import get_logger
 from src.core.definition_parser import load_definition
+from src.ui.rom_read_check import suspect_image_reason
 from src.core.rom_reader import RomReader
 from src.core.exceptions import RomEditorError
 from src.core.project_manager import ProjectManager
@@ -49,6 +51,8 @@ class ProjectMixin:
         """Create a new project via wizard"""
         wizard = ProjectWizard(self)
         if wizard.exec() == QDialog.Accepted:
+            if not self._confirm_project_source(wizard.rom_path):
+                return
             try:
                 # Create the project
                 project = self.project_manager.create_project(
@@ -80,6 +84,34 @@ class ProjectMixin:
                     "Error",
                     f"Unexpected error creating project:\n{type(e).__name__}: {e}",
                 )
+
+    def _confirm_project_source(self, rom_path: str) -> bool:
+        """Warn before building a project on a ROM that looks like a corrupt
+        read (issue 169). True = go ahead; Cancel is the default.
+
+        The project copies the ROM under new names, which drops the SUSPECT
+        marker the flash guard looks for, so this is the last point where a
+        suspect read is still recognisable by its name.
+        """
+        try:
+            reason = suspect_image_reason(rom_path, Path(rom_path).read_bytes())
+        except OSError:
+            return True  # create_project reports an unreadable file itself
+        if reason is None:
+            return True
+        logger.warning("New project from a suspect ROM read %s: %s", rom_path, reason)
+        reply = QMessageBox.warning(
+            self,
+            "Suspect ROM Read",
+            f"{Path(rom_path).name} looks like a corrupt ECU read: {reason}.\n\n"
+            "It may hold shifted or corrupt data, and a tune built on it should "
+            "not be flashed. Read the ECU again and start the project from a "
+            "read that passes the check.\n\n"
+            "Create the project from this file anyway?",
+            QMessageBox.Yes | QMessageBox.Cancel,
+            QMessageBox.Cancel,
+        )
+        return reply == QMessageBox.Yes
 
     def _ensure_single_project(self, new_project_path, *, prompt: bool) -> bool:
         """Enforce one-project-at-a-time before opening new_project_path.
@@ -204,6 +236,7 @@ class ProjectMixin:
 
                 logger.info(f"Opened project: {project.name}")
                 self.statusBar().showMessage(f"Opened project: {project.name}")
+                self._warn_if_suspect_rom(rom_document)
             else:
                 QMessageBox.warning(
                     self,

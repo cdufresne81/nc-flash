@@ -63,6 +63,13 @@ master ──merge after every stable release──► dev
   this exact form is recognised: `-rc1`, `-beta1` or `-alpha.1` tags are
   published but ignored by the updater.
 - The release workflow refuses a stable tag whose commit is not on `master`.
+- **"Latest":** a stable release becomes GitHub's latest (what stable users
+  are offered) only when it is the highest published final version. A fix
+  for an older line (`v2.16.1` after `v2.17.0`) is published but not marked
+  latest, and the run shows a "Not marked latest" warning. If that warning
+  names a release that shouldn't be there (a typo like `v22.0.0`), stable
+  users get no updates until it is fixed: delete that release or mark it a
+  pre-release, then mark the right one latest on GitHub.
 - Betas get no CHANGELOG version section: their release notes are the
   `## [Unreleased]` section on `dev`. Feature entries are written on the
   feature branch, so they reach `master` with it; expect to resolve

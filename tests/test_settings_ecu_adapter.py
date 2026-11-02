@@ -57,6 +57,20 @@ class TestAdapterSelection:
         app_settings.set_ecu_adapter("nonsense")
         assert app_settings.get_ecu_adapter() == "j2534"
 
+    def test_round_trip_obdx(self, app_settings):
+        app_settings.set_ecu_adapter("obdx")
+        assert app_settings.get_ecu_adapter() == "obdx"
+        assert not app_settings.is_wican_adapter()
+
+
+class TestObdxSettings:
+    def test_default_port_is_auto_detect(self, app_settings):
+        assert app_settings.get_obdx_port() == ""
+
+    def test_port_round_trip_strips_whitespace(self, app_settings):
+        app_settings.set_obdx_port(" COM7 ")
+        assert app_settings.get_obdx_port() == "COM7"
+
 
 class TestWiCANSettings:
     def test_default_host(self, app_settings):

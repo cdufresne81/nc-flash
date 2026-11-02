@@ -10,12 +10,23 @@ permissions:
   contents: write
 
 jobs:
+  openport-driver:
+    name: Build OpenPort driver
+    uses: ./.github/workflows/build-openport-driver.yml
+
   build-windows:
     name: Build Windows Installer
+    needs: openport-driver
     runs-on: windows-latest
 
     steps:
     - uses: actions/checkout@v5
+
+    - name: Download OpenPort driver
+      uses: actions/download-artifact@v4
+      with:
+        name: openport-j2534-x64
+        path: dist/openport
 
     - name: Checkout secure module
       uses: actions/checkout@v5
@@ -109,6 +120,13 @@ jobs:
         if (!(Test-Path "dist\NCFlash\_internal\src\ecu\romdrop.crc")) {
           Write-Error "romdrop.crc not bundled: Patch ROM would be disabled"
           exit 1
+        }
+        # Built-in OpenPort driver: the Tactrix's only route where Windows blocks openport.sys
+        foreach ($f in "j2534.dll", "libusb-1.0.dll", "openport_winusb.ps1") {
+          if (!(Test-Path "dist\NCFlash\_internal\openport\$f")) {
+            Write-Error "openport\$f not bundled"
+            exit 1
+          }
         }
         Write-Output "Build verified: dist\NCFlash\NCFlash.exe"
       shell: pwsh
@@ -257,6 +275,13 @@ jobs:
     name: Create GitHub Release
     needs: [build-windows, build-linux]
     runs-on: ubuntu-latest
+    # One publish at a time, so the "latest" decision below sees every release
+    # published before it (two tags pushed together could otherwise both decide
+    # "latest"). GitHub keeps only one waiting run per group: a third tag
+    # pushed at the same moment cancels the waiting one, which then needs a re-run.
+    concurrency:
+      group: release-publish
+      cancel-in-progress: false
 
     steps:
     - uses: actions/checkout@v5
@@ -297,6 +322,40 @@ jobs:
         echo "$NOTES" > release_notes.md
         echo "Release notes extracted for $TAG"
 
+    - name: Decide whether this release becomes "latest"
+      # The stable in-app updater reads GitHub's releases/latest. GitHub marks
+      # every new final release "latest" by default, so a backport tagged
+      # after a newer release (v2.16.1 after v2.17.0) would take that spot:
+      # users below it would be offered the backport instead of the newest
+      # version. Only the highest published final version may be latest.
+      # ("legacy" is not used: it goes by creation date, which a backport
+      # also wins.) Pre-releases are never latest.
+      id: latest
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: |
+        TAG="$GITHUB_REF_NAME"
+        STABLE='^v[0-9]+\.[0-9]+\.[0-9]+$'
+        if ! [[ "$TAG" =~ $STABLE ]]; then
+          echo "make_latest=false" >> "$GITHUB_OUTPUT"
+          echo "$TAG is not a final release: not marked latest."
+          exit 0
+        fi
+        PUBLISHED=$(gh api --paginate "repos/$GITHUB_REPOSITORY/releases" \
+          --jq '.[] | select(.draft == false and .prerelease == false) | .tag_name')
+        HIGHEST=$({ printf '%s\n' "$PUBLISHED"; echo "$TAG"; } | grep -E "$STABLE" | sort -V | tail -n 1)
+        if [ "$TAG" = "$HIGHEST" ]; then
+          echo "make_latest=true" >> "$GITHUB_OUTPUT"
+          echo "$TAG is the highest final release: marked latest."
+        else
+          echo "make_latest=false" >> "$GITHUB_OUTPUT"
+          # A warning, not a notice: if $HIGHEST is a mistake (a typo tag),
+          # stable users stop getting updates until it is fixed. See
+          # docs/internal/RELEASE_CHANNELS.md.
+          echo "::warning title=Not marked latest::$TAG is older than the published $HIGHEST, which stays GitHub's latest release (what the stable updater offers)."
+        fi
+
     - name: Create GitHub Release
       uses: softprops/action-gh-release@v2
       with:
@@ -307,3 +366,5 @@ jobs:
         # A tag like v2.18.0-rc1 must not become "latest": the in-app updater
         # only offers the latest final release.
         prerelease: ${{ contains(github.ref_name, '-') }}
+        # Never empty: an empty value would fall back to GitHub's default (true).
+        make_latest: ${{ steps.latest.outputs.make_latest || 'false' }}
