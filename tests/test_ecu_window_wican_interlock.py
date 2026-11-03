@@ -34,7 +34,7 @@ def _fake_window(
     main_window = SimpleNamespace(
         settings=settings,
         wican_log_sync=SimpleNamespace(is_running=sync_running),
-        wican_live_datalog=SimpleNamespace(is_running=live_running),
+        datalogger=SimpleNamespace(is_running=live_running),
         get_current_document=lambda: None,
     )
     return _FakeECUWindow(
@@ -57,6 +57,7 @@ def _fake_window(
         _btn_flash_current=MagicMock(),
         _btn_connect=MagicMock(),
         _flash_subtitle=MagicMock(),
+        _connect_held_by_datalogger=False,
     )
 
 
@@ -146,7 +147,7 @@ def test_busy_broadcast_covers_flash_thread_runs():
     assert fake.is_busy is True
 
 
-LIVE_LOCK_TIP = "Stop the WiCAN live datalog first"
+LIVE_LOCK_TIP = "Stop the Datalogger first"
 
 
 def test_ecu_ops_and_connect_locked_while_live_datalog_runs():
@@ -159,10 +160,28 @@ def test_ecu_ops_and_connect_locked_while_live_datalog_runs():
     fake._btn_flash_current.setToolTip.assert_called_with(LIVE_LOCK_TIP)
 
 
-def test_live_datalog_lock_only_applies_to_the_wican_adapter():
-    fake = _fake_window(adapter="j2534", live_running=True, connected=True)
+def test_datalogger_locks_ecu_ops_and_connect_on_wired_adapters_too():
+    # On a Tactrix/OBDX the Datalogger holds the cable itself: nothing in the
+    # ECU window may start, and Connect comes back once the run ends.
+    fake = _fake_window(adapter="j2534", live_running=True)
     _update(fake)
-    fake._btn_read_dtcs.setEnabled.assert_called_with(True)
+    fake._btn_read_dtcs.setEnabled.assert_called_with(False)
+    fake._btn_flash_current.setToolTip.assert_called_with(LIVE_LOCK_TIP)
+    fake._btn_connect.setEnabled.assert_called_with(False)
+    fake._btn_connect.setToolTip.assert_called_with(LIVE_LOCK_TIP)
+
+    fake._main_window.datalogger.is_running = False
+    fake._btn_connect.reset_mock()
+    _update(fake)
+    fake._btn_connect.setEnabled.assert_called_with(True)
+    _update(fake)  # released once; later updates leave Connect alone
+    fake._btn_connect.setEnabled.assert_called_once_with(True)
+
+
+def test_wired_adapter_connect_untouched_without_a_datalogger_run():
+    fake = _fake_window(adapter="j2534")
+    _update(fake)
+    fake._btn_connect.setEnabled.assert_not_called()
 
 
 def test_wican_link_broadcast_tracks_the_session_on_change_only():
@@ -195,6 +214,24 @@ def test_connect_refused_while_live_datalog_runs():
     fake._update_action_states.assert_called_once()
 
 
+def test_connect_refused_when_datalogger_starts_during_wifi_join():
+    # Joining the WiCAN's own Wi-Fi happens inside _build_adapter_config and
+    # shows dialogs for tens of seconds; the Datalogger window stays usable, so
+    # a run can start meanwhile. The connect must still be refused.
+    fake = _fake_window(adapter="wican", live_running=False)
+
+    def build_and_start_datalogger():
+        fake._main_window.datalogger.is_running = True
+        return {"kind": "wican"}
+
+    fake._build_adapter_config = build_and_start_datalogger
+    fake._update_action_states = MagicMock()
+    fake._conn_label = MagicMock()
+    ECUProgrammingWindow._on_connect(fake)
+    assert fake._session is None  # no ECUSession was created
+    fake._update_action_states.assert_called_once()
+
+
 def test_post_op_wican_reconnect_skipped_while_live_datalog_runs():
     session = MagicMock()
     fake = _fake_window(adapter="wican", live_running=True)
@@ -204,8 +241,8 @@ def test_post_op_wican_reconnect_skipped_while_live_datalog_runs():
     ECUProgrammingWindow._reconnect_wican_session(fake)
     session.connect_ecu.assert_not_called()
     fake._progress_detail.setText.assert_called_with(
-        "Not reconnected: live datalog running"
+        "Not reconnected: Datalogger running"
     )
-    fake._main_window.wican_live_datalog.is_running = False
+    fake._main_window.datalogger.is_running = False
     ECUProgrammingWindow._reconnect_wican_session(fake)
     session.connect_ecu.assert_called_once()

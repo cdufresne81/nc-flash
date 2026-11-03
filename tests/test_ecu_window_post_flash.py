@@ -52,7 +52,7 @@ class _MainWindow:
         self.settings.is_wican_adapter.return_value = adapter == "wican"
         self.settings.get_j2534_dll_path.return_value = ""
         self.wican_log_sync = _Utility()
-        self.wican_live_datalog = _Utility()
+        self.datalogger = _Utility()
         self.openport_setup = _DriverSwitch()
 
     def get_current_document(self):
@@ -178,7 +178,7 @@ def test_successful_flash_ends_session_and_done_does_not_reconnect(
     text = infos[0][2]
     assert "disconnected from the ECU" in text
     assert "Click Done to reconnect" not in text
-    assert ("datalogger" in text) == (adapter == "wican")
+    assert ("trip logger" in text) == (adapter == "wican")
 
 
 def test_successful_flash_closes_a_session_the_flash_did_not_release(qtbot, connects):

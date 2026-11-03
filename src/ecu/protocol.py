@@ -17,6 +17,7 @@ from .constants import (
     SID_CLEAR_DTC,
     SID_READ_DTC_STATUS,
     SID_READ_DTC_COUNT,
+    SID_READ_DATA_BY_IDENTIFIER,
     SID_READ_MEM_BY_ADDR,
     SID_SECURITY_ACCESS,
     SID_REQUEST_DOWNLOAD,
@@ -103,6 +104,7 @@ class UDSConnection:
         timeout: int = TIMEOUT_DEFAULT,
         pending_max: Optional[int] = None,
         quiet_nrcs: Optional[set[int]] = None,
+        accept: Optional[Callable[[bytes], bool]] = None,
     ) -> bytes:
         """
         Send a UDS request and return the positive response payload.
@@ -126,6 +128,11 @@ class UDSConnection:
                 does not alarm the user (the ``NegativeResponseError`` is still
                 raised so the caller's handling is unchanged). Default ``None``
                 keeps every NRC at WARNING.
+            accept: Optional check on a positive payload (after the SID). A
+                payload it rejects is skipped like an unexpected reply and the
+                read continues: the Datalogger uses it to pass over a late
+                reply to an earlier, timed-out request (its PID/DID echo does
+                not match). Default ``None`` accepts the first positive reply.
 
         Returns:
             Response payload bytes (after the positive response SID)
@@ -207,7 +214,9 @@ class UDSConnection:
                 raise NegativeResponseError(nrc, desc, service_id=resp_data[1])
 
             # Check for positive response
-            if resp_data[0] == positive_sid:
+            if resp_data[0] == positive_sid and (
+                accept is None or accept(resp_data[1:])
+            ):
                 logger.debug(
                     f"UDS RX: positive SID=0x{positive_sid:02X} "
                     f"len={len(resp_data) - 1}"
@@ -618,6 +627,29 @@ class UDSConnection:
             SID_READ_MEM_BY_ADDR, data, timeout=timeout, pending_max=pending_max
         )
         return response
+
+    def read_data_by_identifier(
+        self,
+        did: int,
+        timeout: int = TIMEOUT_DEFAULT,
+        pending_max: Optional[int] = None,
+    ) -> bytes:
+        """Read one 2-byte data identifier (SID 0x22) and return its data bytes.
+
+        Used by the Datalogger. Raises :class:`UDSError` when the reply does not
+        echo *did*.
+        """
+        echo = did.to_bytes(2, "big")
+        response = self.send_request(
+            SID_READ_DATA_BY_IDENTIFIER,
+            echo,
+            timeout=timeout,
+            pending_max=pending_max,
+            accept=lambda payload: payload[:2] == echo,
+        )
+        if len(response) < 2 or int.from_bytes(response[:2], "big") != did:
+            raise UDSError(f"DID 0x{did:04X}: unexpected response format")
+        return response[2:]
 
     def read_rom_id(self) -> str:
         """

@@ -243,7 +243,7 @@ def _fake_main(ecu):
         ecu_window=ecu,
         _handle_close=MagicMock(),
         wican_log_sync=MagicMock(),
-        wican_live_datalog=MagicMock(),
+        datalogger=MagicMock(),
         update_controller=MagicMock(),
     )
 
