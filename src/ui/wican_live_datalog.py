@@ -27,22 +27,19 @@ blocked.
 import logging
 import threading
 import time
-from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
 from PySide6.QtCore import QObject, QThread, Qt, Signal
 
+from src.core.live_csv import (  # noqa: F401 - TRAIL_MIN_ROWS re-exported
+    TRAIL_MIN_ROWS,
+    LiveCsvCapture,
+    StatusThrottle,
+    live_capture_dir,
+)
+
 logger = logging.getLogger(__name__)
-
-#: Status cadence: at most one status update per this many rows or seconds,
-#: whichever comes first (never one signal per row).
-_STATUS_EVERY_ROWS = 50
-_STATUS_EVERY_S = 1.0
-
-#: Rows a capture must hold before MegaLogViewerHD is launched on it: MLV only
-#: engages its live trail at 50 samples and gives up after 60 s.
-TRAIL_MIN_ROWS = 50
 
 #: Pause between reconnect attempts after a working stream drops.
 _RECONNECT_DELAY_S = 2.0
@@ -51,11 +48,6 @@ _RECONNECT_DELAY_S = 2.0
 #: every 3 s when it has nothing else to say, and a sleeping or rebooted
 #: device never gets a reset to the PC, so silence is the only signal.
 STREAM_IDLE_TIMEOUT_S = 15.0
-
-
-def live_capture_dir(logs_dir) -> Path:
-    """The folder live captures land in: ``{logs_directory}/live``."""
-    return Path(logs_dir) / "live"
 
 
 class _LiveStreamWorker(QObject):
@@ -76,25 +68,21 @@ class _LiveStreamWorker(QObject):
         super().__init__()
         self._host = host
         self._device_id = device_id
-        self._live_dir = live_capture_dir(logs_dir)
+        self._capture = LiveCsvCapture(
+            live_capture_dir(logs_dir), label="WiCAN live datalog"
+        )
         self._port = port  # None -> the client's default (35002)
         self._client = None
         self._stop_requested = False
         self._lock = threading.Lock()
         # Worker-thread-only capture state.
-        self._file = None
-        self._file_path = ""
-        self._file_header: Optional[str] = None  # None = written without a header
         self._file_cols = -1
-        self._file_rows = 0
-        self._ready_sent = False
         self._session_cols = 0  # cols= of the latest #session
         self._last_ts: Optional[int] = None  # timestamp_ms of the last row written
         self._replaced = False  # the device gave our slot to a newer client
         self._rows_total = 0
         self._dropped_total = 0
-        self._last_status_rows = 0
-        self._last_status_t = 0.0
+        self._status_throttle = StatusThrottle()
 
     def run(self):
         from src.ecu import wican_discovery
@@ -245,24 +233,23 @@ class _LiveStreamWorker(QObject):
                 ev.count,
             )
         elif ev.kind == ws.KIND_CLOSE:
-            if self._file is not None:
-                self._file.flush()
             logger.info("WiCAN live datalog: the device closed its trip file")
             self.status.emit(self._rows_text("Trip ended, waiting for the next one"))
 
     def _adopt_header(self, header: Optional[str]):
         """A device trip file started: keep appending to the open capture when
         the columns match, otherwise start a new local file."""
-        if self._file is not None:
-            if header is not None and header == self._file_header:
+        capture = self._capture
+        if capture.is_open:
+            if header is not None and header == capture.header:
                 logger.info(
                     "WiCAN live datalog: same columns, continuing %s",
-                    Path(self._file_path).name,
+                    Path(capture.path).name,
                 )
                 return
             if (
                 header is None
-                and self._file_header is not None
+                and capture.header is not None
                 and self._session_cols == self._file_cols
             ):
                 # Header unavailable but the channel count matches the capture
@@ -271,36 +258,20 @@ class _LiveStreamWorker(QObject):
         self._open_file(header)
 
     def _open_file(self, header: Optional[str]):
-        self._close_file()
-        self._live_dir.mkdir(parents=True, exist_ok=True)
-        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-        path = self._live_dir / f"live_{ts}.csv"
-        n = 2
-        while path.exists():  # never clobber a capture from the same second
-            path = self._live_dir / f"live_{ts}-{n}.csv"
-            n += 1
-        self._file = open(path, "w", encoding="utf-8", newline="")
-        self._file_path = str(path)
-        self._file_header = header
+        path = Path(self._capture.open(header))
         self._file_cols = self._session_cols
-        self._file_rows = 0
-        self._ready_sent = False
         self._last_ts = None
-        if header is not None:
-            self._file.write(header + "\n")
-            self._file.flush()
-        else:
+        if header is None:
             logger.warning(
                 "WiCAN live datalog: the device could not send the column names; "
                 "%s has no header row (the SD trip log on the device is complete)",
                 path.name,
             )
-        logger.info("WiCAN live datalog recording to %s", path)
-        self.capture_opened.emit(self._file_path)
+        self.capture_opened.emit(str(path))
         self.status.emit(self._rows_text("Recording"))
 
     def _write_row(self, line: str):
-        if self._file is None:
+        if not self._capture.is_open:
             # Rows before any #session (should not happen): nowhere to put them.
             return
         ts = _row_timestamp(line)
@@ -312,21 +283,12 @@ class _LiveStreamWorker(QObject):
                 logger.info(
                     "WiCAN live datalog: the device restarted; starting a new capture"
                 )
-                self._open_file(self._file_header)
+                self._open_file(self._capture.header)
             self._last_ts = ts
-        self._file.write(line + "\n")
-        self._file.flush()  # per-row flush is the point: MLV tails this file
-        self._file_rows += 1
+        if self._capture.write_row(line):
+            self.capture_ready.emit(self._capture.path)
         self._rows_total += 1
-        if not self._ready_sent and self._file_rows >= TRAIL_MIN_ROWS:
-            self._ready_sent = True
-            self.capture_ready.emit(self._file_path)
-        now = time.monotonic()
-        if (self._rows_total - self._last_status_rows) >= _STATUS_EVERY_ROWS or (
-            now - self._last_status_t
-        ) >= _STATUS_EVERY_S:
-            self._last_status_rows = self._rows_total
-            self._last_status_t = now
+        if self._status_throttle.due(self._rows_total):
             self.status.emit(self._rows_text("Recording"))
 
     def _rows_text(self, prefix: str) -> str:
@@ -336,21 +298,7 @@ class _LiveStreamWorker(QObject):
         return text + ")"
 
     def _close_file(self):
-        if self._file is None:
-            return
-        try:
-            self._file.flush()
-            self._file.close()
-        except OSError:
-            pass
-        logger.info(
-            "WiCAN live datalog capture saved: %s (%d rows)",
-            self._file_path,
-            self._file_rows,
-        )
-        self._file = None
-        self._file_path = ""
-        self._file_header = None
+        self._capture.close()
 
 
 class _Replaced(Exception):
@@ -493,14 +441,9 @@ class WiCANLiveDatalog(QObject):
         """
         if path != self._capture:
             return
-        if not self._settings.get_live_datalog_auto_trail():
-            return
         from src.ui import mlv_launch
 
-        if mlv_launch.find_mlv() is None:
-            logger.debug("MegaLogViewerHD not installed; no auto trail")
-            return
-        mlv_launch.launch_trail(Path(path))
+        mlv_launch.auto_trail(self._settings, path)
 
     def _on_unsupported(self, message: str):
         logger.info("WiCAN live datalog unavailable: %s", message)

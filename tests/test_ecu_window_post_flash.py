@@ -52,7 +52,7 @@ class _MainWindow:
         self.settings.is_wican_adapter.return_value = adapter == "wican"
         self.settings.get_j2534_dll_path.return_value = ""
         self.wican_log_sync = _Utility()
-        self.wican_live_datalog = _Utility()
+        self.datalogger = _Utility()
         self.openport_setup = _DriverSwitch()
 
     def get_current_document(self):

@@ -29,6 +29,26 @@ What is on `dev` awaiting `master`: run `python tools/dev_status.py` (asks GitHu
   held open ~30 s still lets the flash go on (a side thread sends Tester Present through the
   cable DLL meanwhile; some clone DLLs may not like a second thread). Also unproven: the NC1
   boot signature has only been seen in ROM files, never read from a real NC1 ECU.
+- **Datalogger: on `dev` (merged via `merge/datalogger-into-dev`, replaces #211), shipping in
+  v2.24.0-beta.15.** Feature branch `feature/datalogger` stays for its later PR into `master`. Worktree
+  `C:\Users\dufre\Projets\nc-rom-editor-datalogger` (has the built-in OpenPort driver in
+  `dist/openport/`; run `..\nc-rom-editor\venv-windows\Scripts\python.exe main.py` there).
+  Plan: `~/.claude/plans/i-m-ok-with-the-snug-clover.md`. Merges `feature/live-datalog-v2`,
+  `feature/obdx-pro-adapter`, `feature/openport-winusb-driver`, `fix/openport-sd-card`, so it
+  reaches master only after those four. Refs #105 (standalone recording still open).
+  - Proven: Tactrix bench (engine off) 38.5 rows/s packed / 29.9 unpacked, 0 empty cells;
+    the user's own bench test passed (Oct 28). Two Opus reviews: 1st DO-NOT-SHIP (fixed),
+    2nd SHIP.
+  - Next: the board cards (WiCAN push
+    bench test once the WiCAN is online: snapshot `/load_auto_pid` + `/csv_status` first,
+    restore after; in-car Tactrix drive with the engine running; OBDX untested).
+  - No "Apply Now" for a list sent mid-trip: released WiCAN firmware has no `op=auto`, and
+    `op=start` leaves its logger forced ON. Needs `op=auto` in the firmware to bring it back.
+  - Known LOW gaps (2nd review): a late NRC for an earlier same-service request can drop the
+    current channel; a late positive reply can turn packing off; the device file isn't
+    compared between preview and push; a Start landing inside the ECU window's connect event
+    pump can pass the blocker (one opener then fails).
+
 - **WiCAN live datalog (fw #3, PR from `feature/live-datalog-v2`) follow-ups** (design:
   `docs/internal/WICAN_LIVE_STREAM.md`):
   - User's in-car test pending; MegaLogViewerHD trail launch not exercised in a bench run.

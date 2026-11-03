@@ -211,3 +211,17 @@ def launch_trail(csv_path, exe: Optional[Path] = None) -> bool:
     else:
         logger.warning("MegaLogViewerHD failed to launch (%s)", exe)
     return bool(started)
+
+
+def auto_trail(settings, csv_path) -> bool:
+    """Launch :func:`launch_trail` on a capture that just became ready, if the
+    user wants it (``ecu/live_datalog_auto_trail``) and MLV is installed.
+
+    The one auto-open rule for every live capture, whichever engine wrote it.
+    """
+    if not settings.get_live_datalog_auto_trail():
+        return False
+    if find_mlv() is None:
+        logger.debug("MegaLogViewerHD not installed; no auto trail")
+        return False
+    return launch_trail(Path(csv_path))
