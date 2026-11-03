@@ -214,6 +214,24 @@ def test_connect_refused_while_live_datalog_runs():
     fake._update_action_states.assert_called_once()
 
 
+def test_connect_refused_when_datalogger_starts_during_wifi_join():
+    # Joining the WiCAN's own Wi-Fi happens inside _build_adapter_config and
+    # shows dialogs for tens of seconds; the Datalogger window stays usable, so
+    # a run can start meanwhile. The connect must still be refused.
+    fake = _fake_window(adapter="wican", live_running=False)
+
+    def build_and_start_datalogger():
+        fake._main_window.datalogger.is_running = True
+        return {"kind": "wican"}
+
+    fake._build_adapter_config = build_and_start_datalogger
+    fake._update_action_states = MagicMock()
+    fake._conn_label = MagicMock()
+    ECUProgrammingWindow._on_connect(fake)
+    assert fake._session is None  # no ECUSession was created
+    fake._update_action_states.assert_called_once()
+
+
 def test_post_op_wican_reconnect_skipped_while_live_datalog_runs():
     session = MagicMock()
     fake = _fake_window(adapter="wican", live_running=True)

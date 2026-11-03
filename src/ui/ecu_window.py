@@ -559,6 +559,13 @@ class ECUProgrammingWindow(QMainWindow):
             self._update_action_states()
             return
         adapter = self._build_adapter_config()
+        if self._main_window.datalogger.is_running:
+            # Checked again: joining the WiCAN's own Wi-Fi (above) shows dialogs
+            # for up to ~45 s that leave the Datalogger window usable, so a run
+            # can start meanwhile. Connecting would then pause its trip.
+            logger.info("Stop the Datalogger to connect")
+            self._update_action_states()
+            return
         if adapter["kind"] == "wican":
             connecting_msg = "Connecting to WiCAN..."
         elif adapter["kind"] == "obdx":
@@ -1818,7 +1825,7 @@ class ECUProgrammingWindow(QMainWindow):
                         "then back ON, before starting the engine.\n\n"
                         "NC Flash has disconnected from the ECU"
                         + (
-                            " and released the WiCAN for its datalogger"
+                            " and released the WiCAN for its trip logger"
                             if wican_released
                             else ""
                         )
