@@ -31,6 +31,8 @@ from ..core.rom_definition import Table, TableType, RomDefinition
 from ..core.table_edit_state import TableEditState
 from ..utils.settings import get_settings
 from .widgets.toggle_switch import ToggleSwitch
+from .table_viewer_helpers.cell_delegate import CellDecorations, DecoratedTable
+from .table_viewer_helpers.live_overlay import LiveCursorOverlay
 from .table_viewer_helpers import (
     TableViewerContext,
     TableDisplayHelper,
@@ -38,7 +40,7 @@ from .table_viewer_helpers import (
     TableOperationsHelper,
     TableInterpolationHelper,
     TableClipboardHelper,
-    ModifiedCellDelegate,
+    CellEditorDelegate,
 )
 from .table_viewer_helpers.operations import selected_cells
 
@@ -140,15 +142,24 @@ class TableViewer(QWidget):
         self._interp = TableInterpolationHelper(self._ctx, self._display, self._edit)
         self._clipboard = TableClipboardHelper(self._ctx, self._display, self._edit)
 
-        # Set up delegate for modified cell borders
-        self._delegate = ModifiedCellDelegate(self)
+        # Numeric cell editor; the cell marks (modified borders, diff fill,
+        # axis separators and outlines) are painted by the table widget.
+        self._delegate = CellEditorDelegate(self)
         self.table_widget.setItemDelegate(self._delegate)
+        self.table_widget.decorations = CellDecorations(self)
 
         # Axis header cells of the selected rows/columns are highlighted so the
         # breakpoint (e.g. load 1.00 / rpm 3500) of the selection is readable.
         # This viewer owns the state; the delegate only reads it.
         self._axis_highlight = (frozenset(), frozenset())  # (x_axis, y_axis) idx
         self.table_widget.itemSelectionChanged.connect(self._update_axis_highlight)
+
+        # Live table cursor (Datalogger values), painted over the cells by the
+        # table widget; this viewer owns its state.
+        self._live_overlay = LiveCursorOverlay(
+            self.table_widget, self._data_to_ui_coords
+        )
+        self.table_widget.live_overlay = self._live_overlay
 
         # Connect signals to track modifications
         self.cell_changed.connect(self._on_cell_changed_track_modifications)
@@ -214,7 +225,7 @@ class TableViewer(QWidget):
         table_layout.addWidget(self.y_axis_label)
 
         # Table widget for displaying data
-        self.table_widget = QTableWidget()
+        self.table_widget = DecoratedTable()
         # Start with ResizeToContents, will be changed to uniform width after data load
         self.table_widget.horizontalHeader().setSectionResizeMode(
             QHeaderView.ResizeToContents
@@ -462,6 +473,28 @@ class TableViewer(QWidget):
         if new != self._axis_highlight:
             self._axis_highlight = new
             self.table_widget.viewport().update()
+
+    def set_live_cursor(self, state):
+        """Show the live cursor (a ``LiveCursorState``), or hide it with None.
+        Repaints only what moved."""
+        self._live_overlay.set_state(state)
+
+    def clear_live_cursor(self):
+        self._live_overlay.set_state(None)
+
+    @property
+    def live_cursor(self):
+        """The overlay drawing the live cursor (state + geometry)."""
+        return self._live_overlay
+
+    def has_live_cursor(self) -> bool:
+        state = self._live_overlay.state
+        return state is not None and state.fr is not None
+
+    def has_modified_cells(self) -> bool:
+        """True if any cell or axis cell of this table has a modified border."""
+        table = self.current_table
+        return table is not None and self._edit_state.has_modified(table.address)
 
     def has_axis_highlight(self) -> bool:
         return bool(self._axis_highlight[0] or self._axis_highlight[1])

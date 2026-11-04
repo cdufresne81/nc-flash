@@ -50,7 +50,10 @@ def _window(qtbot, adapter="j2534"):
     settings.set_datalog_channels.side_effect = lambda d: setattr(settings, "saved", d)
     settings.get_live_datalog_auto_trail.return_value = True
     dl = _FakeDatalogger(settings)
-    main_window = SimpleNamespace(settings=settings, datalogger=dl)
+    live_cursor = SimpleNamespace(enabled=True, set_enabled=MagicMock())
+    main_window = SimpleNamespace(
+        settings=settings, datalogger=dl, live_cursor=live_cursor
+    )
     window = DataloggerWindow(main_window=main_window)
     qtbot.addWidget(window)
     return window, dl, settings
@@ -238,3 +241,36 @@ def test_custom_channel_add_and_remove(qtbot, monkeypatch):
     assert window._btn_remove.isEnabled()
     window._on_remove()
     assert settings.saved["custom"] == []
+
+
+def test_open_live_logs_folder_creates_and_opens_it(qtbot, tmp_path, monkeypatch):
+    window, dl, settings = _window(qtbot)
+    settings.get_logs_directory.return_value = str(tmp_path / "logs")
+    dl.current_capture = ""
+    opened = []
+    monkeypatch.setattr(
+        win_mod.QDesktopServices, "openUrl", lambda url: opened.append(url)
+    )
+    window._btn_folder.click()
+    live = tmp_path / "logs" / "live"
+    assert live.is_dir()
+    assert [u.toLocalFile() for u in opened] == [live.as_posix()]
+
+
+def test_open_live_logs_folder_selects_the_capture_being_written(
+    qtbot, tmp_path, monkeypatch
+):
+    window, dl, settings = _window(qtbot)
+    settings.get_logs_directory.return_value = str(tmp_path / "logs")
+    capture = tmp_path / "logs" / "live" / "live_1.csv"
+    capture.parent.mkdir(parents=True)
+    capture.write_text("Time,RPM\n")
+    dl.current_capture = str(capture)
+    calls = []
+    monkeypatch.setattr(win_mod.sys, "platform", "win32")
+    monkeypatch.setattr(win_mod.subprocess, "Popen", lambda args: calls.append(args))
+    monkeypatch.setattr(
+        win_mod.QDesktopServices, "openUrl", lambda url: calls.append(url)
+    )
+    window._btn_folder.click()
+    assert calls == [["explorer", "/select,", str(capture)]]
