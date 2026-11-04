@@ -266,6 +266,7 @@ class DefinitionParser:
             flipy=table_elem.get("flipy", "false").lower() == "true",
             layout=layout,
             axis_type=axis_type,
+            logparam=table_elem.get("logparam", "").strip(),
         )
 
         # Parse child tables (axes for 2D/3D tables)

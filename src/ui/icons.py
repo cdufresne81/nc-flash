@@ -283,6 +283,24 @@ def _draw_trip_logs(p, c):
     p.drawLine(QPointF(6.5, 14), QPointF(13.5, 14))
 
 
+def _draw_datalogger(p, c):
+    """Live signal trace with a 'recording' dot: the Datalogger."""
+    trace = QPainterPath()
+    trace.moveTo(2, 15)
+    trace.lineTo(6, 10)
+    trace.lineTo(9, 13)
+    trace.lineTo(13, 6)
+    trace.lineTo(15.5, 9.5)
+    p.setBrush(Qt.NoBrush)
+    p.setPen(QPen(c, 1.6, Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin))
+    p.drawPath(trace)
+    p.setPen(QPen(c, 1.3, Qt.SolidLine, Qt.RoundCap))
+    p.drawLine(QPointF(2, 18), QPointF(18, 18))  # baseline
+    p.setPen(Qt.NoPen)
+    p.setBrush(c)
+    p.drawEllipse(QPointF(16, 4), 2.4, 2.4)  # recording
+
+
 def _draw_screenshot(p, c):
     """Camera icon for screenshot action."""
     pen = QPen(c, 1.6, Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin)
@@ -310,6 +328,7 @@ _ICON_DRAWERS = {
     "mcp_on": _draw_mcp_on,
     "mcp_off": _draw_mcp_off,
     "trip_logs": _draw_trip_logs,
+    "datalogger": _draw_datalogger,
     # Table viewer window
     "copy": _draw_copy,
     "export": _draw_export,

@@ -32,12 +32,14 @@ from typing import Optional
 
 from PySide6.QtCore import QObject, QThread, Qt, Signal
 
+from src.core.datalog_channels import RESERVED_NAMES
 from src.core.live_csv import (  # noqa: F401 - TRAIL_MIN_ROWS re-exported
     TRAIL_MIN_ROWS,
     LiveCsvCapture,
     StatusThrottle,
     live_capture_dir,
 )
+from src.ui.live_values import EMIT_EVERY_S, LiveValues
 
 logger = logging.getLogger(__name__)
 
@@ -59,6 +61,7 @@ class _LiveStreamWorker(QObject):
     capture_ready = Signal(str)  # that capture reached TRAIL_MIN_ROWS rows
     unsupported = Signal(str)  # firmware without the live stream
     replaced = Signal()  # another client took the device's single stream slot
+    values = Signal(dict)  # {channel name: value}, at most every EMIT_EVERY_S
     error = Signal(str)  # unexpected disconnect / other failure
     finished = Signal()  # clean stop (stop() requested)
 
@@ -83,6 +86,12 @@ class _LiveStreamWorker(QObject):
         self._rows_total = 0
         self._dropped_total = 0
         self._status_throttle = StatusThrottle()
+        self._values_throttle = StatusThrottle(every_rows=10**9, every_s=EMIT_EVERY_S)
+        # Column names the device sent for the current trip (None after
+        # "#nohdr"). The capture may reuse an older header when only the column
+        # count matches; that's fine for the CSV, but the live cursor needs the
+        # names for sure, or it could read RPM from the LOAD column.
+        self._trip_header: Optional[str] = None
 
     def run(self):
         from src.ecu import wican_discovery
@@ -214,6 +223,7 @@ class _LiveStreamWorker(QObject):
             raise _Replaced()
         elif ev.kind == ws.KIND_SESSION:
             self._session_cols = ev.cols
+            self._trip_header = None  # a new trip: its own names must follow
             logger.info(
                 "WiCAN live datalog: device trip file %s (%d channels)",
                 ev.file or "?",
@@ -239,6 +249,7 @@ class _LiveStreamWorker(QObject):
     def _adopt_header(self, header: Optional[str]):
         """A device trip file started: keep appending to the open capture when
         the columns match, otherwise start a new local file."""
+        self._trip_header = header
         capture = self._capture
         if capture.is_open:
             if header is not None and header == capture.header:
@@ -290,6 +301,8 @@ class _LiveStreamWorker(QObject):
         self._rows_total += 1
         if self._status_throttle.due(self._rows_total):
             self.status.emit(self._rows_text("Recording"))
+        if self._trip_header and self._values_throttle.due(self._rows_total):
+            self.values.emit(row_values(self._trip_header, line))
 
     def _rows_text(self, prefix: str) -> str:
         text = f"{prefix} ({self._rows_total} rows"
@@ -299,6 +312,21 @@ class _LiveStreamWorker(QObject):
 
     def _close_file(self):
         self._capture.close()
+
+
+def row_values(header: str, line: str) -> dict:
+    """``{channel: value}`` of one streamed row; the device's own columns
+    (timestamp, battery, mark) and empty or non-numeric cells are left out."""
+    values = {}
+    for name, cell in zip(header.split(","), line.split(",")):
+        name = name.strip()
+        if not name or name.lower() in RESERVED_NAMES:
+            continue
+        try:
+            values[name] = float(cell)
+        except ValueError:
+            continue
+    return values
 
 
 class _Replaced(Exception):
@@ -321,10 +349,19 @@ class WiCANLiveDatalog(QObject):
     #: Path of the capture being written, or "" when none is open.
     capture_changed = Signal(str)
 
-    def __init__(self, settings, parent=None, *, port: Optional[int] = None):
-        """``port`` overrides the device's stream port (tests only)."""
+    def __init__(
+        self,
+        settings,
+        parent=None,
+        *,
+        port: Optional[int] = None,
+        live_values: Optional[LiveValues] = None,
+    ):
+        """``port`` overrides the device's stream port (tests only);
+        *live_values* receives the latest row values (owned by the caller)."""
         super().__init__(parent)
         self._settings = settings
+        self._live_values = live_values
         self._port = port
         self._thread = None
         self._worker = None
@@ -375,6 +412,7 @@ class WiCANLiveDatalog(QObject):
         worker.capture_ready.connect(self._on_capture_ready, Qt.QueuedConnection)
         worker.unsupported.connect(self._on_unsupported, Qt.QueuedConnection)
         worker.replaced.connect(self._on_replaced, Qt.QueuedConnection)
+        worker.values.connect(self._on_values, Qt.QueuedConnection)
         worker.error.connect(self._on_error, Qt.QueuedConnection)
         worker.finished.connect(self._on_finished, Qt.QueuedConnection)
         thread.started.connect(worker.run)
@@ -479,6 +517,10 @@ class WiCANLiveDatalog(QObject):
             )
         self.status_changed.emit("Stopped")
 
+    def _on_values(self, values: dict):
+        if self._live_values is not None and self._thread is not None:
+            self._live_values.update(values)
+
     def _on_thread_finished(self):
         thread, worker = self._thread, self._worker
         self._thread = None
@@ -488,5 +530,7 @@ class WiCANLiveDatalog(QObject):
         if thread is not None:
             thread.deleteLater()
         self._capture = ""
+        if self._live_values is not None:
+            self._live_values.clear()
         self.capture_changed.emit("")
         self.running_changed.emit(False)

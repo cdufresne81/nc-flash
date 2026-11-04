@@ -9,10 +9,14 @@ list is sent to the WiCAN.
 from __future__ import annotations
 
 import logging
+import subprocess
+import sys
 from functools import partial
+from pathlib import Path
 from typing import Optional
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QUrl
+from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -45,6 +49,7 @@ from src.core.datalog_channels import (
     channels_to_saved,
     estimated_rows_per_second,
 )
+from src.core.live_csv import live_capture_dir
 from src.ui import theme
 
 logger = logging.getLogger(__name__)
@@ -271,6 +276,13 @@ class DataloggerWindow(QMainWindow):
         )
         self._btn_trail.clicked.connect(self._on_trail)
         run_row.addWidget(self._btn_trail)
+        self._btn_folder = QPushButton("Open Live Logs Folder")
+        self._btn_folder.setToolTip(
+            "Open the folder the live captures are saved in "
+            "(the capture being written is selected)"
+        )
+        self._btn_folder.clicked.connect(self._on_open_folder)
+        run_row.addWidget(self._btn_folder)
         self._btn_push = QPushButton("Send Channels to WiCAN")
         self._btn_push.setToolTip(
             "Replace the channel list the WiCAN polls and records with this one. "
@@ -297,6 +309,18 @@ class DataloggerWindow(QMainWindow):
         self._chk_auto_trail.setChecked(self._settings.get_live_datalog_auto_trail())
         self._chk_auto_trail.toggled.connect(self._settings.set_live_datalog_auto_trail)
         root.addWidget(self._chk_auto_trail)
+
+        router = self._main_window.live_cursor
+        self._chk_live_cursor = QCheckBox(
+            "Show the live position on open tables (e.g. RPM and LOAD on Load Scaling)"
+        )
+        self._chk_live_cursor.setToolTip(
+            "Tables whose axes match logged channels light up the cells the "
+            "engine is using, in the table and its graph."
+        )
+        self._chk_live_cursor.setChecked(router.enabled)
+        self._chk_live_cursor.toggled.connect(router.set_enabled)
+        root.addWidget(self._chk_live_cursor)
 
     def _fill_table(self):
         self._filling = True
@@ -421,6 +445,19 @@ class DataloggerWindow(QMainWindow):
     def _on_trail(self):
         if not self._datalogger.trail_in_mlv():
             self._status.setText("MegaLogViewerHD is not installed")
+
+    def _on_open_folder(self):
+        """Open the live captures folder; select the capture being written."""
+        folder = live_capture_dir(self._settings.get_logs_directory())
+        folder.mkdir(parents=True, exist_ok=True)
+        capture = self._datalogger.current_capture
+        if capture and sys.platform == "win32" and Path(capture).is_file():
+            try:
+                subprocess.Popen(["explorer", "/select,", str(Path(capture))])
+                return
+            except OSError:
+                logger.debug("Explorer /select failed", exc_info=True)
+        QDesktopServices.openUrl(QUrl.fromLocalFile(str(folder)))
 
     def _on_channel_dropped(self, name: str, why: str):
         self._dropped[name] = why

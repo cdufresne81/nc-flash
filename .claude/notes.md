@@ -29,6 +29,44 @@ What is on `dev` awaiting `master`: run `python tools/dev_status.py` (asks GitHu
   held open ~30 s still lets the flash go on (a side thread sends Tester Present through the
   cable DLL meanwhile; some clone DLLs may not like a second thread). Also unproven: the NC1
   boot signature has only been seen in ROM files, never read from a real NC1 ECU.
+- **Live table cursor + toolbar button: on `dev` via `merge/live-cursor-into-dev`, shipping in
+  v2.24.0-beta.16.** Branches `feature/live-table-cursor` (e01505e) and `feature/faster-table-paint`
+  (29f1193, on top of it) stay for their later PR into `master`. Open tables show where the Datalogger's live values fall: a compact
+  cross + dot on the exact point, nearest cell outlined, values tagged on the axis headers
+  (`src/ui/table_viewer_helpers/live_overlay.py`), plus a graph marker. Axis -> channel map in
+  `examples/axis_channels.json` (exact axis names; TCM definitions use only their own `logparam`).
+  Bench (Tactrix, engine off) + 3 Opus reviews (1st DO-NOT-SHIP, fixed; 2nd and 3rd SHIP).
+  - Perf (5 tables with GPU graphs fed at 10 Hz): UI lag p95 28 ms. Needed: compact cross (each
+    repainted cell costs ~0.5 ms in the styled delegate), up to 3 tables all get 10 Hz (router
+    FULL_RATE_TABLES); with more, the table clicked LAST gets 10 Hz (not the OS-active window: focus
+    on MLV once made every table 2.5 Hz, the user's "worse after a second window"), others 0.2 s; GPU 3D skips the label fit when nothing moved. Don't tune the
+    matplotlib fallback (user: unused). Redraws are skipped for moves < 3 px (table) / < 0.05 cell
+    (graph): steady-signal CPU 49% -> 30% with 3 graphs. Cell marks moved from a Python delegate
+    paint() to one pass after Qt draws the cells (`cell_delegate.py`, `feature/poller-process`):
+    169 -> 125 us per cell, 3-window lag p95 23 -> ~20 ms; pixel-identical except a 1 px notch the
+    old order cut into mark corners. What's left: Qt's own cell drawing (~125 us, windows11 style;
+    Fusion ~86 but looks different) and the GPU graph draw (~9.5 ms each, about half the lag).
+    Polling in a separate process was measured and dropped (Oct 28, real Tactrix): it frees ~10% of
+    a core (2.1 ms CPU per row) but the UI lag didn't change.
+  - Oct 28 in-car test: USB write failed after 3 min (LIBUSB_ERROR_IO, no USB unplug event) and
+    Windows logged "low on virtual memory" 16 s later (a screen recorder was running); NC Flash
+    itself is flat at ~700 MB with 3 graphs. Host engine now auto-reconnects mid-run (every 2 s
+    until Stop, same CSV); untested on hardware: pull the USB cable mid-log and plug it back.
+  - Axis-name suffixes (`RPM_6DD8`) are NOT RAM addresses: lf9veb Load Scaling reads RPM from
+    float 0xFFFF6D84 and loads 0xFFFF6E80/6F24/6F40 (3 lookups). LOAD mappings stay `approx`
+    until the in-car comparison card answers whether PID 0x43 matches.
+  - Value chip (Oct 30, `feature/poller-process`), opt-in setting `ecu/live_value_estimate` (off by
+    default: it is NC Flash's estimate from the open ROM, not an ECU reading): the table's value at the live point, blended
+    linearly between the 4 surrounding cells (assumed to match the ECU's own lookup, not checked
+    in the disassembly); it follows the live value even when the cross holds still (<3 px). The
+    nearest cell's number is redrawn over the cross via `DecoratedTable.cell_text_layout`.
+  - Pre-existing test failures on master too (Oct 30): PySide6 6.10.1 returns a tuple stored in
+    Qt.UserRole as a list, so tuple comparisons fail (test_clipboard_paste x3); the hex paste test
+    `test_copied_text_pastes_into_another_rom` (and `test_decimal_editor_still_rejects_letters`)
+    fail for a reason not found yet. Earlier sessions wrote these off as a clipboard glitch.
+  - LOW leftovers: no message when a NaN/zig-zag axis refuses the cursor; duplicate-breakpoint
+    cell (first vs last) unconfirmed vs the ECU; TCM detection keys on "TCM" in romid.model; axis
+    tags cover half of the two breakpoint labels they sit between.
 - **Datalogger: on `dev` (merged via `merge/datalogger-into-dev`, replaces #211), shipping in
   v2.24.0-beta.15.** Feature branch `feature/datalogger` stays for its later PR into `master`. Worktree
   `C:\Users\dufre\Projets\nc-rom-editor-datalogger` (has the built-in OpenPort driver in

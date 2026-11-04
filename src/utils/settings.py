@@ -459,6 +459,22 @@ class AppSettings:
     def set_live_datalog_auto_trail(self, enabled: bool):
         self.settings.setValue("ecu/live_datalog_auto_trail", bool(enabled))
 
+    def get_live_cursor_enabled(self) -> bool:
+        """Whether open tables show where the Datalogger's live values fall."""
+        return self.settings.value("ecu/live_cursor_enabled", True, type=bool)
+
+    def set_live_cursor_enabled(self, enabled: bool):
+        self.settings.setValue("ecu/live_cursor_enabled", bool(enabled))
+
+    def get_live_value_estimate(self) -> bool:
+        """Whether the live cursor also shows NC Flash's estimate of the table
+        value at the live point (computed from the open ROM, not read from
+        the ECU)."""
+        return self.settings.value("ecu/live_value_estimate", False, type=bool)
+
+    def set_live_value_estimate(self, enabled: bool):
+        self.settings.setValue("ecu/live_value_estimate", bool(enabled))
+
     def get_datalog_channels(self) -> dict:
         """The Datalogger's saved channel list (see
         :func:`src.core.datalog_channels.channels_to_saved`); {} when unset or

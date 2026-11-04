@@ -29,7 +29,7 @@ from src.core.rom_definition import (
     TableType,
 )
 from src.ui import gpu_runtime
-from src.ui.graph_model import SELECTION_RGBA
+from src.ui.graph_model import SELECTION_RGBA, extend_grid
 from src.ui.table_viewer_window import TableViewerWindow
 
 # Slow and window-heavy: off locally unless NCFLASH_GRAPH_TESTS=1 (conftest).
@@ -819,3 +819,101 @@ def test_single_key_edit_shortcuts_blocked_while_graph_focused(
     QTest.keyClick(win.windowHandle(), key)
     qtbot.wait(100)
     np.testing.assert_array_equal(data["values"], before)
+
+
+# ---------------------------------------------------------------------------
+# live table cursor marker (Datalogger values)
+# ---------------------------------------------------------------------------
+def _live_table_3d():
+    t = _table_3d()
+    t.x_axis.logparam, t.y_axis.logparam = "RPM", "LOAD"
+    return t
+
+
+def _live_marker(backend):
+    """(visible, plot position) of the live marker as the backend holds it."""
+    if backend.engine_name == "gpu":
+        if backend.is_3d():
+            dot = backend.surface._live_dot
+            return dot.visible, tuple(np.array(dot.geometry.positions.data[0]))
+        objs = backend.line._live_objs
+        if objs is None or not objs[1].visible:
+            return False, None
+        return True, tuple(np.array(objs[1].geometry.positions.data[0][:2]))
+    if not backend._live_artists:
+        return False, None
+    line = backend._live_artists[-1]  # the dot is added last
+    if backend.is_3d():
+        xs, ys, zs = line.get_data_3d()
+        return True, (xs[0], ys[0], zs[0])
+    xs, ys = line.get_data()
+    return True, (xs[0], ys[0])
+
+
+class TestLiveMarker:
+    def test_marker_sits_on_the_surface_and_survives_edits(
+        self, qtbot, engine, isolated_settings
+    ):
+        data = _data_3d()
+        win = _open(qtbot, _live_table_3d(), data, engine)
+        b = win.graph_widget.backend
+        updates = b.n_data_updates
+        # Grid point (3, 4): RPM halfway between columns 3 and 4, LOAD between
+        # rows 2 and 3, i.e. a vertex of the drawn surface.
+        rpm = (data["x_axis"][3] + data["x_axis"][4]) / 2
+        load = (data["y_axis"][2] + data["y_axis"][3]) / 2
+        win.set_live_values({"RPM": rpm, "LOAD": load})
+        qtbot.waitUntil(lambda: _live_marker(b)[0], timeout=3000)
+        _, pos = _live_marker(b)
+        z_vertex = extend_grid(data["values"])[3, 4]
+        if engine == "gpu":
+            assert pos[0] == pytest.approx(4 / COLS * 10, abs=1e-4)
+            assert pos[1] == pytest.approx(3 / ROWS * 10, abs=1e-4)
+            assert pos[2] == pytest.approx(b.surface._zgrid[3, 4], abs=1e-4)
+            assert pos[2] == pytest.approx(float(b.surface._zw(z_vertex)), abs=1e-4)
+        else:
+            assert pos == pytest.approx((4.0, 3.0, z_vertex), abs=1e-6)
+        assert b.n_data_updates == updates  # a live update rebuilds nothing
+
+        # An edit rebuilds the graph: the marker comes back at the new height.
+        data["values"][2:4, 3:5] += 5.0
+        win._refresh_graph()
+        qtbot.waitUntil(lambda: b.n_data_updates > updates, timeout=3000)
+        qtbot.waitUntil(lambda: _live_marker(b)[0], timeout=3000)
+        assert _live_marker(b)[1][2] > pos[2]
+
+        win.set_live_values({})
+        qtbot.waitUntil(lambda: not _live_marker(b)[0], timeout=3000)
+
+    def test_2d_marker_follows_the_line(self, qtbot, engine, isolated_settings):
+        t = _table_2d()
+        t.y_axis.logparam = "APP"
+        data = _data_2d()
+        win = _open(qtbot, t, data, engine)
+        b = win.graph_widget.backend
+        win.set_live_values({"APP": 37.5})  # halfway between 25 and 50
+        qtbot.waitUntil(lambda: _live_marker(b)[0], timeout=3000)
+        assert _live_marker(b)[1] == pytest.approx((37.5, 37.0), abs=1e-4)
+
+    def test_marker_set_before_the_graph_opens_appears_on_open(
+        self, qtbot, engine, isolated_settings
+    ):
+        data = _data_3d()
+        win = _open(qtbot, _live_table_3d(), data, engine, show_graph=False)
+        win.set_live_values({"RPM": 4000.0, "LOAD": 1.0})
+        win._toggle_graph()
+        qtbot.waitUntil(lambda: win.graph_widget.backend is not None, timeout=180000)
+        b = win.graph_widget.backend
+        qtbot.waitUntil(lambda: _live_marker(b)[0], timeout=3000)
+
+    def test_moving_marker_never_rescales_the_classic_graph(
+        self, qtbot, isolated_settings, monkeypatch
+    ):
+        monkeypatch.setenv("NCFLASH_GRAPH_ENGINE", "classic")
+        win = _open(qtbot, _live_table_3d(), _data_3d(), "classic")
+        b = win.graph_widget.backend
+        limits = (b.ax.get_xlim(), b.ax.get_ylim(), b.ax.get_zlim())
+        for i in range(30):
+            b._live = (i % ROWS * 0.9, i % COLS * 0.8)
+            b._place_live()
+        assert (b.ax.get_xlim(), b.ax.get_ylim(), b.ax.get_zlim()) == limits

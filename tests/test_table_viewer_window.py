@@ -12,6 +12,7 @@ from unittest.mock import patch, MagicMock
 import numpy as np
 from PySide6.QtWidgets import QApplication, QTableWidgetItem
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QRegion
 
 from src.core.rom_definition import (
     RomDefinition,
@@ -465,3 +466,398 @@ class TestScreenshotToClipboard:
         assert out.exists() and out.stat().st_size > 0
         assert grab.call_count == 1  # grabbed once, before any dialog
         assert not QApplication.clipboard().pixmap().isNull()
+
+
+# --- live table cursor ---------------------------------------------------------
+
+
+def _live_3d_table(flipx=False, flipy=False):
+    table = _make_3d_table()
+    table.flipx, table.flipy = flipx, flipy
+    table.x_axis.logparam = "LOAD"
+    table.y_axis.logparam = "RPM"
+    return table
+
+
+def _ui_cell(win, data_row, data_col):
+    """UI (row, col) showing a data cell (follows the display flips)."""
+    tw = win.viewer.table_widget
+    for r in range(tw.rowCount()):
+        for c in range(tw.columnCount()):
+            item = tw.item(r, c)
+            coords = item.data(Qt.UserRole) if item is not None else None
+            # PySide6 may hand a stored tuple back as a list
+            if coords is not None and tuple(coords) == (data_row, data_col):
+                return r, c
+    raise AssertionError(f"no UI cell for data {(data_row, data_col)}")
+
+
+def _center(win, ui_row, ui_col):
+    tw = win.viewer.table_widget
+    return (
+        tw.columnViewportPosition(ui_col) + tw.columnWidth(ui_col) / 2,
+        tw.rowViewportPosition(ui_row) + tw.rowHeight(ui_row) / 2,
+    )
+
+
+@pytest.fixture
+def live_window(qapp, mock_settings, request):
+    flipx, flipy = getattr(request, "param", (False, False))
+    data = {
+        "values": np.array([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]]),
+        "x_axis": np.array([10.0, 20.0, 30.0]),  # LOAD
+        "y_axis": np.array([100.0, 200.0]),  # RPM
+    }
+    win = TableViewerWindow(
+        _live_3d_table(flipx, flipy), data, _make_definition(), rom_path="/t.bin"
+    )
+    yield win
+    win.close()
+
+
+@pytest.mark.parametrize(
+    "value, text",
+    [(3250.4, "3250"), (-40.0, "-40"), (55.25, "55.2"), (0.47123, "0.471"), (0.0, "0")],
+)
+def test_live_tags_show_readable_numbers(value, text):
+    from src.ui.table_viewer_window import _tag_number
+
+    assert _tag_number(value) == text
+
+
+class TestLiveCursor:
+    def test_crosshair_goes_through_the_exact_point(self, live_window):
+        assert live_window.has_live_cursor_axes
+        live_window.set_live_values({"RPM": 100.0, "LOAD": 25.0})
+        assert live_window.viewer.has_live_cursor()
+        geo = live_window.viewer.live_cursor.geometry()
+        x1, y = _center(live_window, *_ui_cell(live_window, 0, 1))
+        x2, _ = _center(live_window, *_ui_cell(live_window, 0, 2))
+        assert (geo["x"], geo["y"]) == pytest.approx(((x1 + x2) / 2, y))
+        assert live_window.viewer.live_cursor.tag_texts() == ["100", "25"]
+
+    @pytest.mark.parametrize(
+        "live_window", [(True, False), (False, True), (True, True)], indirect=True
+    )
+    def test_flipped_display_points_at_the_same_data_cell(self, live_window):
+        live_window.set_live_values({"RPM": 200.0, "LOAD": 30.0})
+        geo = live_window.viewer.live_cursor.geometry()
+        ui = _ui_cell(live_window, 1, 2)
+        assert (geo["x"], geo["y"]) == pytest.approx(_center(live_window, *ui))
+        assert geo["peak"].center().x() == pytest.approx(geo["x"])
+        assert geo["peak"].center().y() == pytest.approx(geo["y"])
+
+    def test_off_the_table_and_approx_tags(self, live_window):
+        live_window._live_maps = (
+            live_window._live_maps[0].__class__("LOAD", lambda x: x, approx=True),
+            live_window._live_maps[1],
+        )
+        live_window.set_live_values({"RPM": 999.0, "LOAD": 15.0})
+        state = live_window.viewer.live_cursor.state
+        assert state.y_tag == ("999", True)  # past the last RPM breakpoint
+        assert state.x_tag == ("≈15", False)
+
+    def test_missing_channel_says_so_and_draws_no_crosshair(self, live_window):
+        live_window.set_live_values({"RPM": 150.0})
+        assert not live_window.viewer.has_live_cursor()
+        assert "needs: LOAD" in live_window.viewer.live_cursor.state.message
+
+    def test_clearing_hides_everything(self, live_window):
+        live_window.set_live_values({"RPM": 150.0, "LOAD": 20.0})
+        live_window.set_live_values({})
+        assert live_window.viewer.live_cursor.state is None
+
+    def test_the_estimated_value_is_off_by_default(self, live_window):
+        live_window.set_live_values({"RPM": 150.0, "LOAD": 20.0})
+        assert live_window.viewer.has_live_cursor()
+        assert live_window.viewer.live_cursor.value_text() == ""
+
+    def test_turning_the_estimate_on_shows_it_at_once(self, live_window):
+        live_window.set_live_values({"RPM": 150.0, "LOAD": 20.0})
+        live_window.set_live_estimate(True)
+        assert live_window.viewer.live_cursor.value_text() == "3.50"
+        live_window.set_live_estimate(False)
+        assert live_window.viewer.live_cursor.value_text() == ""
+
+    def test_value_chip_shows_the_table_value_at_the_point(self, live_window):
+        live_window.set_live_estimate(True)
+        # RPM 150 is halfway between rows 0 and 1, LOAD 20 is on column 1:
+        # (2 + 5) / 2, formatted like the cells (%0.2f)
+        live_window.set_live_values({"RPM": 150.0, "LOAD": 20.0})
+        assert live_window.viewer.live_cursor.state.value_tag == "3.50"
+        assert live_window.viewer.live_cursor.value_text() == "3.50"
+
+    def test_value_chip_is_approximate_when_an_axis_is(self, live_window):
+        live_window.set_live_estimate(True)
+        live_window._live_maps = (
+            live_window._live_maps[0].__class__("LOAD", lambda x: x, approx=True),
+            live_window._live_maps[1],
+        )
+        live_window.set_live_values({"RPM": 100.0, "LOAD": 10.0})
+        assert live_window.viewer.live_cursor.state.value_tag == "≈1.00"
+
+    def test_no_value_chip_on_a_non_number(self, live_window):
+        live_window.set_live_estimate(True)
+        live_window.data["values"][0, 0] = np.nan
+        live_window.set_live_values({"RPM": 100.0, "LOAD": 10.0})
+        assert live_window.viewer.has_live_cursor()
+        assert live_window.viewer.live_cursor.value_text() == ""
+
+    @pytest.mark.parametrize(
+        "rpm, load", [(100.0, 10.0), (100.0, 30.0), (200.0, 10.0), (200.0, 30.0)]
+    )
+    def test_value_chip_stays_off_the_axis_headers(self, live_window, qtbot, rpm, load):
+        live_window.set_live_estimate(True)
+        live_window.show()
+        qtbot.waitExposed(live_window)
+        live_window.set_live_values({"RPM": rpm, "LOAD": load})
+        tw = live_window.viewer.table_widget
+        chip = live_window.viewer.live_cursor.geometry()["value"][0]
+        assert chip.left() >= tw.columnWidth(0)  # clear of the Y-axis column
+        assert chip.top() >= tw.rowHeight(0)  # clear of the X-axis row
+        assert chip.right() <= tw.viewport().width()
+
+    def test_a_new_value_on_the_same_spot_repaints_the_chip(self, live_window):
+        live_window.set_live_estimate(True)
+        viewport = live_window.viewer.table_widget.viewport()
+        live_window.set_live_values({"RPM": 150.0, "LOAD": 20.0})
+        live_window.data["values"][0, 1] = 9.0  # e.g. the cell was edited
+        with patch.object(viewport, "update") as update:
+            live_window.set_live_values({"RPM": 150.0, "LOAD": 20.0001})
+            update.assert_called_once()
+        assert live_window.viewer.live_cursor.value_text() == "7.00"
+
+    def test_the_nearest_cell_number_is_redrawn_over_the_cursor(self, live_window):
+        live_window.set_live_values({"RPM": 200.0, "LOAD": 20.0})
+        overlay = live_window.viewer.live_cursor
+        geo = overlay.geometry()
+        tw = live_window.viewer.table_widget
+        item = tw.item(*geo["peak_ui"])
+        painter = MagicMock()
+        overlay._paint_peak_text(painter, geo["peak_ui"])
+        rect, align, _, text, _, _ = tw.cell_text_layout(tw.indexFromItem(item))
+        assert text == item.text()
+        assert painter.drawText.call_args_list[-1].args == (rect, align, text)
+
+    def test_repaints_only_when_the_point_moves(self, live_window):
+        viewport = live_window.viewer.table_widget.viewport()
+        live_window.set_live_values({"RPM": 150.0, "LOAD": 20.0})
+        with patch.object(viewport, "update") as update:
+            live_window.set_live_values({"RPM": 150.0, "LOAD": 20.0})
+            update.assert_not_called()
+            live_window.set_live_values({"RPM": 160.0, "LOAD": 20.0})
+            update.assert_called_once()
+
+    def test_live_values_never_change_the_window_layout(self, live_window, qtbot):
+        live_window.show()
+        qtbot.waitExposed(live_window)
+        qtbot.wait(200)  # let the window settle (offscreen platforms resize late)
+        before = (live_window.size(), live_window.viewer.table_widget.size())
+        live_window.set_live_values({"RPM": 150.0, "LOAD": 20.0})
+        live_window.set_live_values({"RPM": 999.0})  # the "needs" hint
+        qtbot.wait(50)
+        assert (live_window.size(), live_window.viewer.table_widget.size()) == before
+
+    def test_the_dot_is_painted_over_the_cells(self, live_window, qtbot):
+        from src.ui import theme
+        from PySide6.QtGui import QColor
+
+        live_window.show()
+        qtbot.waitExposed(live_window)
+        live_window.set_live_values({"RPM": 150.0, "LOAD": 20.0})
+        geo = live_window.viewer.live_cursor.geometry()
+        image = live_window.viewer.table_widget.viewport().grab().toImage()
+        ratio = image.devicePixelRatio()
+        pixel = image.pixelColor(int(geo["x"] * ratio), int(geo["y"] * ratio))
+        assert pixel.name() == QColor(theme.LIVE_CURSOR).name()
+
+    def test_a_move_nobody_can_see_repaints_nothing(self, live_window):
+        live_window.set_live_estimate(True)
+        viewport = live_window.viewer.table_widget.viewport()
+        overlay = live_window.viewer.live_cursor
+        live_window.set_live_values({"RPM": 150.0, "LOAD": 20.0})
+        drawn = overlay.state
+        chip = overlay.geometry()["value"][0]
+        with patch.object(viewport, "update") as update:
+            live_window.set_live_values({"RPM": 150.01, "LOAD": 20.001})
+            update.assert_not_called()  # same tags, same value, sub-pixel move
+            # The value chip follows the live value (3.50 -> 3.51); the
+            # cross and the tags stay put.
+            live_window.set_live_values({"RPM": 150.2, "LOAD": 20.01})
+        (region,), _ = update.call_args
+        assert region.boundingRect() == chip.toAlignedRect().adjusted(-1, -1, 1, 1)
+        assert (overlay.state.fr, overlay.state.fc) == (drawn.fr, drawn.fc)
+
+    def test_only_a_changed_tag_is_repainted(self, live_window):
+        live_window.set_live_estimate(True)
+        viewport = live_window.viewer.table_widget.viewport()
+        live_window.set_live_values({"RPM": 150.0, "LOAD": 20.0})
+        geo = live_window.viewer.live_cursor.geometry()
+        tag_rect, chip = geo["tags"][0][0], geo["value"][0]
+        with patch.object(viewport, "update") as update:
+            live_window.set_live_values({"RPM": 151.0, "LOAD": 20.0})
+        (region,), _ = update.call_args
+        # The RPM tag and the value chip (3.50 -> 3.53), not the cross
+        expected = QRegion(tag_rect.toAlignedRect()).united(
+            QRegion(chip.toAlignedRect().adjusted(-1, -1, 1, 1))
+        )
+        assert region == expected
+        assert live_window.viewer.live_cursor.state.y_tag == ("151", False)
+
+    def test_a_slow_drift_still_moves_the_cross(self, live_window):
+        overlay = live_window.viewer.live_cursor
+        live_window.set_live_values({"RPM": 100.0, "LOAD": 20.0})
+        start_y = overlay.geometry()["y"]
+        rpm = 100.0
+        while rpm < 150.0:  # each step is far below a pixel
+            rpm += 0.5
+            live_window.set_live_values({"RPM": rpm, "LOAD": 20.0})
+        y = overlay.geometry()["y"]
+        assert y != start_y  # it moved once the drift added up
+        rows = [_ui_cell(live_window, r, 0)[0] for r in (0, 1)]
+        px_per_row = abs(
+            _center(live_window, rows[1], 0)[1] - _center(live_window, rows[0], 0)[1]
+        )
+        true_fr = 0.5  # RPM 150 on a 100/200 axis
+        assert abs(overlay.state.fr - true_fr) * px_per_row < overlay.MOVE_PX
+
+    def test_background_window_moves_at_most_every_interval(self, live_window, qtbot):
+        from src.ui import table_viewer_window as tvw
+
+        live_window.set_live_values({"RPM": 150.0, "LOAD": 20.0}, False)
+        first = live_window.viewer.live_cursor.state
+        live_window.set_live_values({"RPM": 160.0, "LOAD": 20.0}, False)
+        live_window.set_live_values({"RPM": 170.0, "LOAD": 20.0}, False)
+        assert live_window.viewer.live_cursor.state == first  # held back
+        qtbot.waitUntil(
+            lambda: live_window.viewer.live_cursor.state.y_tag[0] == "170",
+            timeout=int(tvw.LIVE_BACKGROUND_INTERVAL_S * 1000) + 1000,
+        )  # then the latest values, not each one
+
+    def test_hiding_is_never_delayed(self, live_window):
+        live_window.set_live_values({"RPM": 150.0, "LOAD": 20.0}, False)
+        live_window.set_live_values({"RPM": 160.0, "LOAD": 20.0}, False)  # held
+        live_window.set_live_values({}, False)
+        assert live_window.viewer.live_cursor.state is None
+        assert not live_window._live_timer.isActive()
+
+    def test_values_that_dont_match_the_axes_point_at_nothing(self, live_window):
+        live_window.data["values"] = np.zeros(6)  # not reshaped to 2 x 3
+        live_window.set_live_values({"RPM": 150.0, "LOAD": 20.0})
+        assert live_window.viewer.live_cursor.state is None
+
+    def test_a_cursor_that_cant_be_drawn_is_hidden_not_stuck(self, live_window, qtbot):
+        live_window.show()
+        qtbot.waitExposed(live_window)
+        overlay = live_window.viewer.live_cursor
+        live_window.set_live_values({"RPM": 150.0, "LOAD": 20.0})
+        with patch.object(overlay, "geometry", side_effect=ValueError("bad")):
+            overlay.set_state(overlay.state.__class__(2, 3, fr=0.5, fc=0.5))
+            live_window.viewer.table_widget.viewport().grab()  # forces a paint
+            assert overlay.state is None  # the paint failure hid it
+            live_window.set_live_values({})  # and a clear still works
+
+    def test_minimized_window_skips_updates(self, live_window):
+        live_window.isMinimized = lambda: True
+        live_window.set_live_values({"RPM": 150.0, "LOAD": 20.0})
+        assert live_window.viewer.live_cursor.state is None
+
+    def test_tcm_tables_ignore_the_shared_map(self, qapp, mock_settings):
+        table = _make_3d_table()
+        table.x_axis.name, table.y_axis.name = "LOAD_6F44", "RPM_6DD8"
+        defn = _make_definition()
+        defn.romid.model = "MX5 NC TCM"
+        data = {
+            "values": np.zeros((2, 3)),
+            "x_axis": np.array([0.2, 0.4, 0.6]),
+            "y_axis": np.array([1000.0, 2000.0]),
+        }
+        win = TableViewerWindow(table, data, defn, rom_path="/t.bin")
+        assert not win.has_live_cursor_axes
+        win.close()
+
+    def test_unmapped_tables_and_diff_windows_get_no_cursor(
+        self, window_3d, qapp, mock_settings
+    ):
+        assert not window_3d.has_live_cursor_axes  # "X Axis"/"Y Axis": no map
+        window_3d.set_live_values({"RPM": 1.0, "LOAD": 1.0})
+        assert not window_3d.viewer.has_live_cursor()
+        diff = TableViewerWindow(
+            _live_3d_table(),
+            {
+                "values": np.zeros((2, 3)),
+                "x_axis": np.array([1.0, 2.0, 3.0]),
+                "y_axis": np.array([1.0, 2.0]),
+            },
+            _make_definition(),
+            rom_path="/t.bin",
+            diff_mode=True,
+            diff_base_data={"values": np.zeros((2, 3))},
+        )
+        assert not diff.has_live_cursor_axes
+        diff.close()
+
+
+# --- cell marks (painted by the table widget, not a Python delegate) ----------
+
+
+def _cells_painted(win, region):
+    """Cells whose marks CellDecorations considers for a repaint of ``region``."""
+    painted = []
+    decorations = win.viewer.table_widget.decorations
+    with patch.object(
+        decorations, "_paint_cell", lambda p, tw, item, r, c: painted.append((r, c))
+    ):
+        decorations.paint(MagicMock(), region)
+    return painted
+
+
+class TestCellMarks:
+    def test_the_delegate_does_not_paint(self):
+        # A Python paint() override runs once per cell on every repaint
+        # (~57 of ~169 us per cell); the marks are painted once per repaint.
+        from src.ui.table_viewer_helpers.cell_delegate import CellEditorDelegate
+
+        assert "paint" not in vars(CellEditorDelegate)
+
+    def test_modified_border_is_painted(self, window_3d, qtbot):
+        from PySide6.QtGui import QColor
+
+        window_3d.show()
+        qtbot.waitExposed(window_3d)
+        viewer, tw = window_3d.viewer, window_3d.viewer.table_widget
+        ui_row, ui_col = _ui_cell(window_3d, 1, 1)
+        rect = tw.visualItemRect(tw.item(ui_row, ui_col))
+
+        def border_pixel():
+            image = tw.viewport().grab().toImage()
+            ratio = image.devicePixelRatio()
+            return image.pixelColor(
+                int((rect.left() + 1) * ratio), int(rect.center().y() * ratio)
+            ).name()
+
+        gray = QColor(100, 100, 100).name()
+        assert border_pixel() != gray
+        viewer.mark_cell_modified(window_3d.table.address, 1, 1)
+        assert viewer.has_modified_cells()
+        assert border_pixel() == gray
+
+    def test_a_small_repaint_looks_only_at_the_cells_it_covers(self, window_3d):
+        from PySide6.QtGui import QRegion
+
+        tw = window_3d.viewer.table_widget
+        window_3d.viewer.mark_cell_modified(window_3d.table.address, 0, 0)
+        ui = _ui_cell(window_3d, 1, 2)
+        region = QRegion(tw.visualItemRect(tw.item(*ui)))
+        assert _cells_painted(window_3d, region) == [ui]
+
+    def test_without_marks_only_the_axis_cells_are_looked_at(self, window_3d):
+        from PySide6.QtGui import QRegion
+
+        tw = window_3d.viewer.table_widget
+        tw.clearSelection()
+        assert not window_3d.viewer.has_modified_cells()
+        everything = QRegion(tw.viewport().rect())
+        cells = _cells_painted(window_3d, everything)
+        assert cells and all(r == 0 or c == 0 for r, c in cells)
+        assert len(cells) == tw.rowCount() + tw.columnCount() - 1

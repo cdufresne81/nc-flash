@@ -65,6 +65,8 @@ class GraphWidget(QWidget):
         self.data = None
         self.rom_definition = None
         self.selected_cells = []
+        #: Live table cursor (fractional row, col) in data coordinates, or None.
+        self.live_point = None
         self.backend = None
         self._pending = False
         self._model = None
@@ -101,6 +103,7 @@ class GraphWidget(QWidget):
             self._request_backend()
             return
         self._guard(lambda: self.backend.show_model(self._build(), self.selected_cells))
+        self._apply_live_point()
 
     def update_data(self, data: dict):
         """Values/axes changed (edit, undo): rebuild geometry, keep the view."""
@@ -110,6 +113,7 @@ class GraphWidget(QWidget):
         self._guard(
             lambda: self.backend.update_data(self._build(), self.selected_cells)
         )
+        self._apply_live_point()
 
     def update_selection(self, selected_cells: list):
         """Selection-only change: recolor, no geometry rebuild."""
@@ -118,6 +122,18 @@ class GraphWidget(QWidget):
             return
         colors = selection_colors(self._model, self.selected_cells)
         self._guard(lambda: self.backend.update_colors(colors, self.selected_cells))
+
+    def set_live_point(self, point):
+        """Show the live table cursor at ``(fr, fc)`` (data coordinates), or
+        hide it with None. Kept and re-applied when the graph is rebuilt."""
+        self.live_point = point
+        self._apply_live_point()
+
+    def _apply_live_point(self):
+        if self.backend is None or self._model is None:
+            return
+        point = self.live_point
+        self._guard(lambda: self.backend.set_live_point(point))
 
     def get_view(self):
         return self.backend.get_view() if self.backend else None
@@ -177,6 +193,7 @@ class GraphWidget(QWidget):
         self._install(backend)
         if self.table is not None and self.data is not None:
             self._guard(lambda: backend.show_model(self._build(), self.selected_cells))
+            self._apply_live_point()
 
     def _install(self, backend):
         self.backend = backend

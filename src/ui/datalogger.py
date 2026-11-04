@@ -35,6 +35,7 @@ from src.core.datalog_channels import (
     to_firmware_row,
 )
 from src.core.live_csv import LiveCsvCapture, StatusThrottle, live_capture_dir
+from src.ui.live_values import EMIT_EVERY_S, LiveValues
 from src.ui.wican_live_datalog import WiCANLiveDatalog
 
 logger = logging.getLogger(__name__)
@@ -64,6 +65,24 @@ def wired_adapter_config(settings) -> dict:
     }
 
 
+#: After a lost connection mid-run, the next reconnect attempt waits this long.
+RECONNECT_DELAY_S = 2.0
+
+
+def _not_a_connection_loss():
+    from src.ecu.datalog_poller import DatalogNothingToPoll
+
+    # Programming errors must stop the run, not loop on reconnects.
+    return (
+        DatalogNothingToPoll,
+        TypeError,
+        AttributeError,
+        NameError,
+        AssertionError,
+        ImportError,
+    )
+
+
 class _HostPollWorker(QObject):
     """Connects to the ECU, polls the channels, writes the capture."""
 
@@ -71,6 +90,7 @@ class _HostPollWorker(QObject):
     capture_opened = Signal(str)
     capture_ready = Signal(str)
     channel_dropped = Signal(str, str)  # channel name, why
+    values = Signal(dict)  # {channel name: value}, at most every EMIT_EVERY_S
     error = Signal(str)
     finished = Signal()
 
@@ -91,39 +111,103 @@ class _HostPollWorker(QObject):
             thread is not None and thread.isInterruptionRequested()
         )
 
+    def _connect(self):
+        """Open a session to the ECU, or raise with a reason a user can act on."""
+        from src.ecu.session import ECUSession
+
+        lost: list[str] = []
+        session = ECUSession(adapter_config=self._adapter_config)
+        session.connection_lost.connect(lost.append, Qt.DirectConnection)
+        try:
+            session.connect_ecu()
+        except Exception:
+            self._close(session)
+            raise
+        if not session.is_connected:
+            self._close(session)
+            raise RuntimeError(
+                (lost[0] if lost else "Could not connect to the ECU")
+                + ". Check the ignition is on and the cable is plugged in."
+            )
+        return session
+
+    @staticmethod
+    def _close(session):
+        try:
+            session.cleanup()
+        except Exception:
+            logger.debug("Datalog session cleanup failed", exc_info=True)
+
+    def _reconnect(self, reason: str):
+        """Retry every RECONNECT_DELAY_S until connected; None once stopped."""
+        attempt = 0
+        while not self._stopping():
+            attempt += 1
+            self.status.emit(f"Connection lost ({reason}). Reconnecting...")
+            if self._stop.wait(RECONNECT_DELAY_S) or self._stopping():
+                return None
+            try:
+                session = self._connect()
+            except Exception as exc:  # still gone: try again
+                reason = str(exc) or type(exc).__name__
+                logger.info("Datalog reconnect attempt %d failed: %s", attempt, reason)
+                continue
+            logger.info("Datalog reconnected after %d attempt(s)", attempt)
+            return session
+        return None
+
     def run(self):
         from src.ecu.datalog_poller import DatalogPoller, format_row
-        from src.ecu.session import ECUSession
 
         session = None
         capture = LiveCsvCapture(self._live_dir, label="Datalog")
         failure: Optional[str] = None
         try:
             self.status.emit("Connecting to the ECU...")
-            lost: list[str] = []
-            session = ECUSession(adapter_config=self._adapter_config)
-            session.connection_lost.connect(lost.append, Qt.DirectConnection)
-            session.connect_ecu()
-            if not session.is_connected:
-                raise RuntimeError(
-                    (lost[0] if lost else "Could not connect to the ECU")
-                    + ". Check the ignition is on and the cable is plugged in."
-                )
+            # A first connect that fails stops the run (ignition off, wrong
+            # cable): the user gets the reason at once, not endless retries.
+            session = self._connect()
             poller = DatalogPoller(session.uds, self._channels)
             path = capture.open(poller.header)
             self.capture_opened.emit(path)
             reported: set[str] = set()
             throttle = StatusThrottle(every_rows=10**9, every_s=1.0)
+            values_throttle = StatusThrottle(every_rows=10**9, every_s=EMIT_EVERY_S)
+            names = [c.name for c in poller.channels]
             t0 = time.monotonic()
             window_t, window_rows, rate = t0, 0, 0.0
             rows = 0
+            reconnects = 0
             while not self._stopping():
-                result = poller.sweep()
+                try:
+                    result = poller.sweep()
+                except _not_a_connection_loss():
+                    raise  # every channel refused, or a bug: stop, don't loop
+                except Exception as exc:
+                    # Lost the adapter or the ECU mid-run (USB hiccup, ECU
+                    # silent): reconnect and keep growing the same capture.
+                    reason = str(exc) or type(exc).__name__
+                    logger.warning("Datalog connection lost: %s; reconnecting", reason)
+                    self._close(session)
+                    session = self._reconnect(reason)
+                    if session is None:
+                        break  # stopped while reconnecting
+                    reconnects += 1
+                    dropped = dict(poller.unsupported)
+                    poller = DatalogPoller(session.uds, self._channels)
+                    poller.unsupported.update(dropped)  # same columns, same drops
+                    window_t, window_rows = time.monotonic(), 0
+                    self.status.emit("Reconnected, logging again")
+                    continue
                 now = time.monotonic()
                 if capture.write_row(format_row(now - t0, result.values)):
                     self.capture_ready.emit(path)
                 rows += 1
                 window_rows += 1
+                if values_throttle.due(rows):
+                    self.values.emit(
+                        {n: v for n, v in zip(names, result.values) if v is not None}
+                    )
                 for name, why in poller.unsupported.items():
                     if name not in reported:
                         reported.add(name)
@@ -132,7 +216,10 @@ class _HostPollWorker(QObject):
                     if now - window_t > 0:
                         rate = window_rows / (now - window_t)
                     window_t, window_rows = now, 0
-                    self.status.emit(f"Logging: {rate:.1f} rows/s, {rows} rows")
+                    text = f"Logging: {rate:.1f} rows/s, {rows} rows"
+                    if reconnects:
+                        text += f" (reconnected {reconnects}x)"
+                    self.status.emit(text)
             logger.info("Datalog stopped after %d rows", rows)
         except Exception as exc:  # nothing may raise out of a Qt worker slot
             failure = str(exc) or type(exc).__name__
@@ -140,10 +227,7 @@ class _HostPollWorker(QObject):
         finally:
             capture.close()
             if session is not None:
-                try:
-                    session.cleanup()
-                except Exception:
-                    logger.debug("Datalog session cleanup failed", exc_info=True)
+                self._close(session)
         if failure is not None and not self._stopping():
             self.error.emit(failure)
         else:
@@ -201,7 +285,11 @@ class Datalogger(QObject):
         super().__init__(parent)
         self._settings = settings
         self._blocker = blocker
-        self.wican = wican or WiCANLiveDatalog(settings, parent=self)
+        #: Latest logged values (both engines), for the live table cursor.
+        self.live_values = LiveValues(self)
+        self.wican = wican or WiCANLiveDatalog(
+            settings, parent=self, live_values=self.live_values
+        )
         self.wican.running_changed.connect(self._on_wican_running)
         self.wican.status_changed.connect(self.status_changed)
         self.wican.capture_changed.connect(self.capture_changed)
@@ -293,6 +381,7 @@ class Datalogger(QObject):
         worker.capture_opened.connect(self._on_capture_opened, Qt.QueuedConnection)
         worker.capture_ready.connect(self._on_capture_ready, Qt.QueuedConnection)
         worker.channel_dropped.connect(self._on_channel_dropped, Qt.QueuedConnection)
+        worker.values.connect(self._on_values, Qt.QueuedConnection)
         worker.error.connect(self._on_error, Qt.QueuedConnection)
         worker.finished.connect(self._on_finished, Qt.QueuedConnection)
         thread.started.connect(worker.run)
@@ -373,6 +462,10 @@ class Datalogger(QObject):
     def _on_channel_dropped(self, name: str, why: str):
         self.channel_dropped.emit(name, why)
 
+    def _on_values(self, values: dict):
+        if self._thread is not None:  # not a late one after the stop
+            self.live_values.update(values)
+
     def _on_error(self, message: str):
         self.status_changed.emit(f"Stopped: {message}")
 
@@ -388,6 +481,7 @@ class Datalogger(QObject):
         if thread is not None:
             thread.deleteLater()
         self._capture = ""
+        self.live_values.clear()
         self.capture_changed.emit(self.wican.current_capture)
         self.running_changed.emit(self.is_running)
 
