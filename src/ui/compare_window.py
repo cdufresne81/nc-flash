@@ -43,6 +43,7 @@ from PySide6.QtGui import (
 
 from ..core.rom_definition import Table, TableType, AxisType, RomDefinition
 from ..core.rom_reader import RomReader
+from ..core.transfer_guard import keeps_destination
 from ..utils.colormap import value_to_color
 from .theme import get_toolbar_stylesheet
 from ..utils.formatting import (
@@ -73,6 +74,28 @@ class _CompareCellDelegate(QStyledItemDelegate):
             rect = option.rect.adjusted(1, 1, -1, -1)
             painter.drawRect(rect)
             painter.restore()
+
+
+def _erased_source_text(name: str, src_name: str, dst_name: str) -> str:
+    """Why a single feature-table copy was refused."""
+    return (
+        f'"{name}" was not copied: {src_name} has no settings for this '
+        f"feature (its bytes are erased, 0xFF). Copying it would replace the "
+        f"feature settings in {dst_name} with invalid values."
+    )
+
+
+def _kept_tables_text(kept: list, src_name: str) -> str:
+    """Copy All note listing feature tables left as they are, or ""."""
+    if not kept:
+        return ""
+    shown = "\n".join(f"  \u2022 {n}" for n in kept[:10])
+    more = f"\n  \u2026 and {len(kept) - 10} more" if len(kept) > 10 else ""
+    return (
+        f"{len(kept)} feature table{'s' if len(kept) != 1 else ''} will be kept "
+        f"as they are: {src_name} has no settings for them (erased, 0xFF).\n"
+        f"{shown}{more}"
+    )
 
 
 class CompareWindow(QMainWindow):
@@ -1024,6 +1047,17 @@ class CompareWindow(QMainWindow):
 
         name = entry["name"]
 
+        if self._keeps_destination(entry, direction):
+            QMessageBox.information(
+                self,
+                "Copy Refused",
+                _erased_source_text(name, src_name, dst_name),
+            )
+            self.statusBar().showMessage(
+                f'Kept "{name}" in {dst_name}: {src_name} has no settings for it'
+            )
+            return
+
         try:
             # Route through MainWindow for full undo/tracking pipeline
             main_window = self.parent()
@@ -1071,6 +1105,21 @@ class CompareWindow(QMainWindow):
             eligible.append((i, entry))
         return eligible
 
+    def _keeps_destination(self, entry: dict, direction: str) -> bool:
+        """True if copying this entry would write an erased (all-0xFF) source
+        over feature settings in the destination (see core.transfer_guard)."""
+        if direction == "a_to_b":
+            src = (entry["table_a"], self._definition_a, self._reader_a)
+            dst = (entry["table_b"], self._definition_b, self._reader_b)
+        else:
+            src = (entry["table_b"], self._definition_b, self._reader_b)
+            dst = (entry["table_a"], self._definition_a, self._reader_a)
+        if src[0] is None or dst[0] is None:
+            return False
+        return keeps_destination(
+            src[0], src[1], src[2].rom_data, dst[0], dst[1], dst[2].rom_data
+        )
+
     def _update_copy_all_buttons(self):
         """Enable/disable Copy All buttons based on eligible entry count."""
         if self._copy_all_a_to_b_btn is None:
@@ -1096,14 +1145,31 @@ class CompareWindow(QMainWindow):
         else:
             src_name, dst_name = self._name_b, self._name_a
 
+        # Never write an erased (all-0xFF) source over feature settings
+        kept = [
+            e["name"] for _i, e in eligible if self._keeps_destination(e, direction)
+        ]
+        eligible = [
+            (i, e) for i, e in eligible if not self._keeps_destination(e, direction)
+        ]
+        kept_note = _kept_tables_text(kept, src_name)
+        if not eligible:
+            QMessageBox.information(self, "Copy All Tables", kept_note)
+            return
+
         count = len(eligible)
-        reply = QMessageBox.question(
-            self,
-            "Copy All Tables",
+        question = (
             f"Copy {count} table{'s' if count != 1 else ''} "
             f"from {src_name} to {dst_name}?\n\n"
             f"This will overwrite the destination values for all "
-            f"eligible differing tables.",
+            f"eligible differing tables."
+        )
+        if kept_note:
+            question += f"\n\n{kept_note}"
+        reply = QMessageBox.question(
+            self,
+            "Copy All Tables",
+            question,
             QMessageBox.Yes | QMessageBox.No,
             QMessageBox.No,
         )
@@ -1193,8 +1259,9 @@ class CompareWindow(QMainWindow):
                 f"from {src_name} to {dst_name}"
             )
         else:
+            kept_msg = f"; kept {len(kept)} feature table(s)" if kept else ""
             self.statusBar().showMessage(
-                f"Copied {copied} tables from {src_name} to {dst_name}"
+                f"Copied {copied} tables from {src_name} to {dst_name}{kept_msg}"
             )
 
     @staticmethod
