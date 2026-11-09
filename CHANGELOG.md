@@ -20,6 +20,7 @@ All notable changes to NC Flash are documented here.
 - **Behind the scenes:** every build now checks that Patch ROM's output is byte-for-byte identical to RomDrop's, using a ROM patched by RomDrop itself. No change to the app itself.
 - **Tables redraw about a quarter faster.** This matters most while the live position moves on several open tables, which now leaves more time for the rest of the app. Tables look the same.
 - **The Live Datalog controls moved from the Trip Logs window to the new Datalogger window** (Tools > Datalogger), which works with every adapter. Trip Logs keeps the trip-log download and has a button to open the Datalogger.
+- **Behind the scenes:** corrections to the TCM (transmission) definitions, which are still in development.
 
 ### Fixed
 - **Compare no longer wipes feature settings when you move a tune onto an NC Flash feature release image.** An older ROM has no AutoBlip, overboost cut, shift light, cold rev limiter or speedometer correction, so its settings for them are blank (erased). Copy and Copy All used to copy those blank bytes over the release image's real settings, leaving every Enable byte invalid and every rpm or pressure setting unreadable. Copy now refuses that table, and Copy All leaves those tables as they are and lists them. Tables that hold real values on both sides copy as before.
