@@ -18,8 +18,7 @@ What is on `dev` awaiting `master`: run `python tools/dev_status.py` (asks GitHu
    including them).
 2. #124 tool to port a new table across all NC calibrations.
 3. #122 give duplicate-named tables real names.
-4. #123 check the TCM odd-address cells / overlaps against the TCM code.
-5. #149 Windows CI reports exit 1 after every test has passed.
+4. #149 Windows CI reports exit 1 after every test has passed.
 
 ## Open items (not tracked in an issue)
 
@@ -111,6 +110,11 @@ What is on `dev` awaiting `master`: run `python tools/dev_status.py` (asks GitHu
   read or RAM scan, Flash waits ~6.5 s then reads RPM and voltage (no false refusal);
   pulling the cable mid-session → "ECU not answering" and buttons fail fast. Delete this
   item once done (or open an issue if anything misbehaves).
+- **TCM definitions (after #123):** the older copy in nc-flash-re (`xml/lfg1tf000.xml`, 610 tables) still has
+  the same mistakes (8-bit records declared 16-bit, false tables); the fix was made here because this copy is
+  the newer one (674 tables before, 625 after). The 49 removed entries are real calibration values: bring
+  them back as scalars once their meaning is derived (`docs/internal/tcm_table_evidence.csv`). Table names
+  ending in `_u16` now hold 8-bit data; renaming them is undecided.
 - **ROM definitions (after PR #120, speeps import):**
   - Decided: nc-flash-re is the working copy where definitions are edited; NC Flash holds the
     released copy (copied in, never hand-edited). Check any change with

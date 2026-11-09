@@ -34,6 +34,7 @@ Reference these before modifying related functionality:
 - `docs/internal/LOGGING.md` - Logging configuration and exception hierarchy
 - `docs/internal/RELEASE_CHANNELS.md` - Stable (`master`, `vX.Y.Z`) vs experimental (`dev`, `vX.Y.Z-beta.N`) branches, tags and updater channels; reference before tagging a release, choosing a PR's base branch, or touching the updater's version logic
 - `docs/internal/ROM_DEFINITION_FORMAT.md` - XML format for ROM definitions
+- `docs/internal/TCM_TABLE_LAYOUTS.md` - The three record layouts the TCM uses for its lookup tables, the routines that read them, and why a count byte alone doesn't prove a table (per-table evidence in `tcm_table_evidence.csv`); reference before adding or changing a table in the TCM definitions
 - `docs/internal/ROM_COMPARISON_TOOL.md` - Spec for the side-by-side ROM comparison tool; reference before touching compare/diff code
 - `docs/internal/WINDOWS_SETUP.md` - Windows dev environment setup
 - `docs/internal/UI_TESTING.md` - GUI test runner, screenshots, and test scripts
