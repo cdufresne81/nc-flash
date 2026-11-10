@@ -24,6 +24,11 @@ with the ignition instead.
 A wrong table can't hurt the ECU (the firmware only reads), but it changes
 what the WiCAN logs on its own, so the file read before a change is saved
 locally first and can be put back with :meth:`WiCANAutoPid.restore`.
+
+:class:`WiCANSessionList` is the other way to choose what the WiCAN polls: a
+TEMPORARY list for one Datalogger run, held in the WiCAN's memory only. The
+file above is never touched, and the WiCAN returns to it when the run ends or
+NC Flash goes away (see ``docs/internal/WICAN_SESSION_CHANNELS.md``).
 """
 
 from __future__ import annotations
@@ -51,11 +56,45 @@ APPLIED_LIVE = "live"
 APPLIED_DEFERRED = "deferred"
 APPLIED_REBOOT = "reboot"
 
+#: How long the WiCAN keeps a temporary list without hearing from NC Flash.
+SESSION_TTL_S = 30
+#: ...so the lease is renewed this often, also while waiting for the list
+#: to be applied.
+SESSION_RENEW_S = 10.0
+SESSION_RENEW_TIMEOUT_S = 5.0
+#: The firmware refuses a temporary list over 64 KB.
+MAX_SESSION_BYTES = 64 * 1024
+#: A WiCAN that can't close its open trip gives up rolling after 15-20 s.
+SESSION_APPLY_TIMEOUT_S = 25.0
+
 _IDENT = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
 
 
 class WiCANAutoPidError(ECUError):
     """The WiCAN's channel table could not be read, changed or verified."""
+
+
+class WiCANSessionUnsupported(WiCANAutoPidError):
+    """This WiCAN's firmware has no temporary channel list."""
+
+
+class WiCANSessionBusy(WiCANAutoPidError):
+    """The WiCAN can't take a list now: an ECU session (read, flash, connect)
+    owns its CAN bus, or it is going to sleep."""
+
+
+class WiCANSessionStale(WiCANAutoPidError):
+    """The WiCAN no longer has our temporary list (lease expired, or reboot)."""
+
+
+def session_document(rows: list[dict]) -> dict:
+    """The document a temporary list is sent as: *rows* and nothing else."""
+    return {
+        "format": REQUIRED_FORMAT,
+        "pids": list(rows),
+        "can_filters": [],
+        "calculated": [],
+    }
 
 
 def replace_pids(original: dict, rows: list[dict]) -> dict:
@@ -274,3 +313,263 @@ def save_backup(backup_dir, host: str, raw: str) -> Path:
         n += 1
     path.write_text(raw, encoding="utf-8")
     return path
+
+
+class WiCANSessionList:
+    """HTTP client for the WiCAN's temporary channel list (one device).
+
+    Failures by kind: :class:`WiCANSessionUnsupported` (old firmware),
+    :class:`WiCANSessionBusy`, :class:`WiCANSessionStale`, another
+    :class:`WiCANAutoPidError` (the WiCAN refused, with its reason), and
+    :class:`~src.ecu.wican_http.WiCANHttpError` for a network failure.
+    """
+
+    def __init__(
+        self,
+        host: str,
+        *,
+        http_port: int = DEFAULT_HTTP_PORT,
+        timeout_s: float = wican_http.DEFAULT_TIMEOUT_S,
+        sleep: Callable[[float], None] = time.sleep,
+        clock: Callable[[], float] = time.monotonic,
+    ):
+        self.host = host
+        self.http_port = http_port
+        self._timeout_s = timeout_s
+        self._sleep = sleep
+        self._clock = clock
+
+    def _url(self, path: str) -> str:
+        return f"http://{self.host}:{self.http_port}{path}"
+
+    def supported(self) -> bool:
+        """Whether the firmware has the temporary list (``/host_caps``).
+
+        False for firmware without ``/host_caps`` (404) or without the
+        ``session_list`` capability; a network failure raises.
+        """
+        try:
+            caps = wican_http.get_json(
+                self._url("/host_caps"), timeout_s=self._timeout_s
+            )
+        except wican_http.WiCANHttpError as exc:
+            if exc.status == 404:
+                return False
+            raise
+        return isinstance(caps, dict) and bool(caps.get("session_list"))
+
+    def _post(
+        self,
+        query: str,
+        body: dict,
+        timeout_s: Optional[float],
+        *,
+        stale_on_409: bool = False,
+    ) -> dict:
+        """POST one session op. *stale_on_409*: for an op on a token, a 409
+        that is not a readable ``busy`` means the token is no longer good."""
+        try:
+            reply = wican_http.post_json(
+                self._url(f"/datalog_session?{query}"),
+                body,
+                timeout_s=self._timeout_s if timeout_s is None else timeout_s,
+            )
+        except wican_http.WiCANHttpError as exc:
+            if exc.status == 404:
+                raise WiCANSessionUnsupported(
+                    "This WiCAN's firmware has no per-run channel list."
+                ) from exc
+            if exc.status in (400, 409, 500):
+                # Refused, with a reason (500: the WiCAN ran out of memory and
+                # changed nothing). Only a 404 means old firmware.
+                refusal = _refusal(exc.body)
+                if (
+                    exc.status == 409
+                    and stale_on_409
+                    and not isinstance(refusal, WiCANSessionBusy)
+                ):
+                    refusal = WiCANSessionStale(str(refusal))
+                raise refusal from exc
+            raise
+        if not isinstance(reply, dict) or reply.get("ok") is False:
+            raise _refusal(reply)
+        return reply
+
+    def begin(
+        self,
+        rows: list[dict],
+        *,
+        ttl_s: int = SESSION_TTL_S,
+        timeout_s: Optional[float] = None,
+    ) -> int:
+        """Give the WiCAN *rows* as its temporary list; return the token.
+
+        A begin while a list is in use replaces it (new token).
+        """
+        document = session_document(rows)
+        if len(json.dumps(document).encode("utf-8")) > MAX_SESSION_BYTES:
+            raise WiCANAutoPidError(
+                "The channel list is too large for the WiCAN. Remove some channels."
+            )
+        reply = self._post(f"op=begin&ttl_s={int(ttl_s)}", document, timeout_s)
+        try:
+            token = int(reply.get("token") or 0)
+        except (TypeError, ValueError):
+            token = 0
+        if not token:
+            raise WiCANAutoPidError("The WiCAN did not accept the channel list.")
+        return token
+
+    def keepalive(self, token: int, *, timeout_s: Optional[float] = None) -> int:
+        """Renew the lease; return the milliseconds left on it."""
+        reply = self._post(
+            f"op=keepalive&token={int(token)}", {}, timeout_s, stale_on_409=True
+        )
+        return _int(reply.get("remaining_ms"))
+
+    def end(self, token: int, *, timeout_s: Optional[float] = None) -> bool:
+        """End the temporary list; False if the WiCAN had already dropped it."""
+        try:
+            self._post(f"op=end&token={int(token)}", {}, timeout_s, stale_on_409=True)
+        except WiCANSessionStale:
+            return False
+        return True
+
+    def poll_status(self) -> dict:
+        status = wican_http.get_json(
+            self._url("/poll_status"), timeout_s=self._timeout_s
+        )
+        return status if isinstance(status, dict) else {}
+
+    def wait_applied(
+        self,
+        token: Optional[int] = None,
+        timeout_s: float = SESSION_APPLY_TIMEOUT_S,
+        *,
+        should_stop: Optional[Callable[[], bool]] = None,
+        renew_every_s: float = SESSION_RENEW_S,
+    ) -> dict:
+        """Poll ``/poll_status`` until the WiCAN polls the list *token* names.
+
+        Applied = ``session_token`` equals *token* and no reload is pending.
+        ``session_list`` alone is not enough (it is also true for an earlier
+        session's table); it is the fallback only when the status has no
+        ``session_token``. ``reload_ok`` and ``pids_unpollable`` are stale
+        while a reload is pending, so they are read only after it.
+
+        The WiCAN keeps ``reload_pending`` true from the begin until it has
+        parsed that list, so "nothing pending, and the table is not ours" is
+        final: it could not load the list (:class:`WiCANAutoPidError`), or it
+        dropped it (:class:`WiCANSessionStale`). Only a pending reload is
+        waited for, up to *timeout_s* (the WiCAN could not close the trip it
+        is recording). It also raises when some channels can't be polled.
+
+        While waiting, the lease of *token* is renewed every *renew_every_s*,
+        and a ``/poll_status`` call that fails is tried again. Returns the
+        last status early when *should_stop* turns true.
+        """
+        deadline = self._clock() + timeout_s
+        next_renewal = self._clock() + renew_every_s
+        status: dict = {}
+        while True:
+            failure = None
+            try:
+                status = self.poll_status()
+            except wican_http.WiCANHttpError as exc:
+                failure = exc  # a blip while it closes its trip: ask again
+                logger.debug("WiCAN /poll_status failed while waiting: %s", exc)
+            if failure is None and not status.get("reload_pending"):
+                if _loaded(status, token):
+                    if status.get("reload_ok") is False:
+                        raise WiCANAutoPidError(_NOT_LOADED)
+                    unpollable = _int(status.get("pids_unpollable"))
+                    if unpollable:
+                        raise WiCANAutoPidError(
+                            f"The WiCAN can't poll {unpollable} of the channels "
+                            "(check their mode and identifier)."
+                        )
+                    return status
+                if token is not None and "session_token" in status:
+                    if status.get("reload_ok") is False:
+                        raise WiCANAutoPidError(_NOT_LOADED)
+                    raise WiCANSessionStale(
+                        "The WiCAN dropped the channel list (it went to sleep, "
+                        "or another NC Flash took over)."
+                    )
+            if should_stop is not None and should_stop():
+                return status
+            if self._clock() >= deadline:
+                if failure is not None:
+                    raise failure
+                if (
+                    not status.get("reload_pending")
+                    and status.get("reload_ok") is False
+                ):
+                    raise WiCANAutoPidError(_NOT_LOADED)
+                raise WiCANAutoPidError(
+                    "The WiCAN could not switch channels right now (it is still "
+                    "recording a trip). Try again in a moment."
+                )
+            if token is not None and self._clock() >= next_renewal:
+                next_renewal = self._clock() + renew_every_s
+                try:
+                    self.keepalive(token, timeout_s=SESSION_RENEW_TIMEOUT_S)
+                except WiCANSessionStale:
+                    raise
+                except (WiCANAutoPidError, wican_http.WiCANHttpError) as exc:
+                    logger.debug("WiCAN lease not renewed while waiting: %s", exc)
+            self._sleep(0.5)
+
+
+_NOT_LOADED = "The WiCAN could not load the channel list."
+
+
+def _int(value) -> int:
+    """*value* as an int; 0 for anything that is not a number."""
+    try:
+        return int(value or 0)
+    except (TypeError, ValueError):
+        return 0
+
+
+def _loaded(status: dict, token: Optional[int]) -> bool:
+    """Whether the poller's table is the temporary list *token* names."""
+    if token is not None and "session_token" in status:
+        return _int(status.get("session_token")) == int(token)
+    return bool(status.get("session_list"))
+
+
+def _refusal(reply) -> WiCANAutoPidError:
+    """The exception for a ``{"ok":false,"error":...}`` reply (dict or text)."""
+    if isinstance(reply, str):
+        try:
+            reply = json.loads(reply)
+        except json.JSONDecodeError:
+            reply = {"msg": reply.strip()[:200]}
+    if not isinstance(reply, dict):
+        reply = {}
+    error = str(reply.get("error") or "")
+    detail = str(reply.get("msg") or "")
+    if error == "busy":
+        return WiCANSessionBusy(
+            detail or "The WiCAN's link to the ECU is in use by another session."
+        )
+    if error == "stale":
+        return WiCANSessionStale(detail or "The WiCAN dropped the channel list.")
+    if error == "internal":
+        return WiCANAutoPidError(
+            "The WiCAN could not take the channel list"
+            + (f": {detail}" if detail else " (internal error).")
+        )
+    if error == "inactive":
+        # Its own saved list has no polled channel, so its datalogger is off;
+        # the WiCAN's message says what to do on its Logger page.
+        return WiCANAutoPidError(
+            detail
+            or "The WiCAN's datalogger is not running: add one channel on the "
+            "WiCAN's Logger page, then start again."
+        )
+    return WiCANAutoPidError(
+        "The WiCAN refused the channel list"
+        + (f": {detail}" if detail else f" ({error or 'no reason given'}).")
+    )

@@ -22,6 +22,9 @@ leases and a heartbeat. The current version keeps every stream buffer in PSRAM, 
   the host treats 15 s of silence as a dead link (plus TCP keepalive as a backstop).
 - **Tail only.** The stream never starts, stops or rotates a trip, and touches no park/claim/lease
   state. A stream client is not "host present" for the dead-man reaper.
+  The Datalogger's Start Logging does change what the WiCAN logs for the run (and rolls the open
+  trip), but through a separate HTTP session, not through the stream: see
+  `WICAN_SESSION_CHANNELS.md`.
 - **Live only.** No backfill. Rows the client misses (not connected, Wi-Fi too slow, reconnect gap)
   are still in the SD trip file, which stays the complete record.
 
@@ -63,8 +66,9 @@ Wire protocol `NCDLv1` (every line ends in `\n`; ignore unknown `#` lines):
   so the auto-open (setting `ecu/live_datalog_auto_trail`, on by default) fires when
   a capture reaches 50 rows, once per capture file, so a new file (device restart, new
   channels) opens a new MegaLogViewerHD on it; continuing rows never relaunch it.
-- Trip Logs window — Live Datalog box: Start/Stop, status, "Open in MegaLogViewerHD", auto-open
-  checkbox.
+- Datalogger window (Tools > Datalogger): Start/Stop, status, "Open in MegaLogViewerHD", auto-open
+  checkbox. `Datalogger` starts the follower once the WiCAN has taken the run's channels
+  (`WICAN_SESSION_CHANNELS.md`), or straight away on firmware without that.
 
 ## Interlocks
 

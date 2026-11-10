@@ -2,8 +2,8 @@
 
 A thin surface over the main-window-owned :class:`~src.ui.datalogger.Datalogger`
 (closing the window stops nothing). The channel list it edits is saved in
-settings at every change; the owner reads it when a run starts or when the
-list is sent to the WiCAN.
+settings at every change; the owner reads it when a run starts (every adapter,
+the WiCAN included) or when it is saved as the WiCAN's own list.
 """
 
 from __future__ import annotations
@@ -61,10 +61,14 @@ _ADAPTER_TEXT = {
     "j2534": "Tactrix OpenPort (J2534): NC Flash polls the ECU through the cable.",
     "obdx": "OBDX Pro: NC Flash polls the ECU through the adapter.",
     "wican": (
-        "WiCAN: the WiCAN polls the ECU itself and NC Flash follows the trip it "
-        "records. Send the channels to the WiCAN to change what it logs."
+        "WiCAN: Start Logging sends these channels to the WiCAN for this run "
+        "only, and NC Flash follows what it logs. The WiCAN's own saved list is "
+        "not changed."
     ),
 }
+
+
+_PUSH_TITLE = "Save as WiCAN's Own List"
 
 
 def _ident_text(ch: Channel) -> str:
@@ -283,16 +287,18 @@ class DataloggerWindow(QMainWindow):
         )
         self._btn_folder.clicked.connect(self._on_open_folder)
         run_row.addWidget(self._btn_folder)
-        self._btn_push = QPushButton("Send Channels to WiCAN")
+        self._btn_push = QPushButton(_PUSH_TITLE + "...")
         self._btn_push.setToolTip(
-            "Replace the channel list the WiCAN polls and records with this one. "
-            "The WiCAN's previous list is saved first and can be put back."
+            "Optional, and not needed for Start Logging. Changes what the WiCAN "
+            "logs on its own, without NC Flash: its saved channel list is "
+            "replaced with this one. The previous list is saved first and can "
+            "be put back."
         )
         self._btn_push.clicked.connect(self._on_push)
         run_row.addWidget(self._btn_push)
-        self._btn_restore = QPushButton("Restore WiCAN's Previous Channels")
+        self._btn_restore = QPushButton("Restore WiCAN's Previous List")
         self._btn_restore.setToolTip(
-            "Put back the channel list the WiCAN had before the last send"
+            "Put back the saved channel list the WiCAN had before the last change"
         )
         self._btn_restore.clicked.connect(self._on_restore)
         run_row.addWidget(self._btn_restore)
@@ -469,7 +475,7 @@ class DataloggerWindow(QMainWindow):
 
     def _on_push(self):
         if not any(c.enabled for c in self._channels):
-            self._status.setText("Select at least one channel to send.")
+            self._status.setText("Select at least one channel to save.")
             return
         # Read the WiCAN's list first and show what would change.
         if self._datalogger.preview_wican_push():
@@ -498,15 +504,15 @@ class DataloggerWindow(QMainWindow):
         lines.append("Its current list is saved first, and Restore puts it back.")
         answer = QMessageBox.question(
             self,
-            "Send Channels to WiCAN",
+            _PUSH_TITLE,
             "\n\n".join(lines),
             QMessageBox.Yes | QMessageBox.Cancel,
             QMessageBox.Cancel if not preview.get("rpm") else QMessageBox.Yes,
         )
         if answer == QMessageBox.Yes and self._datalogger.push_to_wican():
-            self._status.setText("Sending the channels to the WiCAN...")
+            self._status.setText("Saving the list on the WiCAN...")
         elif answer != QMessageBox.Yes:
-            self._status.setText("Nothing was sent.")
+            self._status.setText("Nothing was changed.")
 
     def _on_restore(self):
         backup = self._datalogger.last_backup
@@ -523,9 +529,9 @@ class DataloggerWindow(QMainWindow):
             return
         answer = QMessageBox.warning(
             self,
-            "Send Channels to WiCAN",
+            _PUSH_TITLE,
             f"{message}\n\nThe WiCAN may already have the new list. "
-            "Put back the list it had before this send?",
+            "Put back the list it had before this change?",
             QMessageBox.Yes | QMessageBox.No,
             QMessageBox.No,
         )
@@ -552,9 +558,11 @@ class DataloggerWindow(QMainWindow):
         self._btn_trail.setEnabled(bool(dl.current_capture))
         is_wican = adapter == "wican"
         self._btn_push.setVisible(is_wican)
-        self._btn_push.setEnabled(is_wican and not pushing)
+        # The saved list is not what a run uses, and the WiCAN would not
+        # switch to it mid-run anyway.
+        self._btn_push.setEnabled(is_wican and not pushing and not running)
         self._btn_restore.setVisible(is_wican and bool(dl.last_backup))
-        self._btn_restore.setEnabled(not pushing)
+        self._btn_restore.setEnabled(not pushing and not running)
         editable = not running and not pushing
         self._table.setEnabled(editable)
         self._btn_add.setEnabled(editable)
