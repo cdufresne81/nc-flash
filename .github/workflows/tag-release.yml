@@ -1,0 +1,83 @@
+name: Tag Release
+
+# Creates a release tag and starts the Release workflow on it, so a release
+# can be cut from the Actions tab (or by a tool that can start a workflow but
+# not push a tag). Pushing the tag by hand still works exactly as before.
+#
+# The version picks the branch: vX.Y.Z-beta.N tags the head of dev,
+# vX.Y.Z tags the head of master. Run it from master ("Use workflow from").
+# See docs/internal/RELEASE_CHANNELS.md.
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to tag: v2.24.0-beta.16 (tags dev) or v2.24.0 (tags master)'
+        required: true
+        type: string
+      commit:
+        description: 'Optional: full commit SHA the branch head must match (refuses if the branch moved)'
+        required: false
+        type: string
+      summary:
+        description: 'Optional: one-line summary for the tag message'
+        required: false
+        type: string
+
+permissions:
+  contents: write   # push the tag
+  actions: write    # read the commit's CI result, start the Release workflow
+
+# One tag at a time, so two runs can't race on the same version.
+concurrency:
+  group: tag-release
+  cancel-in-progress: false
+
+jobs:
+  tag:
+    name: Tag and start the release
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v5
+      with:
+        fetch-depth: 0
+
+    - name: Check the request
+      id: check
+      shell: bash
+      env:
+        VERSION: ${{ inputs.version }}
+        COMMIT: ${{ inputs.commit }}
+        GH_TOKEN: ${{ github.token }}
+      # Refuses a malformed or existing version, a moved branch, a stable
+      # version with no CHANGELOG section, and a commit CI has not passed.
+      run: python3 tools/release_tag_check.py
+
+    - name: Create and push the tag
+      shell: bash
+      env:
+        VERSION: ${{ inputs.version }}
+        SUMMARY: ${{ inputs.summary }}
+        TARGET_SHA: ${{ steps.check.outputs.sha }}
+      run: |
+        git config user.name "github-actions[bot]"
+        git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+        MESSAGE="$VERSION"
+        if [ -n "$SUMMARY" ]; then
+          MESSAGE="$VERSION: $SUMMARY"
+        fi
+        git tag -a "$VERSION" "$TARGET_SHA" -m "$MESSAGE"
+        git push origin "refs/tags/$VERSION"
+        echo "Tagged $TARGET_SHA as $VERSION"
+
+    - name: Start the Release workflow on the tag
+      # A tag pushed with the workflow's own token does not start other
+      # workflows, so the release build is started explicitly on the tag.
+      shell: bash
+      env:
+        VERSION: ${{ inputs.version }}
+        GH_TOKEN: ${{ github.token }}
+      run: |
+        gh workflow run release.yml --repo "$GITHUB_REPOSITORY" --ref "$VERSION"
+        echo "Release build started for $VERSION: https://github.com/$GITHUB_REPOSITORY/actions/workflows/release.yml" >> "$GITHUB_STEP_SUMMARY"

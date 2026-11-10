@@ -23,6 +23,7 @@ from enum import Enum
 from typing import Callable, Optional
 
 from .constants import (
+    BOOT_LOADER_SEED,
     BOOT_SIGNATURE_LEN,
     CAL_ID_OFFSETS,
     GEN_DETECT_OFFSET,
@@ -321,6 +322,13 @@ def security_unlock(uds) -> None:
     if not any(seed):
         logger.info("ECU is already unlocked (zero seed); no key sent")
         return
+    if seed == BOOT_LOADER_SEED:
+        # Log only: the same key algorithm covers this seed, so the flash
+        # proceeds exactly as usual (bench-proven recovery, 2026-11-09).
+        logger.info(
+            "ECU is in boot-loader recovery mode (fixed seed); a full flash "
+            "restores it"
+        )
     key = compute_security_key(seed)
     logger.info("Security key computed: [%s] from seed [%s]", key.hex(), seed.hex())
     uds.security_access_send_key(key)
