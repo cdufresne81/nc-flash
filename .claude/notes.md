@@ -59,15 +59,17 @@ What is on `dev` awaiting `master`: run `python tools/dev_status.py` (asks GitHu
   - Next: merge #211 + cut a beta when the user says so; then the board cards (WiCAN push
     bench test once the WiCAN is online: snapshot `/load_auto_pid` + `/csv_status` first,
     restore after; in-car Tactrix drive with the engine running; OBDX untested).
-  - No "Apply Now" for a list sent mid-trip: released WiCAN firmware has no `op=auto`, and
-    `op=start` leaves its logger forced ON. Needs `op=auto` in the firmware to bring it back.
+  - Per-run WiCAN channels (Start Logging sends the list shown as a temporary list; design
+    `docs/internal/WICAN_SESSION_CHANNELS.md`): implemented in NC Flash and in the firmware,
+    NOT bench-tested (needs the matching firmware build). Checks: start with and without an
+    open trip; Stop restores the WiCAN's own list and recording mode, `auto_pid.json`
+    untouched; kill NC Flash mid-run (list expires in ~30 s); Wi-Fi gap > 30 s and a WiCAN
+    reboot mid-run (list sent again); busy while an ECU session owns the bus; a channel the
+    WiCAN can't poll; released firmware shows the fallback line.
   - Known LOW gaps (2nd review): a late NRC for an earlier same-service request can drop the
     current channel; a late positive reply can turn packing off; the device file isn't
     compared between preview and push; a Start landing inside the ECU window's connect event
     pump can pass the blocker (one opener then fails).
-  - No "Apply Now" for a list sent mid-trip: released firmware has no `op=auto`, and
-    `op=start` would leave the logger forced ON for good. Adding `op=auto` to the firmware
-    would allow it (then restore the exact prior `manual_mode`).
 
 - **WiCAN live datalog (fw #3, PR from `feature/live-datalog-v2`) follow-ups** (design:
   `docs/internal/WICAN_LIVE_STREAM.md`):

@@ -93,6 +93,85 @@ def fake_session(monkeypatch):
     return FakeSession
 
 
+class FakeWican(QObject):
+    """Stands in for the WiCAN stream follower (WiCANLiveDatalog)."""
+
+    running_changed = Signal(bool)
+    status_changed = Signal(str)
+    capture_changed = Signal(str)
+
+    def __init__(self):
+        super().__init__()
+        self.is_running = False
+        self.current_capture = ""
+        self.starts = 0
+        self.refuse_start = False
+
+    def start(self):
+        if self.refuse_start:
+            return False
+        self.starts += 1
+        self.is_running = True
+        self.running_changed.emit(True)
+        return True
+
+    def shutdown(self, timeout_ms=5000):
+        self.end("Stopped")
+
+    def end(self, status):
+        """The stream ended: a stop, or on its own with *status*."""
+        if self.is_running:
+            self.is_running = False
+            self.status_changed.emit(status)
+            self.running_changed.emit(False)
+
+
+class FakeSessionClient:
+    """Stands in for WiCANSessionList; scripted, records every call."""
+
+    def __init__(self, supported=True):
+        self._supported = supported
+        self.calls = []
+        self.tokens = 0
+        self.begin_error = None
+        self.apply_error = None
+        self.apply_fails = (1,)  # which waits raise apply_error
+        self.keepalive_errors = []  # raised by the next keepalives, in order
+        self.end_error = None
+
+    def count(self, name):
+        return sum(1 for c in self.calls if c[0] == name)
+
+    def supported(self):
+        self.calls.append(("supported",))
+        return self._supported
+
+    def begin(self, rows, **kw):
+        self.calls.append(("begin", rows))
+        if self.begin_error is not None:
+            raise self.begin_error
+        self.tokens += 1
+        return self.tokens
+
+    def wait_applied(self, timeout_s=None, should_stop=None):
+        self.calls.append(("wait",))
+        if self.apply_error is not None and self.count("wait") in self.apply_fails:
+            raise self.apply_error
+        return {"session_list": True}
+
+    def keepalive(self, token, **kw):
+        self.calls.append(("keepalive", token))
+        if self.keepalive_errors:
+            raise self.keepalive_errors.pop(0)
+        return 29000
+
+    def end(self, token, **kw):
+        self.calls.append(("end", token))
+        if self.end_error is not None:
+            raise self.end_error
+        return True
+
+
 def _two_channels():
     chans = builtin_channels()
     for c in chans:
@@ -173,15 +252,16 @@ def test_no_channel_selected(tmp_path, fake_session):
     assert dl.start() is False
 
 
-def test_wican_adapter_runs_the_wican_engine(tmp_path):
-    wican = MagicMock()
-    wican.is_running = False
-    wican.current_capture = ""
+def test_wican_adapter_runs_the_wican_engine(qtbot, tmp_path, monkeypatch):
+    wican = FakeWican()
     dl = Datalogger(_settings(tmp_path, adapter="wican"), wican=wican)
+    monkeypatch.setattr(dl, "_session_client", lambda: FakeSessionClient())
     assert dl.engine == "wican"
     assert dl.start() is True
-    wican.start.assert_called_once()
-    assert not dl.host_running
+    assert dl.is_running and not dl.host_running
+    qtbot.waitUntil(lambda: wican.starts == 1, timeout=5000)
+    dl.stop()
+    qtbot.waitUntil(lambda: not dl.is_running, timeout=5000)
 
 
 def test_wired_adapter_config():
@@ -486,3 +566,283 @@ def test_a_bug_while_polling_stops_instead_of_reconnecting(
     qtbot.waitUntil(lambda: not dl.is_running, timeout=5000)
     assert statuses[-1] == "Stopped: bug"
     assert len(fake_session.instances) == 1
+
+
+# --- WiCAN run: the channels shown, for this run only ----------------------------
+
+
+@pytest.fixture
+def fast_keepalive(monkeypatch):
+    monkeypatch.setattr(dl_mod, "SESSION_KEEPALIVE_S", 0.02)
+    monkeypatch.setattr(dl_mod, "SESSION_RETRY_S", 0.02)
+
+
+def _wican_run(tmp_path, monkeypatch, client, channels=None, **kw):
+    wican = FakeWican()
+    chans = _two_channels() if channels is None else channels
+    dl = Datalogger(
+        _settings(tmp_path, adapter="wican", channels=chans), wican=wican, **kw
+    )
+    monkeypatch.setattr(dl, "_session_client", lambda: client)
+    statuses, running = [], []
+    dl.status_changed.connect(statuses.append)
+    dl.running_changed.connect(running.append)
+    return dl, wican, statuses, running
+
+
+def test_wican_run_sends_the_channels_then_follows_and_ends_on_stop(
+    qtbot, tmp_path, monkeypatch, fast_keepalive, qt_thread_guard
+):
+    client = FakeSessionClient()
+    dl, wican, statuses, running = _wican_run(tmp_path, monkeypatch, client)
+    assert dl.start() is True
+    assert dl.is_running and wican.starts == 0  # running while it sends
+    assert dl.start() is False
+    qtbot.waitUntil(lambda: client.count("keepalive") >= 2, timeout=5000)
+    assert wican.starts == 1
+    assert [c[0] for c in client.calls[:3]] == ["supported", "begin", "wait"]
+    rows = client.calls[1][1]
+    assert len(rows) == len(builtin_channels())  # all of them, with their flag
+    assert {r["Name"] for r in rows if r["enabled"]} == {"RPM", "KNOCKR"}
+    assert statuses[0] == "Sending the channels to the WiCAN..."
+    t0 = time.monotonic()
+    dl.stop()
+    assert time.monotonic() - t0 < 2.0
+    qtbot.waitUntil(lambda: not dl.is_running, timeout=5000)
+    assert client.calls[-1] == ("end", 1)  # after the stream stopped
+    assert not wican.is_running
+    assert running == [True, False]
+    assert statuses[-1] == "Stopped"
+
+
+def test_old_firmware_follows_the_wicans_own_list(
+    qtbot, tmp_path, monkeypatch, qt_thread_guard
+):
+    client = FakeSessionClient(supported=False)
+    dl, wican, statuses, running = _wican_run(tmp_path, monkeypatch, client)
+    assert dl.start() is True
+    qtbot.waitUntil(lambda: wican.starts == 1, timeout=5000)
+    qtbot.waitUntil(lambda: dl._session_thread is None, timeout=5000)
+    assert dl.is_running  # the stream alone is the run
+    assert client.calls == [("supported",)]  # nothing was sent
+    said = [s for s in statuses if "its own channel list" in s]
+    assert len(said) == 1 and "Update its firmware" in said[0]
+    wican.status_changed.emit("Recording (10 rows)")
+    assert statuses[-1] == "Recording (10 rows) (the WiCAN's own channel list)"
+    dl.stop()
+    assert not dl.is_running and running == [True, False]
+    assert statuses[-1] == "Stopped"
+
+
+def test_firmware_that_drops_the_endpoint_also_falls_back(
+    qtbot, tmp_path, monkeypatch, qt_thread_guard
+):
+    from src.ecu.wican_autopid import WiCANSessionUnsupported
+
+    client = FakeSessionClient()
+    client.begin_error = WiCANSessionUnsupported("404")
+    dl, wican, statuses, _ = _wican_run(tmp_path, monkeypatch, client)
+    dl.start()
+    qtbot.waitUntil(lambda: wican.starts == 1, timeout=5000)
+    assert client.count("end") == 0
+    dl.stop()
+    qtbot.waitUntil(lambda: not dl.is_running, timeout=5000)
+
+
+def test_busy_wican_does_not_start(qtbot, tmp_path, monkeypatch, qt_thread_guard):
+    from src.ecu.wican_autopid import WiCANSessionBusy
+
+    client = FakeSessionClient()
+    client.begin_error = WiCANSessionBusy("host bus claim")
+    dl, wican, statuses, running = _wican_run(tmp_path, monkeypatch, client)
+    dl.start()
+    qtbot.waitUntil(lambda: not dl.is_running, timeout=5000)
+    assert wican.starts == 0 and client.count("end") == 0
+    assert statuses[-1].startswith("Could not start: the WiCAN's link to the ECU")
+    assert running == [True, False]
+
+
+def test_unreachable_wican_does_not_start(
+    qtbot, tmp_path, monkeypatch, qt_thread_guard
+):
+    dl, wican, statuses, _ = _wican_run(tmp_path, monkeypatch, FakeSessionClient())
+
+    def offline():
+        raise RuntimeError("timed out")
+
+    monkeypatch.setattr(dl, "_session_client", offline)
+    dl.start()
+    qtbot.waitUntil(lambda: not dl.is_running, timeout=5000)
+    assert wican.starts == 0 and statuses[-1] == "Could not start: timed out"
+
+
+def test_rejected_channels_end_the_session_and_the_run(
+    qtbot, tmp_path, monkeypatch, qt_thread_guard
+):
+    client = FakeSessionClient()
+    client.apply_error = RuntimeError("The WiCAN can't poll 1 of the channels")
+    dl, wican, statuses, _ = _wican_run(tmp_path, monkeypatch, client)
+    dl.start()
+    qtbot.waitUntil(lambda: not dl.is_running, timeout=5000)
+    assert wican.starts == 0
+    assert client.calls[-1] == ("end", 1)  # back to its own list at once
+    assert statuses[-1] == "Could not start: The WiCAN can't poll 1 of the channels"
+
+
+def test_dropped_lease_is_begun_again_and_network_errors_are_retried(
+    qtbot, tmp_path, monkeypatch, fast_keepalive, qt_thread_guard
+):
+    from src.ecu.wican_autopid import WiCANSessionStale
+    from src.ecu.wican_http import WiCANHttpError
+
+    client = FakeSessionClient()
+    client.keepalive_errors = [
+        WiCANHttpError("timed out"),
+        WiCANHttpError("timed out"),
+        WiCANSessionStale("stale"),
+    ]
+    # The switch after the second begin is not confirmed (flaky link): the
+    # run carries on and keeps renewing.
+    client.apply_error = RuntimeError("could not switch channels right now")
+    client.apply_fails = (2,)
+    dl, wican, statuses, _ = _wican_run(tmp_path, monkeypatch, client)
+    dl.start()
+    qtbot.waitUntil(lambda: ("keepalive", 2) in client.calls, timeout=5000)
+    assert client.count("begin") == 2 and client.count("wait") == 2
+    assert dl.is_running and wican.is_running
+    # Quiet: the stream reports the link, the renewals say nothing.
+    assert statuses == ["Sending the channels to the WiCAN..."]
+    dl.stop()
+    qtbot.waitUntil(lambda: not dl.is_running, timeout=5000)
+    assert client.calls[-1] == ("end", 2)  # the token of the second begin
+
+
+def test_stream_ending_on_its_own_ends_the_session(
+    qtbot, tmp_path, monkeypatch, fast_keepalive, qt_thread_guard
+):
+    client = FakeSessionClient()
+    dl, wican, statuses, running = _wican_run(tmp_path, monkeypatch, client)
+    dl.start()
+    qtbot.waitUntil(lambda: client.count("keepalive") >= 1, timeout=5000)
+    wican.end("Stopped: another app took over the live stream")
+    qtbot.waitUntil(lambda: not dl.is_running, timeout=5000)
+    assert client.calls[-1] == ("end", 1)
+    renewals = client.count("keepalive")
+    qtbot.wait(100)
+    assert client.count("keepalive") == renewals  # no orphan renewals
+    assert statuses[-1] == "Stopped: another app took over the live stream"
+    assert running == [True, False]
+
+
+def test_stream_that_cannot_start_ends_the_session(
+    qtbot, tmp_path, monkeypatch, fast_keepalive, qt_thread_guard
+):
+    client = FakeSessionClient()
+    dl, wican, statuses, _ = _wican_run(tmp_path, monkeypatch, client)
+    wican.refuse_start = True
+    dl.start()
+    qtbot.waitUntil(lambda: not dl.is_running, timeout=5000)
+    assert client.calls[-1] == ("end", 1)
+    assert statuses[-1].startswith("Could not start: the live stream")
+
+
+def test_stop_while_sending_never_starts_the_stream(
+    qtbot, tmp_path, monkeypatch, qt_thread_guard
+):
+    import threading
+
+    gate = threading.Event()
+    client = FakeSessionClient()
+    plain_begin = client.begin
+
+    entered = threading.Event()
+
+    def slow_begin(rows, **kw):
+        entered.set()
+        gate.wait(5)
+        return plain_begin(rows, **kw)
+
+    client.begin = slow_begin
+    dl, wican, statuses, _ = _wican_run(tmp_path, monkeypatch, client)
+    dl.start()
+    assert entered.wait(5)
+    dl.stop()
+    assert dl.is_running  # until the session is ended
+    assert dl.start() is False
+    gate.set()
+    qtbot.waitUntil(lambda: not dl.is_running, timeout=5000)
+    assert wican.starts == 0
+    assert client.calls[-1] == ("end", 1)  # the list it had just accepted
+    assert statuses[-1] == "Stopped"
+
+
+def test_wican_start_refused_until_the_previous_run_is_cleaned_up(
+    qtbot, tmp_path, monkeypatch, fast_keepalive, qt_thread_guard
+):
+    client = FakeSessionClient()
+    dl, wican, _, _ = _wican_run(tmp_path, monkeypatch, client)
+    dl.start()
+    qtbot.waitUntil(lambda: wican.starts == 1, timeout=5000)
+    dl.stop()
+    thread = dl._session_thread
+    assert thread is not None
+    thread.wait(5000)  # finished, but its queued cleanup has not run
+    assert dl.is_running and dl.start() is False
+    qtbot.waitUntil(lambda: not dl.is_running, timeout=5000)
+    assert dl.start() is True  # and the next run begins a new session
+    qtbot.waitUntil(lambda: client.count("begin") == 2, timeout=5000)
+    dl.shutdown(3000)
+    qtbot.waitUntil(lambda: not dl.is_running, timeout=5000)
+
+
+def test_wican_run_needs_a_channel_and_a_wican(tmp_path, monkeypatch):
+    chans = builtin_channels()
+    for c in chans:
+        c.enabled = False
+    client = FakeSessionClient()
+    dl, wican, statuses, _ = _wican_run(tmp_path, monkeypatch, client, channels=chans)
+    assert dl.start() is False and not dl.is_running
+    assert statuses == ["Select at least one channel."]
+    dl, wican, statuses, _ = _wican_run(tmp_path, monkeypatch, client)
+    dl._settings.get_wican_host.return_value = ""
+    assert dl.start() is False
+    assert statuses == ["Could not start: no WiCAN is set up (Settings > ECU)."]
+    dl, wican, statuses, _ = _wican_run(
+        tmp_path, monkeypatch, client, blocker=lambda: "ECU window is connected"
+    )
+    assert dl.start() is False and statuses == ["ECU window is connected"]
+    assert client.calls == []
+
+
+def test_app_close_mid_wican_run_ends_the_session(
+    qtbot, tmp_path, monkeypatch, fast_keepalive, qt_thread_guard
+):
+    client = FakeSessionClient()
+    client.end_error = RuntimeError("timed out")  # the lease expires by itself
+    parent = QObject()
+    dl, wican, _, _ = _wican_run(tmp_path, monkeypatch, client, parent=parent)
+    dl.start()
+    qtbot.waitUntil(lambda: wican.starts == 1, timeout=5000)
+    dl.shutdown(3000)
+    assert not dl._session_thread.isRunning()
+    assert client.calls[-1] == ("end", 1)
+    dl.stop()  # safe again, and when idle
+    qtbot.waitUntil(lambda: not dl.is_running, timeout=5000)
+    dl.stop()
+    dl.shutdown(100)
+
+
+def test_saved_list_is_not_changed_during_a_run(
+    qtbot, tmp_path, monkeypatch, fast_keepalive, qt_thread_guard
+):
+    client = FakeSessionClient()
+    dl, wican, _, _ = _wican_run(tmp_path, monkeypatch, client)
+    fake = FakeAutoPid()
+    monkeypatch.setattr(dl, "_wican_client", lambda: fake)
+    results = []
+    dl.push_finished.connect(lambda ok, msg: results.append((ok, msg)))
+    dl.start()
+    assert dl.push_to_wican() is False and dl.preview_wican_push() is False
+    assert results[0] == (False, "Stop logging first.") and fake.calls == []
+    dl.stop()
+    qtbot.waitUntil(lambda: not dl.is_running, timeout=5000)

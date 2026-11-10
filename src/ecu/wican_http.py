@@ -49,6 +49,9 @@ DEFAULT_TIMEOUT_S = 10.0
 #: Streaming chunk size for downloads.
 _CHUNK_SIZE = 64 * 1024
 
+#: Most of an error reply kept on :attr:`WiCANHttpError.body`.
+_ERROR_BODY_MAX = 4096
+
 #: Characters rejected in device-supplied basenames: path separators plus the
 #: Windows-reserved set, checked on every platform so behavior is deterministic.
 _FORBIDDEN_CHARS = set('/\\<>:"|?*')
@@ -59,7 +62,17 @@ class WiCANHttpError(ECUError):
 
     Subclasses :class:`~src.ecu.exceptions.ECUError` so failures flow through
     the unified ECU error handlers.
+
+    ``status`` is the HTTP status when the device answered with an error
+    status (None for a transport failure or an unreadable reply), and ``body``
+    the reply text it sent with it, so a caller can tell "not found" from
+    "refused" without parsing the message.
     """
+
+    def __init__(self, message: str = "", *, status: Optional[int] = None, body=""):
+        super().__init__(message)
+        self.status = status
+        self.body = body
 
 
 def sanitize_basename(name: str) -> str:
@@ -92,7 +105,9 @@ def get_json(url: str, *, timeout_s: float = DEFAULT_TIMEOUT_S):
         with urllib.request.urlopen(url, timeout=timeout_s) as resp:
             raw = resp.read().decode("utf-8", errors="replace")
     except urllib.error.HTTPError as exc:
-        raise WiCANHttpError(f"GET {url} failed: HTTP {exc.code}") from exc
+        raise WiCANHttpError(
+            f"GET {url} failed: HTTP {exc.code}", status=exc.code
+        ) from exc
     except (urllib.error.URLError, socket.error, OSError) as exc:
         raise WiCANHttpError(f"GET {url} failed: {exc}") from exc
 
@@ -121,11 +136,14 @@ def post_json(url: str, body: dict, *, timeout_s: float = DEFAULT_TIMEOUT_S):
             raw = resp.read().decode("utf-8", errors="replace")
     except urllib.error.HTTPError as exc:
         try:
-            detail = exc.read().decode("utf-8", errors="replace")[:200]
+            reply = exc.read(_ERROR_BODY_MAX).decode("utf-8", errors="replace")
         except OSError:
-            detail = ""
+            reply = ""
+        detail = reply[:200]
         raise WiCANHttpError(
-            f"POST {url} failed: HTTP {exc.code} {detail}".rstrip()
+            f"POST {url} failed: HTTP {exc.code} {detail}".rstrip(),
+            status=exc.code,
+            body=reply,
         ) from exc
     except (
         urllib.error.URLError,
