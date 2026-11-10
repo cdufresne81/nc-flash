@@ -223,3 +223,30 @@ def test_rate_estimate_counts_slow_services():
     assert estimated_rows_per_second(fast) > 80
     assert estimated_rows_per_second(slow) == pytest.approx(62.5)
     assert estimated_rows_per_second([]) == 0.0
+
+
+def test_saved_order_round_trips_and_new_builtins_go_last():
+    from src.core.datalog_channels import (
+        builtin_channels,
+        channels_from_saved,
+        channels_to_saved,
+    )
+
+    chans = channels_from_saved({})
+    chans.reverse()
+    saved = channels_to_saved(chans)
+    assert [c.name for c in channels_from_saved(saved)] == [c.name for c in chans]
+    # A release that adds a built-in: the old order lacks it, so it goes last.
+    newest = builtin_channels()[0].name
+    saved["order"].remove(newest)
+    again = channels_from_saved(saved)
+    assert again[-1].name == newest
+    assert [c.name for c in again[:-1]] == [n for n in saved["order"]]
+
+
+def test_a_damaged_order_is_ignored():
+    from src.core.datalog_channels import builtin_channels, channels_from_saved
+
+    catalog = [c.name for c in builtin_channels()]
+    for bad in ("RPM", 5, [None, 7, "NOT_A_CHANNEL"]):
+        assert [c.name for c in channels_from_saved({"order": bad})] == catalog

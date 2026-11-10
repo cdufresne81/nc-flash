@@ -33,6 +33,7 @@ NC Flash goes away (see ``docs/internal/WICAN_SESSION_CHANNELS.md``).
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import re
@@ -74,6 +75,11 @@ class WiCANAutoPidError(ECUError):
     """The WiCAN's channel table could not be read, changed or verified."""
 
 
+class WiCANListChanged(WiCANAutoPidError):
+    """Put Back found a list on the WiCAN other than the one NC Flash stored
+    (edited on its web page since, or another WiCAN). Nothing was written."""
+
+
 class WiCANSessionUnsupported(WiCANAutoPidError):
     """This WiCAN's firmware has no temporary channel list."""
 
@@ -97,15 +103,118 @@ def session_document(rows: list[dict]) -> dict:
     }
 
 
+def is_own_firmware_file(data) -> bool:
+    """Whether *data* is a channel file written by this firmware.
+
+    The firmware's own rule (``main/auto_pid_seed_logic.h``): its Logger page
+    always writes ``calculated`` and, since a later release, ``format``; the
+    official MeatPi firmware writes neither. A file saved before ``format``
+    existed has only ``calculated``. A file with another ``format`` is not ours.
+    """
+    if not isinstance(data, dict):
+        return False
+    if "format" in data:
+        return data["format"] == REQUIRED_FORMAT
+    return isinstance(data.get("calculated"), list)
+
+
+def _ci(d: dict, key: str, default=None):
+    """``d[key]`` ignoring case, as the firmware's cJSON_GetObjectItem does."""
+    if key in d:
+        return d[key]
+    low = key.lower()
+    for k, v in d.items():
+        if isinstance(k, str) and k.lower() == low:
+            return v
+    return default
+
+
+def _on(d: dict) -> bool:
+    """The firmware treats a missing or non-bool ``enabled`` as on."""
+    value = _ci(d, "enabled", True)
+    return value if isinstance(value, bool) else True
+
+
+def has_engine_rpm(pids: list, can_filters: list) -> bool:
+    """Whether the WiCAN's engine detection has an RPM to use: a turned-on
+    polled row or broadcast parameter named RPM, any case (firmware
+    ``poll_log.c``). Calculated channels do not count. Without one it decides
+    "engine running" from the battery voltage alone, so on a charger or a
+    healthy battery a trip can open and never end."""
+    for row in pids or []:
+        if isinstance(row, dict) and _on(row):
+            if str(_ci(row, "Name", "")).lower() == "rpm":
+                return True
+    for flt in can_filters or []:
+        if isinstance(flt, dict):
+            for prm in _ci(flt, "parameters") or []:
+                if isinstance(prm, dict) and _on(prm):
+                    if str(_ci(prm, "name", "")).lower() == "rpm":
+                        return True
+    return False
+
+
+def other_channel_names(original: dict) -> set[str]:
+    """Lower-cased names of the WiCAN's turned-on broadcast (CAN bus)
+    channels. The firmware's own list keeps same-name pairs (ECT polled, ECT
+    broadcast) with only one of each pair on, so an off one is no clash.
+    Calculated channels are left out: they are not read from the car."""
+    names = set()
+    for flt in original.get("can_filters") or []:
+        if isinstance(flt, dict):
+            for prm in _ci(flt, "parameters") or []:
+                if isinstance(prm, dict) and _on(prm) and _ci(prm, "name"):
+                    names.add(str(_ci(prm, "name")).strip().lower())
+    return names
+
+
+def clashing_rows(original: dict, rows: list[dict]) -> list[str]:
+    """Turned-on polled rows the WiCAN already reads from the CAN bus (a
+    turned-on broadcast channel of the same name). The polled copy is kept but
+    turned off, as the firmware's own list does with its pairs: the value is
+    still logged, without spending ECU requests on it. RPM is never turned
+    off: the engine detection needs it (:func:`has_engine_rpm`)."""
+    others = other_channel_names(original)
+    out = []
+    for r in rows:
+        name = str(_ci(r, "Name", "")).strip()
+        if _on(r) and name.lower() in others and name.lower() != "rpm":
+            out.append(name)
+    return out
+
+
 def replace_pids(original: dict, rows: list[dict]) -> dict:
-    """A copy of *original* with ``pids`` replaced by *rows*; all else kept."""
-    if original.get("format") != REQUIRED_FORMAT:
+    """A copy of *original* with ``pids`` replaced by *rows*; all else kept.
+
+    A row that clashes with a broadcast or calculated channel
+    (:func:`clashing_rows`) is kept but turned off. The copy carries the
+    ``format`` marker, as the firmware's own page writes."""
+    if not is_own_firmware_file(original):
+        if isinstance(original, dict) and "format" in original:
+            why = f"it was written by other software (format {original['format']!r})"
+        else:
+            why = (
+                "it looks like the official MeatPi firmware's file. Save it once "
+                "on the WiCAN's web page (Logger), then try again"
+            )
         raise WiCANAutoPidError(
-            "The WiCAN's channel file is not in the format NC Flash knows "
-            f"(format {original.get('format')!r}); not changing it."
+            f"NC Flash did not change the WiCAN's channel list: {why}."
+        )
+    clash = set(clashing_rows(original, rows))
+    pids = [
+        dict(r, enabled=False) if str(_ci(r, "Name", "")).strip() in clash else r
+        for r in rows
+    ]
+    if not has_engine_rpm(pids, original.get("can_filters")):
+        raise WiCANAutoPidError(
+            "NC Flash did not change the WiCAN's channel list: it would have no "
+            "RPM. The WiCAN uses RPM to tell that the engine runs; without it, "
+            "it goes by battery voltage, and a trip can start and never end. "
+            "Tick RPM, then try again."
         )
     updated = dict(original)
-    updated["pids"] = list(rows)
+    updated["format"] = REQUIRED_FORMAT
+    updated["pids"] = pids
     return updated
 
 
@@ -235,19 +344,32 @@ class WiCANAutoPid:
         detects a running engine, and gates its recording, on it).
         """
         _, original = self.load()
-        replace_pids(original, rows)  # refuses an unknown format up front
+        if not is_own_firmware_file(original):
+            replace_pids(original, rows)  # raises the plain refusal
         before = {
             str(p.get("Name"))
             for p in original.get("pids") or []
             if isinstance(p, dict) and p.get("enabled", True)
         }
-        after = {str(r.get("Name")) for r in rows if r.get("enabled", True)}
+        clash = set(clashing_rows(original, rows))
+        after = {
+            str(r.get("Name"))
+            for r in rows
+            if r.get("enabled", True) and str(r.get("Name")) not in clash
+        }
         return {
             "removed": sorted(before - after),
             "added": sorted(after - before),
             "orphaned": orphaned_calculated(original, rows),
-            "rpm": "RPM" in after,
+            "rpm": has_engine_rpm(
+                [
+                    dict(r, enabled=False) if str(r.get("Name")) in clash else r
+                    for r in rows
+                ],
+                original.get("can_filters"),
+            ),
             "count": len(after),
+            "clashes": sorted(clash),
         }
 
     def push(self, rows: list[dict], backup_dir) -> "PushResult":
@@ -262,6 +384,10 @@ class WiCANAutoPid:
         self.last_backup = str(backup)
         reply = self.store(updated)
         applied = str(reply.get("applied") or "")
+        try:
+            stored_sha = file_sha(self.load()[0])
+        except WiCANAutoPidError:
+            stored_sha = ""
         logger.info(
             "Sent %d channel(s) to the WiCAN (%s); previous list saved to %s",
             len(rows),
@@ -273,17 +399,55 @@ class WiCANAutoPid:
             backup=str(backup),
             orphaned_calculated=orphaned_calculated(original, rows),
             message=str(reply.get("msg") or ""),
+            stored_sha=stored_sha,
         )
 
-    def restore(self, backup_path) -> dict:
-        """Put back a file saved by :meth:`push`."""
+    def restore(
+        self,
+        backup_path,
+        backup_dir=None,
+        *,
+        expect_sha: Optional[str] = None,
+        force=False,
+    ) -> dict:
+        """Put back a file saved by :meth:`push`.
+
+        The WiCAN's current file is backed up first (to *backup_dir*). With
+        *expect_sha* (the file NC Flash stored), a WiCAN holding anything else
+        raises :class:`WiCANListChanged` and nothing is written, unless *force*.
+        An empty *expect_sha* means "not known" (a push that failed half way)
+        and always raises unless *force*; ``None`` skips the check (tools).
+        Returns ``{"applied", "reload_pending", "backup"}``; ``applied`` is the
+        firmware's word (``live``, ``deferred`` behind an open trip, ``reboot``).
+        """
         data = json.loads(Path(backup_path).read_text(encoding="utf-8"))
-        if not isinstance(data, dict) or data.get("format") != REQUIRED_FORMAT:
+        if not is_own_firmware_file(data):
             raise WiCANAutoPidError(f"{backup_path} is not a WiCAN channel file.")
+        raw, _current = self.load()
+        if expect_sha is not None and not force:
+            if not expect_sha:
+                raise WiCANListChanged(
+                    "NC Flash can't tell what the WiCAN holds now: the last update "
+                    "did not finish cleanly."
+                )
+            if file_sha(raw) != expect_sha:
+                raise WiCANListChanged(
+                    "The WiCAN's channel list changed since NC Flash updated it "
+                    "(edited on its web page, or this is another WiCAN)."
+                )
+        saved = ""
+        if backup_dir is not None:
+            saved = str(save_backup(backup_dir, self.host, raw))
         reply = self.store(data)
-        if reply.get("applied") in ("live", None, ""):
-            self.wait_applied()
-        return reply
+        applied = str(reply.get("applied") or "")
+        pending = applied in ("deferred", "reboot")
+        if applied in ("live", ""):
+            try:
+                pending = bool(self.wait_applied().get("reload_pending"))
+            except WiCANAutoPidError as exc:
+                where = f" The list it had before is saved in {saved}." if saved else ""
+                raise WiCANAutoPidError(f"{exc}{where}") from exc
+        return {"applied": applied, "reload_pending": pending, "backup": saved}
 
 
 class PushResult:
@@ -293,11 +457,18 @@ class PushResult:
         backup: str,
         orphaned_calculated: Optional[list[str]] = None,
         message: str = "",
+        stored_sha: str = "",
     ):
         self.applied = applied
         self.backup = backup
         self.orphaned_calculated = orphaned_calculated or []
         self.message = message
+        self.stored_sha = stored_sha  # the WiCAN's file right after the push
+
+
+def file_sha(raw: str) -> str:
+    """Fingerprint of the channel file exactly as the WiCAN serves it."""
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
 
 def save_backup(backup_dir, host: str, raw: str) -> Path:
