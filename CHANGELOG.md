@@ -4,7 +4,11 @@ All notable changes to NC Flash are documented here.
 
 ## [Unreleased]
 
+### Added
+- **Recover a "bricked" ECU.** An ECU left without a valid program, for example after an interrupted flash, isn't dead: it waits in its boot loader and can be brought back with a normal full flash. NC Flash now recognises this when it connects (or when a trouble-code read is refused), explains it calmly instead of showing a string of errors, and offers **Recover: Flash Full ROM...** to pick a known-good ROM, ideally your own backup. In this state the one-click flash always writes the whole ROM, never just the changes. Right after any flash, NC Flash knows the ECU waits in the boot loader until the ignition is cycled and says so, rather than calling it bricked.
+
 ### Changed
+- **A WiCAN flash refused because the Wi-Fi link drops packets now says so plainly:** the ECU was not touched, so fix the Wi-Fi (move closer, or use the adapter's access-point mode) and retry.
 - **Behind the scenes:** a release can now be tagged from GitHub's Actions tab ("Tag Release": type the version, it tags `dev` for a beta or `master` for a stable release and starts the build). It refuses a version that already exists, a commit the tests haven't passed on, and a stable release with no changelog section. No change to the app itself.
 
 ## [v2.23.1] - 2026-10-24

@@ -23,6 +23,15 @@ What is on `dev` awaiting `master`: run `python tools/dev_status.py` (asks GitHu
 
 ## Open items (not tracked in an issue)
 
+- **Bench-test the bricked-ECU detection before it ships** (owner: user, spare LFDJEA ECU on
+  the WiCAN 192.168.1.169). The new probe sends 0x10 0x85 + 0x27 0x01 (no key) to an ECU that
+  refuses 0x01/0x21 with NRC 0x11 and 0x22 with NRC 0x31. Check: (a) brick the spare, connect →
+  "recovery mode" notice, then full-flash the backup with no power cycle in between; (b) connect
+  5+ times while bricked, then flash; (c) leave it connected past any session timeout, then
+  flash; (d) healthy ECU, engine running: connect + Read DTCs, confirm no 0x10/0x27 goes out;
+  (e) healthy ECU right after a ROM read: probe stops at the first request; (f) after a normal
+  flash, Done before cycling the ignition → "waiting for an ignition cycle", not "recovery".
+  Delete once done.
 - **Bench-test #130/#131 on the Tactrix clone (J2534)** (owner: user). Only tested over
   WiCAN so far. Check: ignition OFF → Connect fails in ~3 s, not 60 s; right after a ROM
   read or RAM scan, Flash waits ~6.5 s then reads RPM and voltage (no false refusal);

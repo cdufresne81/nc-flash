@@ -20,6 +20,8 @@ class _FakeECUWindow(SimpleNamespace):
     # The REAL property, so gating and broadcasts exercise the one busy
     # predicate (_ecu_busy OR running flash thread) instead of a test copy.
     is_busy = ECUProgrammingWindow.is_busy
+    _in_recovery = ECUProgrammingWindow._in_recovery
+    _boot_loader_confirmed = ECUProgrammingWindow._boot_loader_confirmed
 
 
 def _fake_window(
@@ -51,6 +53,8 @@ def _fake_window(
         _btn_scan_ram=MagicMock(),
         _btn_flash_current=MagicMock(),
         _btn_connect=MagicMock(),
+        _btn_recover=MagicMock(),
+        _recovery=None,
         _flash_subtitle=MagicMock(),
     )
 
@@ -71,6 +75,7 @@ def test_ecu_ops_locked_while_sync_running():
     fake._btn_read_rom.setEnabled.assert_called_with(False)
     fake._btn_scan_ram.setEnabled.assert_called_with(False)
     fake._btn_flash_current.setEnabled.assert_called_with(False)
+    fake._btn_recover.setEnabled.assert_called_with(False)
     fake._btn_flash_current.setToolTip.assert_called_with(UTILITY_LOCK_TIP)
     fake._btn_full_flash.setToolTip.assert_called_with(UTILITY_LOCK_TIP)
 

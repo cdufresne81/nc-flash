@@ -22,6 +22,7 @@ from enum import Enum
 from typing import Callable, Optional
 
 from .constants import (
+    BOOT_LOADER_SEED,
     ROM_SIZE,
     TIMEOUT_PROBE,
     ROM_FLASH_START_MIN,
@@ -501,6 +502,13 @@ class FlashManager:
         # Step 3: Security Access
         self._notify(callback, "Requesting security seed...", percent=12.0)
         seed = self._uds.security_access_request_seed()
+        if seed == BOOT_LOADER_SEED:
+            # Log only: the same key algorithm covers this seed, so the flash
+            # proceeds exactly as usual (bench-proven recovery, 2026-11-09).
+            logger.info(
+                "ECU is in boot-loader recovery mode (fixed seed); a full flash "
+                "restores it"
+            )
 
         self._notify(callback, "Computing security key...", percent=14.0)
         key = compute_security_key(seed)

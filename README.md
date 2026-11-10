@@ -115,6 +115,7 @@ python main.py
 - Read ROM from ECU — dump the current calibration
 - Scan RAM — dump ECU RAM for diagnostics
 - Read and clear Diagnostic Trouble Codes (DTCs)
+- **Recover a "bricked" ECU** — an ECU left without a valid program (e.g. after an interrupted flash) waits in its boot loader. NC Flash recognises this on connect, explains it, and offers a full flash of a known-good ROM (ideally your own backup) to bring it back
 - Seed-key security access authentication
 - SBL (Secondary Boot Loader) upload for programming session
 - 1 KB block transfers with CRC32 validation

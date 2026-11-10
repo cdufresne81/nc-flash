@@ -32,6 +32,23 @@ WARNING_AMBER = "#cc6600"
 # Muted text for an unavailable reading (e.g. an ECU status card showing N/A).
 TEXT_MUTED = "#888"
 
+# Calm informational banner (the ECU window's recovery-mode notice): a steady
+# blue, deliberately not the red/amber of a failure.
+INFO_BANNER_BG = "#22384f"
+INFO_BANNER_BORDER = "#4a7bb0"
+INFO_BANNER_TEXT = "#e6eef8"
+INFO_TEXT = "#6fa8dc"
+
+
+def get_info_banner_stylesheet() -> str:
+    """QSS for a calm informational banner frame and its labels."""
+    return (
+        f"QFrame#infoBanner {{ background: {INFO_BANNER_BG}; "
+        f"border: 1px solid {INFO_BANNER_BORDER}; border-radius: 6px; }} "
+        f"QFrame#infoBanner QLabel {{ color: {INFO_BANNER_TEXT}; border: none; }}"
+    )
+
+
 # --- Table graph (GPU renderer) ----------------------------------------------
 # The graph pane is a dark "stage" inside the light app: a vertical gradient
 # with light text, so the per-cell table colors pop. sRGB hex; the GPU backend

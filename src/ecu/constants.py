@@ -125,10 +125,17 @@ DIAG_SESSION_PROGRAMMING = 0x85
 RESET_HARD = 0x01
 SECURITY_REQUEST_SEED = 0x01
 SECURITY_SEND_KEY = 0x02
+# The fixed SecurityAccess seed of the boot loader's recovery server (an ECU
+# whose application is missing or invalid). The running application answers
+# with a varying seed instead. Bench-proven 2026-11-09; the normal key
+# algorithm computes the right key for it, so the ordinary flash recovers it.
+BOOT_LOADER_SEED = bytes([0x55, 0xAA, 0x55])
 TESTER_PRESENT_SUB = 0x01
 
 # --- UDS Negative Response ---
+NRC_SERVICE_NOT_SUPPORTED = 0x11
 NRC_CONDITIONS_NOT_CORRECT = 0x22
+NRC_REQUEST_OUT_OF_RANGE = 0x31
 NRC_RESPONSE_PENDING = 0x78
 
 # --- J2534 Constants ---
