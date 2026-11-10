@@ -1,0 +1,33 @@
+# Test: replay a log as if it were live - the cursor follows the log's rows
+# Load Scaling has RPM (rows) and LOAD (columns) axes. No ECU or adapter needed.
+
+load_rom examples/lf9veb.bin
+open_table "Load Scaling"
+wait 300
+
+# Play the sample at 5x, then hold a known row so the screenshot is repeatable
+replay_log tests/fixtures/replay/ncflash_capture.csv 5
+wait 400
+replay_pause
+replay_seek 70
+wait 300
+screenshot log_replay_01_table table
+
+open_graph
+wait 1500
+screenshot log_replay_02_graph table
+
+# The Datalogger window shows the position bar, speed and loop controls
+open_datalogger
+wait 300
+screenshot log_replay_03_controls datalogger
+
+# Jumping with the position bar moves the cursor while paused
+replay_seek 110
+wait 300
+screenshot log_replay_04_jumped table
+
+# Stopping hides the cursor everywhere
+replay_stop
+wait 300
+screenshot log_replay_05_stopped table

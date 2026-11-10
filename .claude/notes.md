@@ -86,6 +86,14 @@ What is on `dev` awaiting `master`: run `python tools/dev_status.py` (asks GitHu
     compared between preview and push; a Start landing inside the ECU window's connect event
     pump can pass the blocker (one opener then fails).
 
+- **Log replay (#227, branch `feature/datalogger-replay`, from `feature/faster-table-paint`):**
+  built against the two CSV formats as the code writes them, not real files (the repo has
+  none; the samples in `tests/fixtures/replay/` are synthetic). Still to check on the user's
+  PC: a real WiCAN trip log and a real NC Flash capture load and map their columns;
+  MegaLogViewerHD trails the replay's live CSV and survives a jump back and a loop
+  (its Time is playback time, always rising). A replay is not a "run": the ECU window stays
+  usable, and a live run and a replay refuse each other.
+
 - **WiCAN live datalog (fw #3, PR from `feature/live-datalog-v2`) follow-ups** (design:
   `docs/internal/WICAN_LIVE_STREAM.md`):
   - User's in-car test pending; MegaLogViewerHD trail launch not exercised in a bench run.

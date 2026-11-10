@@ -803,6 +803,39 @@ class TestRunner:
         self._log(f"Live values: {values or 'cleared'}")
         return True
 
+    def replay_log(self, args) -> bool:
+        """Replay a log through the Datalogger: ``replay_log <csv> [speed]``."""
+        if not self.main_window or not args:
+            self._log("ERROR: replay_log needs a main window and a CSV path")
+            return False
+        replay = self.main_window.datalogger.replay
+        if len(args) > 1:
+            replay.set_speed(float(args[1]))
+        ok = self.main_window.datalogger.start_replay(args[0].strip("\"'"))
+        self._process_events()
+        self._log(f"Replay of {args[0]}: {'started' if ok else 'REFUSED'}")
+        return ok
+
+    def replay_control(self, action: str, args) -> bool:
+        """``replay_pause``, ``replay_play``, ``replay_seek <row>``,
+        ``replay_stop`` on the running replay."""
+        if not self.main_window:
+            self._log("ERROR: No main window")
+            return False
+        replay = self.main_window.datalogger.replay
+        if not replay.is_running:
+            self._log("ERROR: No replay is running")
+            return False
+        if action == "seek":
+            replay.seek(int(args[0]))
+        elif action == "stop":
+            replay.stop()
+        else:
+            replay.set_paused(action == "pause")
+        self._process_events()
+        self._log(f"Replay {action} {' '.join(args)}".rstrip())
+        return True
+
     def close_table(self) -> bool:
         """
         Close current table window
@@ -1246,6 +1279,11 @@ class TestRunner:
             "resize_window": (lambda s, a: s._cmd_resize_window(a), 2),
             "open_datalogger": (lambda s, a: s.open_datalogger(), 0),
             "live_values": (lambda s, a: s.live_values(a), 0),
+            "replay_log": (lambda s, a: s.replay_log(a), 1),
+            "replay_pause": (lambda s, a: s.replay_control("pause", a), 0),
+            "replay_play": (lambda s, a: s.replay_control("play", a), 0),
+            "replay_seek": (lambda s, a: s.replay_control("seek", a), 1),
+            "replay_stop": (lambda s, a: s.replay_control("stop", a), 0),
         }
         return cls._COMMANDS
 
@@ -1404,6 +1442,8 @@ class TestRunner:
         print("  screenshot [name] [target] - Take screenshot")
         print("  open_datalogger          - Open the Datalogger window")
         print("  live_values [NAME=v ...] - Feed the live table cursor (none clears)")
+        print("  replay_log <csv> [speed] - Replay a log through the Datalogger")
+        print("  replay_pause / replay_play / replay_seek <row> / replay_stop")
         print("  list_screenshots         - List all screenshots")
         print("  cleanup [pattern] [hours] - Delete screenshots")
         print("  undo / redo              - Undo/redo last change")
