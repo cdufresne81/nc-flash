@@ -424,44 +424,62 @@ class WiCANSessionList:
 
     def wait_applied(
         self,
+        token: Optional[int] = None,
         timeout_s: float = SESSION_APPLY_TIMEOUT_S,
         *,
         should_stop: Optional[Callable[[], bool]] = None,
     ) -> dict:
-        """Poll ``/poll_status`` until the WiCAN polls the temporary list.
+        """Poll ``/poll_status`` until the WiCAN polls the list *token* names.
 
-        Raises :class:`WiCANAutoPidError` when it refused the list, can't poll
-        some of its channels, or has not switched by *timeout_s* (it could not
-        close the trip it is recording). Returns the last status early when
-        *should_stop* turns true.
+        Applied = ``session_token`` equals *token* and no reload is pending.
+        ``session_list`` alone is not enough (it is also true for an earlier
+        session's table); it is the fallback only when the status has no
+        ``session_token``. ``reload_ok`` and ``pids_unpollable`` are stale
+        until then, so they are read only once the list is applied.
 
-        ``reload_ok`` and ``pids_unpollable`` are stale while a reload is
-        pending, so they are read only once ``reload_pending`` is false.
+        Raises :class:`WiCANAutoPidError` when the WiCAN refused the list,
+        can't poll some of its channels, or has not switched by *timeout_s*
+        (it could not close the trip it is recording). Returns the last status
+        early when *should_stop* turns true.
         """
         deadline = self._clock() + timeout_s
         while True:
             status = self.poll_status()
-            if not status.get("reload_pending"):
+            pending = bool(status.get("reload_pending"))
+            if not pending and _loaded(status, token):
                 if status.get("reload_ok") is False:
+                    raise WiCANAutoPidError(_NOT_LOADED)
+                unpollable = int(status.get("pids_unpollable") or 0)
+                if unpollable:
                     raise WiCANAutoPidError(
-                        "The WiCAN could not load the channel list."
+                        f"The WiCAN can't poll {unpollable} of the channels "
+                        "(check their mode and identifier)."
                     )
-                if status.get("session_list"):
-                    unpollable = int(status.get("pids_unpollable") or 0)
-                    if unpollable:
-                        raise WiCANAutoPidError(
-                            f"The WiCAN can't poll {unpollable} of the channels "
-                            "(check their mode and identifier)."
-                        )
-                    return status
+                return status
             if should_stop is not None and should_stop():
                 return status
             if self._clock() >= deadline:
+                if not pending and status.get("reload_ok") is False:
+                    # No reload left to wait for, and ours never loaded.
+                    raise WiCANAutoPidError(_NOT_LOADED)
                 raise WiCANAutoPidError(
                     "The WiCAN could not switch channels right now (it is still "
                     "recording a trip). Try again in a moment."
                 )
             self._sleep(0.5)
+
+
+_NOT_LOADED = "The WiCAN could not load the channel list."
+
+
+def _loaded(status: dict, token: Optional[int]) -> bool:
+    """Whether the poller's table is the temporary list *token* names."""
+    if token is not None and "session_token" in status:
+        try:
+            return int(status.get("session_token") or 0) == int(token)
+        except (TypeError, ValueError):
+            return False
+    return bool(status.get("session_list"))
 
 
 def _refusal(reply) -> WiCANAutoPidError:
@@ -487,9 +505,12 @@ def _refusal(reply) -> WiCANAutoPidError:
             + (f": {detail}" if detail else " (internal error).")
         )
     if error == "inactive":
+        # Its own saved list has no polled channel, so its datalogger is off;
+        # the WiCAN's message says what to do on its Logger page.
         return WiCANAutoPidError(
-            "The WiCAN's logger is not running, so it can't take a channel list"
-            + (f" ({detail})." if detail else ".")
+            detail
+            or "The WiCAN's datalogger is not running: add one channel on the "
+            "WiCAN's Logger page, then start again."
         )
     return WiCANAutoPidError(
         "The WiCAN refused the channel list"

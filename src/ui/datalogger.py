@@ -308,7 +308,7 @@ class _WicanSessionWorker(QObject):
                 self.follow.emit(False)
             else:
                 self._token = client.begin(self._rows)
-                client.wait_applied(should_stop=self._stopping)
+                client.wait_applied(self._token, should_stop=self._stopping)
                 if not self._stopping():
                     self.follow.emit(True)
                     self._keep_alive(client)
@@ -344,7 +344,9 @@ class _WicanSessionWorker(QObject):
                     # Renew soon whatever the wait says: it eats into the lease.
                     delay = SESSION_RETRY_S
                     client.wait_applied(
-                        timeout_s=SESSION_REAPPLY_TIMEOUT_S, should_stop=self._stopping
+                        self._token,
+                        timeout_s=SESSION_REAPPLY_TIMEOUT_S,
+                        should_stop=self._stopping,
                     )
                 else:
                     client.keepalive(self._token, timeout_s=SESSION_KEEPALIVE_TIMEOUT_S)

@@ -153,8 +153,8 @@ class FakeSessionClient:
         self.tokens += 1
         return self.tokens
 
-    def wait_applied(self, timeout_s=None, should_stop=None):
-        self.calls.append(("wait",))
+    def wait_applied(self, token=None, timeout_s=None, should_stop=None):
+        self.calls.append(("wait", token))
         if self.apply_error is not None and self.count("wait") in self.apply_fails:
             raise self.apply_error
         return {"session_list": True}
@@ -601,6 +601,7 @@ def test_wican_run_sends_the_channels_then_follows_and_ends_on_stop(
     qtbot.waitUntil(lambda: client.count("keepalive") >= 2, timeout=5000)
     assert wican.starts == 1
     assert [c[0] for c in client.calls[:3]] == ["supported", "begin", "wait"]
+    assert client.calls[2] == ("wait", 1)  # for the list this begin sent
     rows = client.calls[1][1]
     assert len(rows) == len(builtin_channels())  # all of them, with their flag
     assert {r["Name"] for r in rows if r["enabled"]} == {"RPM", "KNOCKR"}
@@ -709,6 +710,7 @@ def test_dropped_lease_is_begun_again_and_network_errors_are_retried(
     dl.start()
     qtbot.waitUntil(lambda: ("keepalive", 2) in client.calls, timeout=5000)
     assert client.count("begin") == 2 and client.count("wait") == 2
+    assert ("wait", 2) in client.calls  # the second begin's own list
     assert dl.is_running and wican.is_running
     # Quiet: the stream reports the link, the renewals say nothing.
     assert statuses == ["Sending the channels to the WiCAN..."]

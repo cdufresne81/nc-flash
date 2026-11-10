@@ -146,13 +146,16 @@ def test_busy_stale_and_other_refusals_are_told_apart(device):
     device.refuse = (409, {"ok": False, "error": "busy", "msg": "host bus claim"})
     with pytest.raises(WiCANSessionBusy):
         client.begin(ROWS)
-    device.refuse = (409, {"ok": False, "error": "inactive", "msg": "poll_log off"})
+    hint = "Add one channel on the WiCAN's Logger page"
+    device.refuse = (409, {"ok": False, "error": "inactive", "msg": hint})
     with pytest.raises(WiCANAutoPidError) as inactive:
         client.begin(ROWS)
     assert not isinstance(inactive.value, (WiCANSessionBusy, WiCANSessionStale))
-    assert "logger is not running" in str(inactive.value)
-    device.refuse = (400, {"ok": False, "error": "bad_request", "msg": "no pids"})
-    with pytest.raises(WiCANAutoPidError, match="no pids"):
+    assert str(inactive.value) == hint  # the WiCAN's own words
+    # 0 rows, over 128 rows, or a row that is not service 01/22/23.
+    refused = {"ok": False, "error": "bad_request", "msg": "more than 128 channels"}
+    device.refuse = (400, refused)
+    with pytest.raises(WiCANAutoPidError, match="more than 128 channels"):
         client.begin(ROWS)
     # Out of memory on the WiCAN: a failed start with its reason, never
     # mistaken for old firmware or a network failure.
@@ -181,27 +184,37 @@ def test_a_list_too_large_is_refused_before_sending(device):
     assert device.requests == []
 
 
-def test_wait_applied_until_the_temporary_list_is_polled(device):
+def test_wait_applied_until_our_list_is_the_one_polled(device):
     device.statuses = [
-        # reload_ok / pids_unpollable are stale while a reload is pending.
-        {"session_list": False, "reload_pending": True, "reload_ok": False},
-        {"session_list": True, "reload_pending": True, "pids_unpollable": 3},
-        # The reload of the saved list finished earlier; ours is not loaded yet.
+        # reload_ok / pids_unpollable are stale until our list is applied.
+        {"session_token": 0, "reload_pending": True, "reload_ok": False},
+        {"session_token": 0, "reload_pending": False, "reload_ok": False},
+        # An earlier session's table: session_list alone proves nothing.
+        {"session_token": 7, "session_list": True, "reload_pending": False},
+        {"session_token": 42, "reload_pending": True, "pids_unpollable": 3},
+        {"session_token": 42, "reload_pending": False, "reload_ok": True},
+    ]
+    assert _client(device).wait_applied(42)["session_token"] == 42
+    assert device.statuses == device.statuses[-1:]
+
+
+def test_wait_applied_without_a_session_token_uses_session_list(device):
+    device.statuses = [
         {"session_list": False, "reload_pending": False, "reload_ok": True},
         {"session_list": True, "reload_pending": True},
         {"session_list": True, "reload_pending": False, "reload_ok": True},
     ]
-    assert _client(device).wait_applied()["session_list"] is True
+    assert _client(device).wait_applied(42)["session_list"] is True
     assert device.statuses == device.statuses[-1:]
 
 
 @pytest.mark.parametrize(
     "status,text",
     [
-        ({"session_list": False, "reload_pending": False, "reload_ok": False}, "load"),
+        ({"session_token": 42, "reload_pending": False, "reload_ok": False}, "load"),
         (
             {
-                "session_list": True,
+                "session_token": 42,
                 "reload_pending": False,
                 "reload_ok": True,
                 "pids_unpollable": 2,
@@ -213,23 +226,37 @@ def test_wait_applied_until_the_temporary_list_is_polled(device):
 def test_wait_applied_reports_a_refused_list(device, status, text):
     device.statuses = [status]
     with pytest.raises(WiCANAutoPidError, match=text):
-        _client(device).wait_applied()
+        _client(device).wait_applied(42)
 
 
-def test_wait_applied_gives_up_and_can_be_stopped(device):
-    device.statuses = [{"session_list": False, "reload_pending": True}]
+def _timed_client(device):
     now = [0.0]
 
     def sleep(seconds):
         now[0] += seconds
 
-    client = WiCANSessionList(
+    return WiCANSessionList(
         "127.0.0.1", http_port=device.port, sleep=sleep, clock=lambda: now[0]
     )
+
+
+def test_wait_applied_gives_up_and_can_be_stopped(device):
+    # The WiCAN can't close its open trip: the reload stays pending.
+    device.statuses = [{"session_token": 0, "reload_pending": True}]
+    client = _timed_client(device)
     with pytest.raises(WiCANAutoPidError, match="right now"):
-        client.wait_applied(timeout_s=2)
+        client.wait_applied(42, timeout_s=2)
     # A stop asked meanwhile ends the wait without an error.
-    assert client.wait_applied(should_stop=lambda: True)["reload_pending"] is True
+    status = client.wait_applied(42, should_stop=lambda: True)
+    assert status["reload_pending"] is True
+
+
+def test_a_list_that_never_loads_is_reported_as_refused(device):
+    device.statuses = [
+        {"session_token": 0, "reload_pending": False, "reload_ok": False}
+    ]
+    with pytest.raises(WiCANAutoPidError, match="could not load"):
+        _timed_client(device).wait_applied(42, timeout_s=2)
 
 
 def test_http_errors_carry_the_status_and_reply(device):
