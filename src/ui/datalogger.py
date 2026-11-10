@@ -475,6 +475,22 @@ class _WicanSessionWorker(QObject):
             logger.info("WiCAN channel list not ended (%s); it expires by itself", exc)
 
 
+def _release_finished(thread: Optional[QThread], worker: Optional[QObject]):
+    """Free a worker and its thread once the thread's ``finished`` arrived.
+
+    ``finished`` is sent just BEFORE the thread is really over, and nothing
+    here waited for it (unlike a host run's stop). An ending thread deletes
+    what ``deleteLater`` queued on it, so queueing the worker's delete now
+    could free it there while this thread frees it too (a crash seen on
+    Windows). Wait for the thread first (it is ending: this returns at once);
+    after that nothing runs on it, and the worker is simply let go here.
+    """
+    if thread is not None:
+        thread.wait()
+        thread.deleteLater()
+    del worker
+
+
 class _Job(QObject):
     """Runs one blocking call off the GUI thread (WiCAN HTTP)."""
 
@@ -873,10 +889,7 @@ class Datalogger(QObject):
         thread, worker = self._session_thread, self._session_worker
         self._session_thread = None
         self._session_worker = None
-        if worker is not None:
-            worker.deleteLater()
-        if thread is not None:
-            thread.deleteLater()
+        _release_finished(thread, worker)
         if self.wican.is_running:
             if self._session_ours and not self._session_stopping:
                 # The renewals ended on their own (a bug): without them the
@@ -1048,8 +1061,5 @@ class Datalogger(QObject):
         self._job_thread = None
         self._job = None
         self._job_client = None
-        if job is not None:
-            job.deleteLater()
-        if thread is not None:
-            thread.deleteLater()
+        _release_finished(thread, job)
         self.push_running_changed.emit(False)
