@@ -58,6 +58,10 @@ APPLIED_REBOOT = "reboot"
 
 #: How long the WiCAN keeps a temporary list without hearing from NC Flash.
 SESSION_TTL_S = 30
+#: ...so the lease is renewed this often, also while waiting for the list
+#: to be applied.
+SESSION_RENEW_S = 10.0
+SESSION_RENEW_TIMEOUT_S = 5.0
 #: The firmware refuses a temporary list over 64 KB.
 MAX_SESSION_BYTES = 64 * 1024
 #: A WiCAN that can't close its open trip gives up rolling after 15-20 s.
@@ -354,7 +358,16 @@ class WiCANSessionList:
             raise
         return isinstance(caps, dict) and bool(caps.get("session_list"))
 
-    def _post(self, query: str, body: dict, timeout_s: Optional[float]) -> dict:
+    def _post(
+        self,
+        query: str,
+        body: dict,
+        timeout_s: Optional[float],
+        *,
+        stale_on_409: bool = False,
+    ) -> dict:
+        """POST one session op. *stale_on_409*: for an op on a token, a 409
+        that is not a readable ``busy`` means the token is no longer good."""
         try:
             reply = wican_http.post_json(
                 self._url(f"/datalog_session?{query}"),
@@ -369,7 +382,14 @@ class WiCANSessionList:
             if exc.status in (400, 409, 500):
                 # Refused, with a reason (500: the WiCAN ran out of memory and
                 # changed nothing). Only a 404 means old firmware.
-                raise _refusal(exc.body) from exc
+                refusal = _refusal(exc.body)
+                if (
+                    exc.status == 409
+                    and stale_on_409
+                    and not isinstance(refusal, WiCANSessionBusy)
+                ):
+                    refusal = WiCANSessionStale(str(refusal))
+                raise refusal from exc
             raise
         if not isinstance(reply, dict) or reply.get("ok") is False:
             raise _refusal(reply)
@@ -402,16 +422,15 @@ class WiCANSessionList:
 
     def keepalive(self, token: int, *, timeout_s: Optional[float] = None) -> int:
         """Renew the lease; return the milliseconds left on it."""
-        reply = self._post(f"op=keepalive&token={int(token)}", {}, timeout_s)
-        try:
-            return int(reply.get("remaining_ms") or 0)
-        except (TypeError, ValueError):
-            return 0
+        reply = self._post(
+            f"op=keepalive&token={int(token)}", {}, timeout_s, stale_on_409=True
+        )
+        return _int(reply.get("remaining_ms"))
 
     def end(self, token: int, *, timeout_s: Optional[float] = None) -> bool:
         """End the temporary list; False if the WiCAN had already dropped it."""
         try:
-            self._post(f"op=end&token={int(token)}", {}, timeout_s)
+            self._post(f"op=end&token={int(token)}", {}, timeout_s, stale_on_409=True)
         except WiCANSessionStale:
             return False
         return True
@@ -428,6 +447,7 @@ class WiCANSessionList:
         timeout_s: float = SESSION_APPLY_TIMEOUT_S,
         *,
         should_stop: Optional[Callable[[], bool]] = None,
+        renew_every_s: float = SESSION_RENEW_S,
     ) -> dict:
         """Poll ``/poll_status`` until the WiCAN polls the list *token* names.
 
@@ -435,50 +455,87 @@ class WiCANSessionList:
         ``session_list`` alone is not enough (it is also true for an earlier
         session's table); it is the fallback only when the status has no
         ``session_token``. ``reload_ok`` and ``pids_unpollable`` are stale
-        until then, so they are read only once the list is applied.
+        while a reload is pending, so they are read only after it.
 
-        Raises :class:`WiCANAutoPidError` when the WiCAN refused the list,
-        can't poll some of its channels, or has not switched by *timeout_s*
-        (it could not close the trip it is recording). Returns the last status
-        early when *should_stop* turns true.
+        The WiCAN keeps ``reload_pending`` true from the begin until it has
+        parsed that list, so "nothing pending, and the table is not ours" is
+        final: it could not load the list (:class:`WiCANAutoPidError`), or it
+        dropped it (:class:`WiCANSessionStale`). Only a pending reload is
+        waited for, up to *timeout_s* (the WiCAN could not close the trip it
+        is recording). It also raises when some channels can't be polled.
+
+        While waiting, the lease of *token* is renewed every *renew_every_s*,
+        and a ``/poll_status`` call that fails is tried again. Returns the
+        last status early when *should_stop* turns true.
         """
         deadline = self._clock() + timeout_s
+        next_renewal = self._clock() + renew_every_s
+        status: dict = {}
         while True:
-            status = self.poll_status()
-            pending = bool(status.get("reload_pending"))
-            if not pending and _loaded(status, token):
-                if status.get("reload_ok") is False:
-                    raise WiCANAutoPidError(_NOT_LOADED)
-                unpollable = int(status.get("pids_unpollable") or 0)
-                if unpollable:
-                    raise WiCANAutoPidError(
-                        f"The WiCAN can't poll {unpollable} of the channels "
-                        "(check their mode and identifier)."
+            failure = None
+            try:
+                status = self.poll_status()
+            except wican_http.WiCANHttpError as exc:
+                failure = exc  # a blip while it closes its trip: ask again
+                logger.debug("WiCAN /poll_status failed while waiting: %s", exc)
+            if failure is None and not status.get("reload_pending"):
+                if _loaded(status, token):
+                    if status.get("reload_ok") is False:
+                        raise WiCANAutoPidError(_NOT_LOADED)
+                    unpollable = _int(status.get("pids_unpollable"))
+                    if unpollable:
+                        raise WiCANAutoPidError(
+                            f"The WiCAN can't poll {unpollable} of the channels "
+                            "(check their mode and identifier)."
+                        )
+                    return status
+                if token is not None and "session_token" in status:
+                    if status.get("reload_ok") is False:
+                        raise WiCANAutoPidError(_NOT_LOADED)
+                    raise WiCANSessionStale(
+                        "The WiCAN dropped the channel list (it went to sleep, "
+                        "or another NC Flash took over)."
                     )
-                return status
             if should_stop is not None and should_stop():
                 return status
             if self._clock() >= deadline:
-                if not pending and status.get("reload_ok") is False:
-                    # No reload left to wait for, and ours never loaded.
+                if failure is not None:
+                    raise failure
+                if (
+                    not status.get("reload_pending")
+                    and status.get("reload_ok") is False
+                ):
                     raise WiCANAutoPidError(_NOT_LOADED)
                 raise WiCANAutoPidError(
                     "The WiCAN could not switch channels right now (it is still "
                     "recording a trip). Try again in a moment."
                 )
+            if token is not None and self._clock() >= next_renewal:
+                next_renewal = self._clock() + renew_every_s
+                try:
+                    self.keepalive(token, timeout_s=SESSION_RENEW_TIMEOUT_S)
+                except WiCANSessionStale:
+                    raise
+                except (WiCANAutoPidError, wican_http.WiCANHttpError) as exc:
+                    logger.debug("WiCAN lease not renewed while waiting: %s", exc)
             self._sleep(0.5)
 
 
 _NOT_LOADED = "The WiCAN could not load the channel list."
 
 
+def _int(value) -> int:
+    """*value* as an int; 0 for anything that is not a number."""
+    try:
+        return int(value or 0)
+    except (TypeError, ValueError):
+        return 0
+
+
 def _loaded(status: dict, token: Optional[int]) -> bool:
     """Whether the poller's table is the temporary list *token* names."""
     if token is not None and "session_token" in status:
-        try:
-            return int(status.get("session_token") or 0) == int(token)
-        except (TypeError, ValueError):
-            return False
+        return _int(status.get("session_token")) == int(token)
     return bool(status.get("session_list"))
 
 

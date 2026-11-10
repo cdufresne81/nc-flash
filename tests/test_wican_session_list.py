@@ -28,6 +28,7 @@ class Device:
         self.old = False
         self.caps = {"ncfr_rev": 7, "session_list": 1}
         self.refuse = None  # (status, body) for the next begin
+        self.refuse_token_op = None  # (status, body) for keepalive / end
         self.token = 0
         self.next_token = 41
         self.begun = []  # (query, body) of every begin
@@ -43,7 +44,8 @@ class Device:
             status = self.statuses[0]
             if len(self.statuses) > 1:
                 self.statuses.pop(0)
-            return 200, status
+            # A (status, body) pair is an HTTP error reply.
+            return status if isinstance(status, tuple) else (200, status)
         return 404, ""
 
     def post(self, path, query, body):
@@ -58,6 +60,8 @@ class Device:
             self.token = self.next_token
             ttl = int(query.get("ttl_s", ["30"])[0])
             return 200, {"ok": True, "active": True, "token": self.token, "ttl_s": ttl}
+        if self.refuse_token_op:
+            return self.refuse_token_op
         if not self.token or query.get("token", [""])[0] != str(self.token):
             return 409, {"ok": False, "error": "stale"}
         if op == "keepalive":
@@ -186,11 +190,8 @@ def test_a_list_too_large_is_refused_before_sending(device):
 
 def test_wait_applied_until_our_list_is_the_one_polled(device):
     device.statuses = [
-        # reload_ok / pids_unpollable are stale until our list is applied.
+        # reload_ok / pids_unpollable are stale while a reload is pending.
         {"session_token": 0, "reload_pending": True, "reload_ok": False},
-        {"session_token": 0, "reload_pending": False, "reload_ok": False},
-        # An earlier session's table: session_list alone proves nothing.
-        {"session_token": 7, "session_list": True, "reload_pending": False},
         {"session_token": 42, "reload_pending": True, "pids_unpollable": 3},
         {"session_token": 42, "reload_pending": False, "reload_ok": True},
     ]
@@ -229,6 +230,45 @@ def test_wait_applied_reports_a_refused_list(device, status, text):
         _client(device).wait_applied(42)
 
 
+def test_unreadable_unpollable_count_is_not_an_error(device):
+    status = {"session_token": 42, "reload_pending": False, "pids_unpollable": "n/a"}
+    device.statuses = [status]
+    assert _client(device).wait_applied(42) == status
+
+
+@pytest.mark.parametrize(
+    "status,error,text",
+    [
+        # It parsed our list, could not use it, and is back on its own.
+        (
+            {"session_token": 0, "reload_pending": False, "reload_ok": False},
+            WiCANAutoPidError,
+            "could not load",
+        ),
+        # Nothing pending and the table is not ours: it dropped the list.
+        (
+            {"session_token": 0, "reload_pending": False, "reload_ok": True},
+            WiCANSessionStale,
+            "dropped the channel list",
+        ),
+        # Another NC Flash began its own session meanwhile.
+        (
+            {"session_token": 7, "session_list": True, "reload_pending": False},
+            WiCANSessionStale,
+            "another NC Flash",
+        ),
+    ],
+)
+def test_wait_applied_stops_at_once_when_the_list_is_not_ours(
+    device, status, error, text
+):
+    device.statuses = [status]
+    with pytest.raises(error, match=text) as failure:
+        _client(device).wait_applied(42)
+    assert type(failure.value) is error
+    assert device.requests == ["GET /poll_status"]  # no 25 s wait
+
+
 def _timed_client(device):
     now = [0.0]
 
@@ -251,12 +291,61 @@ def test_wait_applied_gives_up_and_can_be_stopped(device):
     assert status["reload_pending"] is True
 
 
-def test_a_list_that_never_loads_is_reported_as_refused(device):
+def test_wait_applied_renews_the_lease_while_it_waits(device):
+    # 21 s to close the open trip, on a 30 s lease: without renewals the
+    # lease would lapse 9 s after the run started.
+    client = _timed_client(device)
+    token = client.begin(ROWS)
+    device.statuses = [{"session_token": 0, "reload_pending": True}] * 42 + [
+        {"session_token": token, "reload_pending": False, "reload_ok": True}
+    ]
+    client.wait_applied(token)
+    renewals = [r for r in device.requests if "op=keepalive" in r]
+    assert renewals == [f"POST /datalog_session?op=keepalive&token={token}"] * 2
+
+
+def test_wait_applied_stops_when_the_lease_is_gone(device):
+    client = _timed_client(device)
+    token = client.begin(ROWS)
+    device.statuses = [{"session_token": 0, "reload_pending": True}]
+    device.token = 0  # the WiCAN rebooted
+    with pytest.raises(WiCANSessionStale):
+        client.wait_applied(token)
+
+
+def test_wait_applied_survives_a_failed_status_call(device):
     device.statuses = [
-        {"session_token": 0, "reload_pending": False, "reload_ok": False}
+        {"session_token": 0, "reload_pending": True},
+        (503, {"err": "busy closing trip"}),
+        {"session_token": 42, "reload_pending": False, "reload_ok": True},
+    ]
+    assert _client(device).wait_applied(42)["session_token"] == 42
+    # ...but a WiCAN that never answers is a network failure, not a refusal.
+    device.statuses = [(503, "")]
+    with pytest.raises(wican_http.WiCANHttpError):
+        _timed_client(device).wait_applied(42, timeout_s=2)
+
+
+def test_a_list_that_never_loads_is_reported_as_refused(device):
+    # Firmware without session_token: only the timeout can tell.
+    device.statuses = [
+        {"session_list": False, "reload_pending": False, "reload_ok": False}
     ]
     with pytest.raises(WiCANAutoPidError, match="could not load"):
         _timed_client(device).wait_applied(42, timeout_s=2)
+
+
+def test_any_409_on_a_token_that_is_not_busy_means_stale(device):
+    client = _client(device)
+    token = client.begin(ROWS)
+    for reply in ((409, "Conflict"), (409, {"ok": False}), (409, {"error": "gone"})):
+        device.refuse_token_op = reply
+        with pytest.raises(WiCANSessionStale):
+            client.keepalive(token)
+        assert client.end(token) is False
+    device.refuse_token_op = (409, {"ok": False, "error": "busy", "msg": "sleeping"})
+    with pytest.raises(WiCANSessionBusy):
+        client.keepalive(token)
 
 
 def test_http_errors_carry_the_status_and_reply(device):

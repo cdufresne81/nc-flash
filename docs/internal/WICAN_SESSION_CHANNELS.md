@@ -25,18 +25,18 @@ see `WICAN_LIVE_STREAM.md`) -> renew the lease; Stop = stop the stream, then end
 | Call | Reply |
 |---|---|
 | `GET /host_caps` | has `"session_list": 1` when the firmware supports this |
-| `POST /datalog_session?op=begin&ttl_s=30`, body `{"format":"nc-flash-1","pids":[rows],"can_filters":[],"calculated":[]}` | 200 `{"ok":true,"token":N,...}`; 400 `bad_request` (also 0 rows, more than 128 rows, or a row that is not service 01/22/23); 409 `busy` (an ECU session owns the bus, or the WiCAN is going to sleep); 409 `inactive` (the WiCAN's own saved list has no polled channel, so its datalogger is not running); 500 `internal` (out of memory, nothing changed) |
-| `POST /datalog_session?op=keepalive&token=N` | 200 `{"remaining_ms":..}`; 409 `stale` (no session, or another token) |
+| `POST /datalog_session?op=begin&ttl_s=30`, body `{"format":"nc-flash-1","pids":[rows],"can_filters":[],"calculated":[]}` | 200 `{"ok":true,"token":N,...}`; 400 `bad_request` (the list must have 1 to 128 rows, each of service 01, 22 or 23); 409 `busy` (an ECU session owns the bus, or the WiCAN is going to sleep); 409 `inactive` (the WiCAN's own saved list has no polled channel, so its datalogger is not running); 500 `internal` (out of memory, nothing changed) |
+| `POST /datalog_session?op=keepalive&token=N` | 200 `{"remaining_ms":..}`; 409 `stale` (no session, or another token). The host reads any 409 that is not a readable `busy` as stale |
 | `POST /datalog_session?op=end&token=N` | 200; 409 `stale` = already ended |
-| `GET /poll_status` | gains `"session_token": N` = the token of the session whose list the poller has loaded (0 on its saved list) and `"session_list": true|false`. `reload_ok` and `pids_unpollable` are stale until the list is applied |
+| `GET /poll_status` | gains `"session_token": N` = the token of the session whose list the poller has loaded (0 on its saved list) and `"session_list": true|false`. `reload_pending` is true from the begin until the WiCAN has parsed that list; `reload_ok` and `pids_unpollable` are stale while it is |
 
 Rows have the same schema as the saved file's `pids` (`to_firmware_row`). A begin closes any open
 trip, forces recording on for the session (like NC Flash polling over a cable: it logs whenever the
 ECU answers) and the next trip opens with the new columns. A begin during a session replaces the
 list and issues a new token. Ending restores the WiCAN's previous recording mode. Old firmware has
 no `session_list` in `/host_caps` and answers 404 on `/datalog_session`; nothing else means "old
-firmware". The lease runs out at ttl + up to 1 s. The WiCAN accepts an empty `pids`, so NC Flash's
-own "Select at least one channel" is the only guard. If the WiCAN can't close its open trip it stops
+firmware". The lease runs out at ttl + up to 1 s. The WiCAN refuses an empty list (400), and NC
+Flash refuses to start with no channel ticked before asking. If the WiCAN can't close its open trip it stops
 trying after 15-20 s and `reload_pending` stays true until that trip ends.
 
 ## Host side
@@ -52,22 +52,35 @@ trying after 15-20 s and `reload_pending` stays true until that trip ends.
 ### Run lifecycle
 
 1. **Start pressed** (GUI thread): refuse if blocked, no WiCAN set up, no channel enabled, or a
-   channel is invalid. Build the rows (every channel with its enabled flag) and start the session
-   thread. `is_running` is true from here.
+   ticked channel is invalid. Build the rows from the ticked channels only (like the host engine;
+   an unticked channel is neither sent nor checked) and start the session thread. `is_running` is true from here.
 2. **Sending** (session thread): look the WiCAN up (mDNS, up to 3 s) -> `/host_caps` -> begin
    (ttl 30 s) -> poll `/poll_status` until `session_token` equals the token begin returned and
-   `reload_pending` is false (25 s at most; only then are `reload_ok` and `pids_unpollable` read).
-   `session_list:true` alone is not proof (it can be an earlier session's table); it is used only
-   when the status has no `session_token`.
+   `reload_pending` is false. Only then are `reload_ok` and `pids_unpollable` read.
+   - A pending reload is waited for up to 25 s (the WiCAN may need most of that to close its open
+     trip). The lease is renewed every 10 s during the wait, and a `/poll_status` call that fails is
+     simply tried again.
+   - Nothing pending and `session_token` is not ours: final, no waiting. With `reload_ok:false` the
+     WiCAN could not load the list; otherwise it dropped it (it went to sleep, or another NC Flash
+     took over).
+   - `session_list:true` alone is not proof (it can be an earlier session's table); it is used only
+     when the status has no `session_token`, and then only the 25 s timeout can report a failure.
 3. **Following**: the worker emits `follow`; the Datalogger starts the stream follower on the GUI
-   thread. The worker renews the lease every 10 s.
+   thread. The worker renews the lease at once (the wait used part of it), then every 10 s.
    - Keepalive answers `stale` (Wi-Fi gap longer than the lease, or the WiCAN rebooted): begin
-     again at once and wait for applied again (10 s at most). A failed wait is only logged; the
-     run carries on and renews 2 s later.
-   - Any other failure: retry every 2 s, silently (the stream has its own reconnect and status).
-4. **Stop**: the stream is stopped first, then the worker ends the session (3 s timeout; if it does
-   not get through the lease runs out within 30 s). `is_running` turns false when the session thread
-   has been cleaned up. A new start is refused until then.
+     again at once and wait for applied again (10 s per try, lease renewed meanwhile).
+   - While the WiCAN is not on our list (it refuses the begin, the begin does not get through, or
+     the switch is not confirmed), the run goes on and the status says, in plain words, that the
+     WiCAN is logging its own list for now and NC Flash is sending the channels again, with the
+     WiCAN's reason when it gave one. Stream statuses carry a short reminder until it took the list.
+     Retries are 2 s apart; after 3 refusals in a row, 10 s apart.
+   - A renewal that just does not get through is retried every 2 s, silently (the stream has its
+     own reconnect and status).
+4. **Stop**: status "Stopping...", the stream is stopped first, then the worker ends the session
+   (3 s timeout; if it does not get through the lease runs out within 30 s). `is_running` turns
+   false when the session thread has been cleaned up **and** the stream follower has reported its
+   own end. A new start is refused until then: the follower reports from the event loop, after
+   `stop()` returned, and that late report would otherwise stop the new run.
 5. **The stream ends on its own** (error, another app took it over, no live stream in the
    firmware): the Datalogger stops the worker, which ends the session. No renewals without a stream.
 
@@ -75,12 +88,14 @@ trying after 15-20 s and `reload_pending` stays true until that trip ends.
 
 | Case | Result |
 |---|---|
-| Old firmware (no capability, or 404) | The run follows the WiCAN's own list, as before. One status line says so and that a firmware update lets Start Logging use the channels shown; stream statuses carry a short reminder |
+| Old firmware (no capability, or 404) | The run follows the WiCAN's own list, as before. One status line says so; every stream status then ends with "(WiCAN's own list; update its firmware to log the channels shown here)", because the first line is replaced within milliseconds |
 | `busy` | No run. Status: the WiCAN's link to the ECU is in use, or it is going to sleep |
 | List refused (`bad_request`, with the WiCAN's message) / channels it can't poll / `internal` | The session is ended, no run, the reason is shown |
 | `inactive` | No run. The WiCAN's message is shown (add one channel on its Logger page) |
-| Not applied in 25 s | The session is ended, no run: the WiCAN could not switch channels right now |
-| WiCAN unreachable | No run, the reason is shown |
+| List not loaded, or dropped right after the begin | The session is ended, no run, said at once |
+| Reload still pending after 25 s | The session is ended, no run: the WiCAN could not switch channels right now |
+| WiCAN unreachable | No run: "the WiCAN is not reachable (check it is powered and on the same Wi-Fi)". URLs go to the log only |
+| Begin sent, reply lost | The WiCAN may hold a list nobody has a token for. One try (5 s) to begin again and end that token; if that fails too, the lease clears it within 30 s. Skipped on app close |
 
 App close (`shutdown`) waits for the session thread (up to 20 s worst case: lookup + a call in
 flight + the end call) so its QThread is never destroyed running.
