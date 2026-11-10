@@ -14,6 +14,12 @@ The user picks channels once (saved in settings, see
 Both engines write through :class:`~src.core.live_csv.LiveCsvCapture` and
 open MegaLogViewerHD through :func:`src.ui.mlv_launch.auto_trail`.
 
+A third source needs no ECU: :class:`~src.ui.log_replay.LogReplay` plays an
+existing log back through the same live values and the same live CSV writer
+(:meth:`Datalogger.start_replay`). It never runs together with a live run, and
+it does not count as one (``is_running``): the ECU Programming window stays
+free while a log replays.
+
 Owned by the main window (one instance, state has ONE owner). The ECU
 Programming window locks itself while a run is active, and a run won't start
 while that window holds the ECU link (``blocker``).
@@ -36,6 +42,7 @@ from src.core.datalog_channels import (
 )
 from src.core.live_csv import LiveCsvCapture, StatusThrottle, live_capture_dir
 from src.ui.live_values import EMIT_EVERY_S, LiveValues
+from src.ui.log_replay import LogReplay
 from src.ui.wican_live_datalog import WiCANLiveDatalog
 
 logger = logging.getLogger(__name__)
@@ -293,6 +300,11 @@ class Datalogger(QObject):
         self.wican.running_changed.connect(self._on_wican_running)
         self.wican.status_changed.connect(self.status_changed)
         self.wican.capture_changed.connect(self.capture_changed)
+        #: Replays an existing log through the live values and a live CSV.
+        self.replay = LogReplay(settings, parent=self, live_values=self.live_values)
+        self.replay.status_changed.connect(self.status_changed)
+        self.replay.capture_changed.connect(self._on_replay_capture_changed)
+        self.replay.capture_ready.connect(self._on_replay_capture_ready)
         self._thread: Optional[QThread] = None
         self._worker: Optional[_HostPollWorker] = None
         self._capture = ""
@@ -321,7 +333,9 @@ class Datalogger(QObject):
 
     @property
     def current_capture(self) -> str:
-        return self.wican.current_capture or self._capture
+        return (
+            self.wican.current_capture or self._capture or self.replay.current_capture
+        )
 
     @property
     def push_running(self) -> bool:
@@ -346,6 +360,9 @@ class Datalogger(QObject):
     def start(self) -> bool:
         """Start a run with the saved channels; False (and a status) if not."""
         if self.is_running:
+            return False
+        if self.replay.is_running:
+            self.status_changed.emit("Stop the log replay first.")
             return False
         reason = self.blocked_reason()
         if reason:
@@ -397,6 +414,18 @@ class Datalogger(QObject):
         self.running_changed.emit(True)
         return True
 
+    def start_replay(self, path) -> bool:
+        """Replay an existing log as if it were live (no ECU involved, so the
+        ECU window's link doesn't matter); False (and a status) if not."""
+        if self.is_running:
+            self.status_changed.emit("Stop logging first.")
+            return False
+        from src.core.axis_channels import shipped_map
+
+        known = [c.name for c in self.channels()]
+        known += sorted({m.channel for m in shipped_map().values()} - set(known))
+        return self.replay.start(path, known)
+
     def stop(self):
         """Stop a run (user toggle). Safe when idle; leaves a WiCAN channel
         job running (it ends on its own)."""
@@ -404,7 +433,9 @@ class Datalogger(QObject):
         self._stop_host(10000)
 
     def shutdown(self, timeout_ms: int = 10000):
-        """Stop any run and channel job (also on app exit); safe when idle."""
+        """Stop any run, replay and channel job (also on app exit); safe
+        when idle."""
+        self.replay.stop()
         self.wican.shutdown(timeout_ms)
         self._stop_host(timeout_ms)
         self.wait_for_wican_job(max(timeout_ms, JOB_SHUTDOWN_MS))
@@ -461,6 +492,14 @@ class Datalogger(QObject):
 
     def _on_channel_dropped(self, name: str, why: str):
         self.channel_dropped.emit(name, why)
+
+    def _on_replay_capture_changed(self, _path: str):
+        self.capture_changed.emit(self.current_capture)
+
+    def _on_replay_capture_ready(self, path: str):
+        from src.ui import mlv_launch
+
+        mlv_launch.auto_trail(self._settings, path)
 
     def _on_values(self, values: dict):
         if self._thread is not None:  # not a late one after the stop
