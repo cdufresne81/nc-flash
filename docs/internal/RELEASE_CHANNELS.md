@@ -63,6 +63,17 @@ master ──merge after every stable release──► dev
   this exact form is recognised: `-rc1`, `-beta1` or `-alpha.1` tags are
   published but ignored by the updater.
 - The release workflow refuses a stable tag whose commit is not on `master`.
+- **Tagging without a local clone:** run the **Tag Release** workflow
+  (Actions tab > Tag Release > Run workflow, from `master`; or
+  `gh workflow run tag-release.yml -f version=v2.24.0-beta.16`). The version
+  picks the branch: a beta tags the head of `dev`, a stable version the head
+  of `master`. It then starts the Release workflow on the new tag. It refuses
+  a version that isn't one of the two forms above, a tag that already exists,
+  a commit CI hasn't passed on, and a stable version with no CHANGELOG
+  section. Optional `commit` pins the branch head you reviewed (it refuses if
+  the branch moved). Use this from a cloud session, which can start a
+  workflow but can't push a tag. Pushing the tag by hand still works.
+  The workflow file must be on `master` to be runnable at all.
 - Betas get no CHANGELOG version section: their release notes are the
   `## [Unreleased]` section on `dev`. Feature entries are written on the
   feature branch, so they reach `master` with it; expect to resolve
