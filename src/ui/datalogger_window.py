@@ -22,6 +22,7 @@ from PySide6.QtWidgets import (
     QComboBox,
     QDialog,
     QDialogButtonBox,
+    QFileDialog,
     QFormLayout,
     QHBoxLayout,
     QLabel,
@@ -29,6 +30,7 @@ from PySide6.QtWidgets import (
     QMainWindow,
     QMessageBox,
     QPushButton,
+    QSlider,
     QSpinBox,
     QTableWidget,
     QTableWidgetItem,
@@ -51,6 +53,7 @@ from src.core.datalog_channels import (
 )
 from src.core.live_csv import live_capture_dir
 from src.ui import theme
+from src.ui.log_replay import SPEEDS, format_clock
 
 logger = logging.getLogger(__name__)
 
@@ -197,6 +200,9 @@ class DataloggerWindow(QMainWindow):
         self._channels: list[Channel] = self._datalogger.channels()
         self._dropped: dict[str, str] = {}
         self._filling = False
+        self._replay_dir = ""  # folder of the last log picked for a replay
+        self._replay_syncing = False  # the slider is being set from the replay
+        self._replay_duration = ""
 
         self.setWindowTitle("Datalogger")
         self.setMinimumSize(720, 480)
@@ -212,7 +218,11 @@ class DataloggerWindow(QMainWindow):
         dl.push_running_changed.connect(self._update_state)
         dl.push_preview.connect(self._on_push_preview)
         dl.push_finished.connect(self._on_push_finished)
-        self._update_state()
+        replay = dl.replay
+        replay.running_changed.connect(self._on_replay_running)
+        replay.paused_changed.connect(self._update_state)
+        replay.position_changed.connect(self._on_replay_position)
+        self._on_replay_running(replay.is_running)
 
     # --- UI -------------------------------------------------------------------
 
@@ -296,8 +306,48 @@ class DataloggerWindow(QMainWindow):
         )
         self._btn_restore.clicked.connect(self._on_restore)
         run_row.addWidget(self._btn_restore)
+        self._btn_replay = QPushButton("Replay a Log...")
+        self._btn_replay.setToolTip(
+            "Play back an existing log (an NC Flash capture or a WiCAN trip log) "
+            "as if it were live: the position moves on open tables and a live "
+            "CSV grows for MegaLogViewerHD. No ECU or adapter is needed."
+        )
+        self._btn_replay.clicked.connect(self._on_replay_toggle)
+        run_row.addWidget(self._btn_replay)
         run_row.addStretch()
         root.addLayout(run_row)
+
+        # Replay controls: shown only while a log replays.
+        self._replay_bar = QWidget()
+        bar = QHBoxLayout(self._replay_bar)
+        bar.setContentsMargins(0, 0, 0, 0)
+        self._btn_pause = QPushButton("Pause")
+        self._btn_pause.clicked.connect(self._on_replay_pause)
+        bar.addWidget(self._btn_pause)
+        self._replay_slider = QSlider(Qt.Horizontal)
+        self._replay_slider.setToolTip(
+            "Where the replay is in the log. Drag it to jump, paused or playing."
+        )
+        self._replay_slider.setTracking(True)
+        self._replay_slider.valueChanged.connect(self._on_replay_slider)
+        bar.addWidget(self._replay_slider, stretch=1)
+        self._replay_time = QLabel("")
+        bar.addWidget(self._replay_time)
+        self._replay_speed = QComboBox()
+        self._replay_speed.setToolTip("Replay speed")
+        for speed in SPEEDS:
+            self._replay_speed.addItem(f"{speed:g}x", speed)
+        self._replay_speed.setCurrentIndex(
+            max(0, self._replay_speed.findData(self._datalogger.replay.speed))
+        )
+        self._replay_speed.currentIndexChanged.connect(self._on_replay_speed)
+        bar.addWidget(self._replay_speed)
+        self._chk_replay_loop = QCheckBox("Loop")
+        self._chk_replay_loop.setToolTip("Start again from the beginning at the end")
+        self._chk_replay_loop.setChecked(self._datalogger.replay.loop)
+        self._chk_replay_loop.toggled.connect(self._datalogger.replay.set_loop)
+        bar.addWidget(self._chk_replay_loop)
+        root.addWidget(self._replay_bar)
 
         self._status = QLabel("")
         self._status.setWordWrap(True)
@@ -442,6 +492,62 @@ class DataloggerWindow(QMainWindow):
         dl.start()
         self._update_state()
 
+    # --- replay ---------------------------------------------------------------
+
+    def _on_replay_toggle(self):
+        dl = self._datalogger
+        if dl.replay.is_running:
+            dl.replay.stop()
+            return
+        start_dir = self._replay_dir or self._settings.get_logs_directory()
+        path, _ = QFileDialog.getOpenFileName(
+            self, "Replay a Log", start_dir, "Logs (*.csv);;All files (*)"
+        )
+        if not path:
+            return
+        self._replay_dir = str(Path(path).parent)
+        dl.start_replay(path)
+
+    def _on_replay_pause(self):
+        replay = self._datalogger.replay
+        replay.set_paused(not replay.is_paused)
+
+    def _on_replay_slider(self, value: int):
+        if not self._replay_syncing:
+            self._datalogger.replay.seek(value)
+
+    def _on_replay_speed(self, index: int):
+        self._datalogger.replay.set_speed(self._replay_speed.itemData(index))
+
+    def _on_replay_running(self, running: bool):
+        log = self._datalogger.replay.log
+        self._replay_syncing = True
+        try:
+            rows = log.row_count if log is not None else 1
+            self._replay_slider.setRange(0, rows - 1)
+            self._replay_slider.setPageStep(max(1, rows // 20))
+            self._replay_slider.setValue(self._datalogger.replay.position)
+        finally:
+            self._replay_syncing = False
+        self._replay_duration = format_clock(log.duration_s) if log else ""
+        if log is not None:
+            position = self._datalogger.replay.position
+            self._on_replay_position(position, log.offsets[position])
+        else:
+            self._replay_time.setText("")
+        self._replay_bar.setVisible(running)
+        self._update_state()
+
+    def _on_replay_position(self, index: int, seconds: float):
+        self._replay_time.setText(f"{format_clock(seconds)} / {self._replay_duration}")
+        if self._replay_slider.isSliderDown():
+            return  # the user holds it: don't pull it from under the mouse
+        self._replay_syncing = True
+        try:
+            self._replay_slider.setValue(index)
+        finally:
+            self._replay_syncing = False
+
     def _on_trail(self):
         if not self._datalogger.trail_in_mlv():
             self._status.setText("MegaLogViewerHD is not installed")
@@ -539,6 +645,7 @@ class DataloggerWindow(QMainWindow):
         adapter = self._settings.get_ecu_adapter()
         self._adapter.setText(_ADAPTER_TEXT.get(adapter, _ADAPTER_TEXT["j2534"]))
         running = dl.is_running
+        replaying = dl.replay.is_running
         pushing = dl.push_running
         self._btn_run.setText("Stop Logging" if running else "Start Logging")
         if running:
@@ -547,8 +654,13 @@ class DataloggerWindow(QMainWindow):
         else:
             # Always clickable: the ECU window's link can change while this
             # window shows; a refused start says why in the status line.
-            self._btn_run.setEnabled(not pushing)
-            self._btn_run.setToolTip(dl.blocked_reason() or "")
+            self._btn_run.setEnabled(not pushing and not replaying)
+            self._btn_run.setToolTip(
+                "Stop the log replay first." if replaying else dl.blocked_reason() or ""
+            )
+        self._btn_replay.setText("Stop Replay" if replaying else "Replay a Log...")
+        self._btn_replay.setEnabled(replaying or not running)
+        self._btn_pause.setText("Play" if dl.replay.is_paused else "Pause")
         self._btn_trail.setEnabled(bool(dl.current_capture))
         is_wican = adapter == "wican"
         self._btn_push.setVisible(is_wican)

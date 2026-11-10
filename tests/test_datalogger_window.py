@@ -11,6 +11,36 @@ from src.ui import datalogger_window as win_mod
 from src.ui.datalogger_window import ChannelDialog, DataloggerWindow
 
 
+class _FakeReplay(QObject):
+    running_changed = Signal(bool)
+    paused_changed = Signal(bool)
+    position_changed = Signal(int, float)
+
+    def __init__(self):
+        super().__init__()
+        self.is_running = False
+        self.is_paused = False
+        self.log = None
+        self.position = 0
+        self.speed = 1.0
+        self.loop = False
+        self.stop = MagicMock()
+        self.seek = MagicMock()
+        self.set_paused = MagicMock()
+        self.set_speed = MagicMock()
+        self.set_loop = MagicMock()
+
+    def begin(self, rows=200, duration=95.0):
+        """As if a log of *rows* rows had just started replaying."""
+        self.is_running = True
+        self.log = SimpleNamespace(
+            row_count=rows,
+            duration_s=duration,
+            offsets=[i * duration / (rows - 1) for i in range(rows)],
+        )
+        self.running_changed.emit(True)
+
+
 class _FakeDatalogger(QObject):
     running_changed = Signal(bool)
     status_changed = Signal(str)
@@ -30,6 +60,8 @@ class _FakeDatalogger(QObject):
         self.failed_push_backup = ""
         self.start = MagicMock(return_value=True)
         self.stop = MagicMock()
+        self.replay = _FakeReplay()
+        self.start_replay = MagicMock(return_value=True)
         self.trail_in_mlv = MagicMock(return_value=True)
         self.push_to_wican = MagicMock(return_value=True)
         self.preview_wican_push = MagicMock(return_value=True)
@@ -274,3 +306,84 @@ def test_open_live_logs_folder_selects_the_capture_being_written(
     )
     window._btn_folder.click()
     assert calls == [["explorer", "/select,", str(capture)]]
+
+
+# --- log replay ---------------------------------------------------------------
+
+
+def test_replay_button_picks_a_log_and_starts_it(qtbot, monkeypatch, tmp_path):
+    window, dl, settings = _window(qtbot)
+    settings.get_logs_directory.return_value = str(tmp_path)
+    picked = str(tmp_path / "trip.csv")
+    asked = []
+
+    def choose(parent, title, folder, *_):
+        asked.append(folder)
+        return picked, ""
+
+    monkeypatch.setattr(win_mod.QFileDialog, "getOpenFileName", choose)
+    window._btn_replay.click()
+    dl.start_replay.assert_called_once_with(picked)
+    assert asked == [str(tmp_path)]  # the logs folder the first time
+
+
+def test_cancelling_the_file_dialog_starts_nothing(qtbot, monkeypatch):
+    window, dl, _ = _window(qtbot)
+    monkeypatch.setattr(
+        win_mod.QFileDialog, "getOpenFileName", lambda *a, **k: ("", "")
+    )
+    window._btn_replay.click()
+    dl.start_replay.assert_not_called()
+
+
+def test_replay_controls_show_only_while_a_log_replays(qtbot):
+    window, dl, _ = _window(qtbot)
+    window.show()
+    assert not window._replay_bar.isVisible()
+    assert window._btn_replay.text() == "Replay a Log..."
+
+    dl.replay.begin(rows=200)
+    assert window._replay_bar.isVisible()
+    assert window._btn_replay.text() == "Stop Replay"
+    assert window._replay_slider.maximum() == 199
+    assert not window._btn_run.isEnabled()  # no live run during a replay
+    assert "replay" in window._btn_run.toolTip()
+
+    window._btn_replay.click()
+    dl.replay.stop.assert_called_once()
+
+
+def test_no_replay_while_logging(qtbot):
+    window, dl, _ = _window(qtbot)
+    dl.is_running = True
+    dl.running_changed.emit(True)
+    assert not window._btn_replay.isEnabled()
+
+
+def test_dragging_the_position_bar_seeks_but_replay_progress_does_not(qtbot):
+    window, dl, _ = _window(qtbot)
+    dl.replay.begin(rows=200, duration=199.0)
+    dl.replay.seek.reset_mock()
+
+    dl.replay.position_changed.emit(60, 60.0)  # the replay moved on
+    assert window._replay_slider.value() == 60
+    assert window._replay_time.text() == "1:00.0 / 3:19.0"
+    dl.replay.seek.assert_not_called()
+
+    window._replay_slider.setValue(120)  # the user moved the bar
+    dl.replay.seek.assert_called_once_with(120)
+
+
+def test_pause_speed_and_loop_reach_the_replay(qtbot):
+    window, dl, _ = _window(qtbot)
+    dl.replay.begin()
+    window._btn_pause.click()
+    dl.replay.set_paused.assert_called_once_with(True)
+    dl.replay.is_paused = True
+    dl.replay.paused_changed.emit(True)
+    assert window._btn_pause.text() == "Play"
+
+    window._replay_speed.setCurrentIndex(window._replay_speed.findText("5x"))
+    dl.replay.set_speed.assert_called_once_with(5.0)
+    window._chk_replay_loop.setChecked(True)
+    dl.replay.set_loop.assert_called_once_with(True)

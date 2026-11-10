@@ -113,6 +113,16 @@ Test scripts are plain text files with one command per line. Comments start with
 | `assert_width_restored [tolerance]` | Assert width matches stored |
 | `resize_window <w> <h>` | Resize current table window (like dragging a corner) |
 
+#### Datalogger & Live Cursor
+| Command | Description |
+|---------|-------------|
+| `open_datalogger` | Open the Datalogger window |
+| `live_values [NAME=v ...]` | Put the live table cursor at fixed values (no arguments clears it) |
+| `replay_log <csv> [speed]` | Replay a log through the Datalogger (moving cursor, live CSV); sample logs in `tests/fixtures/replay/` |
+| `replay_pause` / `replay_play` | Hold or resume the replay (pause before a screenshot so it is repeatable) |
+| `replay_seek <row>` | Jump the replay to a row of the log |
+| `replay_stop` | Stop the replay |
+
 ### Example Script
 
 ```text

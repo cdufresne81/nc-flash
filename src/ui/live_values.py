@@ -37,7 +37,8 @@ class LiveValues(QObject):
 
     def update(self, values: Dict[str, float], *, expire: bool = True):
         """Replace the values (GUI thread). ``expire=False`` keeps them until
-        the next update or clear (UI test runner only)."""
+        the next update or clear (a log replay, which may sit paused, and the
+        UI test runner)."""
         self._values = dict(values)
         if expire:
             self._stale.start()
