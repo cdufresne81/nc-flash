@@ -591,6 +591,18 @@ def fast_keepalive(monkeypatch):
     monkeypatch.setattr(dl_mod, "SESSION_RETRY_S", 0.02)
 
 
+_started = []  # Dataloggers of the running test, shut down at teardown
+
+
+@pytest.fixture(autouse=True)
+def _no_run_outlives_its_test():
+    """A test that fails mid-run must not leave a worker thread behind: the
+    next test would destroy it while it runs, and that aborts the process."""
+    yield
+    while _started:
+        _started.pop().shutdown(2000)
+
+
 def _wican_run(tmp_path, monkeypatch, client, channels=None, wican=None, **kw):
     wican = wican or FakeWican()
     chans = _two_channels() if channels is None else channels
@@ -598,6 +610,7 @@ def _wican_run(tmp_path, monkeypatch, client, channels=None, wican=None, **kw):
         _settings(tmp_path, adapter="wican", channels=chans), wican=wican, **kw
     )
     monkeypatch.setattr(dl, "_session_client", lambda: client)
+    _started.append(dl)
     statuses, running = [], []
     dl.status_changed.connect(statuses.append)
     dl.running_changed.connect(running.append)
@@ -789,7 +802,8 @@ def test_list_the_wican_will_not_take_back_is_said_and_retried(
     assert statuses.count(lost) == 1  # said once, not at every try
     # Three refusals in a row, then it tries less often.
     gaps = [b - a for a, b in zip(times[1:], times[2:])]
-    assert min(gaps[2:]) >= 0.3 and max(gaps[:2]) < min(gaps[2:])
+    # (Windows clocks tick every ~16 ms, so a 0.3 s wait can measure shorter.)
+    assert min(gaps[2:]) >= 0.25 and max(gaps[:2]) < min(gaps[2:])
     wican.status_changed.emit("Recording (20 rows)")
     assert statuses[-1] == "Recording (20 rows)"
     dl.stop()
