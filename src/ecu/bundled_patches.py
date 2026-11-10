@@ -16,8 +16,8 @@ from ..utils.paths import get_app_root
 from .ncflash_patch import Catalog, load_catalog
 
 # Path relative to patches/ (forward slashes) -> sha256 of the exact bytes.
-# NC Flash features 1.0.0 (= AutoBlip 3.4, channel test): nc-flash-re a61ec85,
-# roms/ncflash_patches/ (not yet reviewed for release).
+# ncflash-features 1.0.0 (test) for LF9VEB, LFG2EP, LFH9EF: nc-flash-re a61ec85,
+# roms/ncflash_patches/ (written by tools/bundle_ncflash_patches.py).
 PINS = {
     "index.json": "c8c41c4449cbbfb18c2bcc2e2d4f551ab463a1fde5925e8296fd5a6e20180292",
     "ncflash-features/1.0.0/lf9veb.ncpatch.json": (

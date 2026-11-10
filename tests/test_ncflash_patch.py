@@ -592,3 +592,182 @@ class TestChecksumArithmetic:
                 a, b = struct.unpack_from(">II", _r0(), p.ck.table + 12 * i)
                 assert N.ck_calc(d, a, b) == mazda_checksum(d, a, b + 1)
         assert N.ck_calc(b"\xff" * 16, 0, 15) == mazda_checksum(b"\xff" * 16, 0, 16)
+
+
+# ------------------------------------------------- nc-flash-re review 2026-10-07
+
+
+def _with_vector_pin(d: dict) -> dict:
+    """The fixture with the review's code pin: 0xFF650-0xFFFFF (vectors) minus the
+    carve-out 0xFF800-0xFFC4F, re-hashed on R0 (what the re-emitted packs carry)."""
+    pin = d["code_pin"]
+    regions = [tuple(N.num(x) for x in r) for r in pin["regions"]]
+    regions = [r for r in regions if r[0] < 0xFF000] + [(0xFF650, 0xFFFFF)]
+    exclude = [tuple(N.num(x) for x in r) for r in pin["exclude"]]
+    exclude += [(0xFF800, 0xFFC4F)]
+    exclude += [(0xFF650 + 12 * i + 8, 0xFF650 + 12 * i + 11) for i in range(35)]
+    sha, blocks = N.pin_hashes(_r0(), regions, exclude, 4096)
+    pin.update(
+        regions=[[f"0x{a:06X}", f"0x{b:06X}"] for a, b in regions],
+        exclude=[[f"0x{a:06X}", f"0x{b:06X}"] for a, b in exclude],
+        sha256=sha,
+        blocks={f"0x{k:06X}": v for k, v in blocks.items()},
+    )
+    return d
+
+
+def _fixed(rom: bytes) -> bytes:
+    p = _fixture()
+    return N.ck_fix(rom, p.ck)
+
+
+class TestReviewFixes:
+    VEC = 0xFFC50 + 4 * 192  # vector 192, the CMT1 1 ms tick
+
+    def _apply(self, rom, d=None):
+        p = _patch(_with_vector_pin(d or _raw()))
+        return N.apply_patch(_fixed(rom), p, TYRE)
+
+    def test_r0_still_applies(self):
+        res = self._apply(_r0())
+        assert hashlib.sha256(res.output).hexdigest() == R1_SHA
+
+    @pytest.mark.parametrize(
+        "label, mutate",
+        [
+            (
+                "vector zeroed",
+                lambda b: struct.pack_into(">I", b, 0xFFC50 + 4 * 192, 0),
+            ),
+            (
+                "vector redirected",
+                lambda b: b.__setitem__(
+                    slice(0xFFC50 + 4 * 192, 0xFFC50 + 4 * 193),
+                    bytes(b[0xFFC50 + 4 * 193 : 0xFFC50 + 4 * 194]),
+                ),
+            ),
+            ("entry pointer changed", lambda b: b.__setitem__(0xFFFFB, b[0xFFFFB] ^ 2)),
+        ],
+    )
+    def test_vector_table_refuses(self, label, mutate):
+        rom = bytearray(_r0())
+        mutate(rom)
+        res = self._apply(bytes(rom))
+        assert res.verdict == "REFUSED" and res.output is None, label
+        assert any("code pin" in m and "0x0FF000" in m for m in _msgs(res, N.REFUSE))
+
+    def test_flash_counter_and_carve_out_stay_out_of_the_code_pin(self):
+        rom = bytearray(_r0())
+        rom[0xFFB05] ^= 0x5A  # SBL flash counter: excluded from the data pin too
+        rom[0xFF900] ^= 0x01  # carve-out: data pin (non-routine WARN), not code pin
+        res = self._apply(bytes(rom))
+        assert res.output is not None
+        assert not any("code pin" in m for m in _msgs(res, N.REFUSE))
+
+    def test_wrapper_code_range_refuses(self):
+        d = _raw()
+        # the re-emitted packs mark Romdrop's wrapper code ranges kind romdrop
+        for r in d["ranges"]:
+            a = int(r["addr"], 16)
+            if r["kind"] == "romdrop_data" and 0xFB9D0 <= a <= 0xFC2FF:
+                r["kind"] = "romdrop"
+        rom = bytearray(_r0())
+        rom[0xFB9D3] ^= 0x01
+        res = N.apply_patch(_fixed(bytes(rom)), _patch(d), TYRE)
+        assert res.verdict == "REFUSED"
+        assert any(m.startswith("romdrop 0x0FB9D0-") for m in _msgs(res, N.REFUSE))
+
+    def test_range_note_is_shown_on_refuse(self):
+        d = _raw()
+        erase = next(r for r in d["ranges"] if r["kind"] == "erase")
+        erase["note"] = "retired AutoBlip v1 tables: set them back to blank"
+        rom = bytearray(_r0())
+        rom[int(erase["addr"], 16) + 0x10] = 0
+        res = N.apply_patch(_fixed(bytes(rom)), _patch(d), TYRE)
+        assert any(
+            m.endswith(". retired AutoBlip v1 tables: set them back to blank")
+            for m in _msgs(res, N.REFUSE)
+        )
+
+
+class TestWarnClasses:
+    def test_consent_routine_tp_delta_non_routine(self):
+        res = N.apply_patch(_r0(), _fixture(), TYRE)
+        cls = {m.split(" ")[0]: c for lv, m, c in res.report.findings() if lv == N.WARN}
+        assert cls["tyre_restore"] == N.ROUTINE
+        assert cls["TP"] == N.NON_ROUTINE
+        assert res.report.non_routine() == [
+            m for lv, m, c in res.report.findings() if c == N.NON_ROUTINE
+        ]
+
+    def test_routine_flag_on_a_check(self):
+        d = _raw()
+        for c in d["checks"]:
+            if c["type"] == "table_all_eq":
+                c["routine"] = True
+        res = N.apply_patch(_r0(), _patch(d), TYRE)
+        assert res.report.non_routine() == []
+
+    def test_stale_sums_routine_romdrop_data_and_data_pin_not(self):
+        r = next(x for x in _fixture().ranges if x.kind == "romdrop_data")
+        rom = bytearray(_r0())
+        rom[r.addr] ^= 0x55  # a Romdrop data byte, sums left stale
+        rom[0xB8040] ^= 0x01  # a data-pin byte outside every table
+        res = N.apply_patch(bytes(rom), _fixture(), TYRE)
+        rows = [(m, c) for lv, m, c in res.report.findings() if lv == N.WARN]
+        assert any(m.startswith("input checksum") and c == N.ROUTINE for m, c in rows)
+        assert any(m.startswith("Romdrop data") and c == N.NON_ROUTINE for m, c in rows)
+        assert any(m.startswith("data pin") and c == N.NON_ROUTINE for m, c in rows)
+        assert all(c is None for lv, m, c in res.report.findings() if lv != N.WARN)
+
+
+class TestParseValidation:
+    """An unevaluable check, range or table REFUSES the file at parse time."""
+
+    @pytest.mark.parametrize(
+        "check",
+        [
+            {"type": "bytes_eq", "a": "0x0C8FFC", "b": "0x0F8348", "len": 0},
+            {"type": "bytes_eq", "a": "0x1000000", "b": "0x1000010", "len": 4},
+            {"type": "bytes_is", "addr": "0x0B8046", "hex": ""},
+            {"type": "f_finite", "addr": -4},
+            {"type": "f_finite", "addr": True},
+            {"type": "f_desc", "addr": "0x0C14FC", "n": 0},
+            {"type": "table_finite", "addr": "0x0F629C", "nx": 0, "ny": 29},
+            {
+                "type": "gear",
+                "ratios": "0x0C14FC",
+                "bands": "0x0FFFF0",
+                "five_speed_ratio": 1.1,
+                "margin_warn": 0.05,
+                "from_gear": 2,
+            },
+            {"type": "f_gt", "addr": "0x0F3E9C", "x": "50"},
+            {"type": "u8_eq", "addr": "0x0FE600", "value": 256},
+            {"type": "word_only_at", "value": "0x000FD820", "addrs": ["0x0230CD"]},
+            {"type": "f_finite", "addr": "0x0F3E9C", "routine": "yes"},
+            {"type": "f_finite", "addr": "0x0F3E9C", "name": ""},
+        ],
+        ids=lambda c: f"{c['type']}-{sorted(c.items())[1:][:2]}",
+    )
+    def test_malformed_check(self, check):
+        d = _raw()
+        d["checks"].append(dict({"name": "malformed"}, **check))
+        with pytest.raises(N.PatchFormatError):
+            _patch(d)
+
+    @pytest.mark.parametrize(
+        "mutate",
+        [
+            lambda d: d["ranges"][0].update(addr="-1"),
+            lambda d: d["ranges"][0].update(note=5),
+            lambda d: d["checksums"].update(records=0),
+            lambda d: d["checksums"].update(table="0x0FFFF0"),
+            lambda d: d.update(rom_id_addr="0x0FFFFE"),
+        ],
+    )
+    def test_malformed_file(self, mutate):
+        d = _raw()
+        mutate(d)
+        with pytest.raises(N.PatchFormatError):
+            _patch(d)

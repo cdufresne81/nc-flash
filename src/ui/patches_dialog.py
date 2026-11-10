@@ -180,6 +180,15 @@ class PatchesDialog(QDialog):
         self._report.horizontalHeader().setSectionResizeMode(1, QHeaderView.Stretch)
         layout.addWidget(self._report, 2)
 
+        # Non-routine WARNs (spec "WARN classes"): shown apart, each one must be
+        # acknowledged before the patched ROM can be saved.
+        self._ack_area = QWidget()
+        self._ack_layout = QVBoxLayout(self._ack_area)
+        self._ack_layout.setContentsMargins(0, 0, 0, 0)
+        layout.addWidget(self._ack_area)
+        self._ack_boxes = {}  # message -> QCheckBox
+        self._ack_widgets = []
+
         buttons = QHBoxLayout()
         buttons.addStretch()
         self._check_btn = QPushButton("Check")
@@ -296,6 +305,44 @@ class PatchesDialog(QDialog):
         self._last = None
         self._apply_btn.setEnabled(False)
 
+    def _acknowledged(self) -> set:
+        return {m for m, box in self._ack_boxes.items() if box.isChecked()}
+
+    def _update_apply(self):
+        """Apply needs a passing check AND every non-routine WARN acknowledged."""
+        res = self._last[2] if self._last else None
+        ok = res is not None and res.output is not None
+        self._apply_btn.setEnabled(
+            ok and len(self._acknowledged()) == len(self._ack_boxes)
+        )
+
+    def _rebuild_acks(self, res, keep=frozenset()):
+        for w in self._ack_widgets:
+            w.setParent(None)
+        self._ack_widgets, self._ack_boxes = [], {}
+        if res is None or res.output is None:
+            return
+        messages = res.report.non_routine()
+        if not messages:
+            return
+        head = QLabel(
+            f"<b>{len(messages)} warning(s) need your acknowledgement before saving.</b> "
+            "Read each one; tick it only if you understand it and still want the patched ROM."
+        )
+        head.setWordWrap(True)
+        self._ack_layout.addWidget(head)
+        self._ack_widgets.append(head)
+        for m in messages:
+            box = QCheckBox("I have read this warning and accept it:")
+            box.setChecked(m in keep)
+            box.toggled.connect(self._update_apply)
+            text = QLabel(m)
+            text.setWordWrap(True)
+            self._ack_layout.addWidget(box)
+            self._ack_layout.addWidget(text)
+            self._ack_widgets += [box, text]
+            self._ack_boxes[m] = box
+
     def _consents(self):
         return {cid for cid, box in self._consent_boxes.items() if box.isChecked()}
 
@@ -326,7 +373,6 @@ class PatchesDialog(QDialog):
             )
         self._last = (patch, consents, res)
         self._show_report(res)
-        self._apply_btn.setEnabled(res.output is not None)
         return res
 
     def _stale(self, patch) -> list:
@@ -353,8 +399,20 @@ class PatchesDialog(QDialog):
         patch, _ = self._selected()
         if patch is None or not self._ensure_saved():
             return
+        acknowledged = self._acknowledged()
         res = self._run(patch)  # fresh read + every check again
+        self._rebuild_acks(res, keep=acknowledged)
+        self._update_apply()
         if res.output is None:
+            return
+        new = set(res.report.non_routine()) - acknowledged
+        if new:
+            QMessageBox.information(
+                self,
+                "Acknowledge Every Warning",
+                f"{len(new)} warning(s) below are not acknowledged yet. Read and tick "
+                "each one, then choose Apply and Save As again.",
+            )
             return
         default = self._rom_path.with_name(
             f"{self._rom_path.stem}_{patch.id}-{patch.version}.bin"
@@ -423,15 +481,22 @@ class PatchesDialog(QDialog):
 
     def _show_report(self, res):
         self._report.setRowCount(0)
+        self._rebuild_acks(res)
+        self._update_apply()
         if res is None:
             self._verdict.setStyleSheet("")
             if self._rows:
                 self._verdict.setText("")
             return
         verdict = res.verdict
+        n_ack = len(res.report.non_routine()) if res.output is not None else 0
         text = {
             "REFUSED": "REFUSED: nothing will be written. See the red rows.",
-            "WARN": "OK with warnings: read the amber rows before saving.",
+            "WARN": (
+                f"OK with warnings: acknowledge the {n_ack} warning(s) below before saving."
+                if n_ack
+                else "OK with routine warnings only (grey rows): you can save."
+            ),
             "OK": "OK: every check passed.",
         }[verdict]
         self._verdict.setText(text)
@@ -441,10 +506,11 @@ class PatchesDialog(QDialog):
         for f in res.report.rows:
             row = self._report.rowCount()
             self._report.insertRow(row)
-            level = QTableWidgetItem(f.level)
+            routine = f.cls == N.ROUTINE
+            level = QTableWidgetItem(f"{f.level} (routine)" if routine else f.level)
             msg = QTableWidgetItem(f.message)
             msg.setToolTip(f.message)
-            color = _LEVEL_COLOR.get(f.level)
+            color = theme.TEXT_MUTED if routine else _LEVEL_COLOR.get(f.level)
             if color:
                 level.setForeground(QColor(color))
                 msg.setForeground(QColor(color))

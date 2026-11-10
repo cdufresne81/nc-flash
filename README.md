@@ -128,6 +128,7 @@ python main.py
 - Every check runs before anything is written: the ROM ID, the Romdrop code, the bytes the patch replaces, a fingerprint of the ROM's code, the checksum table, and the tune checks the patch carries (integrity pairs, gear ratios, ...). The report says why a patch is refused
 - The patched ROM always goes to a new file; the open ROM is never changed. Checksums are recomputed and the file is read back
 - Patches ship disabled; the report ends with the steps to follow before enabling one
+- Warnings are split: routine ones (an accepted consent, the TP Delta advice) are shown greyed; every other warning is listed apart and must be acknowledged one by one before the patched ROM can be saved
 - The pack's tables (e.g. "AutoBlip - Enable", grouped per feature under "NC Flash Features - ...") appear when NC Flash finds the pack installed, without editing your definition files; a table of yours inside the pack's area that the pack doesn't define is flagged as a possibly dead control
 - Bundled patch files are pinned by SHA-256: an altered file is never loaded
 - A Romdrop `.patch` file dropped on the window is recognised and pointed to Romdrop

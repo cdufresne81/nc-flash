@@ -29,6 +29,12 @@ Steps (nothing is written unless the verdict is OK or WARN):
  9. re-check the output: every written range == new, every other byte ==
     input except sum words, post checks pass, no stale record
 10. save to a NEW file, read it back; the input re-read unchanged
+
+Every WARN carries a class (nc-flash-re review 2026-10-07 finding 2): routine
+(an accepted consent, a check the file marks ``routine: true``, stale input
+checksums) or non-routine (everything else: a Romdrop data byte that differs,
+the data pin, a gear-margin or preflight WARN ...). The Patches window shows
+the non-routine WARNs apart and makes the user acknowledge each one.
 """
 
 from __future__ import annotations
@@ -96,18 +102,31 @@ def _floats(d: bytes, a: int, n: int) -> tuple:
 # ---------------------------------------------------------------- report
 
 
+ROUTINE, NON_ROUTINE = "routine", "non-routine"
+
+
 @dataclass
 class Finding:
     level: str  # REFUSE | WARN | INFO
     message: str
+    cls: str | None = None  # routine | non-routine for a WARN, else None
 
 
 @dataclass
 class Report:
     rows: list = field(default_factory=list)
 
-    def add(self, level: str, message: str):
-        self.rows.append(Finding(level, message))
+    def add(self, level: str, message: str, routine: bool = False):
+        cls = (ROUTINE if routine else NON_ROUTINE) if level == WARN else None
+        self.rows.append(Finding(level, message, cls))
+
+    def findings(self) -> list:
+        """[(level, message, class)]: the machine-readable form."""
+        return [(r.level, r.message, r.cls) for r in self.rows]
+
+    def non_routine(self) -> list:
+        """The non-routine WARN messages: each one needs the user's acknowledgement."""
+        return [r.message for r in self.rows if r.cls == NON_ROUTINE]
 
     @property
     def refused(self) -> bool:
@@ -697,6 +716,7 @@ class Patch:
     signature: str
     previous: list  # [(version, signature)]
     footprint: list  # [(lo, hi)] inclusive, ROM
+    notes: dict = field(default_factory=dict)  # range start -> note shown on a REFUSE
 
     @property
     def id(self) -> str:
@@ -788,6 +808,137 @@ def feature_states(d: bytes, patch: Patch) -> list:
     return states
 
 
+_SIZE = {
+    "float": 4,
+    "uint8": 1,
+    "int8": 1,
+    "uint16": 2,
+    "int16": 2,
+    "uint32": 4,
+    "int32": 4,
+}
+
+
+def _span(what: str, addr, n) -> int:
+    """Address field addr must name n > 0 bytes inside the ROM: an unevaluable
+    check REFUSES at parse time instead of passing or raising later."""
+    a = num(addr)
+    if (
+        not isinstance(n, int)
+        or isinstance(n, bool)
+        or n <= 0
+        or a < 0
+        or a + n > ROM_SIZE
+    ):
+        raise PatchFormatError(
+            f"{what}: address {addr!r} / length {n!r} is not a non-empty span "
+            "inside the ROM"
+        )
+    return a
+
+
+def _count(what: str, x, lo: int = 1) -> int:
+    v = num(x)
+    if v < lo:
+        raise PatchFormatError(f"{what}: count {x!r} below {lo}")
+    return v
+
+
+def _number(what: str, x):
+    if isinstance(x, bool) or not isinstance(x, (int, float)) or not math.isfinite(x):
+        raise PatchFormatError(f"{what}: {x!r} is not a finite number")
+    return x
+
+
+def _validate_check(c: dict):
+    """Every address and length a check reads lies inside the ROM; every number
+    field is a number (tools/ncflash_apply.py _validate_check)."""
+    t, w = c["type"], f"check {c.get('name')!r}"
+    if not isinstance(c.get("name"), str) or not c["name"]:
+        raise PatchFormatError(f"{w}: name missing")
+    if t == "bytes_eq":
+        n = _count(w, c["len"])
+        _span(w, c["a"], n)
+        _span(w, c["b"], n)
+    elif t == "bytes_is":
+        _span(w, c["addr"], len(bytes.fromhex(c["hex"])))
+    elif t == "fsub":
+        for k in ("a", "b", "c"):
+            _span(w, c[k], 4)
+    elif t in ("f_gt", "f_le"):
+        _span(w, c["addr"], 4)
+        _number(w, c["x"])
+    elif t == "f_finite":
+        _span(w, c["addr"], 4)
+    elif t == "f_desc":
+        _span(w, c["addr"], 4 * _count(w, c["n"]))
+    elif t == "f_any_le":
+        _span(w, c["addr"], 4 * _count(w, c["n"]))
+        _number(w, c["x"])
+    elif t == "f_range":
+        _span(w, c["addr"], 4 * _count(w, c.get("n", 1)))
+        _number(w, c["min"])
+        _number(w, c["max"])
+        if not isinstance(c.get("min_exclusive", False), bool):
+            raise PatchFormatError(f"{w}: min_exclusive must be true / false")
+    elif t == "f_close":
+        _span(w, c["a"], 4)
+        if "b" in c:
+            _span(w, c["b"], 4)
+        else:
+            _number(w, c["value"])
+        _number(w, c["tol"])
+    elif t in ("table_finite", "table_all_eq"):
+        _span(w, c["addr"], 4 * _count(w, c["nx"]) * _count(w, c["ny"]))
+        if t == "table_all_eq":
+            _number(w, c["value"])
+    elif t == "setting_le_cal":
+        for k in ("setting", "cal"):
+            if c[k]["type"] not in _SIZE:
+                raise PatchFormatError(f"{w}: {k} type {c[k]['type']!r} unknown")
+            _span(w, c[k]["addr"], _SIZE[c[k]["type"]])
+        _number(w, c["margin"])
+    elif t == "u8_eq":
+        _span(w, c["addr"], 1)
+        v = c["value"]
+        if isinstance(v, bool) or not isinstance(v, int) or not 0 <= v <= 255:
+            raise PatchFormatError(f"{w}: value {v!r} is not a byte")
+    elif t == "no_word_in":
+        lo, hi = num(c["lo"]), num(c["hi"])
+        if not 0 <= lo <= hi <= 0xFFFFFFFF:
+            raise PatchFormatError(f"{w}: word range {c['lo']!r}-{c['hi']!r} invalid")
+        for x in c.get("except_words", []):
+            _span(w, x, 4)
+        for a, b in c.get("except_ranges", []):
+            if _span(w, a, 1) > _span(w, b, 1):
+                raise PatchFormatError(
+                    f"{w}: except range {a}-{b} ends before it starts"
+                )
+    elif t == "word_only_at":
+        if not 0 <= num(c["value"]) <= 0xFFFFFFFF:
+            raise PatchFormatError(f"{w}: value {c['value']!r} is not a 32-bit word")
+        for x in c["addrs"]:
+            if _span(w, x, 4) % 4:
+                raise PatchFormatError(f"{w}: address {x} is not 4-aligned")
+    elif t == "pcrel_loader_only":
+        _span(w, c["lit"], 4)
+        _span(w, c["site"], 2)
+    elif t == "blank_blocks":
+        size = _count(w, c["block"])
+        for x in c["expect"]:
+            _span(w, x, size)
+        _count(w, c["min"])
+    elif t == "gear":
+        _span(w, c["ratios"], 24)
+        _span(w, c["bands"], 48)
+        _number(w, c["five_speed_ratio"])
+        _number(w, c["margin_warn"])
+        if not 1 <= _count(w, c["from_gear"]) <= 6:
+            raise PatchFormatError(f"{w}: from_gear {c['from_gear']!r} outside 1-6")
+    if "routine" in c and not isinstance(c["routine"], bool):
+        raise PatchFormatError(f"{w}: routine must be true / false")
+
+
 def _regions(lst) -> list:
     out = []
     for lo, hi in lst:
@@ -826,10 +977,8 @@ def _parse(pt: dict, raw_sha: str) -> Patch:
     rom_id = pt["rom_id"]
     if not isinstance(rom_id, str) or not rom_id:
         raise PatchFormatError("rom_id missing")
-    rom_id_addr = num(pt["rom_id_addr"])
-    if not 0 <= rom_id_addr <= ROM_SIZE - len(rom_id):
-        raise PatchFormatError("rom_id_addr outside the ROM")
-    rngs = []
+    rom_id_addr = _span("rom_id_addr", pt["rom_id_addr"], len(rom_id))
+    rngs, notes = [], {}
     for r in pt["ranges"]:
         a, old, new = num(r["addr"]), bytes.fromhex(r["old"]), bytes.fromhex(r["new"])
         if r["kind"] not in ALL_KINDS:
@@ -842,6 +991,10 @@ def _parse(pt: dict, raw_sha: str) -> Patch:
             raise PatchFormatError(
                 f"range {_h(a)}: kind {r['kind']} must have old == new"
             )
+        if "note" in r:
+            if not isinstance(r["note"], str):
+                raise PatchFormatError(f"range {_h(a)}: note must be text")
+            notes[a] = r["note"]
         rngs.append(Range(a, r["kind"], old, new))
     rngs.sort(key=lambda x: x.addr)
     for r1, r2 in zip(rngs, rngs[1:]):
@@ -853,10 +1006,9 @@ def _parse(pt: dict, raw_sha: str) -> Patch:
     if ck.get("algorithm") != CK_ALGORITHM:
         raise PatchFormatError(f"checksum algorithm {ck.get('algorithm')!r} unknown")
     table = ChecksumTable(num(ck["table"]), num(ck["records"]))
-    if table.records <= 0 or not 0 <= table.table <= ROM_SIZE - 12 * (
-        table.records + 1
-    ):
-        raise PatchFormatError("checksum table outside the ROM")
+    if table.records <= 0:
+        raise PatchFormatError("checksums: records must be positive")
+    _span("checksums.table", ck["table"], 12 * (table.records + 1))
     for c in pt["checks"] + pt["post"]:
         if c["type"] not in CHECKS:
             raise PatchFormatError(
@@ -870,6 +1022,7 @@ def _parse(pt: dict, raw_sha: str) -> Patch:
             raise PatchFormatError(
                 f"check {c.get('name')!r}: unknown image {c.get('on')!r}"
             )
+        _validate_check(c)
     listed = set()
     for c in pt.get("consent", []):
         if c.get("level", "warn") not in LEVELS or not isinstance(c.get("text"), str):
@@ -911,6 +1064,7 @@ def _parse(pt: dict, raw_sha: str) -> Patch:
         signature=sig["sha256"],
         previous=[(str(p["version"]), p["signature"]) for p in pt.get("previous", [])],
         footprint=sorted(footprint),
+        notes=notes,
     )
 
 
@@ -1103,10 +1257,12 @@ def apply_patch(d: bytes, patch: Patch, consent=(), installed=()) -> ApplyResult
                     "code": "the patch area holds something else (another version "
                     "or another patch)",
                 }.get(r.kind, "not the expected base bytes there")
+                note = patch.notes.get(r.addr)
                 rep.add(
                     REFUSE,
                     f"{r.kind} {span}: at {_h(r.addr + i)} expected "
-                    f"{r.old[i:i + 16].hex()} found {cur[i:i + 16].hex()} ({why})",
+                    f"{r.old[i:i + 16].hex()} found {cur[i:i + 16].hex()} ({why})"
+                    + (f". {note}" if note else ""),
                 )
     # NC Flash: a ROM holds one pack (release or test); switching is an upgrade
     for other in installed:
@@ -1127,9 +1283,11 @@ def apply_patch(d: bytes, patch: Patch, consent=(), installed=()) -> ApplyResult
             continue
         where = ", ".join(_h(a) for a in need)
         if c["id"] in consent:
+            # the user accepted this explicitly: a routine WARN
             rep.add(
                 ROW[c.get("level", "warn")],
                 f"{c['id']} accepted ({where}): {c['text']}",
+                routine=True,
             )
         else:
             rep.add(REFUSE, f"{c['id']} needs consent ({where}): {c['text']}")
@@ -1149,6 +1307,7 @@ def apply_patch(d: bytes, patch: Patch, consent=(), installed=()) -> ApplyResult
             WARN,
             f"input checksum records stale {[x[0] for x in st_in]} (editors leave sums "
             "for the flasher): all recomputed in the output",
+            routine=True,
         )
     # 7 checks
     virt = bytearray(d)
@@ -1162,7 +1321,7 @@ def apply_patch(d: bytes, patch: Patch, consent=(), installed=()) -> ApplyResult
     outp = ck_fix(bytes(outp), ck)  # the image as it will be written
     for c in pt["checks"]:
         for lv, msg in run_check(virt if c.get("on", "input") == "input" else outp, c):
-            rep.add(ROW[lv], msg)
+            rep.add(ROW[lv], msg, routine=c.get("routine", False))
     if rep.refused:
         return res
     # 8-9 output

@@ -1,6 +1,7 @@
 """Tests for Tools > Patches (src/ui/patches_dialog.py) and its MainWindow hooks."""
 
 import hashlib
+import json
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -31,6 +32,15 @@ def _dialog(rom_path, save=lambda: True, show_test=True):
 
 def _select_first(dlg):
     dlg._list.selectRow(0)
+
+
+def _ready(dlg):
+    """Consent given, checked, and every non-routine WARN acknowledged."""
+    _select_first(dlg)
+    dlg._consent_boxes["tyre_restore"].setChecked(True)
+    dlg._on_check()
+    for box in dlg._ack_boxes.values():
+        box.setChecked(True)
 
 
 def test_no_rom_open():
@@ -71,13 +81,53 @@ def test_consent_gates_the_apply(r0_file):
     assert not dlg._apply_btn.isEnabled()  # a new consent needs a new check
     dlg._on_check()
     assert dlg._verdict.text().startswith("OK with warnings")
+    # the fixture's TP Delta advice is not marked routine: it needs an acknowledgement
+    assert dlg._ack_boxes and not dlg._apply_btn.isEnabled()
+    for box in dlg._ack_boxes.values():
+        box.setChecked(True)
     assert dlg._apply_btn.isEnabled()
+
+
+def test_non_routine_warnings_are_shown_apart_and_acknowledged(r0_file):
+    dlg = _dialog(r0_file)
+    _select_first(dlg)
+    dlg._consent_boxes["tyre_restore"].setChecked(True)
+    dlg._on_check()
+    res = dlg._last[2]
+    assert list(dlg._ack_boxes) == res.report.non_routine()
+    assert any(m.startswith("TP Delta") for m in dlg._ack_boxes)
+    # the accepted consent is routine: no acknowledgement, a grey "(routine)" row
+    assert not any(m.startswith("tyre_restore") for m in dlg._ack_boxes)
+    levels = [dlg._report.item(r, 0).text() for r in range(dlg._report.rowCount())]
+    assert "WARN (routine)" in levels and "WARN" in levels
+    boxes = list(dlg._ack_boxes.values())
+    for box in boxes[:-1]:
+        box.setChecked(True)
+    assert not dlg._apply_btn.isEnabled()  # every one, not just some
+    boxes[-1].setChecked(True)
+    assert dlg._apply_btn.isEnabled()
+
+
+def test_apply_without_acknowledgement_writes_nothing(r0_file, tmp_path):
+    dlg = _dialog(r0_file)
+    _select_first(dlg)
+    dlg._consent_boxes["tyre_restore"].setChecked(True)
+    out = tmp_path / "patched.bin"
+    with (
+        patch.object(
+            D.QFileDialog, "getSaveFileName", return_value=(str(out), "")
+        ) as ask,
+        patch.object(QMessageBox, "information") as info,
+    ):
+        dlg._on_apply()
+    info.assert_called_once()
+    ask.assert_not_called()
+    assert not out.exists()
 
 
 def test_apply_writes_a_new_file_and_offers_to_open(r0_file, tmp_path):
     dlg = _dialog(r0_file)
-    _select_first(dlg)
-    dlg._consent_boxes["tyre_restore"].setChecked(True)
+    _ready(dlg)
     out = tmp_path / "patched.bin"
     with (
         patch.object(D.QFileDialog, "getSaveFileName", return_value=(str(out), "")),
@@ -91,8 +141,7 @@ def test_apply_writes_a_new_file_and_offers_to_open(r0_file, tmp_path):
 
 def test_apply_refuses_an_existing_file(r0_file, tmp_path):
     dlg = _dialog(r0_file)
-    _select_first(dlg)
-    dlg._consent_boxes["tyre_restore"].setChecked(True)
+    _ready(dlg)
     out = tmp_path / "exists.bin"
     out.write_bytes(b"keep me")
     with (
@@ -107,8 +156,7 @@ def test_apply_refuses_an_existing_file(r0_file, tmp_path):
 
 def test_apply_refuses_the_input_itself(r0_file):
     dlg = _dialog(r0_file)
-    _select_first(dlg)
-    dlg._consent_boxes["tyre_restore"].setChecked(True)
+    _ready(dlg)
     with (
         patch.object(D.QFileDialog, "getSaveFileName", return_value=(str(r0_file), "")),
         patch.object(QMessageBox, "warning") as warn,
@@ -235,7 +283,8 @@ def test_test_pack_replaces_the_release_pack(r0_file, tmp_path):
 
 def test_bundled_test_pack_shows_only_after_opt_in(r0_file):
     cat = bundled_patches.bundled_catalog()
-    assert cat.problems == [] and len(cat.patches) == 3
+    listed = json.loads((REPO / "patches" / "index.json").read_bytes())["patches"]
+    assert cat.problems == [] and len(cat.patches) == len(listed)
     base = load_definition(str(REPO / "examples" / "metadata" / "lf9veb.xml"))
     dlg = D.PatchesDialog(str(r0_file), lambda: True, cat.patches, definition=base)
     assert dlg._list.rowCount() == 0  # channel test: hidden by default

@@ -24,7 +24,11 @@ from test_ncflash_patch import R0_SHA, R1_SHA, REPO, _r0
 
 ROOT = REPO / "patches"
 PACK = "ncflash-features/1.0.0/{}.ncpatch.json"
-IDS = ["lf9veb", "lfg2ep", "lfh9ef"]
+# every ROM ID the bundled index lists (the bundling tool decides the set)
+IDS = sorted(
+    e["rom_id"].lower()
+    for e in json.loads((ROOT / "index.json").read_bytes())["patches"]
+)
 
 
 def _pack(rid: str) -> N.Patch:
@@ -121,6 +125,8 @@ CARS = {
 @pytest.mark.parametrize("rid", IDS)
 def test_cars_on_v3_4_show_the_pack_installed(rid):
     folder = os.environ.get("NCFLASH_CAR_IMAGES")
+    if rid not in CARS:
+        pytest.skip(f"no car image known for {rid}")
     name, sha16, enabled = CARS[rid]
     if not folder or not (Path(folder) / name).is_file():
         pytest.skip("car images not available (set NCFLASH_CAR_IMAGES)")
@@ -130,3 +136,23 @@ def test_cars_on_v3_4_show_the_pack_installed(rid):
     st = N.detect(d, p)
     assert st.state == "installed" and st.detail == "NC Flash features 1.0.0 installed"
     assert N.feature_states(d, p)[0].enabled is enabled
+
+
+def _review_fixed(p: N.Patch) -> bool:
+    """The pack carries nc-flash-re's 2026-10-07 review fixes (vector pin)."""
+    return any(lo <= 0xFFFF8 <= hi for lo, hi in p.code_pin.regions)
+
+
+def test_lf9veb_review_fixes():
+    """Vectors and Romdrop wrapper code REFUSE; a stock apply needs no acknowledgement."""
+    p = _pack("lf9veb")
+    if not _review_fixed(p):
+        pytest.skip("the bundled pack predates the 2026-10-07 review fixes")
+    for addr, label in ((0xFFC50 + 4 * 192, "vector 192"), (0xFB9D3, "wrapper code")):
+        rom = bytearray(_r0())
+        rom[addr] ^= 0x01
+        res = N.apply_patch(N.ck_fix(bytes(rom), p.ck), p, {"tyre_restore"})
+        assert res.verdict == "REFUSED" and res.output is None, label
+    res = N.apply_patch(_r0(), p, {"tyre_restore"})
+    assert hashlib.sha256(res.output).hexdigest() == R1_SHA
+    assert res.report.non_routine() == []
