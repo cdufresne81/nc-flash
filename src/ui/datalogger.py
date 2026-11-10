@@ -7,9 +7,12 @@ The user picks channels once (saved in settings, see
   thread (:class:`~src.ecu.datalog_poller.DatalogPoller`) and appends a row per
   sweep to a live CSV.
 - **WiCAN:** the WiCAN polls the ECU itself, which is much faster than NC Flash
-  polling over Wi-Fi. The channel list is sent to its firmware
-  (:meth:`Datalogger.push_to_wican`) and the run follows the trip it records
-  through the existing :class:`~src.ui.wican_live_datalog.WiCANLiveDatalog`.
+  polling over Wi-Fi. A run gives it the channel list for that run only (a
+  temporary list: :class:`_WicanSessionWorker`), follows what it records
+  through :class:`~src.ui.wican_live_datalog.WiCANLiveDatalog`, and ends the
+  temporary list on Stop. The WiCAN's own saved list changes only through the
+  separate, optional :meth:`Datalogger.push_to_wican`. Design:
+  ``docs/internal/WICAN_SESSION_CHANNELS.md``.
 
 Both engines write through :class:`~src.core.live_csv.LiveCsvCapture` and
 open MegaLogViewerHD through :func:`src.ui.mlv_launch.auto_trail`.
@@ -48,6 +51,53 @@ BACKUP_SUBDIR = "wican_channel_backups"
 #: App close waits this long for a WiCAN channel job: an HTTP call in flight
 #: (10 s timeout) after a 3 s mDNS lookup.
 JOB_SHUTDOWN_MS = 15000
+
+#: A WiCAN run renews its temporary channel list this often (the WiCAN drops
+#: the list SESSION_TTL_S after the last renewal it heard).
+SESSION_KEEPALIVE_S = 10.0
+#: ...and tries again this soon after a renewal that did not get through.
+SESSION_RETRY_S = 2.0
+SESSION_KEEPALIVE_TIMEOUT_S = 5.0
+#: After sending the list again mid-run, wait this long for the WiCAN to
+#: switch before the next try (the lease is renewed during the wait).
+SESSION_REAPPLY_TIMEOUT_S = 10.0
+#: The WiCAN refused the list this many times in a row: try less often.
+SESSION_REFUSALS_BEFORE_BACKOFF = 3
+SESSION_BACKOFF_S = 10.0
+#: One try to take back a list the WiCAN may hold after a lost begin reply.
+SESSION_TAKEBACK_TIMEOUT_S = 5.0
+#: Stop gives the "end" call this long; past it the WiCAN's lease runs out.
+SESSION_END_TIMEOUT_S = 3.0
+#: App close waits this long for a WiCAN run's session thread: a 3 s mDNS
+#: lookup, an HTTP call in flight (10 s) and the "end" call (the take-back
+#: after a lost begin reply is skipped on app close).
+SESSION_SHUTDOWN_MS = 20000
+
+_OLD_FIRMWARE_STATUS = (
+    "This WiCAN logs its own channel list, not the channels shown here. "
+    "Update its firmware and Start Logging will use the channels shown."
+)
+_OLD_FIRMWARE_NOTE = (
+    " (WiCAN's own list; update its firmware to log the channels shown here)"
+)
+_UNREACHABLE_REASON = (
+    "the WiCAN is not reachable (check it is powered and on the same Wi-Fi)"
+)
+_LIST_LOST_NOTE = " (WiCAN on its own list for now; sending the channels again)"
+_LIST_BACK_STATUS = "The WiCAN is logging the channels shown again."
+
+
+def _list_lost_status(reason: str) -> str:
+    text = "The WiCAN is logging its own channel list for now"
+    if reason:
+        text += f" ({reason.rstrip('.')})"
+    return text + ". NC Flash is sending the channels again."
+
+
+_BUSY_REASON = (
+    "the WiCAN's link to the ECU is in use (an ECU connection, read or flash), "
+    "or the WiCAN is going to sleep. Try again in a moment."
+)
 
 
 def wired_adapter_config(settings) -> dict:
@@ -234,6 +284,197 @@ class _HostPollWorker(QObject):
             self.finished.emit()
 
 
+class _WicanSessionWorker(QObject):
+    """Holds the WiCAN's temporary channel list for one run.
+
+    Begin, wait until the WiCAN polls it, ask the owner to start the stream
+    (``follow``), renew the lease until stopped, then end it. Firmware without
+    the temporary list: ``follow(False)`` and done (the run follows the
+    WiCAN's own list).
+    """
+
+    status = Signal(str)
+    #: Start following the stream. True: the WiCAN polls our channels.
+    follow = Signal(bool)
+    #: Mid-run, the WiCAN is not on our list: (True, why or "") while NC
+    #: Flash keeps sending it again, (False, "") once it took it.
+    list_lost = Signal(bool, str)
+    error = Signal(str)  # the run can't start (or the worker broke)
+    finished = Signal()
+
+    def __init__(self, make_client: Callable[[], object], rows: list):
+        super().__init__()
+        self._make_client = make_client
+        self._rows = rows
+        self._stop = threading.Event()
+        self._token: Optional[int] = None
+
+    def request_stop(self):
+        """Thread-safe; ends the renewals and the temporary list."""
+        self._stop.set()
+
+    def _stopping(self) -> bool:
+        thread = QThread.currentThread()
+        return self._stop.is_set() or (
+            thread is not None and thread.isInterruptionRequested()
+        )
+
+    def run(self):
+        from src.ecu.wican_autopid import WiCANSessionBusy, WiCANSessionUnsupported
+        from src.ecu.wican_http import WiCANHttpError
+
+        client = None
+        failure: Optional[str] = None
+        try:
+            self.status.emit("Sending the channels to the WiCAN...")
+            client = self._make_client()  # looks the WiCAN up (up to 3 s)
+            if self._stopping():
+                pass
+            elif not client.supported():
+                self.follow.emit(False)
+            else:
+                self._token = self._begin(client)
+                client.wait_applied(
+                    self._token,
+                    should_stop=self._stopping,
+                    renew_every_s=SESSION_KEEPALIVE_S,
+                )
+                if not self._stopping():
+                    self.follow.emit(True)
+                    self._keep_alive(client)
+        except WiCANSessionUnsupported:
+            self.follow.emit(False)
+        except WiCANSessionBusy:
+            failure = _BUSY_REASON
+        except WiCANHttpError as exc:
+            # Its message names the URL: that goes to the log, not the user.
+            logger.warning("WiCAN run not started: %s", exc)
+            if exc.status is None:
+                failure = _UNREACHABLE_REASON
+            else:
+                failure = f"the WiCAN answered with an error (HTTP {exc.status})"
+        except Exception as exc:  # nothing may raise out of a Qt worker slot
+            failure = str(exc) or type(exc).__name__
+            logger.warning("WiCAN run not started: %s", failure)
+        finally:
+            self._end(client)
+        if failure is not None and not self._stopping():
+            self.error.emit(failure)
+        else:
+            self.finished.emit()
+
+    def _begin(self, client) -> int:
+        """The first begin of the run. If its reply is lost (the call did not
+        get through, or timed out after the WiCAN took the list), the WiCAN
+        may hold a list we have no token for: try once to take it back, so it
+        does not log our channels until that lease runs out (30 s)."""
+        from src.ecu.wican_http import WiCANHttpError
+
+        try:
+            return client.begin(self._rows)
+        except WiCANHttpError as exc:
+            thread = QThread.currentThread()
+            closing = thread is not None and thread.isInterruptionRequested()
+            if exc.status is None and not closing:
+                try:
+                    token = client.begin(
+                        self._rows, timeout_s=SESSION_TAKEBACK_TIMEOUT_S
+                    )
+                    client.end(token, timeout_s=SESSION_END_TIMEOUT_S)
+                    logger.info("WiCAN channel list taken back after a lost reply")
+                except Exception as again:
+                    logger.info(
+                        "WiCAN channel list not taken back (%s); if it took the "
+                        "list, it drops it within 30 s",
+                        again,
+                    )
+            raise
+
+    def _keep_alive(self, client):
+        """Renew the lease until stopped; nothing here ends the run.
+
+        A lease the WiCAN dropped (Wi-Fi gap longer than the lease, a reboot)
+        is begun again, and the wait for it to apply is repeated until it
+        does. While the WiCAN is not on our list the owner is told
+        (``list_lost``). A renewal that just does not get through is retried
+        quietly: the stream reports the link."""
+        from src.ecu.wican_autopid import (
+            SESSION_TTL_S,
+            WiCANAutoPidError,
+            WiCANSessionStale,
+        )
+
+        delay = 0.0  # renew at once: the wait for "applied" used up lease
+        applied = True
+        refusals = 0  # in a row
+        told = None  # the reason last sent with list_lost(True, ...)
+        failing = False
+        while not self._stop.wait(delay) and not self._stopping():
+            delay = SESSION_KEEPALIVE_S
+            began = False
+            try:
+                if self._token is None:
+                    applied = False
+                    self._token = client.begin(self._rows, ttl_s=SESSION_TTL_S)
+                    began = True
+                    logger.info("WiCAN channel list sent again (it had dropped it)")
+                else:
+                    client.keepalive(self._token, timeout_s=SESSION_KEEPALIVE_TIMEOUT_S)
+                if not applied:
+                    client.wait_applied(
+                        self._token,
+                        timeout_s=SESSION_REAPPLY_TIMEOUT_S,
+                        should_stop=self._stopping,
+                        renew_every_s=SESSION_KEEPALIVE_S,
+                    )
+                    if self._stopping():
+                        break
+                    applied = True
+                    delay = 0.0  # the wait used up lease
+                if failing:
+                    logger.info("WiCAN channel list renewed again")
+                failing = False
+                refusals = 0
+                if told is not None:
+                    told = None
+                    self.list_lost.emit(False, "")
+                continue
+            except WiCANSessionStale as exc:
+                self._token = None
+                if not began:
+                    delay = 0.0  # it dropped a list it had: begin again at once
+                    continue
+                reason, refused = str(exc), True  # dropped as soon as it was sent
+            except WiCANAutoPidError as exc:
+                reason, refused = str(exc), True
+            except Exception as exc:
+                reason, refused = "", False
+                if not failing:
+                    logger.warning("WiCAN channel list not renewed: %s; retrying", exc)
+            failing = True
+            if refused:
+                refusals += 1
+                logger.warning("WiCAN channel list not taken: %s; retrying", reason)
+            delay = (
+                SESSION_BACKOFF_S
+                if refusals >= SESSION_REFUSALS_BEFORE_BACKOFF
+                else SESSION_RETRY_S
+            )
+            if not applied and told != reason:
+                told = reason
+                self.list_lost.emit(True, reason)
+
+    def _end(self, client):
+        token, self._token = self._token, None
+        if client is None or token is None:
+            return
+        try:
+            client.end(token, timeout_s=SESSION_END_TIMEOUT_S)
+        except Exception as exc:
+            # Its lease runs out on its own and it returns to its saved list.
+            logger.info("WiCAN channel list not ended (%s); it expires by itself", exc)
+
+
 class _Job(QObject):
     """Runs one blocking call off the GUI thread (WiCAN HTTP)."""
 
@@ -291,11 +532,21 @@ class Datalogger(QObject):
             settings, parent=self, live_values=self.live_values
         )
         self.wican.running_changed.connect(self._on_wican_running)
-        self.wican.status_changed.connect(self.status_changed)
+        self.wican.status_changed.connect(self._on_wican_status)
         self.wican.capture_changed.connect(self.capture_changed)
         self._thread: Optional[QThread] = None
         self._worker: Optional[_HostPollWorker] = None
         self._capture = ""
+        # WiCAN run: the thread holding the temporary channel list.
+        self._session_thread: Optional[QThread] = None
+        self._session_worker: Optional[_WicanSessionWorker] = None
+        self._session_ours = False  # the WiCAN polls our list (vs. its own)
+        self._session_stopping = False  # a stop was asked, or the stream ended
+        self._session_reported = False  # this run already said why it ended
+        self._session_streamed = False  # this run started the stream
+        self._stream_active = False  # started here, its end not yet reported
+        self._stream_note = ""  # appended to stream statuses (old firmware)
+        self._running = False  # last value sent with running_changed
         self._job_thread: Optional[QThread] = None
         self._job: Optional[_Job] = None
         self._job_client = None  # the WiCANAutoPid of the job in flight
@@ -312,7 +563,14 @@ class Datalogger(QObject):
 
     @property
     def is_running(self) -> bool:
-        return self._thread is not None or self.wican.is_running
+        return (
+            self._thread is not None
+            or self._session_thread is not None
+            # Until the stream's own queued cleanup has reported in: a start
+            # in that gap would be stopped by that late "stream ended".
+            or self._stream_active
+            or self.wican.is_running
+        )
 
     @property
     def host_running(self) -> bool:
@@ -352,13 +610,55 @@ class Datalogger(QObject):
             self.status_changed.emit(reason)
             return False
         if self.engine == ENGINE_WICAN:
-            if not self.wican.start():
-                self.status_changed.emit(
-                    "Could not start: no WiCAN is set up (Settings > ECU)."
-                )
-                return False
-            return True
+            return self._start_wican()
         return self._start_host()
+
+    def _start_wican(self) -> bool:
+        """Give the WiCAN the channels for this run, then follow its stream."""
+        if self._session_thread is not None:
+            return False  # its queued cleanup has not run yet
+        host = (self._settings.get_wican_host() or "").strip()
+        device_id = (self._settings.get_wican_device_id() or "").strip()
+        if not host and not device_id:
+            self.status_changed.emit(
+                "Could not start: no WiCAN is set up (Settings > ECU)."
+            )
+            return False
+        channels = self.channels()
+        if not any(c.enabled for c in channels):
+            self.status_changed.emit("Select at least one channel.")
+            return False
+        try:
+            # Only what the run logs (like the host engine): a disabled
+            # channel is neither sent nor allowed to block the start.
+            rows = [to_firmware_row(c) for c in channels if c.enabled]
+        except ValueError as exc:
+            self.status_changed.emit(str(exc))
+            return False
+        worker = _WicanSessionWorker(self._session_client, rows)
+        thread = QThread(self)
+        worker.moveToThread(thread)
+        self._session_thread, self._session_worker = thread, worker
+        self._session_ours = False
+        self._session_stopping = False
+        self._session_reported = False
+        self._session_streamed = False
+        self._stream_note = ""
+        worker.status.connect(self._on_status, Qt.QueuedConnection)
+        worker.follow.connect(self._on_session_follow, Qt.QueuedConnection)
+        worker.list_lost.connect(self._on_session_list_lost, Qt.QueuedConnection)
+        worker.error.connect(self._on_session_error, Qt.QueuedConnection)
+        thread.started.connect(worker.run)
+        worker.finished.connect(thread.quit)
+        worker.error.connect(thread.quit)
+        thread.finished.connect(self._on_session_thread_finished, Qt.QueuedConnection)
+        logger.info(
+            "Starting WiCAN datalog: %d channel(s) for this run",
+            sum(1 for c in channels if c.enabled),
+        )
+        thread.start()
+        self._emit_running()
+        return True
 
     def _start_host(self) -> bool:
         if self._thread is not None:
@@ -394,20 +694,45 @@ class Datalogger(QObject):
             self._settings.get_ecu_adapter(),
         )
         thread.start()
-        self.running_changed.emit(True)
+        self._emit_running()
         return True
 
     def stop(self):
         """Stop a run (user toggle). Safe when idle; leaves a WiCAN channel
-        job running (it ends on its own)."""
+        job running (it ends on its own).
+
+        A WiCAN run's temporary channel list is ended in the background (the
+        run counts as running until that is done, a few seconds at most).
+        """
+        self._session_stopping = True
+        if self._session_thread is not None:
+            self.status_changed.emit("Stopping...")
         self.wican.shutdown()
+        self._stop_session()
         self._stop_host(10000)
 
     def shutdown(self, timeout_ms: int = 10000):
         """Stop any run and channel job (also on app exit); safe when idle."""
+        self._session_stopping = True
         self.wican.shutdown(timeout_ms)
+        self._stop_session(max(timeout_ms, SESSION_SHUTDOWN_MS))
         self._stop_host(timeout_ms)
         self.wait_for_wican_job(max(timeout_ms, JOB_SHUTDOWN_MS))
+
+    def _stop_session(self, wait_ms: int = 0):
+        """Ask the WiCAN run's session thread to end its temporary list.
+        *wait_ms* (app close only) also waits for it: the thread must not be
+        destroyed running."""
+        thread, worker = self._session_thread, self._session_worker
+        if thread is None:
+            return
+        if worker is not None:
+            worker.request_stop()
+        if wait_ms:
+            thread.requestInterruption()
+            thread.quit()  # exits once run() returns
+            if thread.isRunning() and not thread.wait(wait_ms):
+                logger.warning("WiCAN run did not stop within %d ms", wait_ms)
 
     def _stop_host(self, timeout_ms: int):
         thread, worker = self._thread, self._worker
@@ -483,10 +808,83 @@ class Datalogger(QObject):
         self._capture = ""
         self.live_values.clear()
         self.capture_changed.emit(self.wican.current_capture)
-        self.running_changed.emit(self.is_running)
+        self._emit_running()
+
+    def _emit_running(self):
+        running = self.is_running
+        if running != self._running:
+            self._running = running
+            self.running_changed.emit(running)
+
+    # --- WiCAN run handlers (GUI thread) ----------------------------------
+
+    def _on_wican_status(self, text: str):
+        if text.startswith(("Stopped", "Could not start")):
+            self.status_changed.emit(text)
+        else:
+            self.status_changed.emit(text + self._stream_note)
 
     def _on_wican_running(self, running: bool):
-        self.running_changed.emit(self.is_running)
+        if not running and self._stream_active:
+            self._stream_active = False
+            self._stream_note = ""
+            # The stream ended (Stop, an error, another app took it over):
+            # the temporary channel list ends with it.
+            self._session_stopping = True
+            self._stop_session()
+        self._emit_running()
+
+    def _on_session_follow(self, ours: bool):
+        if self._session_worker is None or self._session_stopping:
+            return  # stopped while the channels were being sent
+        self._session_ours = ours
+        if not ours:
+            logger.warning(
+                "This WiCAN's firmware has no per-run channel list; following "
+                "the list it has"
+            )
+            self.status_changed.emit(_OLD_FIRMWARE_STATUS)
+            self._stream_note = _OLD_FIRMWARE_NOTE
+        self._session_streamed = self._stream_active = bool(self.wican.start())
+        if not self._session_streamed:
+            self._stream_note = ""
+            self._session_stopping = True
+            self._session_reported = True
+            self.status_changed.emit(
+                "Could not start: the live stream is not ready. Try again."
+            )
+            self._stop_session()
+
+    def _on_session_list_lost(self, lost: bool, reason: str):
+        if self._session_worker is None or self._session_stopping:
+            return
+        if lost:
+            self._stream_note = _LIST_LOST_NOTE
+            self.status_changed.emit(_list_lost_status(reason))
+        else:
+            self._stream_note = ""
+            self.status_changed.emit(_LIST_BACK_STATUS)
+
+    def _on_session_error(self, message: str):
+        self._session_reported = True
+        self.status_changed.emit(f"Could not start: {message}")
+
+    def _on_session_thread_finished(self):
+        thread, worker = self._session_thread, self._session_worker
+        self._session_thread = None
+        self._session_worker = None
+        if worker is not None:
+            worker.deleteLater()
+        if thread is not None:
+            thread.deleteLater()
+        if self.wican.is_running:
+            if self._session_ours and not self._session_stopping:
+                # The renewals ended on their own (a bug): without them the
+                # WiCAN returns to its own list, so don't keep following.
+                self.wican.shutdown()
+        elif not self._session_reported and not self._session_streamed:
+            self.status_changed.emit("Stopped")  # stopped before the stream
+        self._emit_running()
 
     # --- WiCAN channel push -----------------------------------------------
 
@@ -503,6 +901,9 @@ class Datalogger(QObject):
 
     def _push_blocked(self) -> bool:
         if self.push_running:
+            return True
+        if self.is_running:
+            self._finish(False, "Stop logging first.")
             return True
         reason = self._blocker() if self._blocker is not None else None
         if reason:
@@ -569,15 +970,26 @@ class Datalogger(QObject):
         return client
 
     def _wican_client(self):
-        from src.ecu import wican_discovery
         from src.ecu.wican_autopid import WiCANAutoPid
+
+        return WiCANAutoPid(self._resolve_wican_host())
+
+    def _session_client(self):
+        """The temporary-list client of a WiCAN run (session thread only)."""
+        from src.ecu.wican_autopid import WiCANSessionList
+
+        return WiCANSessionList(self._resolve_wican_host())
+
+    def _resolve_wican_host(self) -> str:
+        """The WiCAN's address. Blocks up to 3 s: never on the GUI thread."""
+        from src.ecu import wican_discovery
 
         host = (self._settings.get_wican_host() or "").strip()
         device_id = (self._settings.get_wican_device_id() or "").strip()
         if not host and not device_id:
             raise RuntimeError("No WiCAN is set up (Settings > ECU).")
         resolved = wican_discovery.resolve_host_with_fallback(device_id, host)
-        return WiCANAutoPid(resolved or host)
+        return resolved or host
 
     def _run_job(self, fn, on_done) -> bool:
         if self._job_thread is not None:

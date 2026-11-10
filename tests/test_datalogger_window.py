@@ -104,6 +104,26 @@ def test_push_button_only_for_the_wican(qtbot):
     dl.push_to_wican.assert_not_called()
 
 
+def test_wican_looks_like_a_cable_and_saving_its_list_is_optional(qtbot):
+    window, dl, _ = _window(qtbot, adapter="wican")
+    hint = window._adapter.text()
+    assert "Start Logging sends these channels" in hint and "this run only" in hint
+    assert "not changed" in hint
+    assert window._btn_push.text() == "Save as WiCAN's Own List..."
+    assert "not needed for Start Logging" in window._btn_push.toolTip()
+    assert window._btn_run.text() == "Start Logging" and window._btn_run.isEnabled()
+    assert window._btn_push.isEnabled()
+    # A run uses its own temporary list: the saved one can't change meanwhile.
+    dl.last_backup = "C:/logs/auto_pid_x.json"
+    dl.is_running = True
+    dl.running_changed.emit(True)
+    assert not window._btn_push.isEnabled() and not window._btn_restore.isEnabled()
+    assert window._btn_run.text() == "Stop Logging" and window._btn_run.isEnabled()
+    dl.is_running = False
+    dl.running_changed.emit(False)
+    assert window._btn_push.isEnabled() and window._btn_restore.isEnabled()
+
+
 @pytest.mark.parametrize("answer,pushed", [("yes", True), ("cancel", False)])
 def test_push_needs_confirming_the_preview(qtbot, monkeypatch, answer, pushed):
     window, dl, _ = _window(qtbot, adapter="wican")
