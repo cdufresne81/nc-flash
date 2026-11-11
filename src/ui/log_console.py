@@ -226,10 +226,13 @@ class LogConsole(QWidget):
         # Append to console
         self.console.append(html_message)
 
-        # Auto-scroll to bottom
-        cursor = self.console.textCursor()
-        cursor.movePosition(QTextCursor.End)
-        self.console.setTextCursor(cursor)
+        # Auto-scroll to the bottom, kept at the left edge. Moving the text
+        # cursor to the end instead scrolled sideways to the end of a long last
+        # line (no wrap), hiding the start of every line.
+        self.console.verticalScrollBar().setValue(
+            self.console.verticalScrollBar().maximum()
+        )
+        self.console.horizontalScrollBar().setValue(0)
 
         # Limit number of lines
         self._limit_lines()
