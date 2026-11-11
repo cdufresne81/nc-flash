@@ -124,6 +124,12 @@ class ECUStillProgrammingError(FlashError):
         )
 
 
+class LinkQualityError(FlashError):
+    """The pre-flight link check refused the flash: the adapter link (usually
+    WiCAN Wi-Fi) drops or delays too many frames. Raised BEFORE any ECU
+    programming step, so the ECU is untouched. A link problem, not an ECU one."""
+
+
 class EngineRunningError(FlashError):
     """Raised by the RPM gate when a flash is attempted with the engine running.
 

@@ -20,6 +20,8 @@ class _FakeECUWindow(SimpleNamespace):
     # The REAL property, so gating and broadcasts exercise the one busy
     # predicate (_ecu_busy OR running flash thread) instead of a test copy.
     is_busy = ECUProgrammingWindow.is_busy
+    _in_recovery = ECUProgrammingWindow._in_recovery
+    _boot_loader_confirmed = ECUProgrammingWindow._boot_loader_confirmed
 
 
 def _fake_window(
@@ -56,6 +58,7 @@ def _fake_window(
         _btn_scan_ram=MagicMock(),
         _btn_flash_current=MagicMock(),
         _btn_connect=MagicMock(),
+        _recovery=None,
         _flash_subtitle=MagicMock(),
         _connect_held_by_datalogger=False,
     )

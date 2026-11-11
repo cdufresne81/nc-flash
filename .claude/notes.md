@@ -111,6 +111,13 @@ What is on `dev` awaiting `master`: run `python tools/dev_status.py` (asks GitHu
 - **Bench-test #130/#131 on the Tactrix clone (J2534)** (owner: user). Also check the OBDX PR's
   generic changes there: Read RAM then Read ROM straight away works, and a flash refused with
   "still in programming mode" offers a reset that works. Only tested over
+- **Bricked-ECU recovery (#229) — remaining checks** (owner: user, spare LFDJEA on the WiCAN
+  192.168.1.169). Done on the bench 2026-11-10: brick → recovery notice → full-flash recovery
+  (twice), long idle while bricked, no probe on a healthy ECU (ignition on). Left: (b) 5+
+  reconnects while bricked, then recover; the "remembered generation" path (no NC1/NC2 question
+  after a flash read it); in the car, engine running: connect + Read DTCs sends no 0x10/0x27.
+  These commits are only on the merge branch: the later PR into master must carry them too.
+- **Bench-test #130/#131 on the Tactrix clone (J2534)** (owner: user). Only tested over
   WiCAN so far. Check: ignition OFF → Connect fails in ~3 s, not 60 s; right after a ROM
   read or RAM scan, Flash waits ~6.5 s then reads RPM and voltage (no false refusal);
   pulling the cable mid-session → "ECU not answering" and buttons fail fast. Delete this

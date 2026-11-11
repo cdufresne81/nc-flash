@@ -66,6 +66,7 @@ from .flash_manager import (
     FlashProgress,
     FlashState,
     ProgressCallback,
+    GenerationVerifiedHook,
     UnverifiedGenerationPrompt,
     rom_cal_id_text,
     verify_ecu_generation,
@@ -203,6 +204,7 @@ class WiCANSdFlasher:
         )
         # Asked when the ECU's generation can't be read; None refuses instead.
         self._confirm_unverified_generation: Optional[UnverifiedGenerationPrompt] = None
+        self._on_generation_verified: Optional[GenerationVerifiedHook] = None
 
     # --- public API (mirrors WiCANFlasher) ----------------------------------
 
@@ -211,6 +213,12 @@ class WiCANSdFlasher:
     ) -> None:
         """Same contract as :meth:`FlashManager.set_unverified_generation_prompt`."""
         self._confirm_unverified_generation = prompt
+
+    def set_generation_verified_hook(
+        self, hook: Optional[GenerationVerifiedHook]
+    ) -> None:
+        """Same contract as :meth:`FlashManager.set_generation_verified_hook`."""
+        self._on_generation_verified = hook
 
     def preflight(self, progress_cb=None):
         """Run ONLY the pre-flight link-quality gate (no flash)."""
@@ -418,6 +426,7 @@ class WiCANSdFlasher:
             pkg.manifest["generation"],
             rom_cal_id_text(pkg.corrected_rom),
             confirm_unverified=self._confirm_unverified_generation,
+            on_verified=self._on_generation_verified,
         )
 
     def _safe_uds_teardown(self) -> None:

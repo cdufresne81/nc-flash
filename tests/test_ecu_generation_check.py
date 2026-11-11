@@ -383,3 +383,35 @@ class TestJ2534FlashPath:
         # refuses memory reads), and the erase comes last.
         assert sids.index(SID_READ_MEM_BY_ADDR) < sids.index(SID_ROUTINE_CONTROL)
         assert sids.index(SID_ROUTINE_CONTROL) < sids.index(SID_REQUEST_DOWNLOAD)
+
+
+class TestGenerationVerifiedHook:
+    """The UI remembers a generation READ from the ECU, for a later recovery
+    flash where the boot loader refuses that read."""
+
+    def test_read_generation_is_reported(self):
+        hook = MagicMock()
+        verify_ecu_generation(_uds("NC1"), "NC1", on_verified=hook)
+        hook.assert_called_once_with("NC1")
+
+    def test_mismatch_is_not_reported(self):
+        hook = MagicMock()
+        with pytest.raises(ECUGenerationMismatchError):
+            verify_ecu_generation(_uds("NC1"), "NC2", on_verified=hook)
+        hook.assert_not_called()
+
+    def test_operator_answer_is_never_reported(self):
+        # Only a real read may be remembered: an answer is not evidence.
+        hook = MagicMock()
+        verify_ecu_generation(
+            _uds(boot=_refused()),
+            "NC2",
+            confirm_unverified=MagicMock(return_value="NC2"),
+            on_verified=hook,
+        )
+        hook.assert_not_called()
+
+    def test_a_failing_hook_never_stops_the_flash(self):
+        verify_ecu_generation(
+            _uds("NC2"), "NC2", on_verified=MagicMock(side_effect=RuntimeError)
+        )

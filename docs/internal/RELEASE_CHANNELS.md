@@ -70,6 +70,17 @@ master ──merge after every stable release──► dev
   names a release that shouldn't be there (a typo like `v22.0.0`), stable
   users get no updates until it is fixed: delete that release or mark it a
   pre-release, then mark the right one latest on GitHub.
+- **Tagging without a local clone:** run the **Tag Release** workflow
+  (Actions tab > Tag Release > Run workflow, from `master`; or
+  `gh workflow run tag-release.yml -f version=v2.24.0-beta.16`). The version
+  picks the branch: a beta tags the head of `dev`, a stable version the head
+  of `master`. It then starts the Release workflow on the new tag. It refuses
+  a version that isn't one of the two forms above, a tag that already exists,
+  a commit CI hasn't passed on, and a stable version with no CHANGELOG
+  section. Optional `commit` pins the branch head you reviewed (it refuses if
+  the branch moved). Use this from a cloud session, which can start a
+  workflow but can't push a tag. Pushing the tag by hand still works.
+  The workflow file must be on `master` to be runnable at all.
 - Betas get no CHANGELOG version section: their release notes are the
   `## [Unreleased]` section on `dev`. Feature entries are written on the
   feature branch, so they reach `master` with it; expect to resolve

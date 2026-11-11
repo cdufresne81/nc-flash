@@ -23,6 +23,7 @@ from enum import Enum
 from typing import Callable, Optional
 
 from .constants import (
+    BOOT_LOADER_SEED,
     BOOT_SIGNATURE_LEN,
     CAL_ID_OFFSETS,
     GEN_DETECT_OFFSET,
@@ -215,6 +216,11 @@ PROMPT_KEEPALIVE_S = 2.0
 #: ("NC1" or "NC2"), or None to cancel. Blocks until answered.
 UnverifiedGenerationPrompt = Callable[[str, Optional[str], str], Optional[str]]
 
+#: Told the ECU's generation when the pre-flash check READ it from the boot
+#: block (never for an operator's answer). Lets the UI remember it for a later
+#: recovery flash, when the boot loader refuses that read.
+GenerationVerifiedHook = Callable[[str], None]
+
 
 def read_memory_with_retry(
     uds,
@@ -321,6 +327,13 @@ def security_unlock(uds) -> None:
     if not any(seed):
         logger.info("ECU is already unlocked (zero seed); no key sent")
         return
+    if seed == BOOT_LOADER_SEED:
+        # Log only: the same key algorithm covers this seed, so the flash
+        # proceeds exactly as usual (bench-proven recovery, 2026-11-09).
+        logger.info(
+            "ECU is in boot-loader recovery mode (fixed seed); a full flash "
+            "restores it"
+        )
     key = compute_security_key(seed)
     logger.info("Security key computed: [%s] from seed [%s]", key.hex(), seed.hex())
     uds.security_access_send_key(key)
@@ -419,6 +432,7 @@ def verify_ecu_generation(
     rom_cal_id: Optional[str] = None,
     *,
     confirm_unverified: Optional[UnverifiedGenerationPrompt] = None,
+    on_verified: Optional[GenerationVerifiedHook] = None,
 ) -> None:
     """Refuse to flash a ROM made for the other generation (NC1 vs NC2).
 
@@ -468,6 +482,11 @@ def verify_ecu_generation(
             rom_cal_id or "cal ID unknown",
             ecu_cal_id or "cal ID unknown",
         )
+        if on_verified is not None:
+            try:
+                on_verified(ecu_generation)
+            except Exception as exc:  # a UI hook must never stop the flash
+                logger.debug("Generation-verified hook failed: %s", exc)
         return
 
     logger.warning("Generation check: could not read the ECU: %s", reason)
@@ -490,8 +509,10 @@ def verify_ecu_generation(
         )
         raise ECUGenerationMismatchError(rom_generation, answer, from_operator=True)
     logger.warning(
-        "Operator says the car is an %s: flashing the %s ROM (%s) without "
-        "reading the ECU (%s)",
+        # The answer comes from the operator or, on a recovery flash, from the
+        # generation a flash read earlier (the UI logs which).
+        "Car confirmed as an %s: flashing the %s ROM (%s) without reading the "
+        "ECU (%s)",
         answer,
         rom_generation,
         rom_cal_id or "cal ID unknown",
@@ -610,6 +631,7 @@ class FlashManager:
         # Asked when the ECU's generation can't be read before a flash; None
         # refuses the flash instead (see verify_ecu_generation).
         self._confirm_unverified_generation: Optional[UnverifiedGenerationPrompt] = None
+        self._on_generation_verified: Optional[GenerationVerifiedHook] = None
 
     def set_unverified_generation_prompt(
         self, prompt: Optional[UnverifiedGenerationPrompt]
@@ -617,6 +639,13 @@ class FlashManager:
         """Set who is asked when the pre-flash generation check can't read the
         ECU. Called from the worker thread; it must block until answered."""
         self._confirm_unverified_generation = prompt
+
+    def set_generation_verified_hook(
+        self, hook: Optional[GenerationVerifiedHook]
+    ) -> None:
+        """Set who is told the ECU's generation when the pre-flash check reads
+        it. Called on the worker thread; it must not block."""
+        self._on_generation_verified = hook
 
     def use_session(self, device, channel_id, filter_id, uds) -> None:
         """
@@ -1042,6 +1071,7 @@ class FlashManager:
             generation,
             rom_cal_id_text(rom_data),
             confirm_unverified=self._confirm_unverified_generation,
+            on_verified=self._on_generation_verified,
         )
 
         # Flash-only: romdrop's Read ROM (0x0040530D) skips this step

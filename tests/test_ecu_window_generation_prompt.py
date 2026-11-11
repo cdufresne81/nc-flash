@@ -20,11 +20,21 @@ class _Window(QObject):
     """GUI-thread stand-in for the window: the real wiring and slot, with the
     dialog replaced by a fixed answer."""
 
-    def __init__(self, answer):
+    def __init__(self, answer, remembered="", recovery=False):
         super().__init__()
         self.answer = answer
         self.asked = []
         self._flash_worker = None
+        self._remembered = remembered
+        self._flash_was_recovery = recovery
+        self.saved = []
+
+    def _remembered_generation(self):
+        return self._remembered
+
+    @Slot(str)
+    def _on_generation_verified(self, generation):
+        self.saved.append(generation)
 
     _wire_generation_prompt = ECUProgrammingWindow._wire_generation_prompt
 
@@ -114,3 +124,30 @@ def test_dialog_maps_buttons_and_defaults_to_cancel(qtbot, label, expected):
     assert "LF9VEB" in seen["text"]
     # The ROM's generation is not shown: the answer must come from the car.
     assert "(NC2)" not in seen["text"]
+
+
+@pytest.mark.parametrize(
+    "remembered,recovery,asked",
+    [
+        ("NC2", True, False),  # recovery + remembered match: no question
+        ("NC1", True, True),  # remembered other generation: ask
+        ("", True, True),  # nothing remembered (bricked elsewhere): ask
+        ("NC2", False, True),  # not a recovery flash: unchanged, ask
+    ],
+)
+def test_recovery_uses_the_remembered_generation(remembered, recovery, asked):
+    window = _Window("NC2", remembered=remembered, recovery=recovery)
+    window._flash_worker = MagicMock()
+    window._on_generation_unverified("NC2", "LFDJEA", "the ECU refused")
+    assert bool(window.asked) is asked
+    window._flash_worker.set_unverified_answer.assert_called_once_with("NC2")
+
+
+def test_read_generation_reaches_the_window(qtbot):
+    window = _Window("NC2")
+    driver = MagicMock()
+    worker = _FlashWorker(driver, "flash")
+    window._wire_generation_prompt(worker, driver, "flash")
+    hook = driver.set_generation_verified_hook.call_args.args[0]
+    hook("NC1")
+    qtbot.waitUntil(lambda: window.saved == ["NC1"], timeout=2000)

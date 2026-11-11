@@ -119,7 +119,7 @@ def _finish(window, operation: str, success: bool, error: str = "", result=None)
     window._session_acquired = True
     window._current_operation = operation
     window._stack.setCurrentIndex(1)
-    worker = MagicMock(result=result)
+    worker = MagicMock(result=result, needs_ecu_reset=False, error_kind="")
     window._on_flash_finished(success, None, worker, error)
 
 
@@ -159,15 +159,11 @@ def test_successful_flash_ends_session_and_done_does_not_reconnect(
     assert "unplug the adapter" in window._progress_detail.text()
     assert "has restarted" not in window._progress_detail.text()
     assert window._conn_label.text() == "Disconnected — flash complete"
-    assert not window._btn_done.isHidden()
     assert not window._poll_timer.isActive()
 
-    # Nothing reconnects on its own...
-    qtbot.wait(700)
-    assert connects == []
-    # ...and Done just returns to the actions page.
-    window._btn_done.click()
+    # Back to the actions page at once (no Done step), and nothing reconnects.
     assert window._stack.currentIndex() == 0
+    qtbot.wait(700)
     assert connects == []
     assert session.state == ECUSessionState.DISCONNECTED
     # The Connect button is one click away.
@@ -177,6 +173,8 @@ def test_successful_flash_ends_session_and_done_does_not_reconnect(
     assert len(infos) == 1
     text = infos[0][2]
     assert "disconnected from the ECU" in text
+    # A valid flash restarts the ECU by itself (bench 2026-11-11).
+    assert "restarts on its own" in text
     assert "Click Done to reconnect" not in text
     assert ("trip logger" in text) == (adapter == "wican")
 
@@ -194,7 +192,6 @@ def test_successful_flash_closes_a_session_the_flash_did_not_release(qtbot, conn
     window._on_flash_finished(True, None, MagicMock(result=None))
 
     _assert_session_released(session, "wican", mocks)
-    window._btn_done.click()
     assert connects == []
     qtbot.wait(400)  # let the "Flash Complete" timer fire under this test's patch
 
@@ -216,7 +213,9 @@ def test_successful_flash_never_closes_a_busy_session(qtbot, connects):
 
 @pytest.mark.parametrize("adapter", ["wican", "j2534"])
 @pytest.mark.parametrize("operation", ["flash", "dynamic_flash"])
-def test_failed_flash_still_reconnects_on_done(qtbot, connects, adapter, operation):
+def test_failed_flash_says_why_and_never_reconnects_on_its_own(
+    qtbot, connects, no_dialogs, adapter, operation
+):
     session = _session(adapter)
     mocks = _mocks(session)
     window = _window(qtbot, connects, adapter, session)
@@ -227,20 +226,54 @@ def test_failed_flash_still_reconnects_on_done(qtbot, connects, adapter, operati
     _assert_session_released(session, adapter, mocks)
     assert window._progress_state.text() == "Failed"
     assert "Block 3" in window._progress_detail.text()
-    # ...and Done reconnects so the user can retry or recover.
-    window._btn_done.click()
-    assert len(connects) == 1
+    # ...the window returns to its buttons, and a dialog says why...
+    assert window._stack.currentIndex() == 0
+    qtbot.waitUntil(lambda: any(k == "warning" for k, _ in no_dialogs), timeout=2000)
+    warning = next(a for k, a in no_dialogs if k == "warning")
+    assert warning[1] == "Flash Failed" and "Block 3" in warning[2]
+    assert "Click Connect" in warning[2]
+    # ...but it never reconnects on its own: on the WiCAN the firmware may still
+    # be writing, and bus traffic then can brick the ECU (review 2026-11-11).
+    qtbot.wait(300)
+    assert connects == []
 
 
-def test_identical_rom_still_reconnects_on_done(qtbot, connects):
+def test_identical_rom_reconnects_and_informs(qtbot, connects, no_dialogs):
     session = _session("j2534")
     window = _window(qtbot, connects, "j2534", session)
 
     _finish(window, "dynamic_flash", success=False, error="ROMs are identical")
 
     assert window._progress_state.text() == "Nothing to flash"
-    window._btn_done.click()
+    # Nothing was written: tell, THEN reconnect (a dialog opened while a
+    # WiCAN connect pumps events would stall that connect).
+    assert connects == []
+    qtbot.waitUntil(lambda: bool(no_dialogs), timeout=2000)
+    assert no_dialogs[0][0] == "information"
     assert len(connects) == 1
+
+
+def test_read_with_no_data_still_reconnects(qtbot, connects, no_dialogs):
+    session = _session("j2534")
+    window = _window(qtbot, connects, "j2534", session)
+
+    _finish(window, "read", success=True, result=None)
+
+    assert window._stack.currentIndex() == 0
+    assert len(connects) == 1
+
+
+def test_aborted_read_returns_without_a_dialog(qtbot, connects, no_dialogs):
+    """An abort is what the user asked for: no dialog, no Done step."""
+    session = _session("j2534")
+    window = _window(qtbot, connects, "j2534", session)
+
+    _finish(window, "read", success=False, error="Operation aborted by user")
+
+    assert window._stack.currentIndex() == 0
+    assert len(connects) == 1
+    qtbot.wait(500)
+    assert no_dialogs == []
 
 
 @pytest.mark.parametrize("operation", ["read", "scan_ram"])
@@ -297,6 +330,27 @@ def test_flash_on_a_real_thread_ends_session_without_reconnect(
 
     _assert_session_released(session, "wican", mocks)
     assert window._progress_state.text() == "Flash complete"
-    window._btn_done.click()
+    assert window._stack.currentIndex() == 0
     qtbot.wait(700)
     assert connects == []
+
+
+def test_successful_flash_forgets_the_generation_it_read(qtbot, connects, no_dialogs):
+    """A good flash leaves a running ECU; keeping its generation would answer
+    the which-car question for the next, different, bricked ECU (review
+    2026-11-11). A failed flash keeps it for the recovery of the same ECU."""
+    session = _session("j2534")
+    window = _window(qtbot, connects, "j2534", session)
+    window._flash_read_generation = "NC2"
+    _finish(window, "flash", success=True)
+    assert window._flash_read_generation == ""
+    qtbot.wait(400)  # let the "Flash Complete" timer fire under this test's patch
+
+
+def test_failed_flash_keeps_the_generation_it_read(qtbot, connects, no_dialogs):
+    session = _session("j2534")
+    window = _window(qtbot, connects, "j2534", session)
+    window._flash_read_generation = "NC2"
+    _finish(window, "flash", success=False, error="Block 3 not acknowledged")
+    assert window._flash_read_generation == "NC2"
+    qtbot.wait(400)

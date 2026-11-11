@@ -20,6 +20,7 @@ class _FakeWindow(SimpleNamespace):
     _on_ecu_answered = ECUProgrammingWindow._on_ecu_answered
     _show_connected_label = ECUProgrammingWindow._show_connected_label
     _ecu_answers = ECUProgrammingWindow._ecu_answers
+    _in_recovery = ECUProgrammingWindow._in_recovery
 
 
 def _fake(uds):
@@ -42,6 +43,7 @@ def _fake(uds):
         _conn_label=MagicMock(),
         _update_action_states=MagicMock(),
         _conditions_pending=False,
+        _recovery=None,
         _main_window=SimpleNamespace(wican_log_sync=SimpleNamespace(is_running=False)),
     )
 
