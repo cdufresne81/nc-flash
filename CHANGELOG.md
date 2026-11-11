@@ -8,6 +8,7 @@ All notable changes to NC Flash are documented here.
 - **A ROM for the wrong generation is refused before anything is erased.** Right before the flash starts, NC Flash reads the ECU's boot code (which a flash never changes) and checks the ROM is for the same generation. An NC1 ROM on an NC2 ECU (or the reverse) is refused, because the two are not compatible and the wrong flash loader would be sent. This also works on an ECU that still holds a ROM from an earlier wrong flash. Different calibrations of the same generation are still allowed (for example an LF9KED ROM on an LF9KEC ECU); the activity log names both. If the ECU can't be read (usually because it is stuck after a flash that didn't finish), NC Flash asks which car it is from (NC1, before the facelift, or NC2, after it) and only goes on if that matches the ROM. Works with both the cable and the WiCAN.
 
 ### Fixed
+- **Early NC1 cars (2006 calibrations such as LF4X and LF5A) can flash their own ROM again.** The generation check took these ROMs for NC2 and refused them on their own car; it could also have let one through on an NC2 car. These ROMs (copyright 2006) are now checked as NC1, which matches the boot code of every such ROM that has one. The flash itself is unchanged (#234).
 - **A flash or ROM read no longer fails when the ECU is already unlocked.** If an earlier session left the ECU unlocked, it answers with an empty security seed; NC Flash sent a key anyway and the ECU refused it. NC Flash now skips the key in that case.
 
 ## [v2.23.0] - 2026-10-15

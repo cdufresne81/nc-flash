@@ -49,6 +49,7 @@ from src.ecu.flash_manager import (
 )
 from src.ecu.rom_utils import (
     detect_vehicle_generation,
+    rom_hardware_generation,
     generation_from_boot_block,
     generation_from_byte,
 )
@@ -383,3 +384,86 @@ class TestJ2534FlashPath:
         # refuses memory reads), and the erase comes last.
         assert sids.index(SID_READ_MEM_BY_ADDR) < sids.index(SID_ROUTINE_CONTROL)
         assert sids.index(SID_ROUTINE_CONTROL) < sids.index(SID_REQUEST_DOWNLOAD)
+
+
+def _early_nc1_rom() -> bytearray:
+    """An early NC1 ROM (#234): NC1 boot block, but copyright byte 0x36
+    ("2006"), which the SBL rule maps to NC2 (LF4X/LF5A calibrations)."""
+    rom = bytearray(ROM_SIZE)
+    rom[: len(BOOT_SIGNATURE_NC1)] = BOOT_SIGNATURE_NC1
+    rom[GEN_DETECT_OFFSET] = GEN_NC2_A
+    return rom
+
+
+class TestRomHardwareGeneration:
+    def test_byte_0x36_is_nc1_hardware_but_keeps_the_nc2_sbl(self):
+        rom = _early_nc1_rom()
+        assert detect_vehicle_generation(rom) == "NC2"  # SBL choice: unchanged
+        assert rom_hardware_generation(rom) == "NC1"
+
+    def test_byte_0x36_with_a_blank_boot_block_is_nc1(self):
+        # Many OEM files (and some release images) have an all-FF boot block.
+        rom = _early_nc1_rom()
+        rom[: len(BOOT_SIGNATURE_NC1)] = bytes([0xFF]) * len(BOOT_SIGNATURE_NC1)
+        assert rom_hardware_generation(rom) == "NC1"
+
+    @pytest.mark.parametrize("gen", ["NC1", "NC2"])
+    def test_other_bytes_are_unchanged(self, gen):
+        rom = bytearray(ROM_SIZE)
+        rom[GEN_DETECT_OFFSET] = _PROGRAM[gen]
+        assert rom_hardware_generation(rom) == gen
+
+    def test_the_files_boot_block_is_ignored(self):
+        # It only records which ECU the file was read from (e.g. an LFDJEA
+        # readback from a cross-flashed NC1 ECU): the program decides.
+        rom = bytearray(ROM_SIZE)
+        rom[: len(BOOT_SIGNATURE_NC1)] = BOOT_SIGNATURE_NC1
+        rom[GEN_DETECT_OFFSET] = GEN_NC2_B
+        assert rom_hardware_generation(rom) == "NC2"
+
+
+class TestEarlyNc1Roms:
+    """#234: the check used to compare the ECU's boot block with the copyright
+    byte, so an early NC1 ROM was refused on its own (NC1) car and accepted on
+    an NC2 one."""
+
+    def test_no_wrong_flash_warning_for_byte_0x36_on_nc1_hardware(self, caplog):
+        uds = _uds("NC1")
+        blocks = _memory("NC1")
+        program = bytearray(blocks[0x2000])
+        program[GEN_DETECT_OFFSET % BLOCK_SIZE] = GEN_NC2_A
+        blocks[0x2000] = bytes(program)
+        uds.read_memory_by_address.side_effect = lambda a, s, **_k: blocks.get(
+            a, bytes(s)
+        )
+        with caplog.at_level("WARNING"):
+            verify_ecu_generation(uds, "NC1", "LF4XED")
+        assert "wrong-generation" not in caplog.text
+
+    @_apply_secure_patches
+    @patch("src.ecu.j2534.J2534Device")
+    @patch("src.ecu.j2534.setup_isotp_flow_control", return_value=100)
+    def test_early_nc1_rom_flashes_on_an_nc1_ecu(self, _fc, MockDevice):
+        from test_ecu_flash_integration import _build_flash_responses
+
+        mock_dev = MockDevice.return_value
+        mock_dev.connect.return_value = 1
+        num_sbl = SBL_SIZE // BLOCK_SIZE
+        num_program = (ROM_SIZE - ROM_FLASH_START_MIN + BLOCK_SIZE - 1) // BLOCK_SIZE
+        # The fixture's ECU boot block says NC1, like this ROM's.
+        mock_dev.read_msgs.side_effect = _build_flash_responses(num_sbl, num_program)
+        FlashManager().flash_rom(_early_nc1_rom())
+        assert SID_REQUEST_DOWNLOAD in _sent_sids(mock_dev)
+
+    @_apply_secure_patches
+    @patch("src.ecu.j2534.J2534Device")
+    @patch("src.ecu.j2534.setup_isotp_flow_control", return_value=100)
+    def test_early_nc1_rom_is_refused_on_an_nc2_ecu(self, _fc, MockDevice):
+        mock_dev = MockDevice.return_value
+        mock_dev.connect.return_value = 1
+        mock_dev.read_msgs.side_effect = _auth_responses() + _check_responses("NC2")
+        with pytest.raises(ECUGenerationMismatchError):
+            FlashManager().flash_rom(_early_nc1_rom())
+        sids = _sent_sids(mock_dev)
+        assert SID_ROUTINE_CONTROL not in sids
+        assert SID_REQUEST_DOWNLOAD not in sids
