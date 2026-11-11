@@ -14,7 +14,12 @@ from unittest.mock import MagicMock, call, patch
 
 import pytest
 
-from src.ecu.constants import ROM_SIZE, SID_SECURITY_ACCESS
+from src.ecu.constants import (
+    GEN_DETECT_OFFSET,
+    GEN_NC1,
+    ROM_SIZE,
+    SID_SECURITY_ACCESS,
+)
 from src.ecu.exceptions import (
     ECUStillProgrammingError,
     EngineRunningError,
@@ -50,7 +55,11 @@ def _flash(uds):
         ),
         patch("src.ecu.flash_manager.verify_ecu_generation"),
     ):
-        fm.flash_rom(bytes(ROM_SIZE))
+        # A real ROM has its generation byte (prepare_flash_image validated it;
+        # the generation check reads it again for the hardware generation).
+        rom = bytearray(ROM_SIZE)
+        rom[GEN_DETECT_OFFSET] = GEN_NC1
+        fm.flash_rom(bytes(rom))
 
 
 # --- Flash refused by a stuck ECU ---
