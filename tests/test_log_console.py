@@ -210,3 +210,21 @@ class TestMessageText:
         console = LogConsole(auto_register=False)
         console.append_log("first line\nsecond line", logging.INFO)
         assert "first line\nsecond line" in console.console.toPlainText()
+
+
+def test_long_lines_keep_the_log_scrolled_left(qapp):
+    """A long last line used to scroll the log sideways to its end, hiding the
+    start of every line (bench 2026-11-10)."""
+    console = LogConsole(auto_register=False)
+    console.resize(300, 200)
+    console.show()
+    try:
+        for i in range(30):
+            console.append_log(f"line {i} " + "x" * 400, logging.INFO)
+        qapp.processEvents()
+        assert console.console.horizontalScrollBar().maximum() > 0  # really long
+        assert console.console.horizontalScrollBar().value() == 0
+        vbar = console.console.verticalScrollBar()
+        assert vbar.value() == vbar.maximum()  # still follows the newest line
+    finally:
+        console.close()

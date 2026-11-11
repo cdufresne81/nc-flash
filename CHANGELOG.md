@@ -68,6 +68,7 @@ All notable changes to NC Flash are documented here.
 - **Windows updates now replace the old program files** — installing a new version used to leave the previous version's leftover program files in place, which could, in rare cases, make the new version crash at start-up. Your settings, ROMs, reads and logs are kept: by default they are not stored in the program folder. Files you saved yourself inside the program folder's `_internal` folder are removed, unless an NC Flash setting or open ROM points there.
 - **Behind the scenes:** a fix release for an older version (for example 2.16.1 published after 2.17.0) no longer becomes GitHub's "latest" release, so the update check keeps offering the newest version.
 - **Behind the scenes:** the copy and paste tests no longer fail at random on Windows when another program briefly holds the clipboard, and running them no longer overwrites what you had copied. No change to the app itself.
+- **The activity log stays aligned to the left.** A long new line used to scroll the log sideways to its end, cutting off the start of every line.
 
 ## [v2.23.1] - 2026-10-24
 
