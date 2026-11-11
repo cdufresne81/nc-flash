@@ -323,6 +323,22 @@ def test_connect_reads_skip_probe_on_running_ecu():
     win._set_recovery.assert_called_once_with(None)
 
 
+def test_healthy_connect_forgets_the_generation_a_flash_read():
+    """The remembered generation must never answer the which-car question for
+    another ECU: once a running ECU is connected it may be a different one
+    (review 2026-11-11)."""
+    uds = MagicMock()
+    uds.read_vin_block.return_value = b"JM1NC25F" + b"0" * 9
+    uds.read_rom_id.return_value = "LF9VEB"
+    uds.read_dtc_status.return_value = []
+    uds.read_battery_voltage.return_value = 12.6
+    uds.read_engine_rpm.return_value = 0.0
+    win = _conditions_window(uds)
+    win._flash_read_generation = "NC2"
+    ECUProgrammingWindow._read_conditions_async(win)
+    assert win._flash_read_generation == ""
+
+
 def _gating_window(*, busy=False, recovery=None):
     # Reuse the interlock tests' stand-in window, so it follows the real one.
     from tests.test_ecu_window_wican_interlock import _fake_window as _interlock

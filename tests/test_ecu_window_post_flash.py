@@ -213,7 +213,7 @@ def test_successful_flash_never_closes_a_busy_session(qtbot, connects):
 
 @pytest.mark.parametrize("adapter", ["wican", "j2534"])
 @pytest.mark.parametrize("operation", ["flash", "dynamic_flash"])
-def test_failed_flash_reconnects_and_says_why(
+def test_failed_flash_says_why_and_never_reconnects_on_its_own(
     qtbot, connects, no_dialogs, adapter, operation
 ):
     session = _session(adapter)
@@ -226,13 +226,16 @@ def test_failed_flash_reconnects_and_says_why(
     _assert_session_released(session, adapter, mocks)
     assert window._progress_state.text() == "Failed"
     assert "Block 3" in window._progress_detail.text()
-    # ...the window returns and reconnects so the user can retry or recover...
+    # ...the window returns to its buttons, and a dialog says why...
     assert window._stack.currentIndex() == 0
-    assert len(connects) == 1
-    # ...and, with no page left to read, a dialog says why.
     qtbot.waitUntil(lambda: any(k == "warning" for k, _ in no_dialogs), timeout=2000)
     warning = next(a for k, a in no_dialogs if k == "warning")
     assert warning[1] == "Flash Failed" and "Block 3" in warning[2]
+    assert "Click Connect" in warning[2]
+    # ...but it never reconnects on its own: on the WiCAN the firmware may still
+    # be writing, and bus traffic then can brick the ECU (review 2026-11-11).
+    qtbot.wait(300)
+    assert connects == []
 
 
 def test_identical_rom_reconnects_and_informs(qtbot, connects, no_dialogs):
@@ -242,9 +245,22 @@ def test_identical_rom_reconnects_and_informs(qtbot, connects, no_dialogs):
     _finish(window, "dynamic_flash", success=False, error="ROMs are identical")
 
     assert window._progress_state.text() == "Nothing to flash"
-    assert len(connects) == 1
+    # Nothing was written: tell, THEN reconnect (a dialog opened while a
+    # WiCAN connect pumps events would stall that connect).
+    assert connects == []
     qtbot.waitUntil(lambda: bool(no_dialogs), timeout=2000)
     assert no_dialogs[0][0] == "information"
+    assert len(connects) == 1
+
+
+def test_read_with_no_data_still_reconnects(qtbot, connects, no_dialogs):
+    session = _session("j2534")
+    window = _window(qtbot, connects, "j2534", session)
+
+    _finish(window, "read", success=True, result=None)
+
+    assert window._stack.currentIndex() == 0
+    assert len(connects) == 1
 
 
 def test_aborted_read_returns_without_a_dialog(qtbot, connects, no_dialogs):
@@ -317,3 +333,24 @@ def test_flash_on_a_real_thread_ends_session_without_reconnect(
     assert window._stack.currentIndex() == 0
     qtbot.wait(700)
     assert connects == []
+
+
+def test_successful_flash_forgets_the_generation_it_read(qtbot, connects, no_dialogs):
+    """A good flash leaves a running ECU; keeping its generation would answer
+    the which-car question for the next, different, bricked ECU (review
+    2026-11-11). A failed flash keeps it for the recovery of the same ECU."""
+    session = _session("j2534")
+    window = _window(qtbot, connects, "j2534", session)
+    window._flash_read_generation = "NC2"
+    _finish(window, "flash", success=True)
+    assert window._flash_read_generation == ""
+    qtbot.wait(400)  # let the "Flash Complete" timer fire under this test's patch
+
+
+def test_failed_flash_keeps_the_generation_it_read(qtbot, connects, no_dialogs):
+    session = _session("j2534")
+    window = _window(qtbot, connects, "j2534", session)
+    window._flash_read_generation = "NC2"
+    _finish(window, "flash", success=False, error="Block 3 not acknowledged")
+    assert window._flash_read_generation == "NC2"
+    qtbot.wait(400)
