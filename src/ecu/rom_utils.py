@@ -66,6 +66,25 @@ def generation_from_byte(gen_byte: int) -> str | None:
     return None
 
 
+def rom_hardware_generation(rom_data: bytes) -> str:
+    """The ECU hardware generation ("NC1"/"NC2") a full ROM's program is for.
+
+    Same byte as :func:`detect_vehicle_generation` (the last digit of the
+    "Copr.DENSO200x" string at ``GEN_DETECT_OFFSET``), read differently for one
+    value: 0x36 ("2006", the earliest calibrations such as LF4X and LF5A) is
+    NC1 hardware. Every 0x36 ROM whose boot block is present has an NC1 boot
+    block, and those with a blank boot block share the same NC1 program family
+    (#234). The SBL is still picked by :func:`detect_vehicle_generation`, which
+    maps 0x36 to NC2 as RomDrop does.
+
+    The ROM file's own boot block is NOT used: it is never flashed and only
+    records which ECU the file was read from (blank in many OEM files).
+    """
+    if len(rom_data) > GEN_DETECT_OFFSET and rom_data[GEN_DETECT_OFFSET] == GEN_NC2_A:
+        return "NC1"
+    return detect_vehicle_generation(rom_data)
+
+
 def generation_from_boot_block(boot: bytes) -> str | None:
     """Map the first ``BOOT_SIGNATURE_LEN`` bytes of a boot block (address 0) to
     "NC1"/"NC2", or None if they match neither known signature.

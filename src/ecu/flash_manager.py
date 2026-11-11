@@ -27,6 +27,7 @@ from .constants import (
     BOOT_SIGNATURE_LEN,
     CAL_ID_OFFSETS,
     GEN_DETECT_OFFSET,
+    GEN_NC2_A,
     SID_READ_MEM_BY_ADDR,
     ROM_SIZE,
     TIMEOUT_PROBE,
@@ -60,6 +61,7 @@ from .rom_utils import (
     calculate_flash_start_index,
     generation_from_boot_block,
     generation_from_byte,
+    rom_hardware_generation,
     get_cal_id,
 )
 from .flash_prep import prepare_flash_image
@@ -378,7 +380,9 @@ def _read_ecu_program(uds) -> tuple[Optional[str], Optional[str]]:
     generation = None
     data = block(base(GEN_DETECT_OFFSET))
     if data is not None:
-        generation = generation_from_byte(data[GEN_DETECT_OFFSET % BLOCK_SIZE])
+        gen_byte = data[GEN_DETECT_OFFSET % BLOCK_SIZE]
+        # Hardware reading of the byte: 0x36 (2006 copyright) is NC1 (#234).
+        generation = "NC1" if gen_byte == GEN_NC2_A else generation_from_byte(gen_byte)
     cal_id = None
     for offset in CAL_ID_OFFSETS:
         data = block(base(offset))
@@ -1066,9 +1070,10 @@ class FlashManager:
         # counter: once that routine has run, the ECU refuses every memory read
         # (NRC 0x11) until it is reset, so the check could never read it.
         self._notify(callback, "Checking the ROM matches the ECU...", percent=20.5)
+        # The hardware generation, not the SBL choice: they differ for 0x36 (#234).
         verify_ecu_generation(
             self._uds,
-            generation,
+            rom_hardware_generation(rom_data),
             rom_cal_id_text(rom_data),
             confirm_unverified=self._confirm_unverified_generation,
             on_verified=self._on_generation_verified,
