@@ -707,16 +707,21 @@ class TestGenerationCheck:
         flasher._check_flash_counter.assert_not_called()
         flasher._safe_uds_teardown.assert_called_once()  # session dropped
 
-    @pytest.mark.parametrize("generation", ["NC1", "NC2"])
-    def test_check_uses_the_package_generation_and_the_prompt(self, generation):
-        # The manifest generation is the one the packager picked the SBL with.
+    def test_check_uses_the_hardware_generation_and_the_prompt(self):
+        # An early NC1 ROM (byte 0x36): the packager picked the NC2 SBL, but the
+        # check must compare NC1 hardware (#234).
+        from src.ecu.constants import GEN_DETECT_OFFSET, GEN_NC2_A
+
         flasher = WiCANSdFlasher(
             _FakeTransport(), uploader=MagicMock(), datalog=MagicMock()
         )
         prompt = MagicMock()
         flasher.set_unverified_generation_prompt(prompt)
-        pkg = _fake_package()
-        pkg.manifest["generation"] = generation
+        image = bytearray(GEN_DETECT_OFFSET + 16)
+        image[GEN_DETECT_OFFSET] = GEN_NC2_A
+        pkg = _fake_package(image=bytes(image))
+        pkg.manifest["generation"] = "NC2"
+        generation = "NC1"
         with patch("src.ecu.wican_sd_flash.verify_ecu_generation") as verify:
             flasher._check_ecu_generation(pkg)
         args, kwargs = verify.call_args

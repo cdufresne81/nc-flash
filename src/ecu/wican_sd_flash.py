@@ -71,7 +71,7 @@ from .flash_manager import (
     rom_cal_id_text,
     verify_ecu_generation,
 )
-from .rom_utils import find_first_difference
+from .rom_utils import find_first_difference, rom_hardware_generation
 from .wican_config import WiCANDatalogClient
 from .wican_flash import WiCANFlasher
 from .wican_sd_files import WiCANSdFiles
@@ -423,7 +423,8 @@ class WiCANSdFlasher:
 
         verify_ecu_generation(
             UDSConnection(self._transport),
-            pkg.manifest["generation"],
+            # The hardware generation, not the SBL choice: they differ for 0x36 (#234).
+            rom_hardware_generation(pkg.corrected_rom),
             rom_cal_id_text(pkg.corrected_rom),
             confirm_unverified=self._confirm_unverified_generation,
             on_verified=self._on_generation_verified,
