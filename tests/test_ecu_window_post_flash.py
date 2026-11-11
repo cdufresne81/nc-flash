@@ -173,6 +173,8 @@ def test_successful_flash_ends_session_and_done_does_not_reconnect(
     assert len(infos) == 1
     text = infos[0][2]
     assert "disconnected from the ECU" in text
+    # A valid flash restarts the ECU by itself (bench 2026-11-11).
+    assert "restarts on its own" in text
     assert "Click Done to reconnect" not in text
     assert ("trip logger" in text) == (adapter == "wican")
 

@@ -509,8 +509,10 @@ def verify_ecu_generation(
         )
         raise ECUGenerationMismatchError(rom_generation, answer, from_operator=True)
     logger.warning(
-        "Operator says the car is an %s: flashing the %s ROM (%s) without "
-        "reading the ECU (%s)",
+        # The answer comes from the operator or, on a recovery flash, from the
+        # generation a flash read earlier (the UI logs which).
+        "Car confirmed as an %s: flashing the %s ROM (%s) without reading the "
+        "ECU (%s)",
         answer,
         rom_generation,
         rom_cal_id or "cal ID unknown",

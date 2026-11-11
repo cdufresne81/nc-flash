@@ -266,10 +266,6 @@ class ECUProgrammingWindow(QMainWindow):
         self._guard_override = False  # operator overrode unreadable flash checks
         # Boot-loader recovery detection (None = not detected / normal ECU).
         self._recovery: RecoveryProbeResult | None = None
-        # A flash succeeded in this window and the ECU has not been seen running
-        # since: right after any flash the ECU waits in its boot loader until
-        # the ignition is cycled, so that is expected, not a brick.
-        self._flashed_awaiting_cycle = False
         self._poll_timer = QTimer(self)
         self._poll_timer.setInterval(CONDITION_POLL_INTERVAL)
         self._poll_timer.timeout.connect(self._poll_conditions)
@@ -655,10 +651,6 @@ class ECUProgrammingWindow(QMainWindow):
 
     def _on_disconnect(self):
         self._poll_timer.stop()
-        # The user ends this connection: the ignition may be cycled before the
-        # next one, so a boot loader seen then is a real recovery case, not the
-        # post-flash wait (else a bricked ECU is told to cycle forever).
-        self._flashed_awaiting_cycle = False
         if self._session:
             self._session.disconnect_ecu()
         # Only once the session is really closed (disconnect is refused while
@@ -770,9 +762,6 @@ class ECUProgrammingWindow(QMainWindow):
         if data.get("rpm") is None and data.get("vin") == "N/A":
             self._check_recovery_mode()
         else:
-            # Normal reads work: the application runs, so any post-flash
-            # boot-loader wait is over.
-            self._flashed_awaiting_cycle = False
             self._set_recovery(None)
 
     def _on_conditions_loaded(self, data: dict):
@@ -914,9 +903,6 @@ class ECUProgrammingWindow(QMainWindow):
         self._show_connected_label(answering=False)
         if self._poll_misses >= POLL_MISSES_BEFORE_DISCONNECT:
             self._poll_timer.stop()
-            # The ECU went silent (ignition off): the boot-loader wait that
-            # follows a flash is over, so a later boot-loader state is real.
-            self._flashed_awaiting_cycle = False
             self._disconnect_reason = (
                 "ECU stopped answering. Check the ignition is ON, then reconnect."
             )
@@ -997,12 +983,7 @@ class ECUProgrammingWindow(QMainWindow):
         )
         self._set_recovery(result)
         if self._in_recovery:
-            if self._flashed_awaiting_cycle:
-                logger.info(
-                    "The ECU is waiting in its boot loader after the flash: cycle "
-                    "the ignition, then connect again."
-                )
-            elif self._boot_loader_confirmed:
+            if self._boot_loader_confirmed:
                 logger.info(
                     "The ECU is in recovery mode (boot loader). Open a known-good "
                     "ROM and do a full flash."
@@ -1016,9 +997,6 @@ class ECUProgrammingWindow(QMainWindow):
 
     def _set_recovery(self, result: RecoveryProbeResult | None):
         """Store the probe result and update the banner, ECU card and buttons."""
-        if result is not None and result.mode == EcuMode.NORMAL:
-            # The application runs: any post-flash boot-loader wait is over.
-            self._flashed_awaiting_cycle = False
         if result is not None and not result.needs_recovery:
             result = None
         self._recovery = result
@@ -1029,21 +1007,7 @@ class ECUProgrammingWindow(QMainWindow):
 
         # Recovery is the window's normal flow: open a known-good ROM in the
         # editor and flash it (both flash buttons write the whole ROM here).
-        if self._flashed_awaiting_cycle:
-            # Expected right after a flash: the ECU waits in its boot loader
-            # until the ignition is cycled. Not a brick; don't push a re-flash.
-            title, status = (
-                "Waiting for an ignition cycle",
-                "waiting for an ignition cycle",
-            )
-            text = (
-                "After a flash, the ECU stays in its boot loader until the "
-                "ignition is cycled. Turn it OFF, then ON, and connect again. "
-                "If it is still in its boot loader after that, open a known-good "
-                "ROM and do a full flash."
-            )
-            card = ("BOOT LOADER", "Cycle the ignition to start the new ROM")
-        elif result.mode == EcuMode.BOOT_LOADER:
+        if result.mode == EcuMode.BOOT_LOADER:
             title, status = "Recovery mode", "ECU in recovery mode"
             text = (
                 "This ECU is stuck in its boot loader, most likely after a failed "
@@ -1059,8 +1023,7 @@ class ECUProgrammingWindow(QMainWindow):
             text = (
                 "The ECU answers but refuses normal requests, most likely because "
                 "it is stuck in its boot loader after a failed flash. If so, open a "
-                "known-good ROM and do a full flash. If you have just flashed it, "
-                "cycle the ignition and connect again first."
+                "known-good ROM and do a full flash."
             )
             card = ("NO DIAGNOSTICS", "Possibly boot loader — see the notice")
 
@@ -1457,8 +1420,9 @@ class ECUProgrammingWindow(QMainWindow):
             "loop, so a dropped WiFi link cannot interrupt the programming session.\n\n"
             "• The link is checked first — a flash is refused on a lossy link.\n"
             "• Keep the ignition ON and stay near the adapter during upload + flash.\n"
-            "• Once the flash is confirmed, cycle the ignition (OFF, then ON) so "
-            "the ECU starts the new calibration.\n\n"
+            "• The ECU reboots on its own once the flash is confirmed — you do not "
+            "need to cycle the ignition, but cycling it (OFF, then ON) afterward is "
+            "recommended to confirm the new calibration booted.\n\n"
             "Proceed?",
             QMessageBox.Yes | QMessageBox.No,
             QMessageBox.No,
@@ -1787,9 +1751,6 @@ class ECUProgrammingWindow(QMainWindow):
 
         self._current_manager = manager
         self._current_operation = operation
-        # A new operation starts: forget any earlier post-flash wait, so a
-        # failed flash is never explained away as "waiting for a cycle".
-        self._flashed_awaiting_cycle = False
         # Remembered here: the session release on completion clears the
         # recovery state before the result is shown.
         self._flash_was_recovery = self._in_recovery and operation == "flash"
@@ -2028,19 +1989,19 @@ class ECUProgrammingWindow(QMainWindow):
                     )
                 QTimer.singleShot(500, self._auto_reconnect)
             elif self._current_operation in ("flash", "dynamic_flash"):
-                # Both adapters finish with a UDS ECUReset (0x11 0x01), but the
-                # ECU then waits in its boot loader until the ignition is cycled
-                # (bench, 2026-11-09): the new calibration starts on the cycle.
+                # Both adapters finish with a UDS ECUReset (0x11 0x01), which
+                # restarts the ECU on the new program by itself: bench
+                # 2026-11-11, a connect 9 s after a valid flash (no key cycle)
+                # found it running. A boot loader seen after a flash therefore
+                # means the ROM can't start (recovery mode), never "wait".
                 recovery = getattr(self, "_flash_was_recovery", False)
-                self._flashed_awaiting_cycle = True
                 wican_released = self._end_session_after_flash()
                 self._progress_state.setText(
                     "Recovery flash complete" if recovery else "Flash complete"
                 )
                 self._progress_detail.setText(
-                    "Turn the key OFF, wait a few seconds, then ON, so the ECU "
-                    "starts the new calibration. NC Flash has disconnected, so you "
-                    "can unplug the adapter. Click Connect to reconnect."
+                    "The ECU restarts on its own. NC Flash has disconnected, so "
+                    "you can unplug the adapter. Click Connect to reconnect."
                 )
                 title = "Recovery Flash Complete" if recovery else "Flash Complete"
                 done = (
@@ -2051,7 +2012,7 @@ class ECUProgrammingWindow(QMainWindow):
                     "ECU.\n\n"
                 )
                 after = (
-                    "Then click Connect: the normal readings should be back."
+                    "Click Connect to check the normal readings are back."
                     if recovery
                     else "To reconnect, click Connect."
                 )
@@ -2060,9 +2021,9 @@ class ECUProgrammingWindow(QMainWindow):
                     lambda: QMessageBox.information(
                         self,
                         title,
-                        done + "Now turn the key OFF, wait a few seconds, and turn it "
-                        "back ON so the ECU starts the new calibration, before "
-                        "starting the engine.\n\n"
+                        done + "The ECU restarts on its own after a valid flash. "
+                        "To be sure the new calibration is running, turn the key "
+                        "OFF, then back ON, before starting the engine.\n\n"
                         "NC Flash has disconnected from the ECU"
                         + (
                             " and released the WiCAN for its trip logger"

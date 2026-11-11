@@ -230,7 +230,6 @@ class _FakeWindow(SimpleNamespace):
 def _fake_window(**kw):
     base = dict(
         _recovery=None,
-        _flashed_awaiting_cycle=False,
         _recovery_banner=MagicMock(),
         _recovery_text=MagicMock(),
         _card_ecu=MagicMock(),
@@ -253,38 +252,20 @@ def test_window_shows_recovery_banner_for_boot_loader():
     assert win._card_ecu.set_value.call_args.args[0] == "RECOVERY MODE"
 
 
-def test_window_after_flash_says_cycle_ignition_then_full_flash():
-    """Right after any flash the ECU waits in its boot loader, but the flashed
-    ROM may be unbootable and the cycle may already have happened while
-    disconnected (same boot loader either way): say what to do if it stays."""
-    win = _fake_window(_flashed_awaiting_cycle=True)
+def test_boot_loader_right_after_a_flash_is_recovery_mode():
+    """A valid flash restarts the ECU by itself (bench 2026-11-11: running 9 s
+    after the flash, no key cycle), so a boot loader seen after any flash means
+    the ROM can't start: recovery mode, never "wait for an ignition cycle"."""
+    win = _fake_window(_flash_was_recovery=False)
     win._set_recovery(RecoveryProbeResult(EcuMode.BOOT_LOADER, BOOT_LOADER_SEED))
     text = win._recovery_text.setText.call_args.args[0]
-    assert "ignition" in text and "full flash" in text
+    assert "Recovery mode" in text and "ignition" not in text
 
 
-def test_user_disconnect_ends_post_flash_wait():
-    """Bench 2026-11-10: a bricked image flashed, Disconnect, power cycle,
-    Connect kept saying "waiting for an ignition cycle" because nothing
-    cleared the flag. A user Disconnect now ends the wait."""
-    win = _fake_window(
-        _flashed_awaiting_cycle=True,
-        _poll_timer=MagicMock(),
-        _session=None,
-        _ap_switch=MagicMock(),
-    )
-    ECUProgrammingWindow._on_disconnect(win)
-    assert win._flashed_awaiting_cycle is False
-    win._set_recovery(RecoveryProbeResult(EcuMode.BOOT_LOADER, BOOT_LOADER_SEED))
-    text = win._recovery_text.setText.call_args.args[0]
-    assert "Recovery mode" in text
-
-
-def test_window_normal_result_hides_banner_and_ends_post_flash_wait():
-    win = _fake_window(_flashed_awaiting_cycle=True)
+def test_window_normal_result_hides_banner():
+    win = _fake_window()
     win._set_recovery(RecoveryProbeResult(EcuMode.NORMAL))
     assert win._recovery is None and not win._in_recovery
-    assert win._flashed_awaiting_cycle is False
     win._recovery_banner.setVisible.assert_called_with(False)
 
 
@@ -340,19 +321,6 @@ def test_connect_reads_skip_probe_on_running_ecu():
     ECUProgrammingWindow._read_conditions_async(win)
     win._check_recovery_mode.assert_not_called()
     win._set_recovery.assert_called_once_with(None)
-
-
-def test_healthy_reconnect_ends_post_flash_wait():
-    uds = MagicMock()
-    uds.read_vin_block.return_value = b"JM1NC25F" + b"0" * 9
-    uds.read_rom_id.return_value = "LF9VEB"
-    uds.read_dtc_status.return_value = []
-    uds.read_battery_voltage.return_value = 12.6
-    uds.read_engine_rpm.return_value = 0.0
-    win = _conditions_window(uds)
-    win._flashed_awaiting_cycle = True
-    ECUProgrammingWindow._read_conditions_async(win)
-    assert win._flashed_awaiting_cycle is False
 
 
 def _gating_window(*, busy=False, recovery=None):
