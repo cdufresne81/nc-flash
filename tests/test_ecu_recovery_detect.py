@@ -233,7 +233,6 @@ def _fake_window(**kw):
         _flashed_awaiting_cycle=False,
         _recovery_banner=MagicMock(),
         _recovery_text=MagicMock(),
-        _btn_recover=MagicMock(),
         _card_ecu=MagicMock(),
         _conn_label=MagicMock(),
         _update_action_states=MagicMock(),
@@ -247,20 +246,38 @@ def test_window_shows_recovery_banner_for_boot_loader():
     win._set_recovery(RecoveryProbeResult(EcuMode.BOOT_LOADER, BOOT_LOADER_SEED))
     assert win._in_recovery and win._boot_loader_confirmed
     win._recovery_banner.setVisible.assert_called_with(True)
-    win._btn_recover.setVisible.assert_called_with(True)
     text = win._recovery_text.setText.call_args.args[0]
-    assert "recovery mode" in text and "full, known-good ROM" in text
+    assert "Recovery mode" in text and "known-good ROM" in text
+    assert "full flash" in text
     win._card_ecu.set_value.assert_called()
     assert win._card_ecu.set_value.call_args.args[0] == "RECOVERY MODE"
 
 
-def test_window_after_flash_says_cycle_ignition_not_recover():
-    """Right after any flash the ECU waits in its boot loader: not a brick."""
+def test_window_after_flash_says_cycle_ignition_then_full_flash():
+    """Right after any flash the ECU waits in its boot loader, but the flashed
+    ROM may be unbootable and the cycle may already have happened while
+    disconnected (same boot loader either way): say what to do if it stays."""
     win = _fake_window(_flashed_awaiting_cycle=True)
     win._set_recovery(RecoveryProbeResult(EcuMode.BOOT_LOADER, BOOT_LOADER_SEED))
-    win._btn_recover.setVisible.assert_called_with(False)
     text = win._recovery_text.setText.call_args.args[0]
-    assert "ignition" in text and "normal" in text
+    assert "ignition" in text and "full flash" in text
+
+
+def test_user_disconnect_ends_post_flash_wait():
+    """Bench 2026-11-10: a bricked image flashed, Disconnect, power cycle,
+    Connect kept saying "waiting for an ignition cycle" because nothing
+    cleared the flag. A user Disconnect now ends the wait."""
+    win = _fake_window(
+        _flashed_awaiting_cycle=True,
+        _poll_timer=MagicMock(),
+        _session=None,
+        _ap_switch=MagicMock(),
+    )
+    ECUProgrammingWindow._on_disconnect(win)
+    assert win._flashed_awaiting_cycle is False
+    win._set_recovery(RecoveryProbeResult(EcuMode.BOOT_LOADER, BOOT_LOADER_SEED))
+    text = win._recovery_text.setText.call_args.args[0]
+    assert "Recovery mode" in text
 
 
 def test_window_normal_result_hides_banner_and_ends_post_flash_wait():
@@ -355,18 +372,64 @@ def _update(fake):
 from src.ecu.session import ECUSessionState  # noqa: E402
 
 
-def test_recover_button_disabled_while_busy():
+def test_flash_buttons_disabled_while_busy_in_recovery():
     win = _gating_window(busy=True, recovery=RecoveryProbeResult(EcuMode.BOOT_LOADER))
     _update(win)
-    win._btn_recover.setEnabled.assert_called_with(False)
+    win._btn_full_flash.setEnabled.assert_called_with(False)
+    win._btn_flash_current.setEnabled.assert_called_with(False)
 
 
-def test_recovery_mode_disables_reads_keeps_recover(monkeypatch):
+def test_recovery_mode_enables_only_the_two_flash_buttons(monkeypatch, tmp_path):
+    """Recovery uses the window's normal flow: open a known-good ROM, then
+    Flash or Full Flash (both write the whole ROM). Nothing else works."""
     import src.ui.ecu_window as ew
 
     monkeypatch.setattr(ew, "SECURE_MODULE_AVAILABLE", True)
     win = _gating_window(recovery=RecoveryProbeResult(EcuMode.BOOT_LOADER))
+    doc = SimpleNamespace(rom_path=str(tmp_path / "backup.bin"), file_name="backup.bin")
+    win._main_window.get_current_document = lambda: doc
+    win._get_current_rom_data = lambda: bytes(16)
+    (tmp_path / ew.ARCHIVE_FILENAME).write_bytes(b"")  # would mean dynamic
     _update(win)
-    win._btn_recover.setEnabled.assert_called_with(True)
+    win._btn_full_flash.setEnabled.assert_called_with(True)
+    win._btn_flash_current.setEnabled.assert_called_with(True)
+    win._btn_flash_current.setText.assert_called_with("Flash Current ROM (Full)")
     for name in ("_btn_read_dtcs", "_btn_clear_dtcs", "_btn_read_rom", "_btn_scan_ram"):
         getattr(win, name).setEnabled.assert_called_with(False)
+
+
+def test_recovery_poll_sends_only_tester_present():
+    """In recovery the boot loader refuses OBD reads; polling them only filled
+    the log with refusals (bench 2026-11-10)."""
+    uds = MagicMock()
+    win = _fake_window(
+        _recovery=RecoveryProbeResult(EcuMode.BOOT_LOADER, BOOT_LOADER_SEED),
+        _session=SimpleNamespace(uds=uds, is_connected=True, state=None),
+        _ecu_busy=False,
+        _main_window=SimpleNamespace(wican_log_sync=None),
+        _poll_timer=MagicMock(),
+        _on_ecu_answered=MagicMock(),
+        _on_poll_no_reply=MagicMock(),
+    )
+    ECUProgrammingWindow._poll_conditions(win)
+    uds.tester_present.assert_called_once()
+    uds.read_battery_voltage.assert_not_called()
+    uds.read_engine_rpm.assert_not_called()
+    win._on_ecu_answered.assert_called_once()
+
+
+def test_activity_log_hides_raw_protocol_lines():
+    import logging
+
+    from src.ui.log_console import _ConsoleScopeFilter
+
+    f = _ConsoleScopeFilter(hidden_message_prefixes=("UDS NRC:", "ECU mode check:"))
+
+    def rec(msg):
+        return logging.LogRecord(
+            "src.ecu.protocol", logging.WARNING, "", 0, msg, (), None
+        )
+
+    assert not f.filter(rec("UDS NRC: SID=0x01 NRC=0x11 (Service not supported)"))
+    assert not f.filter(rec("ECU mode check: %s (%s)"))
+    assert f.filter(rec("The ECU is in recovery mode (boot loader)."))

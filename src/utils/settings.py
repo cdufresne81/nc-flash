@@ -213,6 +213,20 @@ class AppSettings:
         self.settings.setValue("display/show_address_column", enabled)
 
     # ------------------------------------------------------------------ #
+    # ECU
+    # ------------------------------------------------------------------ #
+
+    def get_last_ecu_generation(self) -> str:
+        """Generation ("NC1"/"NC2") the last flash READ from the ECU's boot
+        code, or "" if none. Used to skip the which-car question on a recovery
+        flash, when the boot loader refuses that read."""
+        value = self.settings.value("ecu/last_read_generation", "", type=str)
+        return value if value in ("NC1", "NC2") else ""
+
+    def set_last_ecu_generation(self, generation: str):
+        self.settings.setValue("ecu/last_read_generation", generation)
+
+    # ------------------------------------------------------------------ #
     # Editor / toggle settings
     # ------------------------------------------------------------------ #
 

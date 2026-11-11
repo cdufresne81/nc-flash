@@ -23,7 +23,6 @@ from PySide6.QtWidgets import (
     QProgressBar,
     QStackedWidget,
     QMessageBox,
-    QFileDialog,
     QSizePolicy,
 )
 from PySide6.QtCore import Qt, QThread, QObject, QTimer, Signal
@@ -102,6 +101,8 @@ class _FlashWorker(QObject):
     # read before the flash. Connected BLOCKING: the window answers via
     # set_unverified_answer.
     generation_unverified = Signal(str, str, str)
+    # The pre-flash check READ the ECU's generation (never an operator answer).
+    generation_verified = Signal(str)
 
     def __init__(self, flash_manager: FlashManager, operation: str, **kwargs):
         super().__init__()
@@ -133,6 +134,10 @@ class _FlashWorker(QObject):
 
     def set_unverified_answer(self, answer: str | None) -> None:
         self._unverified_answer = answer
+
+    def report_generation_verified(self, generation: str) -> None:
+        """Runs on the worker thread; must not block (queued to the window)."""
+        self.generation_verified.emit(generation)
 
     def run(self):
         try:
@@ -359,10 +364,6 @@ class ECUProgrammingWindow(QMainWindow):
         self._recovery_text.setWordWrap(True)
         self._recovery_text.setTextFormat(Qt.RichText)
         banner_layout.addWidget(self._recovery_text, stretch=1)
-        self._btn_recover = QPushButton("Recover: Flash Full ROM...")
-        self._btn_recover.setMinimumHeight(36)
-        self._btn_recover.clicked.connect(self._on_recovery_flash)
-        banner_layout.addWidget(self._btn_recover)
         self._recovery_banner.setVisible(False)
         root.addWidget(self._recovery_banner)
 
@@ -452,10 +453,6 @@ class ECUProgrammingWindow(QMainWindow):
         self._btn_abort = QPushButton("Abort")
         self._btn_abort.setEnabled(False)
         btn_row.addWidget(self._btn_abort)
-        self._btn_done = QPushButton("Done")
-        self._btn_done.setVisible(False)
-        self._btn_done.clicked.connect(self._on_progress_done)
-        btn_row.addWidget(self._btn_done)
         progress_layout.addLayout(btn_row)
         progress_layout.addStretch()
 
@@ -477,6 +474,13 @@ class ECUProgrammingWindow(QMainWindow):
                 "__main__",
             ],
             drop_qt_logger=True,
+            # Raw refusals and probe evidence mean nothing to a user; the
+            # window explains the state in plain words. Both stay in the file.
+            hidden_message_prefixes=(
+                "UDS NRC:",
+                "ECU mode check:",
+                "Generation check: could not read",
+            ),
         )
         self._log.setMinimumHeight(150)
         root.addWidget(self._log, stretch=1)
@@ -651,6 +655,10 @@ class ECUProgrammingWindow(QMainWindow):
 
     def _on_disconnect(self):
         self._poll_timer.stop()
+        # The user ends this connection: the ignition may be cycled before the
+        # next one, so a boot loader seen then is a real recovery case, not the
+        # post-flash wait (else a bricked ECU is told to cycle forever).
+        self._flashed_awaiting_cycle = False
         if self._session:
             self._session.disconnect_ecu()
         # Only once the session is really closed (disconnect is refused while
@@ -834,6 +842,17 @@ class ECUProgrammingWindow(QMainWindow):
             return
 
         uds = self._session.uds
+        if self._in_recovery:
+            # The boot loader refuses the OBD reads, so polling them only fills
+            # the log with refusals. Tester Present alone keeps the session
+            # alive and still notices the ECU going silent (ignition off).
+            try:
+                uds.tester_present(timeout_ms=TIMEOUT_PROBE)
+            except Exception as exc:
+                self._on_poll_no_reply(exc)
+                return
+            self._on_ecu_answered()
+            return
         try:
             # strict: a silent ECU raises (after TIMEOUT_PROBE) instead of
             # looking like "PID not supported"; one failed read skips the other.
@@ -977,6 +996,22 @@ class ECUProgrammingWindow(QMainWindow):
             "ECU mode check: %s (%s)", result.mode.value, "; ".join(result.evidence)
         )
         self._set_recovery(result)
+        if self._in_recovery:
+            if self._flashed_awaiting_cycle:
+                logger.info(
+                    "The ECU is waiting in its boot loader after the flash: cycle "
+                    "the ignition, then connect again."
+                )
+            elif self._boot_loader_confirmed:
+                logger.info(
+                    "The ECU is in recovery mode (boot loader). Open a known-good "
+                    "ROM and do a full flash."
+                )
+            else:
+                logger.info(
+                    "The ECU answers but refuses normal requests (probably its "
+                    "boot loader). See the notice above."
+                )
         return result
 
     def _set_recovery(self, result: RecoveryProbeResult | None):
@@ -992,6 +1027,8 @@ class ECUProgrammingWindow(QMainWindow):
             self._update_action_states()
             return
 
+        # Recovery is the window's normal flow: open a known-good ROM in the
+        # editor and flash it (both flash buttons write the whole ROM here).
         if self._flashed_awaiting_cycle:
             # Expected right after a flash: the ECU waits in its boot loader
             # until the ignition is cycled. Not a brick; don't push a re-flash.
@@ -1000,41 +1037,32 @@ class ECUProgrammingWindow(QMainWindow):
                 "waiting for an ignition cycle",
             )
             text = (
-                "The ECU is waiting in its boot loader after the flash. This is "
-                "normal. Turn the ignition <b>OFF</b>, wait a few seconds, turn it "
-                "back <b>ON</b>, then connect again to start the new ROM."
+                "After a flash, the ECU stays in its boot loader until the "
+                "ignition is cycled. Turn it OFF, then ON, and connect again. "
+                "If it is still in its boot loader after that, open a known-good "
+                "ROM and do a full flash."
             )
             card = ("BOOT LOADER", "Cycle the ignition to start the new ROM")
-            self._btn_recover.setVisible(False)
         elif result.mode == EcuMode.BOOT_LOADER:
-            title, status = "ECU in recovery mode", "ECU in recovery mode"
+            title, status = "Recovery mode", "ECU in recovery mode"
             text = (
-                "This ECU has no valid program to run (usually after an "
-                "interrupted or failed flash), so it is waiting in its boot "
-                "loader. It is not damaged, and normal diagnostics aren't "
-                "available until it is reflashed.<br>"
-                "Recover it by flashing a <b>full, known-good ROM</b> for this "
-                "car, ideally your own backup read. It can't be read in this "
-                "state, so there is nothing to back up first.<br>"
-                "If you have just flashed it, cycle the ignition (OFF, then ON) "
-                "and connect again first."
+                "This ECU is stuck in its boot loader, most likely after a failed "
+                "flash. It is not damaged and can be recovered: open a known-good "
+                "ROM, ideally your own backup, and do a full flash."
             )
             card = ("RECOVERY MODE", "Boot loader only — flash a full ROM")
-            self._btn_recover.setVisible(True)
         else:
             title, status = (
                 "Normal diagnostics unavailable",
                 "normal diagnostics unavailable",
             )
             text = (
-                "The ECU answers but refuses the normal diagnostic requests, "
-                "which usually means it is in its boot loader (for example after "
-                "a failed flash). If so, flashing a <b>full, known-good ROM</b> "
-                "recovers it. If you have just flashed it, cycle the ignition "
-                "(OFF, then ON) and connect again first."
+                "The ECU answers but refuses normal requests, most likely because "
+                "it is stuck in its boot loader after a failed flash. If so, open a "
+                "known-good ROM and do a full flash. If you have just flashed it, "
+                "cycle the ignition and connect again first."
             )
             card = ("NO DIAGNOSTICS", "Possibly boot loader — see the notice")
-            self._btn_recover.setVisible(True)
 
         self._recovery_text.setText(f"<b>{title}.</b> {text}")
         self._recovery_banner.setVisible(True)
@@ -1046,85 +1074,6 @@ class ECUProgrammingWindow(QMainWindow):
             "border: none;"
         )
         self._update_action_states()
-
-    def _on_recovery_flash(self):
-        """Full-flash a ROM file chosen by the user (recovery path).
-
-        Always a full flash: the ECU's current contents can't be read, so a
-        diff-based (dynamic) flash has nothing trustworthy to compare against.
-        """
-        from src.utils.settings import get_settings
-
-        start_dir = ""
-        try:
-            start_dir = get_settings().get_reads_directory()
-        except Exception:
-            pass
-        path_str, _ = QFileDialog.getOpenFileName(
-            self,
-            "Choose a full, known-good ROM to recover the ECU",
-            start_dir,
-            "ROM images (*.bin *.rom *.hex);;All files (*)",
-        )
-        if not path_str:
-            return
-        rom_path = Path(path_str).resolve()
-        try:
-            rom_data = rom_path.read_bytes()
-        except OSError as e:
-            QMessageBox.warning(self, "Cannot Read ROM", f"{rom_path}:\n{e}")
-            return
-        cal = self._cal_id_from_rom(rom_data) or "unknown calibration"
-        reply = QMessageBox.question(
-            self,
-            "Recover the ECU",
-            f"Flash <b>{rom_path.name}</b> ({cal}) to the ECU as a full flash?"
-            "<br><br>Use a complete ROM for this car — ideally your own backup "
-            "read from this ECU. The whole ROM is written; the ECU's current "
-            "contents can't be read, so nothing is compared or kept.",
-            QMessageBox.Yes | QMessageBox.No,
-            QMessageBox.No,
-        )
-        if reply != QMessageBox.Yes:
-            return
-        self._run_full_flash(
-            rom_data,
-            archive_path=str(rom_path.parent / ARCHIVE_FILENAME),
-            source_name=rom_path.name,
-        )
-
-    def _run_full_flash(self, rom_data: bytes, *, archive_path: str, source_name: str):
-        """Run the usual pre-flash checks, then start a FULL flash of ``rom_data``."""
-        self._ecu_busy = True
-        self._update_action_states()
-        started = False
-        try:
-            if not self._ecu_answers():
-                return
-            if not self._check_voltage_warning():
-                return
-            if not self._check_rpm_gate():
-                return
-            if not self._confirm_wican_flash():
-                return
-            self._start_flash(
-                "flash",
-                rom_data=rom_data,
-                archive_path=archive_path,
-                source_name=source_name,
-            )
-            started = True
-        except Exception as e:
-            logger.exception(f"Failed to start flash: {type(e).__name__}: {e}")
-            QMessageBox.critical(
-                self,
-                "Flash Error",
-                f"Could not start the flash:\n{type(e).__name__}: {e}",
-            )
-        finally:
-            if not started:
-                self._ecu_busy = False
-                self._update_action_states()
 
     # --- Action Gating ---
 
@@ -1202,7 +1151,6 @@ class ECUProgrammingWindow(QMainWindow):
             self._btn_read_rom.setEnabled(False)
             self._btn_scan_ram.setEnabled(False)
             self._btn_flash_current.setEnabled(False)
-            self._btn_recover.setEnabled(False)
             if not wican_contended or busy:
                 tip = ""
             elif live_running:
@@ -1214,12 +1162,6 @@ class ECUProgrammingWindow(QMainWindow):
             self._btn_scan_ram.setToolTip(tip)
             self._btn_flash_current.setToolTip(tip)
             return
-
-        # Recovery button: needs a connection + the security module (no editor ROM;
-        # the user picks the file).
-        recover_tip = "" if SECURE_MODULE_AVAILABLE else "Security module not installed"
-        self._btn_recover.setEnabled(bool(connected and SECURE_MODULE_AVAILABLE))
-        self._btn_recover.setToolTip(recover_tip)
 
         # Safe operations: just need connection
         self._btn_read_dtcs.setEnabled(bool(connected))
@@ -1834,7 +1776,6 @@ class ECUProgrammingWindow(QMainWindow):
         allow_abort = operation in ABORTABLE_OPERATIONS
         self._btn_abort.setEnabled(allow_abort)
         self._btn_abort.setVisible(allow_abort)
-        self._btn_done.setVisible(False)
 
         manager = self._build_flash_driver(operation, source_name=source_name)
         if manager is None:
@@ -1904,15 +1845,45 @@ class ECUProgrammingWindow(QMainWindow):
             manager, "set_unverified_generation_prompt"
         ):
             manager.set_unverified_generation_prompt(worker.ask_unverified_generation)
+            if hasattr(manager, "set_generation_verified_hook"):
+                worker.generation_verified.connect(
+                    self._on_generation_verified, Qt.QueuedConnection
+                )
+                manager.set_generation_verified_hook(worker.report_generation_verified)
 
     def _on_generation_unverified(
         self, rom_generation: str, rom_cal_id: str, reason: str
     ):
         """Runs on the GUI thread while the worker waits (nothing is erased
         yet). Stores the operator's answer on the worker."""
-        answer = self._ask_car_generation(rom_generation, rom_cal_id, reason)
+        remembered = self._remembered_generation()
+        if getattr(self, "_flash_was_recovery", False) and remembered == rom_generation:
+            # A recovery flash: the boot loader refuses the boot-code read, but
+            # a flash read this ECU's generation before it was left there.
+            logger.info(
+                "Recovery: using the generation NC Flash read from the ECU "
+                "before its last flash (%s), which matches the ROM.",
+                remembered,
+            )
+            answer = rom_generation
+        else:
+            answer = self._ask_car_generation(rom_generation, rom_cal_id, reason)
         if self._flash_worker is not None:
             self._flash_worker.set_unverified_answer(answer)
+
+    def _on_generation_verified(self, generation: str):
+        """A flash read the ECU's generation from its boot code: remember it
+        for a later recovery flash (the boot loader refuses that read)."""
+        try:
+            self._main_window.settings.set_last_ecu_generation(generation)
+        except Exception as exc:
+            logger.debug("Could not save the ECU generation: %s", exc)
+
+    def _remembered_generation(self) -> str:
+        try:
+            return self._main_window.settings.get_last_ecu_generation()
+        except Exception:
+            return ""
 
     def _ask_car_generation(
         self, rom_generation: str, rom_cal_id: str, reason: str
@@ -1971,7 +1942,6 @@ class ECUProgrammingWindow(QMainWindow):
         QTimer.singleShot(0, lambda: self._cleanup_thread(thread))
 
         self._btn_abort.setEnabled(False)
-        self._btn_done.setVisible(True)
 
         # Release session
         if self._session_acquired and self._session:
@@ -2137,7 +2107,43 @@ class ECUProgrammingWindow(QMainWindow):
                     )
             self._progress_detail.setText(error_msg)
             if getattr(worker, "needs_ecu_reset", False):
+                # The reset offer connects by itself if the user accepts; an
+                # automatic reconnect now would race it.
+                self._reconnect_on_done = False
                 QTimer.singleShot(300, self._offer_ecu_reset)
+            elif error_msg != "Operation aborted by user":
+                # The progress page closes right away (no Done step), so the
+                # outcome is told here. An abort needs no dialog: the user
+                # asked for it, and the log says so.
+                self._show_outcome_later(is_info, worker, error_msg)
+
+        # No Done step: every outcome is told in a dialog (or needs none, like
+        # an abort), so go straight back to the buttons. A read or RAM scan
+        # already reconnects on its own; the rest follows _reconnect_on_done.
+        if success and self._current_operation in ("read", "scan_ram"):
+            self._stack.setCurrentIndex(0)
+            self._update_action_states()
+        else:
+            self._on_progress_done()
+
+    def _show_outcome_later(self, is_info: bool, worker, message: str) -> None:
+        """Tell the user why an operation stopped, once the page has closed."""
+        op = self._current_operation
+        if is_info:
+            title, show = "Nothing to Flash", QMessageBox.information
+        elif getattr(worker, "error_kind", "") == "link":
+            title, show = "Flash Not Started", QMessageBox.warning
+        elif op in ("read", "scan_ram"):
+            title = "ROM Read Failed" if op == "read" else "RAM Read Failed"
+            show = QMessageBox.warning
+        else:
+            title = (
+                "Recovery Flash Failed"
+                if getattr(self, "_flash_was_recovery", False)
+                else "Flash Failed"
+            )
+            show = QMessageBox.warning
+        QTimer.singleShot(300, lambda: show(self, title, message))
 
     def _offer_ecu_reset(self):
         """Offer to reset an ECU an interrupted flash left in programming mode."""
@@ -2234,7 +2240,8 @@ class ECUProgrammingWindow(QMainWindow):
         return thread.wait(timeout_ms)
 
     def _on_progress_done(self):
-        """Return to actions page and reconnect if needed.
+        """Return to the actions page (right after an operation ends; there is
+        no Done button) and reconnect if needed.
 
         Not after a successful flash: that session was ended on purpose (see
         ``_end_session_after_flash``), and Connect is one click away.

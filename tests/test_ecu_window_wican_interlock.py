@@ -58,7 +58,6 @@ def _fake_window(
         _btn_scan_ram=MagicMock(),
         _btn_flash_current=MagicMock(),
         _btn_connect=MagicMock(),
-        _btn_recover=MagicMock(),
         _recovery=None,
         _flash_subtitle=MagicMock(),
         _connect_held_by_datalogger=False,
@@ -81,7 +80,6 @@ def test_ecu_ops_locked_while_sync_running():
     fake._btn_read_rom.setEnabled.assert_called_with(False)
     fake._btn_scan_ram.setEnabled.assert_called_with(False)
     fake._btn_flash_current.setEnabled.assert_called_with(False)
-    fake._btn_recover.setEnabled.assert_called_with(False)
     fake._btn_flash_current.setToolTip.assert_called_with(UTILITY_LOCK_TIP)
     fake._btn_full_flash.setToolTip.assert_called_with(UTILITY_LOCK_TIP)
 

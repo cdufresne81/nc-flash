@@ -119,7 +119,7 @@ def _finish(window, operation: str, success: bool, error: str = "", result=None)
     window._session_acquired = True
     window._current_operation = operation
     window._stack.setCurrentIndex(1)
-    worker = MagicMock(result=result)
+    worker = MagicMock(result=result, needs_ecu_reset=False, error_kind="")
     window._on_flash_finished(success, None, worker, error)
 
 
@@ -159,15 +159,11 @@ def test_successful_flash_ends_session_and_done_does_not_reconnect(
     assert "unplug the adapter" in window._progress_detail.text()
     assert "has restarted" not in window._progress_detail.text()
     assert window._conn_label.text() == "Disconnected — flash complete"
-    assert not window._btn_done.isHidden()
     assert not window._poll_timer.isActive()
 
-    # Nothing reconnects on its own...
-    qtbot.wait(700)
-    assert connects == []
-    # ...and Done just returns to the actions page.
-    window._btn_done.click()
+    # Back to the actions page at once (no Done step), and nothing reconnects.
     assert window._stack.currentIndex() == 0
+    qtbot.wait(700)
     assert connects == []
     assert session.state == ECUSessionState.DISCONNECTED
     # The Connect button is one click away.
@@ -194,7 +190,6 @@ def test_successful_flash_closes_a_session_the_flash_did_not_release(qtbot, conn
     window._on_flash_finished(True, None, MagicMock(result=None))
 
     _assert_session_released(session, "wican", mocks)
-    window._btn_done.click()
     assert connects == []
     qtbot.wait(400)  # let the "Flash Complete" timer fire under this test's patch
 
@@ -216,7 +211,9 @@ def test_successful_flash_never_closes_a_busy_session(qtbot, connects):
 
 @pytest.mark.parametrize("adapter", ["wican", "j2534"])
 @pytest.mark.parametrize("operation", ["flash", "dynamic_flash"])
-def test_failed_flash_still_reconnects_on_done(qtbot, connects, adapter, operation):
+def test_failed_flash_reconnects_and_says_why(
+    qtbot, connects, no_dialogs, adapter, operation
+):
     session = _session(adapter)
     mocks = _mocks(session)
     window = _window(qtbot, connects, adapter, session)
@@ -227,20 +224,38 @@ def test_failed_flash_still_reconnects_on_done(qtbot, connects, adapter, operati
     _assert_session_released(session, adapter, mocks)
     assert window._progress_state.text() == "Failed"
     assert "Block 3" in window._progress_detail.text()
-    # ...and Done reconnects so the user can retry or recover.
-    window._btn_done.click()
+    # ...the window returns and reconnects so the user can retry or recover...
+    assert window._stack.currentIndex() == 0
     assert len(connects) == 1
+    # ...and, with no page left to read, a dialog says why.
+    qtbot.waitUntil(lambda: any(k == "warning" for k, _ in no_dialogs), timeout=2000)
+    warning = next(a for k, a in no_dialogs if k == "warning")
+    assert warning[1] == "Flash Failed" and "Block 3" in warning[2]
 
 
-def test_identical_rom_still_reconnects_on_done(qtbot, connects):
+def test_identical_rom_reconnects_and_informs(qtbot, connects, no_dialogs):
     session = _session("j2534")
     window = _window(qtbot, connects, "j2534", session)
 
     _finish(window, "dynamic_flash", success=False, error="ROMs are identical")
 
     assert window._progress_state.text() == "Nothing to flash"
-    window._btn_done.click()
     assert len(connects) == 1
+    qtbot.waitUntil(lambda: bool(no_dialogs), timeout=2000)
+    assert no_dialogs[0][0] == "information"
+
+
+def test_aborted_read_returns_without_a_dialog(qtbot, connects, no_dialogs):
+    """An abort is what the user asked for: no dialog, no Done step."""
+    session = _session("j2534")
+    window = _window(qtbot, connects, "j2534", session)
+
+    _finish(window, "read", success=False, error="Operation aborted by user")
+
+    assert window._stack.currentIndex() == 0
+    assert len(connects) == 1
+    qtbot.wait(500)
+    assert no_dialogs == []
 
 
 @pytest.mark.parametrize("operation", ["read", "scan_ram"])
@@ -297,6 +312,6 @@ def test_flash_on_a_real_thread_ends_session_without_reconnect(
 
     _assert_session_released(session, "wican", mocks)
     assert window._progress_state.text() == "Flash complete"
-    window._btn_done.click()
+    assert window._stack.currentIndex() == 0
     qtbot.wait(700)
     assert connects == []

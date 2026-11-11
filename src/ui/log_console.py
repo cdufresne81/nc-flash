@@ -46,9 +46,12 @@ class _ConsoleScopeFilter(logging.Filter):
             are dropped from the console; they still reach the session file.
     """
 
-    def __init__(self, allowed_prefixes=None, drop_qt_logger=False):
+    def __init__(
+        self, allowed_prefixes=None, drop_qt_logger=False, hidden_message_prefixes=()
+    ):
         super().__init__()
         self.drop_qt_logger = drop_qt_logger
+        self._hidden_messages = tuple(hidden_message_prefixes)
         # filter() runs on every emitted record (a hot path during a flash), so
         # precompute the (exact, dotted) match pair per prefix once instead of
         # allocating ``p + "."`` on each call. None = no restriction.
@@ -65,6 +68,8 @@ class _ConsoleScopeFilter(logging.Filter):
         if self._allowed is not None and not any(
             name == exact or name.startswith(dotted) for exact, dotted in self._allowed
         ):
+            return False
+        if self._hidden_messages and str(record.msg).startswith(self._hidden_messages):
             return False
         return True
 
@@ -96,6 +101,7 @@ class LogConsole(QWidget):
         auto_register=True,
         allowed_logger_prefixes=None,
         drop_qt_logger=False,
+        hidden_message_prefixes=(),
     ):
         """
         Initialize log console
@@ -109,6 +115,9 @@ class LogConsole(QWidget):
             drop_qt_logger: If True, records from the "qt" logger (Qt
                 diagnostics) are excluded from this console. They still reach
                 the root's session file handler.
+            hidden_message_prefixes: Messages starting with one of these are
+                kept out of this console (raw protocol detail that means
+                nothing to a user). They still reach the log file.
         """
         super().__init__(parent)
         self.max_lines = LOG_CONSOLE_MAX_LINES
@@ -116,6 +125,7 @@ class LogConsole(QWidget):
         self.min_level = logging.INFO  # Show INFO and above
         self.allowed_logger_prefixes = allowed_logger_prefixes
         self.drop_qt_logger = drop_qt_logger
+        self.hidden_message_prefixes = tuple(hidden_message_prefixes)
         self.init_ui()
 
         if auto_register:
@@ -183,9 +193,17 @@ class LogConsole(QWidget):
         )
         # Scope-restrict this console only (handler-side filter); other root
         # handlers — incl. the session file handler — are unaffected.
-        if self.allowed_logger_prefixes is not None or self.drop_qt_logger:
+        if (
+            self.allowed_logger_prefixes is not None
+            or self.drop_qt_logger
+            or self.hidden_message_prefixes
+        ):
             self.log_handler.addFilter(
-                _ConsoleScopeFilter(self.allowed_logger_prefixes, self.drop_qt_logger)
+                _ConsoleScopeFilter(
+                    self.allowed_logger_prefixes,
+                    self.drop_qt_logger,
+                    self.hidden_message_prefixes,
+                )
             )
         self.log_handler.log_message.connect(self.append_log)
 
