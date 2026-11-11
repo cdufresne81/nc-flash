@@ -2141,7 +2141,9 @@ class ECUProgrammingWindow(QMainWindow):
             show(self, title, message)
             self._on_progress_done()  # reconnects only if _reconnect_on_done
 
-        QTimer.singleShot(300, tell_then_return)
+        # Context object: the timer dies with the window (a window closed
+        # within 300 ms must not run this on deleted widgets).
+        QTimer.singleShot(300, self, tell_then_return)
 
     def _offer_ecu_reset(self):
         """Offer to reset an ECU an interrupted flash left in programming mode."""
