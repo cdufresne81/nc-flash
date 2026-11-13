@@ -20,11 +20,16 @@ Pure data and arithmetic: no Qt, no ``src.ecu`` import.
 from __future__ import annotations
 
 import ast
+import json
+import logging
 import math
 import struct
 from dataclasses import asdict, dataclass, field, replace
 from decimal import Decimal
+from pathlib import Path
 from typing import Callable, Optional
+
+logger = logging.getLogger(__name__)
 
 MODE_OBD = 0x01  # OBD-II current data (PID)
 MODE_DID = 0x22  # ReadDataByIdentifier (Mazda DID)
@@ -417,6 +422,59 @@ def builtin_channels() -> list[Channel]:
     return [replace(c) for c in BUILTIN_CHANNELS]
 
 
+# --- shipped channel catalog --------------------------------------------------
+
+#: The NC MX-5 parameter catalog, made by ``tools/import_opconfig.py`` from a
+#: community Tactrix list. Channels to pick from, not built-ins.
+CATALOG_FILE = Path("examples") / "datalog_catalog_ncmx5.json"
+
+
+def _catalog_int(value) -> int:
+    """``"0x1103"`` (as the file stores mode and ident) or a plain int."""
+    if isinstance(value, bool):
+        raise TypeError("not a number")
+    if isinstance(value, int):
+        return value
+    return int(str(value), 16 if str(value).lower().startswith("0x") else 10)
+
+
+def catalog_channels(path: Optional[Path] = None) -> list[Channel]:
+    """The shipped catalog as validated channels (``builtin`` False).
+
+    A missing or unreadable file gives an empty list; a bad entry is skipped
+    with a warning. Neither is ever fatal.
+    """
+    if path is None:
+        from ..utils.paths import get_app_root
+
+        path = get_app_root() / CATALOG_FILE
+    try:
+        raw = json.loads(Path(path).read_text(encoding="utf-8"))
+        entries = raw["channels"]
+        if not isinstance(entries, list):
+            raise ValueError("'channels' is not a list")
+    except (OSError, ValueError, KeyError, TypeError) as exc:
+        logger.warning(f"Datalog catalog {path} not loaded: {exc}")
+        return []
+    channels: list[Channel] = []
+    names: set[str] = set()
+    for entry in entries:
+        try:
+            d = dict(entry)
+            d["mode"] = _catalog_int(d["mode"])
+            d["ident"] = _catalog_int(d["ident"])
+            ch = Channel.from_dict(d)
+            ch.validate()
+            if ch.name in names:
+                raise ChannelError(f"{ch.name}: duplicate name")
+        except (ChannelError, KeyError, TypeError, ValueError) as exc:
+            logger.warning(f"Datalog catalog: skipping {entry!r:.80}: {exc}")
+            continue
+        names.add(ch.name)
+        channels.append(ch)
+    return channels
+
+
 # --- the user's channel list --------------------------------------------------
 
 
@@ -448,7 +506,21 @@ def channels_from_saved(saved: Optional[dict]) -> list[Channel]:
             continue
         names.add(ch.name)
         channels.append(ch)
-    return channels
+    return _apply_order(channels, saved.get("order"))
+
+
+def _apply_order(channels: list[Channel], order) -> list[Channel]:
+    """Put the channels in the user's saved order. Names the order does not
+    know (a built-in added in a later release, or no saved order at all) keep
+    their place after the known ones, in catalog order."""
+    if not isinstance(order, list):
+        return channels
+    rank = {}
+    for name in order:
+        if isinstance(name, str) and name not in rank:
+            rank[name] = len(rank)
+    known = sorted((c for c in channels if c.name in rank), key=lambda c: rank[c.name])
+    return known + [c for c in channels if c.name not in rank]
 
 
 def channels_to_saved(channels: list[Channel]) -> dict:
@@ -461,6 +533,7 @@ def channels_to_saved(channels: list[Channel]) -> dict:
             if c.builtin
         },
         "custom": [c.to_dict() for c in channels if not c.builtin],
+        "order": [c.name for c in channels],
     }
 
 

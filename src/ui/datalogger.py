@@ -24,6 +24,7 @@ while that window holds the ECU link (``blocker``).
 
 from __future__ import annotations
 
+import json
 import logging
 import threading
 import time
@@ -530,6 +531,7 @@ class Datalogger(QObject):
     push_preview = Signal(dict)
     #: A push/apply/restore ended: (ok, message).
     push_finished = Signal(bool, str)
+    restore_changed = Signal(str, str)  # backup path, why (needs a yes)
 
     def __init__(
         self,
@@ -601,10 +603,57 @@ class Datalogger(QObject):
     def push_running(self) -> bool:
         return self._job_thread is not None
 
+    def _wican_identity(self) -> str:
+        """Which WiCAN is set up: its device id, else its host as typed."""
+        try:
+            ident = self._settings.get_wican_device_id()
+            host = self._settings.get_wican_host()
+        except Exception:
+            return ""
+        ident = ident.strip() if isinstance(ident, str) else ""
+        host = host.strip() if isinstance(host, str) else ""
+        return ident or host
+
+    def _saved_backup(self) -> dict:
+        try:
+            raw = self._settings.get_wican_last_backup()
+            data = json.loads(raw) if isinstance(raw, str) and raw else {}
+        except Exception:
+            data = {}
+        return data if isinstance(data, dict) else {}
+
     @property
     def last_backup(self) -> str:
-        """The WiCAN channel file saved before the last push, or ""."""
+        """The WiCAN channel file saved before the last push, or "".
+
+        Kept in settings with the WiCAN it came from and a fingerprint of what
+        the push stored, so Put Back works after a restart but only for that
+        WiCAN, and a deleted file counts as none."""
+        if not self._last_backup:
+            saved = self._saved_backup()
+            path = str(saved.get("path") or "")
+            if (
+                path
+                and Path(path).is_file()
+                and saved.get("wican") == self._wican_identity()
+            ):
+                self._last_backup = path
+                self._last_backup_sha = str(saved.get("sha") or "")
         return self._last_backup
+
+    def _remember_backup(self, path: str, sha: str = ""):
+        sha = sha if isinstance(sha, str) else ""
+        self._last_backup = path
+        self._last_backup_sha = sha if path else ""
+        value = (
+            json.dumps({"path": path, "wican": self._wican_identity(), "sha": sha})
+            if path
+            else ""
+        )
+        try:
+            self._settings.set_wican_last_backup(value)
+        except Exception:
+            logger.debug("Could not save the WiCAN backup path", exc_info=True)
 
     def channels(self) -> list[Channel]:
         return channels_from_saved(self._settings.get_datalog_channels())
@@ -966,14 +1015,27 @@ class Datalogger(QObject):
         self._last_backup = ""
         return self._run_job(push, self._on_push_done)
 
-    def restore_wican_backup(self, backup_path: str) -> bool:
-        """Put back the channel file saved before a push (background)."""
+    def restore_wican_backup(self, backup_path: str, *, force: bool = False) -> bool:
+        """Put back the channel file saved before a push (background).
+
+        The WiCAN's current list is backed up first. If it is no longer what
+        NC Flash stored, nothing is written and ``restore_changed`` asks the
+        window to confirm (then call again with *force*)."""
         if self._push_blocked():
             return False
+        backup_dir = Path(self._settings.get_logs_directory()) / BACKUP_SUBDIR
+        expect = getattr(self, "_last_backup_sha", "") or ""
 
         def restore():
-            self._new_client().restore(backup_path)
-            return ("restored", backup_path)
+            from src.ecu.wican_autopid import WiCANListChanged
+
+            try:
+                result = self._new_client().restore(
+                    backup_path, backup_dir, expect_sha=expect, force=force
+                )
+            except WiCANListChanged as exc:
+                return ("restore_changed", (backup_path, str(exc)))
+            return ("restored", result)
 
         return self._run_job(restore, self._on_push_done)
 
@@ -1026,11 +1088,38 @@ class Datalogger(QObject):
         if kind == "preview":
             self.push_preview.emit(value)
             return
-        if kind == "restored":
-            self._last_backup = ""
-            self._finish(True, "The WiCAN's previous channel list is back.")
+        if kind == "restore_changed":
+            self._finish(False, value[1])
+            self.restore_changed.emit(value[0], value[1])
             return
-        self._last_backup = value.backup
+        if kind == "restored":
+            done = value.get("applied") in ("live", "") and not value.get(
+                "reload_pending"
+            )
+            keep = (
+                f" The list it had just before is saved in {value['backup']}."
+                if value.get("backup")
+                else ""
+            )
+            # The file is written in every case below; only the switch may
+            # wait. Sending it again would change nothing, so forget it.
+            self._remember_backup("")
+            if done:
+                self._finish(True, "The WiCAN's previous channel list is back." + keep)
+            elif value.get("applied") == "reboot":
+                self._finish(
+                    True,
+                    "Put back. Restart the WiCAN (or turn the ignition off and on) "
+                    "for it to use that list." + keep,
+                )
+            else:
+                self._finish(
+                    True,
+                    "Put back, but the WiCAN is recording a trip and switches when "
+                    "that trip ends: turn the ignition off, then on again." + keep,
+                )
+            return
+        self._remember_backup(value.backup, getattr(value, "stored_sha", ""))
         if value.applied == "deferred":
             text = (
                 "Sent. The WiCAN is recording a trip, so it switches to the new "
@@ -1053,7 +1142,9 @@ class Datalogger(QObject):
 
     def _on_job_failed(self, message: str, backup: str):
         if backup:
-            self._last_backup = backup
+            # The device may have changed: offer this backup, also after a
+            # restart. No fingerprint: restore() then always warns first.
+            self._remember_backup(backup, "")
         self._finish(False, message, backup)
 
     def _on_job_thread_finished(self):

@@ -459,6 +459,22 @@ class AppSettings:
     def set_live_datalog_auto_trail(self, enabled: bool):
         self.settings.setValue("ecu/live_datalog_auto_trail", bool(enabled))
 
+    def get_wican_last_backup(self) -> str:
+        """The WiCAN channel file saved before the last "Update WiCAN
+        Channels", kept so Put Back still works after a restart ("" = none)."""
+        return str(self.settings.value("ecu/wican_last_backup", "", type=str) or "")
+
+    def set_wican_last_backup(self, path: str):
+        self.settings.setValue("ecu/wican_last_backup", str(path or ""))
+
+    def get_wican_push_explained(self) -> bool:
+        """Whether the user asked not to see the explanation again when
+        updating the WiCAN's own channel list (the changes are still shown)."""
+        return self.settings.value("ecu/wican_push_explained", False, type=bool)
+
+    def set_wican_push_explained(self, value: bool):
+        self.settings.setValue("ecu/wican_push_explained", bool(value))
+
     def get_live_cursor_enabled(self) -> bool:
         """Whether open tables show where the Datalogger's live values fall."""
         return self.settings.value("ecu/live_cursor_enabled", True, type=bool)

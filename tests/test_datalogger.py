@@ -1038,3 +1038,66 @@ def test_saved_list_is_not_changed_during_a_run(
     assert results[0] == (False, "Stop logging first.") and fake.calls == []
     dl.stop()
     qtbot.waitUntil(lambda: not dl.is_running, timeout=5000)
+
+
+def _bare_datalogger(settings):
+    from src.ui.datalogger import Datalogger
+
+    dl = Datalogger.__new__(Datalogger)
+    dl._settings, dl._last_backup = settings, ""
+    return dl
+
+
+def _backup_settings(device="dcb4", host=""):
+    store = {}
+    settings = MagicMock()
+    settings.get_wican_last_backup.side_effect = lambda: store.get("b", "")
+    settings.set_wican_last_backup.side_effect = lambda p: store.__setitem__("b", p)
+    settings.get_wican_device_id.return_value = device
+    settings.get_wican_host.return_value = host
+    return settings
+
+
+def test_last_backup_survives_a_restart_for_the_same_wican_only(tmp_path):
+    backup = tmp_path / "auto_pid_x.json"
+    backup.write_text("{}", encoding="utf-8")
+    settings = _backup_settings(device="dcb4")
+    _bare_datalogger(settings)._remember_backup(str(backup), "abc")
+    again = _bare_datalogger(settings)  # a new NC Flash, same settings
+    assert again.last_backup == str(backup) and again._last_backup_sha == "abc"
+    settings.get_wican_device_id.return_value = "other-wican"
+    assert _bare_datalogger(settings).last_backup == ""  # never to another WiCAN
+    settings.get_wican_device_id.return_value = "dcb4"
+    backup.unlink()  # a deleted file is not offered
+    assert _bare_datalogger(settings).last_backup == ""
+
+
+def test_put_back_says_when_the_switch_waits_for_a_trip(tmp_path):
+    backup = tmp_path / "auto_pid_x.json"
+    backup.write_text("{}", encoding="utf-8")
+    settings = _backup_settings()
+    dl = _bare_datalogger(settings)
+    dl._remember_backup(str(backup), "abc")
+    msgs = []
+    dl._finish = lambda ok, m, b="": msgs.append(m)
+    dl._on_push_done(
+        ("restored", {"applied": "deferred", "reload_pending": True, "backup": ""})
+    )
+    # The file is back on the WiCAN; only the switch waits for the trip.
+    assert "ignition off" in msgs[-1] and dl.last_backup == ""
+    dl._remember_backup(str(backup), "abc")
+    dl._on_push_done(
+        ("restored", {"applied": "live", "reload_pending": False, "backup": "x"})
+    )
+    assert "back" in msgs[-1] and dl.last_backup == ""
+    assert _bare_datalogger(settings).last_backup == ""  # forgotten in settings too
+
+
+def test_a_failed_push_backup_is_kept_across_a_restart(tmp_path):
+    backup = tmp_path / "auto_pid_y.json"
+    backup.write_text("{}", encoding="utf-8")
+    settings = _backup_settings()
+    dl = _bare_datalogger(settings)
+    dl._finish = lambda *a: None
+    dl._on_job_failed("The WiCAN stopped answering.", str(backup))
+    assert _bare_datalogger(settings).last_backup == str(backup)

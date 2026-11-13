@@ -154,6 +154,7 @@ def test_preview_reports_what_would_change_without_writing(monkeypatch):
         "orphaned": ["BOOST", "AFR"],
         "rpm": False,
         "count": 1,
+        "clashes": [],
     }
     assert http.stored == [] and all(m == "GET" for m, _ in http.calls)
 
@@ -199,6 +200,205 @@ def test_restore_refuses_a_file_that_is_not_a_channel_file(monkeypatch, tmp_path
 
 
 def test_replace_pids_and_orphans_helpers():
-    assert replace_pids(ORIGINAL, [])["pids"] == []
+    rpm_only = [{"Name": "RPM", "enabled": True}]
+    assert replace_pids(ORIGINAL, rpm_only)["pids"] == rpm_only
     assert ORIGINAL["pids"]  # the original is not modified
     assert orphaned_calculated(ORIGINAL, [{"Name": "MAP"}, {"Name": "BARO"}]) == ["AFR"]
+
+
+def test_a_file_saved_before_the_format_marker_is_ours(monkeypatch, tmp_path):
+    """Real case (bench WiCAN, 2026-11-10): a file the firmware's Logger page
+    saved before "format" existed has "calculated" but no "format"."""
+    old = {k: v for k, v in ORIGINAL.items() if k != "format"}
+    old.setdefault("calculated", [])
+    http = FakeHttp(monkeypatch, raw=json.dumps(old))
+    _client().push(NEW_ROWS, tmp_path)
+    stored = http.stored[-1]
+    assert stored["format"] == "nc-flash-1"  # marked on the way out
+    assert stored["pids"] == NEW_ROWS
+    assert stored["calculated"] == old["calculated"]
+    # Its backup (no "format") can be put back too.
+    backup = next(tmp_path.rglob("*.json"))
+    assert "format" not in json.loads(backup.read_text(encoding="utf-8"))
+    _client().restore(backup)
+    assert http.stored[-1] == old
+
+
+@pytest.mark.parametrize(
+    "doc",
+    [
+        {"pids": []},  # official MeatPi firmware: neither key
+        {"pids": [], "calculated": [], "format": "someone-else-2"},
+        {"pids": [], "calculated": {}},  # wrong shape
+    ],
+)
+def test_files_that_are_not_ours_are_never_replaced(monkeypatch, tmp_path, doc):
+    http = FakeHttp(monkeypatch, raw=json.dumps(doc))
+    with pytest.raises(WiCANAutoPidError):
+        _client().push(NEW_ROWS, tmp_path)
+    assert http.stored == []
+
+
+def test_polled_rows_named_like_a_broadcast_channel_are_turned_off(
+    monkeypatch, tmp_path
+):
+    """Real case (bench WiCAN, 2026-11-10): the firmware's list reads ECT from
+    the CAN bus (on) and RPM by polling (its broadcast RPM is off). NC Flash's
+    list polls both. Only ECT clashes; its polled copy is kept but turned off.
+    Dropping the polled RPM instead made the WiCAN judge the engine by
+    battery voltage and open a trip on the bench."""
+    doc = dict(ORIGINAL)
+    doc["can_filters"] = [
+        {
+            "frame_id": 576,
+            "parameters": [
+                {"name": "ECT", "expression": "B1-40", "enabled": True},
+                {"name": "RPM", "expression": "B1", "enabled": False},
+            ],
+        }
+    ]
+    http = FakeHttp(monkeypatch, raw=json.dumps(doc))
+    rows = [{"Name": "RPM", "enabled": True}, {"Name": "ECT", "enabled": True}]
+    preview = _client().preview(rows)
+    assert preview["clashes"] == ["ECT"] and "ECT" not in preview["added"]
+    assert preview["rpm"] is True  # the polled RPM stays on
+    _client().push(rows, tmp_path)
+    stored = {r["Name"]: r["enabled"] for r in http.stored[-1]["pids"]}
+    assert stored == {"RPM": True, "ECT": False}
+    assert http.stored[-1]["can_filters"] == doc["can_filters"]
+
+
+def test_refusal_says_why_in_plain_words(monkeypatch, tmp_path):
+    FakeHttp(monkeypatch, raw=json.dumps({"pids": []}))
+    with pytest.raises(WiCANAutoPidError) as err:
+        _client().push(NEW_ROWS, tmp_path)
+    assert "official MeatPi firmware" in str(err.value)
+    assert "Logger" in str(err.value) and "None" not in str(err.value)
+
+
+# --- Put Back safety (second review) -----------------------------------------
+
+
+def _bench_like(**over):
+    doc = {k: v for k, v in ORIGINAL.items() if k != "format"}
+    doc["calculated"] = []
+    doc["can_filters"] = [
+        {
+            "frame_id": 513,
+            "parameters": [
+                {"name": "VSS", "expression": "B1", "enabled": True},
+                {"name": "RPM", "expression": "B1", "enabled": False},
+            ],
+        },
+        {"frame_id": 576, "parameters": [{"name": "ECT", "expression": "B1-40"}]},
+    ]
+    doc["pids"] = [{"Name": "RPM", "enabled": True}, {"Name": "MAP", "enabled": True}]
+    doc.update(over)
+    return doc
+
+
+def test_restore_backs_up_the_current_list_first(monkeypatch, tmp_path):
+    from pathlib import Path
+
+    current = _bench_like()
+    http = FakeHttp(monkeypatch, raw=json.dumps(current))
+    old = tmp_path / "old.json"
+    old.write_text(json.dumps(_bench_like(pids=[{"Name": "RPM"}])), encoding="utf-8")
+    result = _client().restore(old, tmp_path / "b")
+    saved = Path(result["backup"])
+    assert json.loads(saved.read_text(encoding="utf-8")) == current
+    assert http.stored[-1]["pids"] == [{"Name": "RPM"}]
+
+
+def test_restore_refuses_a_list_that_changed_unless_forced(monkeypatch, tmp_path):
+    from src.ecu.wican_autopid import WiCANListChanged, file_sha
+
+    raw = json.dumps(_bench_like())
+    http = FakeHttp(monkeypatch, raw=raw)
+    old = tmp_path / "old.json"
+    old.write_text(json.dumps(_bench_like(pids=[{"Name": "RPM"}])), encoding="utf-8")
+    with pytest.raises(WiCANListChanged):
+        _client().restore(old, tmp_path / "b", expect_sha="not-this")
+    assert http.stored == []  # nothing written
+    _client().restore(old, tmp_path / "b", expect_sha=file_sha(raw))  # matches
+    _client().restore(old, tmp_path / "b", expect_sha="not-this", force=True)
+    assert len(http.stored) == 2
+
+
+@pytest.mark.parametrize(
+    "reply,pending", [({"applied": "deferred"}, True), ({"applied": "reboot"}, True)]
+)
+def test_restore_reports_a_switch_that_has_not_happened(
+    monkeypatch, tmp_path, reply, pending
+):
+    http = FakeHttp(monkeypatch, raw=json.dumps(_bench_like()))
+    http.store_reply = reply
+    old = tmp_path / "old.json"
+    old.write_text(json.dumps(_bench_like()), encoding="utf-8")
+    result = _client().restore(old, tmp_path / "b")
+    assert result["applied"] == reply["applied"] and result["reload_pending"] is pending
+
+
+def test_rpm_is_never_turned_off_and_calculated_names_never_clash(
+    monkeypatch, tmp_path
+):
+    doc = _bench_like()
+    doc["can_filters"][0]["parameters"][1]["enabled"] = True  # broadcast RPM on
+    doc["calculated"] = [{"name": "MAP", "expression": "BARO*1"}]
+    http = FakeHttp(monkeypatch, raw=json.dumps(doc))
+    rows = [
+        {"Name": "RPM", "enabled": True},
+        {"Name": "MAP", "enabled": True},
+        {"Name": "ect", "enabled": True},  # case differs: still the broadcast ECT
+    ]
+    preview = _client().preview(rows)
+    assert preview["clashes"] == ["ect"] and preview["rpm"] is True
+    _client().push(rows, tmp_path)
+    stored = {r["Name"]: r["enabled"] for r in http.stored[-1]["pids"]}
+    assert stored == {"RPM": True, "MAP": True, "ect": False}
+
+
+def test_a_list_without_any_rpm_is_refused(monkeypatch, tmp_path):
+    http = FakeHttp(monkeypatch, raw=json.dumps(_bench_like()))  # broadcast RPM off
+    rows = [{"Name": "MAP", "enabled": True}, {"Name": "RPM", "enabled": False}]
+    assert _client().preview(rows)["rpm"] is False
+    with pytest.raises(WiCANAutoPidError) as err:
+        _client().push(rows, tmp_path)
+    assert "RPM" in str(err.value) and http.stored == []
+
+
+def test_broadcast_rpm_counts_for_the_engine_gate(monkeypatch):
+    from src.ecu.wican_autopid import has_engine_rpm
+
+    on = [{"parameters": [{"Name": "rpm", "Enabled": True}]}]
+    off = [{"parameters": [{"name": "RPM", "enabled": False}]}]
+    assert has_engine_rpm([], on)
+    assert not has_engine_rpm([], off)
+    assert has_engine_rpm([{"name": "Rpm", "enabled": "yes"}], off)  # non-bool = on
+
+
+def test_an_unknown_fingerprint_always_warns(monkeypatch, tmp_path):
+    """A push that failed half way stores no fingerprint: Put Back must ask."""
+    from src.ecu.wican_autopid import WiCANListChanged
+
+    http = FakeHttp(monkeypatch, raw=json.dumps(_bench_like()))
+    old = tmp_path / "old.json"
+    old.write_text(json.dumps(_bench_like()), encoding="utf-8")
+    with pytest.raises(WiCANListChanged) as err:
+        _client().restore(old, tmp_path / "b", expect_sha="")
+    assert "did not finish" in str(err.value) and http.stored == []
+    _client().restore(old, tmp_path / "b", expect_sha="", force=True)
+    assert len(http.stored) == 1
+
+
+def test_a_failed_reload_after_put_back_names_the_saved_list(monkeypatch, tmp_path):
+    FakeHttp(
+        monkeypatch,
+        raw=json.dumps(_bench_like()),
+        statuses=[{"reload_pending": False, "reload_ok": False}],
+    )
+    old = tmp_path / "old.json"
+    old.write_text(json.dumps(_bench_like()), encoding="utf-8")
+    with pytest.raises(WiCANAutoPidError) as err:
+        _client().restore(old, tmp_path / "b")
+    assert "saved in" in str(err.value)

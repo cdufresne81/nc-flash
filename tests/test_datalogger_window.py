@@ -89,16 +89,18 @@ def test_run_button_starts_and_stops(qtbot):
     dl.is_running = True
     dl.running_changed.emit(True)
     assert window._btn_run.text() == "Stop Logging"
-    assert not window._table.isEnabled()  # no edits during a run
+    # No edits during a run, but the table stays scrollable for live values.
+    assert window._table.isEnabled() and not window._table.dragEnabled()
+    assert not window._table.cellWidget(0, win_mod._COL_EVERY).isEnabled()
     window._btn_run.click()
     dl.stop.assert_called_once()
 
 
 def test_push_button_only_for_the_wican(qtbot):
     window, _, _ = _window(qtbot, adapter="j2534")
-    assert window._btn_push.isHidden()
+    assert window._own_list_box.isHidden()
     window, dl, _ = _window(qtbot, adapter="wican")
-    assert not window._btn_push.isHidden()
+    assert not window._own_list_box.isHidden()
     window._btn_push.click()
     dl.preview_wican_push.assert_called_once()  # read first, never push blind
     dl.push_to_wican.assert_not_called()
@@ -108,9 +110,11 @@ def test_wican_looks_like_a_cable_and_saving_its_list_is_optional(qtbot):
     window, dl, _ = _window(qtbot, adapter="wican")
     hint = window._adapter.text()
     assert "Start Logging sends these channels" in hint and "this run only" in hint
-    assert "not changed" in hint
-    assert window._btn_push.text() == "Save as WiCAN's Own List..."
-    assert "not needed for Start Logging" in window._btn_push.toolTip()
+    # The saved list lives in its own section, which says Start Logging leaves it alone.
+    assert "never changes it" in win_mod._OWN_LIST_TEXT
+    assert "NC Flash's, not the one stored on the WiCAN" in win_mod._OWN_LIST_TEXT
+    assert window._btn_push.text() == "Update WiCAN Channels..."
+    assert window._btn_push.parent() is window._own_list_box
     assert window._btn_run.text() == "Start Logging" and window._btn_run.isEnabled()
     assert window._btn_push.isEnabled()
     # A run uses its own temporary list: the saved one can't change meanwhile.
@@ -126,16 +130,15 @@ def test_wican_looks_like_a_cable_and_saving_its_list_is_optional(qtbot):
 
 @pytest.mark.parametrize("answer,pushed", [("yes", True), ("cancel", False)])
 def test_push_needs_confirming_the_preview(qtbot, monkeypatch, answer, pushed):
-    window, dl, _ = _window(qtbot, adapter="wican")
+    window, dl, settings = _window(qtbot, adapter="wican")
+    settings.get_wican_push_explained.return_value = False
     shown = []
 
-    def question(parent, title, text, buttons, default):
-        shown.append((text, default))
-        return (
-            win_mod.QMessageBox.Yes if answer == "yes" else win_mod.QMessageBox.Cancel
-        )
+    def confirm(text, explain, safe_default):
+        shown.append((text, safe_default, explain))
+        return answer == "yes", True
 
-    monkeypatch.setattr(win_mod.QMessageBox, "question", question)
+    monkeypatch.setattr(window, "_confirm_push", confirm)
     dl.push_preview.emit(
         {
             "removed": ["MAP", "BARO"],
@@ -145,20 +148,71 @@ def test_push_needs_confirming_the_preview(qtbot, monkeypatch, answer, pushed):
             "count": 9,
         }
     )
-    text, default = shown[0]
+    text, safe_default, explain = shown[0]
     assert "MAP, BARO" in text and "BOOST" in text and "RPM" in text
-    assert default == win_mod.QMessageBox.Cancel  # no RPM: default is not to send
+    assert safe_default is False  # no RPM: default is not to send
+    assert explain is True
+    settings.set_wican_push_explained.assert_called_once_with(True)
     assert dl.push_to_wican.called is pushed
 
 
-def test_restore_button_after_a_push(qtbot):
+def test_explanation_can_be_turned_off_but_changes_still_show(qtbot, monkeypatch):
+    window, dl, settings = _window(qtbot, adapter="wican")
+    settings.get_wican_push_explained.return_value = True
+    shown = []
+
+    def confirm(text, explain, safe_default):
+        shown.append((text, explain))
+        return True, False
+
+    monkeypatch.setattr(window, "_confirm_push", confirm)
+    dl.push_preview.emit({"removed": ["MAP"], "added": [], "rpm": True, "count": 9})
+    text, explain = shown[0]
+    assert explain is False and "MAP" in text  # the changes are never hidden
+    settings.set_wican_push_explained.assert_not_called()
+    dl.push_to_wican.assert_called_once()
+
+
+def test_confirm_dialog_has_the_explanation_and_the_checkbox(qtbot, monkeypatch):
+    window, _, _ = _window(qtbot, adapter="wican")
+    seen = {}
+
+    def fake_exec(box):
+        seen["info"] = box.informativeText()
+        box.findChild(win_mod.QCheckBox).setChecked(True)
+        return 0
+
+    monkeypatch.setattr(win_mod.QMessageBox, "exec", fake_exec)
+    yes, dont = window._confirm_push("changes", True, safe_default=True)
+    assert "Start Logging already sends" in seen["info"]
+    assert dont is True and yes is False  # ticked, but nothing clicked
+
+
+@pytest.mark.parametrize("answer,called", [("yes", True), ("cancel", False)])
+def test_restore_button_asks_first(qtbot, monkeypatch, answer, called):
     window, dl, _ = _window(qtbot, adapter="wican")
     assert window._btn_restore.isHidden()
     dl.last_backup = "C:/logs/auto_pid_x.json"
     dl.push_finished.emit(True, "The WiCAN now polls the new channel list.")
     assert not window._btn_restore.isHidden()
+    yes = win_mod.QMessageBox.Yes if answer == "yes" else win_mod.QMessageBox.Cancel
+    monkeypatch.setattr(win_mod.QMessageBox, "question", lambda *a, **k: yes)
     window._btn_restore.click()
-    dl.restore_wican_backup.assert_called_once_with("C:/logs/auto_pid_x.json")
+    assert dl.restore_wican_backup.called is called
+    if called:
+        dl.restore_wican_backup.assert_called_once_with("C:/logs/auto_pid_x.json")
+
+
+@pytest.mark.parametrize("answer,forced", [("yes", True), ("cancel", False)])
+def test_changed_list_needs_a_second_yes(qtbot, monkeypatch, answer, forced):
+    window, dl, _ = _window(qtbot, adapter="wican")
+    yes = win_mod.QMessageBox.Yes if answer == "yes" else win_mod.QMessageBox.Cancel
+    monkeypatch.setattr(win_mod.QMessageBox, "warning", lambda *a, **k: yes)
+    window._on_restore_changed("C:/logs/b.json", "The WiCAN's channel list changed.")
+    if forced:
+        dl.restore_wican_backup.assert_called_once_with("C:/logs/b.json", force=True)
+    else:
+        dl.restore_wican_backup.assert_not_called()
 
 
 def test_dropped_channel_shows_why(qtbot):
@@ -294,3 +348,229 @@ def test_open_live_logs_folder_selects_the_capture_being_written(
     )
     window._btn_folder.click()
     assert calls == [["explorer", "/select,", str(capture)]]
+
+
+def test_move_up_and_down_reorders_and_is_saved(qtbot):
+    window, dl, settings = _window(qtbot)
+    first, second = window._channels[0].name, window._channels[1].name
+    window._table.selectRow(0)
+    assert not window._btn_up.isEnabled() and window._btn_down.isEnabled()
+    window._btn_down.click()
+    assert [c.name for c in window._channels[:2]] == [second, first]
+    assert window._selected_row() == 1  # the selection follows the channel
+    assert settings.saved["order"][:2] == [second, first]
+    assert [c.name for c in dl.channels()][:2] == [second, first]  # what a run uses
+    window._btn_up.click()
+    assert [c.name for c in window._channels[:2]] == [first, second]
+
+
+def test_moving_is_off_during_a_run(qtbot):
+    window, dl, _ = _window(qtbot)
+    window._table.selectRow(1)
+    dl.is_running = True
+    dl.running_changed.emit(True)
+    assert not window._btn_up.isEnabled() and not window._btn_down.isEnabled()
+
+
+def test_drag_and_drop_moves_a_channel_and_its_settings(qtbot):
+    window, dl, settings = _window(qtbot)
+    names = [c.name for c in window._channels]
+    row = _row(window, "ECT")
+    every = window._channels[row].every
+    window._table.row_moved.emit(row, 0)  # what a drop on the first row reports
+    assert window._channels[0].name == "ECT" and window._channels[0].every == every
+    assert window._table.cellWidget(0, win_mod._COL_EVERY).value() == every
+    assert window._table.item(0, win_mod._COL_NAME).text() == "ECT"
+    assert sorted(c.name for c in window._channels) == sorted(names)  # nothing lost
+    assert settings.saved["order"][0] == "ECT"
+    assert window._selected_row() == 0
+
+
+def test_drop_target_counts_the_row_leaving_its_place(qtbot):
+    window, _, _ = _window(qtbot)
+    window.resize(900, 700)
+    window.show()
+    table = window._table
+    moved = []
+    table.row_moved.connect(lambda a, b: moved.append((a, b)))
+    rect = table.visualRect(table.model().index(3, 0))
+    # Lower half of row 3 means "after row 3".
+    assert table.drop_target(rect.center() + type(rect.center())(0, 3)) == 4
+    assert table.drop_target(rect.center() - type(rect.center())(0, 3)) == 3
+
+
+def test_no_drag_moves_during_a_run(qtbot):
+    window, dl, _ = _window(qtbot)
+    first = window._channels[0].name
+    dl.is_running = True
+    window._table.row_moved.emit(0, 3)
+    assert window._channels[0].name == first
+
+
+def _catalog():
+    from src.core.datalog_channels import catalog_channels
+
+    return catalog_channels()
+
+
+def test_catalog_dialog_greys_out_channels_already_in_the_list(qtbot):
+    dlg = win_mod.CatalogDialog(None, catalog=_catalog(), taken=["RPM", "ect"])
+    qtbot.addWidget(dlg)
+    names = [c.name for c in dlg._catalog]
+    rpm = dlg._table.item(names.index("RPM"), 0)
+    assert not rpm.flags() & Qt.ItemIsUserCheckable
+    assert not dlg._table.item(names.index("ECT"), 0).flags() & Qt.ItemIsUserCheckable
+    assert not dlg._ok.isEnabled()  # nothing ticked yet
+
+
+def test_catalog_dialog_search_and_add(qtbot):
+    dlg = win_mod.CatalogDialog(None, catalog=_catalog(), taken=[])
+    qtbot.addWidget(dlg)
+    dlg._search.setText("fan relay")
+    shown = [
+        c.name for r, c in enumerate(dlg._catalog) if not dlg._table.isRowHidden(r)
+    ]
+    assert shown and all(n.startswith("FAN") for n in shown)
+    names = [c.name for c in dlg._catalog]
+    dlg._toggle_row(names.index("FAN1_SW"), 1)
+    dlg._table.item(names.index("GEN_V"), 0).setCheckState(Qt.Checked)
+    assert dlg._ok.text() == "Add 2 Channels"
+    dlg._on_ok()
+    added = {c.name: c for c in dlg.result_channels}
+    assert set(added) == {"FAN1_SW", "GEN_V"}
+    assert all(c.enabled and not c.builtin for c in added.values())
+
+
+def test_add_from_catalog_appends_and_saves(qtbot, monkeypatch):
+    window, dl, settings = _window(qtbot)
+    picked = [c for c in _catalog() if c.name == "GEN_V"]
+
+    class _Fake:
+        def __init__(self, *a, **k):
+            from dataclasses import replace
+
+            self.result_channels = [replace(picked[0], enabled=True, builtin=False)]
+
+        def exec(self):
+            return win_mod.QDialog.Accepted
+
+    monkeypatch.setattr(win_mod, "CatalogDialog", _Fake)
+    before = len(window._channels)
+    window._btn_catalog.click()
+    assert len(window._channels) == before + 1 and window._channels[-1].name == "GEN_V"
+    assert any(d.get("name") == "GEN_V" for d in settings.saved["custom"])
+    assert [c.name for c in dl.channels()][-1] == "GEN_V"  # what a run uses
+
+
+@pytest.mark.parametrize("adapter", ["j2534", "obdx", "wican"])
+def test_catalog_picker_is_offered_for_every_adapter(qtbot, adapter):
+    window, _, _ = _window(qtbot, adapter=adapter)
+    window.show()
+    assert window._btn_catalog.isVisible() and window._btn_catalog.isEnabled()
+
+
+def test_catalog_spots_the_same_reading_under_another_name(qtbot):
+    from src.core.datalog_channels import builtin_channels
+
+    mine = builtin_channels()  # has VCT_ACT (0x22 0x16CD) and FUELSYS (x*0.00390625)
+    dlg = win_mod.CatalogDialog(
+        None, catalog=_catalog(), taken=[c.name for c in mine], existing=mine
+    )
+    qtbot.addWidget(dlg)
+    names = [c.name for c in dlg._catalog]
+    vt = names.index("VT_ACT")
+    assert not dlg._table.item(vt, 0).flags() & Qt.ItemIsUserCheckable
+    assert "VCT_ACT" in dlg._table.item(vt, 0).toolTip()
+    assert dlg._table.item(vt, 1).text() == "VT_ACT  (= VCT_ACT)"
+    # TP1 reads the same as the built-in TPS, constant differs only at the 8th decimal.
+    assert not dlg._table.item(names.index("TP1"), 0).flags() & Qt.ItemIsUserCheckable
+
+
+def test_catalog_same_bytes_other_formula_stays_pickable_with_a_note(qtbot):
+    from dataclasses import replace
+
+    tp1 = next(c for c in _catalog() if c.name == "TP1")
+    raw = replace(tp1, name="MY_TPS_RAW", formula="x", builtin=False)  # 0x01 0x11, raw
+    dlg = win_mod.CatalogDialog(
+        None, catalog=_catalog(), taken=[raw.name], existing=[raw]
+    )
+    qtbot.addWidget(dlg)
+    row = [c.name for c in dlg._catalog].index("TP1")
+    assert dlg._table.item(row, 0).flags() & Qt.ItemIsUserCheckable
+    assert "MY_TPS_RAW" in dlg._table.item(row, 0).toolTip()
+    assert "different formula" in dlg._table.item(row, 0).toolTip()
+
+
+def test_same_formula_handles_a_division():
+    from src.core.datalog_channels import Channel
+
+    a = Channel(name="A", mode=1, ident=0x11, formula="100/x")
+    b = Channel(name="B", mode=1, ident=0x11, formula="100 / x")
+    assert win_mod._same_formula(a, b)  # x=0 must not make them differ
+
+
+def test_status_shows_live_values_during_a_run(qtbot):
+    from src.ui.live_values import LiveValues
+
+    window, dl, _ = _window(qtbot)
+    # The fake has no live values; give it the real holder both engines feed.
+    dl.live_values = LiveValues(dl)
+    window._live = dl.live_values
+    rpm, ect = _row(window, "RPM"), _row(window, "ECT")
+    status = lambda r: window._table.item(r, win_mod._COL_STATUS).text()
+    dl.is_running = True
+    dl.running_changed.emit(True)
+    assert status(rpm) == "waiting for data"
+    dl.live_values.update({"RPM": 812.25, "ECT": 88.0}, expire=False)
+    window._refresh_status()
+    assert status(rpm) == "812 rpm" and status(ect) == "88.0 C"
+    window._on_channel_dropped("ECT", "the ECU doesn't know this identifier")
+    window._refresh_status()
+    assert status(ect) == "the ECU doesn't know this identifier"  # a reason wins
+    dl.is_running = False
+    dl.running_changed.emit(False)
+    assert status(rpm) == ""  # no stale value after the run
+    assert status(ect) == "the ECU doesn't know this identifier"
+
+
+def test_status_value_format():
+    f = win_mod._status_value
+    assert f(1, "on/off") == "on" and f(0, "on / off") == "off"
+    assert f(0.21, "g/rev") == "0.21 g/rev" and f(14.7, "") == "14.7"
+    assert f(-9.84, "PSI") == "-9.84 PSI" and f(3000.4, "rpm") == "3000 rpm"
+
+
+def test_checkbox_edits_are_undone_during_a_run(qtbot):
+    window, dl, settings = _window(qtbot)
+    row = _row(window, "VSS")
+    dl.is_running = True
+    dl.running_changed.emit(True)
+    window._table.item(row, win_mod._COL_ON).setCheckState(Qt.Checked)
+    assert window._table.item(row, win_mod._COL_ON).checkState() == Qt.Unchecked
+    assert window._channels[row].enabled is False
+
+
+def test_window_opened_during_a_run_shows_live_values(qtbot):
+    from src.ui.live_values import LiveValues
+
+    settings = MagicMock()
+    settings.saved = {}
+    settings.get_ecu_adapter.return_value = "j2534"
+    settings.get_datalog_channels.side_effect = lambda: settings.saved
+    settings.get_live_datalog_auto_trail.return_value = True
+    dl = _FakeDatalogger(settings)
+    dl.live_values = LiveValues(dl)
+    dl.is_running = True  # already logging when the window opens
+    main_window = SimpleNamespace(
+        settings=settings,
+        datalogger=dl,
+        live_cursor=SimpleNamespace(enabled=True, set_enabled=MagicMock()),
+    )
+    window = DataloggerWindow(main_window=main_window)
+    qtbot.addWidget(window)
+    assert window._status_timer.isActive()
+    dl.live_values.update({"RPM": 900.0}, expire=False)
+    window._refresh_status()
+    assert (
+        window._table.item(_row(window, "RPM"), win_mod._COL_STATUS).text() == "900 rpm"
+    )
