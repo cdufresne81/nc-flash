@@ -7,6 +7,9 @@ All notable changes to NC Flash are documented here.
 ### Changed
 - **Behind the scenes:** a release can now be tagged from GitHub's Actions tab ("Tag Release": type the version, it tags `dev` for a beta or `master` for a stable release and starts the build). It refuses a version that already exists, a commit the tests haven't passed on, and a stable release with no changelog section. No change to the app itself.
 
+### Fixed
+- **Behind the scenes:** the copy and paste tests no longer fail at random on Windows when another program briefly holds the clipboard, and running them no longer overwrites what you had copied. No change to the app itself.
+
 ## [v2.23.1] - 2026-10-24
 
 **Urgent safety fix: update before using Patch ROM.** Earlier versions could produce a patched ROM that bricks the ECU when flashed.
