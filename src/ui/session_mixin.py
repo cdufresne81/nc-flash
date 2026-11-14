@@ -136,7 +136,7 @@ class SessionMixin:
 
     def show_settings(self):
         """Show settings dialog"""
-        dialog = SettingsDialog(self)
+        dialog = SettingsDialog(self, openport_setup=self.openport_setup)
         dialog.settings_changed.connect(self.on_settings_changed)
         dialog.exec()
 
@@ -144,6 +144,7 @@ class SessionMixin:
         """Handle settings changes"""
         # Trip Logs entry points follow the selected ECU adapter (WiCAN-only)
         self._update_trip_logs_visibility()
+        self.live_cursor.reload_settings()
 
         # Reinitialize ROM detector with new metadata path
         try:

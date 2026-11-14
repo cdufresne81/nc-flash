@@ -2,21 +2,21 @@
 
 The ECU Programming window is session-gated top to bottom (Connect → operate);
 this window is the home of everything that talks to the WiCAN *device* over
-plain HTTP/WiFi and needs no ECU session: today the trip-log inventory table
-and the download; designed to grow the on-device SD file manager (per-row
-actions on the same table) and the live-datalog controls (start/stop/status +
-MegaLogViewerHD launch) later.
+plain HTTP/WiFi and needs no ECU session: the trip-log inventory table and
+the download; designed to grow the on-device SD file manager (per-row actions
+on the same table) later. Live logging lives in the Datalogger window.
 
 Ownership: all background state stays with the main-window-owned
 :class:`~src.ui.wican_log_sync.WiCANLogSync` (single owner; THE one download
 path — the startup auto-check prompt funnels through :meth:`start_download`
-too). This window is a thin subscriber: closing it mid-download does NOT
-cancel the download; the main window's closeEvent owns shutdown.
+too). This window is a thin subscriber: closing it mid-download cancels
+nothing; the main window's closeEvent owns shutdown.
 
 Gating model (one per surface): everything here needs the WiCAN adapter
 selected, and the download locks against a busy ECU (flash/read/DTC) exactly
 as ECU operations lock against a running download on the other side — the
-PR #89 mutual exclusion, rendered from both ends.
+PR #89 mutual exclusion, rendered from both ends. The download also waits
+while the Datalogger follows the WiCAN's trip.
 """
 
 import logging
@@ -61,6 +61,8 @@ _STATUS_LABELS = {
 }
 
 ECU_BUSY_TIP = "Wait for the running ECU operation to finish"
+ECU_LINK_TIP = "Disconnect the ECU Programming window from the WiCAN first"
+LIVE_RUNNING_TIP = "Stop the Datalogger first"
 
 
 def _format_mtime(mtime: int) -> str:
@@ -76,6 +78,7 @@ class TripLogsWindow(QMainWindow):
         super().__init__(parent)
         self._main_window = main_window
         self._ecu_busy = False
+        self._ecu_link = False
         self._entries = []
 
         self.setWindowTitle("WiCAN Trip Logs")
@@ -95,6 +98,7 @@ class TripLogsWindow(QMainWindow):
         # is_checking is still True (the check thread's cleanup is queued
         # behind it), so gating recomputed there sees a busy sync.
         sync.checking_changed.connect(self._update_action_states)
+        main_window.datalogger.running_changed.connect(self._update_action_states)
 
         self._update_action_states()
         QTimer.singleShot(0, self.refresh)
@@ -158,6 +162,16 @@ class TripLogsWindow(QMainWindow):
         self._progress_row.setVisible(False)
         root.addWidget(self._progress_row)
 
+        # Live logging moved to the Datalogger window (every adapter).
+        live_row = QHBoxLayout()
+        live_hint = QLabel("Follow the trip live in MegaLogViewerHD:")
+        live_row.addWidget(live_hint)
+        self._btn_datalogger = QPushButton("Open Datalogger")
+        self._btn_datalogger.clicked.connect(self._main_window.open_datalogger_window)
+        live_row.addWidget(self._btn_datalogger)
+        live_row.addStretch()
+        root.addLayout(live_row)
+
     # --- public surface (also driven by the main window's auto-check) --------
 
     def refresh(self) -> bool:
@@ -175,7 +189,7 @@ class TripLogsWindow(QMainWindow):
         Refuses while an ECU operation runs — every caller (button, startup
         prompt) funnels through here, so the interlock cannot be bypassed.
         """
-        if self._ecu_busy:
+        if self._ecu_busy or self._main_window.datalogger.is_running:
             return False
         started = self._main_window.wican_log_sync.start()
         if not started:
@@ -186,6 +200,12 @@ class TripLogsWindow(QMainWindow):
         """ECU flash/read/DTC in progress — hold the download (bus/SD/WiFi
         contention, mirrored from the ECU window's utility lock)."""
         self._ecu_busy = bool(busy)
+        self._update_action_states()
+
+    def set_ecu_link(self, linked: bool):
+        """The ECU window holds a WiCAN session (it reserves the bus, pausing
+        the device's trip) — hold the live datalog start."""
+        self._ecu_link = bool(linked)
         self._update_action_states()
 
     # --- sync signal handlers -------------------------------------------------
@@ -270,8 +290,12 @@ class TripLogsWindow(QMainWindow):
         sync = self._main_window.wican_log_sync
         is_wican = self._main_window.settings.is_wican_adapter()
 
+        live = self._main_window.datalogger
         self._btn_download.setEnabled(
-            is_wican and not sync.is_running and not self._ecu_busy
+            is_wican
+            and not sync.is_running
+            and not self._ecu_busy
+            and not live.is_running
         )
         settings = self._main_window.settings
         tip = "Download every new trip log from the WiCAN's SD card"
@@ -280,9 +304,12 @@ class TripLogsWindow(QMainWindow):
                 ", then delete the verified ones from the card (keeping the "
                 f"newest {settings.get_wican_keep_newest_logs()})"
             )
-        self._btn_download.setToolTip(
-            ECU_BUSY_TIP if is_wican and self._ecu_busy else tip
-        )
+        if is_wican and self._ecu_busy:
+            tip = ECU_BUSY_TIP
+        elif is_wican and live.is_running:
+            tip = LIVE_RUNNING_TIP
+        self._btn_download.setToolTip(tip)
+
         self._btn_refresh.setEnabled(
             is_wican and not sync.is_running and not sync.is_checking
         )

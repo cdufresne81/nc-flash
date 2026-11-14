@@ -1,0 +1,4 @@
+# Datalogger window: channel table, run controls (no adapter needed to render)
+open_datalogger
+wait 500
+screenshot datalogger_window datalogger

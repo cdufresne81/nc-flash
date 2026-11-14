@@ -52,6 +52,7 @@ from src.utils.constants import (
 from src.core.definition_parser import load_definition
 from src.core.rom_reader import RomReader
 from src.core.rom_detector import RomDetector
+from src.core.patch_check import check_patch_state
 from src.core.exceptions import (
     DefinitionError,
     RomFileError,
@@ -64,6 +65,7 @@ from src.ui.table_viewer_window import TableViewerWindow
 from src.ui.log_console import LogConsole
 from src.ui.setup_wizard import SetupWizard
 from src.ui.rom_document import RomDocument
+from src.ui.rom_read_check import suspect_image_reason
 from src.core.project_manager import ProjectManager
 from src.core.change_tracker import ChangeTracker
 from src.core.table_undo_manager import (
@@ -80,7 +82,10 @@ from src.ui.project_mixin import ProjectMixin
 from src.ui.session_mixin import SessionMixin
 from src.ui.mcp_mixin import McpMixin
 from src.ui.flash_mixin import FlashMixin
+from src.ui.datalogger import Datalogger
+from src.ui.live_cursor_router import LiveCursorRouter
 from src.ui.wican_log_sync import WiCANLogSync
+from src.ui.openport_driver_setup import OpenPortDriverSetup
 from src.ui.app_updater import UpdateController
 
 from src.ui.error_helpers import handle_rom_operation_error
@@ -208,6 +213,26 @@ class MainWindow(
         # Finished download: offer to open the new logs in MegaLogViewerHD.
         self.wican_log_sync.download_finished.connect(self._on_trip_logs_downloaded)
 
+        # Datalogger — single owner of live logging for every adapter (it owns
+        # the WiCAN live stream too), driven by the Datalogger window.
+        self.datalogger = Datalogger(
+            self.settings, parent=self, blocker=self._datalogger_blocker
+        )
+        self.datalogger_window = None
+        # Live table cursor: the Datalogger's latest values on open tables.
+        self.live_cursor = LiveCursorRouter(
+            self.datalogger.live_values,
+            lambda: self.open_table_windows,
+            self.settings,
+            parent=self,
+        )
+
+        # Tactrix OpenPort driver switch (WinUSB): one owner for the ECU window
+        # and Settings, refused while the ECU window holds an ECU link.
+        self.openport_setup = OpenPortDriverSetup(
+            self, blocker=self._openport_switch_blocker
+        )
+
         # In-app updater (GitHub issue 104). Installing closes the app, so it asks
         # _update_install_blocker first and refuses while ECU work could run.
         self.update_controller = UpdateController(
@@ -249,20 +274,35 @@ class MainWindow(
         Mixin methods named closeEvent are shadowed by QWidget's C++ slot in the MRO,
         so this explicit override is required.
         """
+        # Quitting with the ECU window mid-operation would destroy its worker
+        # thread (and cut a flash) without ever asking it. Let that window
+        # decide first: it refuses during a flash and asks during a read.
+        # close()'s return value is not trusted: Qt reports True for a close
+        # that arrives while the window's own close is still in progress
+        # (e.g. its refusal dialog is open). A worker still running vetoes.
+        ecu = self.ecu_window
+        if ecu is not None and ecu.is_busy:
+            ecu.close()
+            if ecu.operation_running:
+                event.ignore()
+                return
         self._handle_close(event)
         # Only after an accepted close (user may cancel on unsaved changes):
         # stop a running trip-log download so its QThread is never destroyed
         # while running (aborts between chunks; .part contract keeps it safe).
         if event.isAccepted():
             self.wican_log_sync.shutdown()
+            # 10 s: a stop can land inside a 3 s mDNS lookup plus its teardown,
+            # and Qt aborts if the thread is destroyed still running.
+            self.datalogger.shutdown(10000)
             self.update_controller.shutdown()
 
     def _update_install_blocker(self):
         """Why the updater must not close the app right now, or None.
 
-        Closing during an ECU read or flash can brick the ECU, so any open ECU
-        Programming window blocks the install (not only a busy one: its close
-        path only asks "Close anyway?"). A running trip-log download blocks it
+        Closing during an ECU flash can brick the ECU, so any open ECU
+        Programming window blocks the install (not only a busy one), and the
+        user decides when to close it. A running trip-log download blocks it
         too, so the user decides when to stop it.
         """
         if self.ecu_window is not None:
@@ -535,6 +575,10 @@ class MainWindow(
         self.trip_logs_action.triggered.connect(self._on_open_trip_logs_window)
         tools_menu.aboutToShow.connect(self._update_trip_logs_visibility)
 
+        datalogger_action = tools_menu.addAction("&Datalogger...")
+        datalogger_action.setShortcut("Ctrl+Shift+L")
+        datalogger_action.triggered.connect(self.open_datalogger_window)
+
         tools_menu.addSeparator()
 
         screenshot_action = tools_menu.addAction("&Screenshot")
@@ -586,6 +630,11 @@ class MainWindow(
         act.setToolTip("ECU Programming (Ctrl+Shift+E)")
         act.triggered.connect(self._on_open_ecu_window)
         self._toolbar_flash = act
+
+        act = tb.addAction(make_icon(self, "datalogger"), "")
+        act.setToolTip("Datalogger (Ctrl+Shift+L)")
+        act.triggered.connect(self.open_datalogger_window)
+        self._toolbar_datalogger = act
 
         act = tb.addAction(make_icon(self, "trip_logs"), "")
         act.setToolTip("WiCAN Trip Logs")
@@ -1153,6 +1202,25 @@ class MainWindow(
                     f"This may indicate a detection bug.",
                 )
 
+            # Warn on an unpatched ROM or a patch revision that doesn't match
+            # the definition. open(), not exec(): the open still completes, so
+            # session restore, IPC opens and the GUI test runner don't stall on it.
+            patch_warning = check_patch_state(
+                rom_reader.rom_data, rom_definition.romid.checksummodule
+            ).warning(Path(file_path).name, rom_definition.romid.xmlid)
+            if patch_warning:
+                logger.warning(patch_warning.replace("\n\n", " "))
+                box = QMessageBox(
+                    QMessageBox.Warning,
+                    "ROM Patch Warning",
+                    patch_warning,
+                    QMessageBox.Ok,
+                    self,
+                )
+                box.setAttribute(Qt.WA_DeleteOnClose)
+                box.setObjectName("romPatchWarning")
+                box.open()
+
             # Create ROM document widget
             rom_document = RomDocument(file_path, rom_definition, rom_reader, self)
             rom_document.table_selected.connect(self.on_table_selected)
@@ -1192,6 +1260,7 @@ class MainWindow(
                 f"Loaded: {file_name} - {rom_definition.romid.xmlid} "
                 f"({len(rom_definition.tables)} tables)"
             )
+            self._warn_if_suspect_rom(rom_document)
 
             self._update_compare_action()
             self._write_workspace_state()
@@ -1208,6 +1277,43 @@ class MainWindow(
                 "Error",
                 f"Unexpected error opening ROM file:\n{type(e).__name__}: {e}",
             )
+
+    def _warn_if_suspect_rom(self, document: RomDocument) -> None:
+        """Flag a ROM that looks like a corrupt ECU read when it is opened (issue 169).
+
+        A light notice only: a log line, a status-bar message and one dialog,
+        shown after the open finishes so it never holds up a session restore.
+        The hard stop (Cancel by default) is at flash time, in the ECU window.
+        """
+        try:
+            reason = suspect_image_reason(
+                document.file_name, document.rom_reader.rom_data or b""
+            )
+        except Exception:  # pragma: no cover - defensive: never block an open
+            logger.debug("Suspect-read check failed on open", exc_info=True)
+            return
+        if reason is None:
+            return
+        name = document.file_name
+        logger.warning(
+            "Opened %s, which looks like a corrupt ECU read: %s. Do not flash it.",
+            name,
+            reason,
+        )
+        self.statusBar().showMessage(
+            f"Warning: {name} looks like a corrupt ECU read. Do not flash it."
+        )
+        QTimer.singleShot(
+            0,
+            lambda: QMessageBox.warning(
+                self,
+                "Suspect ROM Read",
+                f"{name} looks like a corrupt ECU read: {reason}.\n\n"
+                "It may hold shifted or corrupt data. You can look at it and "
+                "edit it, but do not flash it or build a tune on it. Read the "
+                "ECU again instead.",
+            ),
+        )
 
     def _save(self):
         """Unified save: commit if project is open with changes, otherwise save ROM."""
@@ -1591,18 +1697,72 @@ class MainWindow(
         # Relay ECU-busy to the Trip Logs window (2 hops: owner → here →
         # consumer; both windows are transient, this composer is not).
         window.busy_changed.connect(self._on_ecu_busy_changed)
+        window.wican_link_changed.connect(self._on_ecu_wican_link_changed)
         self.ecu_window = window
+        window.show()
+
+    def _openport_switch_blocker(self):
+        """Why the OpenPort driver can't be switched now, or None."""
+        from src.ecu import j2534
+
+        if self.datalogger.host_running:
+            return "Stop the Datalogger first: it is using the cable."
+        window = self.ecu_window
+        if (window is not None and window.holds_ecu_link()) or j2534.builtin_in_use():
+            return (
+                "Disconnect in the ECU Programming window first: switching the "
+                "driver unplugs the cable from Windows' point of view."
+            )
+        return None
+
+    def _datalogger_blocker(self):
+        """Why the Datalogger can't start now, or None.
+
+        Wired adapters: the ECU window's connection holds the cable (the
+        built-in OpenPort driver allows one per app). WiCAN: an ECU session
+        reserves the bus, which pauses the very trip the run would follow, and
+        a trip-log download competes for the device.
+        """
+        window = self.ecu_window
+        if window is not None and window.holds_ecu_link():
+            return (
+                "Disconnect in the ECU Programming window first: it is using "
+                "the adapter."
+            )
+        if self.openport_setup.is_running and not self.settings.is_wican_adapter():
+            return "Wait for the Tactrix driver switch to finish."
+        if self.settings.is_wican_adapter() and self.wican_log_sync.is_running:
+            return "Wait for the WiCAN trip-log download to finish."
+        return None
+
+    def open_datalogger_window(self):
+        """Open the Datalogger window (singleton)."""
+        from src.ui.datalogger_window import DataloggerWindow
+
+        if self.datalogger_window is not None:
+            self.datalogger_window.raise_()
+            self.datalogger_window.activateWindow()
+            return
+        window = DataloggerWindow(main_window=self, parent=self)
+        window.setAttribute(Qt.WA_DeleteOnClose)
+        window.destroyed.connect(lambda: setattr(self, "datalogger_window", None))
+        self.datalogger_window = window
         window.show()
 
     def _on_ecu_window_destroyed(self):
         self.ecu_window = None
-        # A destroyed ECU window cannot be mid-operation (close is confirmed
-        # while one runs) — release the Trip Logs hold.
+        # A destroyed ECU window cannot be mid-operation (its close is refused
+        # during a flash, and a read is stopped first) — release the hold.
         self._on_ecu_busy_changed(False)
+        self._on_ecu_wican_link_changed(False)
 
     def _on_ecu_busy_changed(self, busy: bool):
         if self.trip_logs_window is not None:
             self.trip_logs_window.set_ecu_busy(busy)
+
+    def _on_ecu_wican_link_changed(self, linked: bool):
+        if self.trip_logs_window is not None:
+            self.trip_logs_window.set_ecu_link(linked)
 
     def _update_trip_logs_visibility(self):
         """Show the Trip Logs entry points only while the WiCAN adapter is
@@ -1625,6 +1785,7 @@ class MainWindow(
         window.destroyed.connect(lambda: setattr(self, "trip_logs_window", None))
         if self.ecu_window is not None:
             window.set_ecu_busy(self.ecu_window.is_busy)
+            window.set_ecu_link(self.ecu_window.holds_wican)
         self.trip_logs_window = window
         window.show()
 
@@ -1755,6 +1916,7 @@ class MainWindow(
 
                 # Track the window (removed in TableViewerWindow.closeEvent)
                 self.open_table_windows.append(viewer_window)
+                self.live_cursor.attach(viewer_window)
 
                 # Log to console
                 rom_label = Path(rom_path).stem

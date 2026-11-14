@@ -30,6 +30,33 @@ from ..core.version_models import Commit
 from ..core.project_manager import ProjectManager
 
 
+def _format_address(address: str) -> str:
+    """A stored hex address as "0xC8FFC" (the form the compare window uses)."""
+    try:
+        return f"0x{int(address, 16):X}"
+    except (TypeError, ValueError):
+        return str(address)
+
+
+def _shared_names(names_by_address, changes, shown) -> set:
+    """Names that more than one table carries, so a label needs its address.
+
+    A name is shared when the current definition gives it to more than one
+    table (e.g. two "APP to TP Desired - 1st Gear"), or when one commit holds
+    changes to several tables listed under it (an older definition).
+    """
+    counts = {}
+    for names in names_by_address.values():
+        for name in names:
+            counts[name] = counts.get(name, 0) + 1
+    shared = {name for name, count in counts.items() if count > 1}
+    addresses = {}
+    for tc, name in zip(changes, shown):
+        addresses.setdefault(name, set()).add(tc.table_address)
+    shared.update(name for name, addrs in addresses.items() if len(addrs) > 1)
+    return shared
+
+
 class HistoryViewer(QDialog):
     """Dialog for browsing commit history"""
 
@@ -340,15 +367,21 @@ class CommitDetailsWidget(QWidget):
             # One row per changed table: two tables could share a name in an
             # older definition (a table and its Data Integrity copy)
             renamed = commit.renamed_tables(self._names_by_address)
+            shown = [
+                renamed.get((tc.table_name, tc.table_address), tc.table_name)
+                for tc in commit.changes
+            ]
+            shared = _shared_names(self._names_by_address, commit.changes, shown)
             listed = set()
-            for tc in commit.changes:
+            for tc, name in zip(commit.changes, shown):
                 listed.add(tc.table_name)
                 cell_count = len(tc.cell_changes)
-                current_name = renamed.get((tc.table_name, tc.table_address))
-                if current_name:
-                    text = f"{current_name} ({cell_count} cells) - was: {tc.table_name}"
-                else:
-                    text = f"{tc.table_name} ({cell_count} cells)"
+                label = name
+                if name in shared:
+                    label = f"{name.strip()} @ {_format_address(tc.table_address)}"
+                text = f"{label} ({cell_count} cells)"
+                if name != tc.table_name:
+                    text += f" - was: {tc.table_name}"
                 item = QListWidgetItem(text)
                 item.setData(Qt.UserRole, tc.table_name)
                 self.tables_list.addItem(item)

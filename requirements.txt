@@ -24,3 +24,6 @@ mcp>=1.26.0,<2.0.0
 # mDNS/Zeroconf auto-discovery of the WiCAN adapter (optional at runtime: the
 # app degrades to manual IP entry if it is missing)
 zeroconf>=0.130.0,<1.0.0
+
+# OBDX Pro USB adapter (virtual COM port)
+pyserial>=3.5,<4.0

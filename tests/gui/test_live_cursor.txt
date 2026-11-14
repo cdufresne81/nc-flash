@@ -1,0 +1,34 @@
+# Test: live table cursor - Datalogger values light up the matching cells
+# Load Scaling has RPM (rows) and LOAD (columns) axes; LOAD is marked approximate.
+
+load_rom examples/lf9veb.bin
+open_table "Load Scaling"
+wait 300
+
+# Values as if the Datalogger logged them (no Datalogger run needed)
+live_values RPM=3250 LOAD=0.47
+wait 300
+screenshot live_cursor_01_table table
+
+open_graph
+wait 1500
+screenshot live_cursor_02_graph table
+
+# Moving values move the cursor
+live_values RPM=5600 LOAD=0.82
+wait 600
+screenshot live_cursor_03_moved table
+
+# A 2D table follows one axis (ECT)
+open_table "VCT Error - ECT Multiplier"
+wait 300
+live_values RPM=5600 LOAD=0.82 ECT=55
+wait 300
+open_graph
+wait 1500
+screenshot live_cursor_04_2d table
+
+# Clearing hides it everywhere
+live_values
+wait 300
+screenshot live_cursor_05_cleared table

@@ -26,7 +26,7 @@ from src.core.rom_definition import (
     Table,
     TableType,
 )
-from src.ui.table_viewer_helpers.cell_delegate import ModifiedCellDelegate
+from src.ui.table_viewer_helpers.cell_delegate import CellEditorDelegate
 from src.ui.table_viewer_window import TableViewerWindow
 from src.utils.formatting import NUMERIC_INPUT_PATTERN, parse_numeric_text
 
@@ -263,7 +263,7 @@ class TestDelegateEditor:
     def test_editor_has_numeric_validator(self, window_2d):
         tw = window_2d.viewer.table_widget
         delegate = tw.itemDelegate()
-        assert isinstance(delegate, ModifiedCellDelegate)
+        assert isinstance(delegate, CellEditorDelegate)
 
         index = tw.model().index(0, 1)
         editor = delegate.createEditor(tw, None, index)

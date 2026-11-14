@@ -43,6 +43,8 @@ from PySide6.QtGui import (
 
 from ..core.rom_definition import Table, TableType, AxisType, RomDefinition
 from ..core.rom_reader import RomReader
+from ..core.table_lookup import match_tables
+from ..core.transfer_guard import keeps_destination
 from ..utils.colormap import value_to_color
 from .theme import get_toolbar_stylesheet
 from ..utils.formatting import (
@@ -58,7 +60,7 @@ logger = logging.getLogger(__name__)
 
 
 class _CompareCellDelegate(QStyledItemDelegate):
-    """Draws a 2px gray border around changed cells, matching ModifiedCellDelegate."""
+    """Draws a 2px gray border around changed cells, matching the table viewer's modified-cell border."""
 
     BORDER_COLOR = QColor(100, 100, 100)
     BORDER_WIDTH = 2
@@ -73,6 +75,28 @@ class _CompareCellDelegate(QStyledItemDelegate):
             rect = option.rect.adjusted(1, 1, -1, -1)
             painter.drawRect(rect)
             painter.restore()
+
+
+def _erased_source_text(name: str, src_name: str, dst_name: str) -> str:
+    """Why a single feature-table copy was refused."""
+    return (
+        f'"{name}" was not copied: {src_name} has no settings for this '
+        f"feature (its bytes are erased, 0xFF). Copying it would replace the "
+        f"feature settings in {dst_name} with invalid values."
+    )
+
+
+def _kept_tables_text(kept: list, src_name: str) -> str:
+    """Copy All note listing feature tables left as they are, or ""."""
+    if not kept:
+        return ""
+    shown = "\n".join(f"  \u2022 {n}" for n in kept[:10])
+    more = f"\n  \u2026 and {len(kept) - 10} more" if len(kept) > 10 else ""
+    return (
+        f"{len(kept)} feature table{'s' if len(kept) != 1 else ''} will be kept "
+        f"as they are: {src_name} has no settings for them (erased, 0xFF).\n"
+        f"{shown}{more}"
+    )
 
 
 class CompareWindow(QMainWindow):
@@ -143,22 +167,24 @@ class CompareWindow(QMainWindow):
         return len(self._modified_tables) > 0
 
     def _match_tables(self):
-        """Build name-based lookup matching tables across two definitions."""
-        by_name_a = {t.name: t for t in self._definition_a.tables}
-        by_name_b = {t.name: t for t in self._definition_b.tables}
-        all_names = sorted(set(by_name_a) | set(by_name_b))
-        matched = []
-        for name in all_names:
-            ta = by_name_a.get(name)
-            tb = by_name_b.get(name)
-            cat = (ta or tb).category or ""
-            matched.append((name, cat, ta, tb))
+        """Pair every table of the two definitions (see core.table_lookup).
+
+        Names are not unique, so each duplicate-named copy gets its own row,
+        labelled "Name @ 0xADDR"; a plain name-keyed dict would hide all but
+        the last copy and report differing ROMs as identical. A pair whose
+        name has a different copy count in each definition is "uncertain":
+        shown and compared, but never offered for copying.
+        """
+        matched = [
+            (m.label, m.category, m.table_a, m.table_b, m.uncertain)
+            for m in match_tables(self._definition_a.tables, self._definition_b.tables)
+        ]
         matched.sort(key=lambda m: (m[1], m[0]))
         return matched
 
     def _compute_diffs(self):
         """Compare all tables between the two ROMs and collect differences."""
-        for name, category, table_a, table_b in self._match_tables():
+        for name, category, table_a, table_b, uncertain in self._match_tables():
             a_only = table_a is not None and table_b is None
             b_only = table_b is not None and table_a is None
 
@@ -322,6 +348,9 @@ class CompareWindow(QMainWindow):
                     "shape_mismatch": shape_mismatch,
                     "a_only": False,
                     "b_only": False,
+                    # Copy count of this name differs between definitions:
+                    # the pairing is a guess, so copying is refused.
+                    "pairing_uncertain": uncertain,
                 }
             )
 
@@ -855,6 +884,11 @@ class CompareWindow(QMainWindow):
         else:
             addr = table_a.address if table_a else table_b.address
             status = f"  {name} ({addr}) \u2014 {count} changed {suffix}"
+        if entry.get("pairing_uncertain"):
+            status += (
+                "  \u2014 copy disabled: the two definitions list a different"
+                " number of tables with this name"
+            )
         self._status_label.setText(status)
 
         # Update copy button state
@@ -982,6 +1016,7 @@ class CompareWindow(QMainWindow):
             and entry["table_b"] is not None
             and entry["data_a"] is not None
             and not entry["shape_mismatch"]
+            and not entry.get("pairing_uncertain")
         )
         # Can copy B→A only if B has data and A's table exists (to write into)
         self._copy_b_to_a_btn.setEnabled(
@@ -989,6 +1024,7 @@ class CompareWindow(QMainWindow):
             and entry["table_b"] is not None
             and entry["data_b"] is not None
             and not entry["shape_mismatch"]
+            and not entry.get("pairing_uncertain")
         )
 
     def _copy_table(self, direction: str):
@@ -1021,8 +1057,21 @@ class CompareWindow(QMainWindow):
 
         if src_data is None or dst_table is None:
             return
+        if entry.get("pairing_uncertain"):
+            return  # pairing is a guess; never write into a maybe-wrong table
 
         name = entry["name"]
+
+        if self._keeps_destination(entry, direction):
+            QMessageBox.information(
+                self,
+                "Copy Refused",
+                _erased_source_text(name, src_name, dst_name),
+            )
+            self.statusBar().showMessage(
+                f'Kept "{name}" in {dst_name}: {src_name} has no settings for it'
+            )
+            return
 
         try:
             # Route through MainWindow for full undo/tracking pipeline
@@ -1059,6 +1108,8 @@ class CompareWindow(QMainWindow):
         for i, entry in enumerate(self._modified_tables):
             if entry["shape_mismatch"] or entry["a_only"] or entry["b_only"]:
                 continue
+            if entry.get("pairing_uncertain"):
+                continue
             if entry["table_a"] is None or entry["table_b"] is None:
                 continue
             if direction == "a_to_b" and entry["data_a"] is None:
@@ -1070,6 +1121,21 @@ class CompareWindow(QMainWindow):
                 continue
             eligible.append((i, entry))
         return eligible
+
+    def _keeps_destination(self, entry: dict, direction: str) -> bool:
+        """True if copying this entry would write an erased (all-0xFF) source
+        over feature settings in the destination (see core.transfer_guard)."""
+        if direction == "a_to_b":
+            src = (entry["table_a"], self._definition_a, self._reader_a)
+            dst = (entry["table_b"], self._definition_b, self._reader_b)
+        else:
+            src = (entry["table_b"], self._definition_b, self._reader_b)
+            dst = (entry["table_a"], self._definition_a, self._reader_a)
+        if src[0] is None or dst[0] is None:
+            return False
+        return keeps_destination(
+            src[0], src[1], src[2].rom_data, dst[0], dst[1], dst[2].rom_data
+        )
 
     def _update_copy_all_buttons(self):
         """Enable/disable Copy All buttons based on eligible entry count."""
@@ -1096,14 +1162,31 @@ class CompareWindow(QMainWindow):
         else:
             src_name, dst_name = self._name_b, self._name_a
 
+        # Never write an erased (all-0xFF) source over feature settings
+        kept = [
+            e["name"] for _i, e in eligible if self._keeps_destination(e, direction)
+        ]
+        eligible = [
+            (i, e) for i, e in eligible if not self._keeps_destination(e, direction)
+        ]
+        kept_note = _kept_tables_text(kept, src_name)
+        if not eligible:
+            QMessageBox.information(self, "Copy All Tables", kept_note)
+            return
+
         count = len(eligible)
-        reply = QMessageBox.question(
-            self,
-            "Copy All Tables",
+        question = (
             f"Copy {count} table{'s' if count != 1 else ''} "
             f"from {src_name} to {dst_name}?\n\n"
             f"This will overwrite the destination values for all "
-            f"eligible differing tables.",
+            f"eligible differing tables."
+        )
+        if kept_note:
+            question += f"\n\n{kept_note}"
+        reply = QMessageBox.question(
+            self,
+            "Copy All Tables",
+            question,
             QMessageBox.Yes | QMessageBox.No,
             QMessageBox.No,
         )
@@ -1193,8 +1276,9 @@ class CompareWindow(QMainWindow):
                 f"from {src_name} to {dst_name}"
             )
         else:
+            kept_msg = f"; kept {len(kept)} feature table(s)" if kept else ""
             self.statusBar().showMessage(
-                f"Copied {copied} tables from {src_name} to {dst_name}"
+                f"Copied {copied} tables from {src_name} to {dst_name}{kept_msg}"
             )
 
     @staticmethod

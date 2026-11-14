@@ -7,12 +7,13 @@ lifecycle bug (destroyed while running) fails the test.
 import hashlib
 import threading
 import time
+import weakref
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pytest
-from PySide6.QtCore import qInstallMessageHandler
+from PySide6.QtCore import Qt, qInstallMessageHandler
 from PySide6.QtWidgets import QApplication, QDialog
 
 import src.ui.app_updater as app_updater
@@ -645,3 +646,59 @@ def test_failed_check_is_not_recorded(qtbot, make_controller, monkeypatch, setti
     ctl.check_for_updates(manual=False)
     _wait_check(qtbot, ctl)
     settings.set_last_update_check.assert_not_called()
+
+
+# --- worker teardown (issue 154) --------------------------------------------
+
+
+@pytest.mark.parametrize("job", ["check", "download"])
+def test_worker_is_released_on_the_gui_thread_after_its_thread_stops(
+    qtbot, make_controller, monkeypatch, job
+):
+    """A finished worker thread is joined before its worker is let go.
+
+    ``QThread.finished`` is emitted by the worker thread just before it exits,
+    so the GUI-thread handler can run while the thread is still shutting down.
+    The thread is held inside that window here. Disposing the worker there
+    (deleteLater) had the exiting worker thread destroy it, which crashed the
+    process now and then (issue 154).
+    """
+    gate = threading.Event()
+
+    def blocked(*a, **k):
+        gate.wait(5)
+        if job == "check":
+            return _release(version="2.17.0")  # up to date: no dialog
+        return Path("unused.exe")
+
+    monkeypatch.setattr(app_updater, "fetch_latest_release", blocked)
+    monkeypatch.setattr(app_updater, "download_installer", blocked)
+    ctl = make_controller()
+    if job == "check":
+        assert ctl.check_for_updates(manual=False)
+        thread, worker = ctl._check_thread, ctl._check_worker
+    else:
+        assert ctl.start_download(_release())
+        thread, worker = ctl._download_thread, ctl._download_worker
+
+    released_on = []
+    worker_ref = weakref.ref(
+        worker, lambda _ref: released_on.append(threading.get_ident())
+    )
+    del worker
+    # Runs on the worker thread after the controller's handler was queued, so
+    # the thread is still shutting down while the GUI thread handles `finished`.
+    shutdown_done = threading.Event()
+
+    def slow_shutdown():
+        time.sleep(0.3)
+        shutdown_done.set()
+
+    thread.finished.connect(slow_shutdown, Qt.DirectConnection)
+    del thread  # deleted by the controller; never touched again here
+
+    gate.set()
+    qtbot.waitUntil(lambda: not (ctl.is_checking or ctl.is_downloading), timeout=5000)
+    assert shutdown_done.is_set(), "handler finished before the thread had stopped"
+    qtbot.waitUntil(lambda: worker_ref() is None, timeout=2000)
+    assert released_on == [threading.get_ident()], "worker not released on GUI thread"

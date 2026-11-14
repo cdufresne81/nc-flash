@@ -6,12 +6,13 @@ Extracts and scales table data based on definitions.
 """
 
 import ast
+import functools
 import re
 import struct
 import os
 import numpy as np
 from pathlib import Path
-from typing import Optional, Union
+from typing import Optional, Tuple, Union
 import logging
 from simpleeval import simple_eval
 
@@ -116,6 +117,87 @@ def _compile_numpy_expr(expr: str):
         return None
 
 
+# Integer storage types small enough to tabulate every raw value's display.
+_SNAP_STORAGE_TYPES = ("uint8", "int8", "uint16", "int16")
+
+
+def _eval_over_array(toexpr: str, raws: np.ndarray):
+    """toexpr over a whole array, or None if it is not plain arithmetic in x."""
+    try:
+        tree = ast.parse(toexpr, mode="eval")
+    except SyntaxError:
+        return None
+    allowed = (
+        ast.Expression,
+        ast.BinOp,
+        ast.UnaryOp,
+        ast.operator,
+        ast.unaryop,
+        ast.Constant,
+        ast.Name,
+        ast.Load,
+    )
+    for node in ast.walk(tree):
+        if not isinstance(node, allowed):
+            return None
+        if isinstance(node, ast.Name) and node.id != "x":
+            return None
+        # Plain Python ints have no power limit: "9**9**9" would hang. Only a
+        # small constant exponent on a non-power base gets through.
+        if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Pow):
+            exponent = node.right
+            if (
+                not isinstance(exponent, ast.Constant)
+                or not isinstance(exponent.value, (int, float))
+                or abs(exponent.value) > 10
+                or (
+                    isinstance(node.left, ast.BinOp)
+                    and isinstance(node.left.op, ast.Pow)
+                )
+            ):
+                return None
+    try:
+        with np.errstate(all="ignore"):
+            result = eval(  # noqa: S307
+                compile(tree, "<scaling>", "eval"), {"__builtins__": {}}, {"x": raws}
+            )
+    except Exception:
+        return None
+    result = np.asarray(result, dtype=float)
+    return result if result.shape == raws.shape else None
+
+
+@functools.lru_cache(maxsize=32)
+def _fast_forward_table(toexpr: str, storage_type: str):
+    """(lowest raw, display of every raw count) for an 8/16-bit type, or
+    None when toexpr can't be evaluated over an array.
+
+    Used only if it agrees with ScalingConverter.to_display (simpleeval per
+    value) on a sample. Unevaluable counts are NaN.
+    """
+    lo, hi = STORAGE_TYPE_BOUNDS[STORAGE_TYPE_FORMAT[storage_type]]
+    raws = np.arange(lo, hi + 1, dtype=float)
+    displays = _eval_over_array(toexpr, raws)
+    if displays is None:
+        return None
+    sample = np.linspace(0, len(raws) - 1, 257).astype(int)
+    expected = np.array([_exact_display(toexpr, raws[i]) for i in sample])
+    if not np.allclose(
+        displays[sample], expected, rtol=1e-12, atol=0.0, equal_nan=True
+    ):
+        return None
+    displays = np.where(np.isfinite(displays), displays, np.nan)
+    displays.setflags(write=False)
+    return lo, displays
+
+
+def _exact_display(toexpr: str, raw) -> float:
+    try:
+        return float(simple_eval(toexpr, names={"x": float(raw)}))
+    except Exception:
+        return float("nan")
+
+
 class ScalingConverter:
     """
     Converts values between raw binary and display using scaling expressions
@@ -185,9 +267,154 @@ class ScalingConverter:
         Raises:
             ScalingConversionError: If conversion fails
         """
-        return self._eval_expr(
+        raw = self._eval_expr(
             self._frexpr, self._frexpr_compiled, display_value, "from display"
         )
+        return self._snap_to_forward(display_value, raw)
+
+    def _snap_to_forward(self, display_value, raw):
+        """Correct raw values that the inverse expression gets badly wrong.
+
+        Some definitions only approximate the inverse of toexpr (the fan ECT
+        thresholds use a fitted cubic both ways), so frexpr can land on a raw
+        count that reads back as a very different value: 60 typed, 29 stored.
+        On 8/16-bit integer tables:
+
+        - a value that some nearby raw count displays exactly (a value read
+          from the ROM, put back by undo or copy) gets that raw count;
+        - otherwise the raw count whose display is closest to the typed
+          value: among the nearby counts, or over the whole range when the
+          rounded count reads back more than one raw step away.
+
+        For a linear scaling with an exact inverse, rounding already gives
+        the closest count, so its results are never changed. Out-of-range results are
+        left for the caller to reject.
+        """
+        storage_type = (self.scaling.storagetype or "").lower()
+        if storage_type not in _SNAP_STORAGE_TYPES or not self._toexpr:
+            return raw
+        lo, hi = STORAGE_TYPE_BOUNDS[STORAGE_TYPE_FORMAT[storage_type]]
+
+        is_array = isinstance(raw, np.ndarray)
+        raws = np.array(raw, dtype=float, ndmin=1)
+        wanted = np.broadcast_to(np.asarray(display_value, dtype=float), raws.shape)
+        snapped = False
+        for i in range(raws.size):
+            target = float(wanted.flat[i])
+            current = float(raws.flat[i])
+            if not (np.isfinite(target) and np.isfinite(current)):
+                continue
+            best = self._snap_one(target, int(round(current)), lo, hi)
+            if best is not None:
+                logger.debug(
+                    f"Scaling '{self.scaling.name}': {target} -> raw {best} "
+                    f"(frexpr gave {current})"
+                )
+                raws.flat[i] = best
+                snapped = True
+        if not snapped:
+            return raw
+        return raws if is_array else float(raws[0])
+
+    def _display_of(self, raw: int) -> float:
+        fast = _fast_forward_table(self._toexpr, self.scaling.storagetype.lower())
+        if fast is not None:
+            return float(fast[1][raw - fast[0]])
+        try:
+            return float(self.to_display(float(raw)))
+        except (ScalingConversionError, TypeError, ValueError):
+            return float("nan")
+
+    def _snap_one(self, target: float, rounded: int, lo: int, hi: int):
+        """The raw count to use instead of ``rounded``, or None to keep it."""
+        if not lo <= rounded <= hi:
+            return self._search_representable(target, rounded)
+        shown = {
+            j: self._display_of(j)
+            for j in range(rounded - 2, rounded + 3)
+            if lo <= j <= hi
+        }
+        error = abs(shown[rounded] - target)
+        if not np.isfinite(error):
+            return None
+        tolerance = 1e-9 * max(1.0, abs(target))
+        if error <= tolerance:
+            return None
+        exact = [j for j, d in shown.items() if abs(d - target) <= tolerance]
+        if exact:
+            return min(exact, key=lambda j: abs(j - rounded))
+        steps = [
+            abs(shown[j] - shown[rounded])
+            for j in (rounded - 1, rounded + 1)
+            if j in shown and np.isfinite(shown[j])
+        ]
+        if error <= max(steps, default=0.0):
+            # Within a step: a neighbour may still read back closer than the
+            # rounded count (frexpr slightly off). Linear scalings never get
+            # here with a closer neighbour, so their results don't change.
+            local = min(
+                (j for j, d in shown.items() if np.isfinite(d)),
+                key=lambda j: (abs(shown[j] - target), abs(j - rounded)),
+            )
+            if abs(shown[local] - target) < error - tolerance:
+                return local
+            return None
+        best = self._closest_raw(target, rounded)
+        if best is None or not abs(self._display_of(best) - target) < error:
+            return None
+        # Only a count that genuinely displays the target: never a clamp to
+        # the far end of the range, or a far branch of a fitted curve that
+        # merely comes closest.
+        return best if self._represents(best, target) else None
+
+    def _closest_raw(self, target: float, rounded: int):
+        """Raw count whose display is closest to target (ties: nearest to
+        ``rounded``); None if the range can't be tabulated quickly (a custom
+        toexpr that isn't plain arithmetic: 65536 one-by-one evaluations
+        would freeze the window) or nothing evaluates."""
+        table = _fast_forward_table(self._toexpr, self.scaling.storagetype.lower())
+        if table is None:
+            return None
+        table_lo, displays = table
+        with np.errstate(invalid="ignore"):
+            errors = np.abs(displays - target)
+        if np.all(np.isnan(errors)):
+            return None
+        ties = np.flatnonzero(errors == np.nanmin(errors)) + table_lo
+        return int(ties[np.argmin(np.abs(ties - rounded))])
+
+    def _search_representable(self, target: float, rounded: int):
+        """frexpr fell outside the storage range. Use the closest raw count
+        only if it really displays the target; otherwise the value can't be
+        stored and is left for the caller to reject, never clamped."""
+        best = self._closest_raw(target, rounded)
+        if best is None or not self._represents(best, target):
+            return None
+        return best
+
+    def _represents(self, raw: int, target: float) -> bool:
+        """True if ``raw`` is the count that displays ``target``: strictly
+        within half a raw step, measured on the side the target lies.
+
+        With an exact inverse, a value beyond the storage range is always at
+        least half a step past the edge count, so it is never accepted.
+        """
+        lo, hi = STORAGE_TYPE_BOUNDS[
+            STORAGE_TYPE_FORMAT[self.scaling.storagetype.lower()]
+        ]
+        shown = self._display_of(raw)
+        error = abs(shown - target)
+        neighbours = [self._display_of(j) for j in (raw - 1, raw + 1) if lo <= j <= hi]
+        neighbours = [d for d in neighbours if np.isfinite(d) and d != shown]
+        if not np.isfinite(error) or not neighbours:
+            return False
+        between = [d for d in neighbours if min(d, shown) <= target <= max(d, shown)]
+        step = (
+            abs(between[0] - shown)
+            if between
+            else min(abs(d - shown) for d in neighbours)
+        )
+        return error < step / 2
 
     def _eval_expr(
         self,
@@ -796,6 +1023,37 @@ class RomReader:
             ScalingNotFoundError: If scaling definition is not found
             RomWriteError: If writing fails
         """
+        address, packed_data = self._pack_cell(table, row, col, raw_value)
+        # Modify ROM data in memory (in-place)
+        self.rom_data[address : address + len(packed_data)] = packed_data
+        logger.debug(f"Wrote cell [{row},{col}] = {raw_value} at {hex(address)}")
+
+    def cell_write_changes_bytes(
+        self, table: Table, row: int, col: int, raw_value: float
+    ) -> bool:
+        """True if writing ``raw_value`` to this cell would change ROM bytes.
+
+        Packs the value exactly as write_cell_value would (same rounding,
+        same validation) and compares it with the bytes in memory. Nothing is
+        written.
+
+        Raises:
+            ScalingNotFoundError: If scaling definition is not found
+            RomWriteError: If the value could not be written
+        """
+        address, packed_data = self._pack_cell(table, row, col, raw_value)
+        return bytes(self.rom_data[address : address + len(packed_data)]) != (
+            packed_data
+        )
+
+    def _pack_cell(
+        self, table: Table, row: int, col: int, raw_value: float
+    ) -> Tuple[int, bytes]:
+        """Validate a cell write and return (address, packed bytes).
+
+        The one place that maps a cell to its ROM address and packs its raw
+        value; write_cell_value and cell_write_changes_bytes share it.
+        """
         scaling = self.definition.get_scaling(table.scaling)
         if not scaling:
             raise ScalingNotFoundError(
@@ -867,16 +1125,12 @@ class RomReader:
                 raise RomWriteError(f"Address out of bounds: {hex(address)}")
             if address + len(packed_data) > len(self.rom_data):
                 raise RomWriteError(f"Write exceeds ROM bounds at {hex(address)}")
-
-            # Modify ROM data in memory (in-place)
-            self.rom_data[address : address + len(packed_data)] = packed_data
-            logger.debug(f"Wrote cell [{row},{col}] = {raw_value} at {hex(address)}")
-
         except RomWriteError:
             raise
         except Exception as e:
             logger.error(f"Error writing cell value: {e}")
             raise RomWriteError(f"Failed to write cell value: {e}")
+        return address, packed_data
 
     def write_axis_value(
         self, table: Table, axis_type: str, index: int, raw_value: float

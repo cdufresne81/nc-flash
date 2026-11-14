@@ -42,6 +42,25 @@ class ScalingNotFoundError(DefinitionError):
     pass
 
 
+class AmbiguousTableNameError(DefinitionError):
+    """Raised when a table name matches several tables at different addresses.
+
+    Definitions reuse some names; a by-name lookup must not silently pick
+    one copy. The message lists every copy in its "Name @ 0xADDR" form.
+    """
+
+    def __init__(self, name: str, tables):
+        from .table_lookup import qualified_name
+
+        self.name = name
+        self.tables = list(tables)
+        forms = ", ".join(f"'{qualified_name(t)}'" for t in self.tables)
+        super().__init__(
+            f"Table name '{name}' is ambiguous: {len(self.tables)} tables share "
+            f"it ({forms}). Pass an address, or use the 'Name @ 0xADDR' form."
+        )
+
+
 # ROM File Errors
 class RomFileError(RomEditorError):
     """Base exception for ROM file errors"""

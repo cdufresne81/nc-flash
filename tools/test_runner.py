@@ -188,12 +188,15 @@ class TestRunner:
             self._log("ERROR: No ROM loaded")
             return False
 
-        # Find the table
-        table = None
-        for t in self.rom_definition.tables:
-            if t.name == table_name:
-                table = t
-                break
+        # Find the table. Some names are shared by several tables; refuse
+        # those unless the "Name @ 0xADDR" form picks one copy.
+        from src.core.exceptions import AmbiguousTableNameError
+
+        try:
+            table = self.rom_definition.get_table_by_name(table_name)
+        except AmbiguousTableNameError as e:
+            self._log(f"ERROR: {e}")
+            return False
 
         if table is None:
             self._log(f"ERROR: Table not found: {table_name}")
@@ -216,7 +219,7 @@ class TestRunner:
 
             # Find the opened table window
             for window in self.main_window.open_table_windows:
-                if window.table.name == table_name:
+                if window.table.address == table.address:
                     self.current_table_window = window
                     break
 
@@ -767,6 +770,39 @@ class TestRunner:
             self._log(f"ERROR: {e}")
             return False
 
+    def open_datalogger(self) -> bool:
+        """Open the Datalogger window (Tools > Datalogger)."""
+        if not self.main_window:
+            self._log("ERROR: No main window")
+            return False
+        self.main_window.open_datalogger_window()
+        self._process_events()
+        self._log("Opened the Datalogger window")
+        return self.main_window.datalogger_window is not None
+
+    def live_values(self, args) -> bool:
+        """Feed the live table cursor as if the Datalogger logged these
+        values: ``live_values RPM=3000 LOAD=0.5`` (no arguments clears)."""
+        if not self.main_window:
+            self._log("ERROR: No main window")
+            return False
+        values = {}
+        for arg in args:
+            name, _, text = arg.partition("=")
+            try:
+                values[name] = float(text)
+            except ValueError:
+                self._log(f"ERROR: live_values expects NAME=number, got {arg!r}")
+                return False
+        live = self.main_window.datalogger.live_values
+        if values:
+            live.update(values, expire=False)
+        else:
+            live.clear()
+        self._process_events()
+        self._log(f"Live values: {values or 'cleared'}")
+        return True
+
     def close_table(self) -> bool:
         """
         Close current table window
@@ -909,7 +945,8 @@ class TestRunner:
 
         Args:
             name: Optional name for the screenshot (defaults to timestamp)
-            target: What to capture: "table", "graph", "main", "table_browser", or "all"
+            target: What to capture: "table", "graph", "main", "table_browser",
+                "datalogger", or "all"
 
         Returns:
             Path to saved screenshot, or empty string on failure
@@ -934,6 +971,12 @@ class TestRunner:
                 widget = self.current_table_window.graph_widget
             elif target == "main" and self.main_window:
                 widget = self.main_window
+            elif (
+                target == "datalogger"
+                and self.main_window
+                and self.main_window.datalogger_window is not None
+            ):
+                widget = self.main_window.datalogger_window
             elif target == "table_browser" and self.main_window:
                 # The table browser lives on the current document, not the main
                 # window (mirror the set_level_filter fix) (B13).
@@ -1201,6 +1244,8 @@ class TestRunner:
             "assert_width": (lambda s, a: s._cmd_assert_width(a), 1),
             "assert_width_restored": (lambda s, a: s._cmd_assert_width_restored(a), 0),
             "resize_window": (lambda s, a: s._cmd_resize_window(a), 2),
+            "open_datalogger": (lambda s, a: s.open_datalogger(), 0),
+            "live_values": (lambda s, a: s.live_values(a), 0),
         }
         return cls._COMMANDS
 
@@ -1357,6 +1402,8 @@ class TestRunner:
         print("  open_graph / close_graph - Toggle graph viewer")
         print("  rotate_graph <elev> <azim> - Rotate 3D graph view")
         print("  screenshot [name] [target] - Take screenshot")
+        print("  open_datalogger          - Open the Datalogger window")
+        print("  live_values [NAME=v ...] - Feed the live table cursor (none clears)")
         print("  list_screenshots         - List all screenshots")
         print("  cleanup [pattern] [hours] - Delete screenshots")
         print("  undo / redo              - Undo/redo last change")

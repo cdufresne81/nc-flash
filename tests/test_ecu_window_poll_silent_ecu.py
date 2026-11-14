@@ -20,6 +20,7 @@ class _FakeWindow(SimpleNamespace):
     _on_ecu_answered = ECUProgrammingWindow._on_ecu_answered
     _show_connected_label = ECUProgrammingWindow._show_connected_label
     _ecu_answers = ECUProgrammingWindow._ecu_answers
+    _in_recovery = ECUProgrammingWindow._in_recovery
 
 
 def _fake(uds):
@@ -42,6 +43,7 @@ def _fake(uds):
         _conn_label=MagicMock(),
         _update_action_states=MagicMock(),
         _conditions_pending=False,
+        _recovery=None,
         _main_window=SimpleNamespace(wican_log_sync=SimpleNamespace(is_running=False)),
     )
 
@@ -161,7 +163,7 @@ def _action_fake(answers):
         _ecu_answers=lambda: calls.append("probe") or answers,
         _check_voltage_warning=lambda *a, **k: calls.append("voltage") or True,
         _check_rpm_gate=lambda: calls.append("rpm") or False,
-        _confirm_wican_flash=lambda: True,
+        _confirm_adapter_flash=lambda: True,
         _start_flash=lambda *a, **k: calls.append("start"),
         _update_action_states=MagicMock(),
         _main_window=SimpleNamespace(get_current_document=lambda: None),
