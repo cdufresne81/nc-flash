@@ -98,6 +98,14 @@ def main() -> int:
             print(
                 f"  {b.block:2d}   0x{b.start:06X}  0x{b.size:05X}   {'same' if b.same else 'DIFFERENT'}"
             )
+        if not result.boot_block_same:
+            print(
+                "NOTE: the ROM file's boot block (0x0000-0x1FFF) differs from the ECU's. It is never written."
+            )
+        if result.interrupted_before:
+            print(
+                "NOTE: the ECU has no entry pointer: an earlier flash was cut short. A flash rewrites every block."
+            )
         if a.flash:
             print(
                 f"\nRewritten blocks: {result.rewritten or 'none'}; {result.bytes_sent} bytes sent; verified by CRC"

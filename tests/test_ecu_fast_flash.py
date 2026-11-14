@@ -50,6 +50,8 @@ class SimEcu(EcuTransport):
         self._out = []
         self.ptr = self.left = 0
         self.open_range = False
+        self.last_erased = False
+        self.corrupt_commit = False
 
     # -- EcuTransport --
     def open(self):
@@ -74,7 +76,10 @@ class SimEcu(EcuTransport):
         return [bytes([0x7F, sid, nrc])]
 
     def _app_invalid(self):
-        return self.flash[ENTRY_POINTER : ENTRY_POINTER + 4] == b"\xff\xff\xff\xff"
+        return (
+            self.last_erased
+            and self.flash[ENTRY_POINTER : ENTRY_POINTER + 4] == b"\xff\xff\xff\xff"
+        )
 
     def _handle(self, p):
         sid = p[0]
@@ -119,12 +124,16 @@ class SimEcu(EcuTransport):
                 self.flash[FLASH_COUNTER_OFFSET : FLASH_COUNTER_OFFSET + 8] = (
                     b"\x00\x01\xff\xfe_WDS"
                 )
+            if blk == 15:
+                self.last_erased = True
             self.ops.append(("erase", blk))
             return [bytes([0x7F, 0x31, 0x78]), bytes([0x71, 0x02, blk])]
         if sid == 0x34 and len(p) == 9:
             a, n = int.from_bytes(p[1:5], "big"), int.from_bytes(p[5:9], "big")
             self.open_range = False
             if a < 0x2000 or n == 0 or a + n > ROM_SIZE or a % 128 or n % 128:
+                return self._neg(0x34, 0x31)
+            if a + n > ff.COMMIT_PAGE and not (a == ff.COMMIT_PAGE and n == 128):
                 return self._neg(0x34, 0x31)
             if a < 0xE0000 and not self._app_invalid():
                 return self._neg(0x34, 0x22)
@@ -144,6 +153,10 @@ class SimEcu(EcuTransport):
                 if self.flash[a : a + 128] != b"\xff" * 128:
                     return self._neg(0x36, 0x72)
                 self.flash[a : a + 128] = page
+                if a == ff.COMMIT_PAGE:
+                    self.last_erased = False
+                    if self.corrupt_commit:
+                        self.flash[a + 127] ^= 0x01
             if self.corrupt_block is not None:
                 start, size = ff.block_range(self.corrupt_block)
                 if start <= self.ptr < start + size:
@@ -197,6 +210,7 @@ class TestKernelValidation:
 class TestCompareRanges:
     def test_last_block_leaves_out_the_counter_page(self):
         assert ff.compare_ranges(15) == [(0xE0000, 0x1FB00), (0xFFB80, 0x480)]
+        assert ff.compare_ranges(15, with_commit=False)[1] == (0xFFB80, 0x400)
 
     def test_blocks_cover_the_rom(self):
         assert sum(ff.block_range(b)[1] for b in range(16)) == ROM_SIZE
@@ -241,7 +255,7 @@ class TestFastFlash:
         erases = [op[1] for op in ecu.ops if op[0] == "erase"]
         assert erases == [15, 8, 13]
         assert ecu.ops[0] == ("erase", 15)
-        assert ecu.ops[-1][0] == "program" and ecu.ops[-1][1] >= 0xE0000
+        assert ecu.ops[-1] == ("program", ff.COMMIT_PAGE, 128)
         assert bytes(ecu.flash[:0x2000]) == ecu_img[:0x2000]
 
     def test_identical_image_touches_nothing(self):
@@ -265,7 +279,9 @@ class TestFastFlash:
         broken[0x40000:0x60000] = b"\xff" * 0x20000
         ecu = SimEcu(bytes(broken))
         r = ff.fast_flash(UDSConnection(ecu), make_kernel(), want)
-        assert r.rewritten == [10, 15] and same_outside_counter(bytes(ecu.flash), want)
+        assert r.interrupted_before
+        assert r.rewritten == list(range(2, 16))
+        assert same_outside_counter(bytes(ecu.flash), want)
 
     def test_flash_not_ready_stops_before_any_erase(self):
         ecu_img = make_image()
@@ -283,6 +299,42 @@ class TestFastFlash:
             ff.fast_flash(
                 UDSConnection(ecu), make_kernel(), modified(ecu_img, [0x20010])
             )
+
+    def test_bad_block_leaves_the_ecu_in_its_boot_loader(self):
+        ecu_img = make_image()
+        ecu = SimEcu(ecu_img, corrupt_block=9)
+        with pytest.raises(FlashError):
+            ff.fast_flash(
+                UDSConnection(ecu), make_kernel(), modified(ecu_img, [0x20010])
+            )
+        assert bytes(ecu.flash[ENTRY_POINTER : ENTRY_POINTER + 4]) == b"\xff" * 4
+
+    def test_failed_commit_erases_the_last_block_again(self):
+        ecu_img = make_image()
+        ecu = SimEcu(ecu_img)
+        ecu.corrupt_commit = True
+        with pytest.raises(FlashError, match="final page"):
+            ff.fast_flash(
+                UDSConnection(ecu), make_kernel(), modified(ecu_img, [0xE0010])
+            )
+        assert ecu.ops[-1] == ("erase", 15)
+        assert bytes(ecu.flash[ENTRY_POINTER : ENTRY_POINTER + 4]) == b"\xff" * 4
+
+    def test_image_without_entry_pointer_is_refused_before_any_contact(self):
+        img = bytearray(make_image())
+        img[ENTRY_POINTER : ENTRY_POINTER + 4] = b"\xff" * 4
+        ecu = SimEcu(make_image())
+        with pytest.raises(FlashError):
+            ff.fast_flash(UDSConnection(ecu), make_kernel(), bytes(img))
+        assert ecu.requests == []
+
+    def test_foreign_boot_block_is_reported_not_written(self):
+        ecu_img = make_image()
+        want = modified(ecu_img, [0x0FFB, 0xE0010])
+        ecu = SimEcu(ecu_img)
+        r = ff.fast_flash(UDSConnection(ecu), make_kernel(), want)
+        assert not r.boot_block_same
+        assert bytes(ecu.flash[:0x2000]) == ecu_img[:0x2000]
 
     def test_abort_before_the_first_erase_changes_nothing(self):
         ecu_img = make_image()
