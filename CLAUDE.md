@@ -45,6 +45,7 @@ Reference these before modifying related functionality:
 - `docs/internal/WICAN_DEADMAN_AUTORESUME.md` - Validated design for brick-safe datalog auto-resume when NC-Flash vanishes (lid close / crash / Wi-Fi drop): the HOST_BUS_CLAIM_BIT auth-window fence + firmware dead-man reaper, plus the missing #36 RX-forward fix. Reference before touching datalog pause/resume, the `/datalog` endpoint, the FLASH_ACTIVE_BIT/DATALOG_PARK_BIT interlock, or the host flash auth window
 - `docs/internal/WICAN_FLASH_SEQUENCE.md` - Step-by-step diagram of the SD-staged WiCAN flash (PC → SD upload → firmware CAN flash) plus a table of which failures can brick the ECU; reference before touching the WiCAN write path or explaining it
 - `docs/internal/WICAN_SLCAN_STRAND_INVESTIGATION.md` - Historical (path since removed): why the adapter got stranded in Bench SLCAN mode (#92), with bench evidence; reference only for the reasoning behind the single-mode trim
+- `docs/internal/FAST_FLASH.md` - Experimental changed-blocks-only flash (new RAM kernel, CRC compare, block 15 erased first): sequence, recovery rules and what is still untested; reference before touching `src/ecu/fast_flash.py` or `tools/fast_flash_bench.py`
 
 **Rule:** When creating new documentation in `docs/`, add it to this list with a brief description of when to reference it.
 

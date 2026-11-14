@@ -4,6 +4,9 @@ All notable changes to NC Flash are documented here.
 
 ## [Unreleased]
 
+### Added
+- **Behind the scenes:** first building block of a faster flash that rewrites only the parts of the ROM that changed and checks the result against the ECU. Experimental, bench-only and not in the app: nothing changes for you, and the normal flash is untouched.
+
 ### Changed
 - **Behind the scenes:** a release can now be tagged from GitHub's Actions tab ("Tag Release": type the version, it tags `dev` for a beta or `master` for a stable release and starts the build). It refuses a version that already exists, a commit the tests haven't passed on, and a stable release with no changelog section. No change to the app itself.
 
