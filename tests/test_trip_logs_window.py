@@ -39,14 +39,35 @@ class _FakeSync(QObject):
         self.cancel = MagicMock()
 
 
+class _FakeLive(QObject):
+    running_changed = Signal(bool)
+    status_changed = Signal(str)
+    capture_changed = Signal(str)
+
+    def __init__(self):
+        super().__init__()
+        self.is_running = False
+        self.current_capture = ""
+        self.start = MagicMock(return_value=True)
+        self.stop = MagicMock()
+        self.trail_in_mlv = MagicMock(return_value=True)
+
+
 def _window(qtbot, tmp_path, adapter="wican"):
     sync = _FakeSync()
+    live = _FakeLive()
     settings = MagicMock()
     settings.is_wican_adapter.return_value = adapter == "wican"
     settings.get_logs_directory.return_value = str(tmp_path / "logs")
     settings.get_wican_delete_logs_after_download.return_value = False
     settings.get_wican_keep_newest_logs.return_value = 5
-    main_window = SimpleNamespace(settings=settings, wican_log_sync=sync)
+    settings.get_live_datalog_auto_trail.return_value = True
+    main_window = SimpleNamespace(
+        settings=settings,
+        wican_log_sync=sync,
+        datalogger=live,
+        open_datalogger_window=MagicMock(),
+    )
     window = TripLogsWindow(main_window=main_window)
     qtbot.addWidget(window)
     return window, sync
@@ -199,3 +220,35 @@ def test_format_mtime_clockless_sanity():
     assert _format_mtime(0) == "—"
     assert _format_mtime(1000) == "—"  # 1970: clockless boot, not a real date
     assert _format_mtime(1750000000).startswith("2025-")
+
+
+# --- Datalogger (live logging moved to its own window) ----------------------
+
+
+def test_open_datalogger_button(qtbot, tmp_path):
+    window, _ = _window(qtbot, tmp_path)
+    window._btn_datalogger.click()
+    window._main_window.open_datalogger_window.assert_called_once()
+
+
+def test_download_locked_while_the_datalogger_runs(qtbot, tmp_path):
+    from src.ui.trip_logs_window import LIVE_RUNNING_TIP
+
+    window, sync = _window(qtbot, tmp_path)
+    live = window._main_window.datalogger
+    live.is_running = True
+    live.running_changed.emit(True)
+    assert not window._btn_download.isEnabled()
+    assert window._btn_download.toolTip() == LIVE_RUNNING_TIP
+    live.is_running = False
+    live.running_changed.emit(False)
+    assert window._btn_download.isEnabled()
+
+
+def test_start_download_refused_while_live_datalog_runs(qtbot, tmp_path):
+    # start_download is the single download path (the startup prompt uses it
+    # too), so the live lock must hold there, not only on the button.
+    window, sync = _window(qtbot, tmp_path)
+    window._main_window.datalogger.is_running = True
+    assert window.start_download() is False
+    sync.start.assert_not_called()

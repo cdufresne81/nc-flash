@@ -18,16 +18,115 @@ What is on `dev` awaiting `master`: run `python tools/dev_status.py` (asks GitHu
    including them).
 2. #124 tool to port a new table across all NC calibrations.
 3. #122 give duplicate-named tables real names.
-4. #123 check the TCM odd-address cells / overlaps against the TCM code.
-5. #149 Windows CI reports exit 1 after every test has passed.
+4. #149 Windows CI reports exit 1 after every test has passed.
 
 ## Open items (not tracked in an issue)
 
+- **Bench-test the NC1/NC2 generation check on the Tactrix clone (J2534)** (owner: user),
+  before the next release. Proven over WiCAN only. Check: a normal flash logs "Generation
+  check OK"; with the ECU stuck in its bootloader, the "Which car is this ECU from?" picker
+  held open ~30 s still lets the flash go on (a side thread sends Tester Present through the
+  cable DLL meanwhile; some clone DLLs may not like a second thread). Also unproven: the NC1
+  boot signature has only been seen in ROM files, never read from a real NC1 ECU.
+- **Live table cursor + toolbar button: on `dev` via `merge/live-cursor-into-dev`, shipping in
+  v2.24.0-beta.16.** Branches `feature/live-table-cursor` (e01505e) and `feature/faster-table-paint`
+  (29f1193, on top of it) stay for their later PR into `master`. Open tables show where the Datalogger's live values fall: a compact
+  cross + dot on the exact point, nearest cell outlined, values tagged on the axis headers
+  (`src/ui/table_viewer_helpers/live_overlay.py`), plus a graph marker. Axis -> channel map in
+  `examples/axis_channels.json` (exact axis names; TCM definitions use only their own `logparam`).
+  Bench (Tactrix, engine off) + 3 Opus reviews (1st DO-NOT-SHIP, fixed; 2nd and 3rd SHIP).
+  - Perf (5 tables with GPU graphs fed at 10 Hz): UI lag p95 28 ms. Needed: compact cross (each
+    repainted cell costs ~0.5 ms in the styled delegate), up to 3 tables all get 10 Hz (router
+    FULL_RATE_TABLES); with more, the table clicked LAST gets 10 Hz (not the OS-active window: focus
+    on MLV once made every table 2.5 Hz, the user's "worse after a second window"), others 0.2 s; GPU 3D skips the label fit when nothing moved. Don't tune the
+    matplotlib fallback (user: unused). Redraws are skipped for moves < 3 px (table) / < 0.05 cell
+    (graph): steady-signal CPU 49% -> 30% with 3 graphs. Cell marks moved from a Python delegate
+    paint() to one pass after Qt draws the cells (`cell_delegate.py`, `feature/poller-process`):
+    169 -> 125 us per cell, 3-window lag p95 23 -> ~20 ms; pixel-identical except a 1 px notch the
+    old order cut into mark corners. What's left: Qt's own cell drawing (~125 us, windows11 style;
+    Fusion ~86 but looks different) and the GPU graph draw (~9.5 ms each, about half the lag).
+    Polling in a separate process was measured and dropped (Oct 28, real Tactrix): it frees ~10% of
+    a core (2.1 ms CPU per row) but the UI lag didn't change.
+  - Oct 28 in-car test: USB write failed after 3 min (LIBUSB_ERROR_IO, no USB unplug event) and
+    Windows logged "low on virtual memory" 16 s later (a screen recorder was running); NC Flash
+    itself is flat at ~700 MB with 3 graphs. Host engine now auto-reconnects mid-run (every 2 s
+    until Stop, same CSV); untested on hardware: pull the USB cable mid-log and plug it back.
+  - Axis-name suffixes (`RPM_6DD8`) are NOT RAM addresses: lf9veb Load Scaling reads RPM from
+    float 0xFFFF6D84 and loads 0xFFFF6E80/6F24/6F40 (3 lookups). LOAD mappings stay `approx`
+    until the in-car comparison card answers whether PID 0x43 matches.
+  - Value chip (Oct 30, `feature/poller-process`), opt-in setting `ecu/live_value_estimate` (off by
+    default: it is NC Flash's estimate from the open ROM, not an ECU reading): the table's value at the live point, blended
+    linearly between the 4 surrounding cells (assumed to match the ECU's own lookup, not checked
+    in the disassembly); it follows the live value even when the cross holds still (<3 px). The
+    nearest cell's number is redrawn over the cross via `DecoratedTable.cell_text_layout`.
+  - Pre-existing test failures on master too (Oct 30): PySide6 6.10.1 returns a tuple stored in
+    Qt.UserRole as a list, so tuple comparisons fail (test_clipboard_paste x3); the hex paste test
+    `test_copied_text_pastes_into_another_rom` (and `test_decimal_editor_still_rejects_letters`)
+    fail for a reason not found yet. Earlier sessions wrote these off as a clipboard glitch.
+  - LOW leftovers: no message when a NaN/zig-zag axis refuses the cursor; duplicate-breakpoint
+    cell (first vs last) unconfirmed vs the ECU; TCM detection keys on "TCM" in romid.model; axis
+    tags cover half of the two breakpoint labels they sit between.
+- **Datalogger: on `dev` (merged via `merge/datalogger-into-dev`, replaces #211), shipping in
+  v2.24.0-beta.15.** Feature branch `feature/datalogger` stays for its later PR into `master`. Worktree
+  `C:\Users\dufre\Projets\nc-rom-editor-datalogger` (has the built-in OpenPort driver in
+  `dist/openport/`; run `..\nc-rom-editor\venv-windows\Scripts\python.exe main.py` there).
+  Plan: `~/.claude/plans/i-m-ok-with-the-snug-clover.md`. Merges `feature/live-datalog-v2`,
+  `feature/obdx-pro-adapter`, `feature/openport-winusb-driver`, `fix/openport-sd-card`, so it
+  reaches master only after those four. Refs #105 (standalone recording still open).
+  - Proven: Tactrix bench (engine off) 38.5 rows/s packed / 29.9 unpacked, 0 empty cells;
+    the user's own bench test passed (Oct 28). Two Opus reviews: 1st DO-NOT-SHIP (fixed),
+    2nd SHIP.
+  - Next: the board cards (WiCAN push
+    bench test once the WiCAN is online: snapshot `/load_auto_pid` + `/csv_status` first,
+    restore after; in-car Tactrix drive with the engine running; OBDX untested).
+  - Per-run WiCAN channels (Start Logging sends the list shown as a temporary list; design
+    `docs/internal/WICAN_SESSION_CHANNELS.md`): implemented in NC Flash and in the firmware,
+    NOT bench-tested (needs the matching firmware build). Checks: start with and without an
+    open trip; Stop restores the WiCAN's own list and recording mode, `auto_pid.json`
+    untouched; kill NC Flash mid-run (list expires in ~30 s); Wi-Fi gap > 30 s and a WiCAN
+    reboot mid-run (list sent again); busy while an ECU session owns the bus; a channel the
+    WiCAN can't poll; released firmware shows the fallback line.
+  - Known LOW gaps (2nd review): a late NRC for an earlier same-service request can drop the
+    current channel; a late positive reply can turn packing off; the device file isn't
+    compared between preview and push; a Start landing inside the ECU window's connect event
+    pump can pass the blocker (one opener then fails).
+
+- **WiCAN live datalog (fw #3, PR from `feature/live-datalog-v2`) follow-ups** (design:
+  `docs/internal/WICAN_LIVE_STREAM.md`):
+  - User's in-car test pending; MegaLogViewerHD trail launch not exercised in a bench run.
+  - Overnight soak with a client connected not done (the July build's crash-loop was never pinned).
+  - Internal-RAM headroom: largest block 23,552 B while recording + streaming vs the 22,528 B CSV
+    queue; only matters for a manual trip start with csv_log off at boot. No release baseline.
+  - `#bye replaced` is sent MSG_DONTWAIT, so a full send buffer can truncate it → the two-client
+    swap can recur. Any stray 35002 connection stops NC Flash's stream (by design).
+  - mDNS re-resolve can't be cancelled (`resolve_host_with_fallback` doesn't pass `cancel_event`;
+    the fix touches `src/ecu`); app close waits up to 10 s for it.
+
+- **OBDX Pro adapter** (PR from `feature/obdx-pro-adapter` into `dev`): follow-ups tracked in
+  #167 (hardware tests before Stable), #168 (wireless links), #169 (late read reply). The same
+  PR adds, for every adapter: "still programming" refusals (NRC 0x22 on 0xB1/0x34) offer an
+  ECU reset. Proven over OBDX only; check them
+  on the Tactrix too (item below). The reset dialog itself was only unit-tested.
+
+- **Bench-test #130/#131 on the Tactrix clone (J2534)** (owner: user). Also check the OBDX PR's
+  generic changes there: Read RAM then Read ROM straight away works, and a flash refused with
+  "still in programming mode" offers a reset that works. Only tested over
+- **Bricked-ECU recovery (#229) — remaining checks** (owner: user, spare LFDJEA on the WiCAN
+  192.168.1.169). Done on the bench 2026-11-10: brick → recovery notice → full-flash recovery
+  (twice), long idle while bricked, no probe on a healthy ECU (ignition on). Left: (b) 5+
+  reconnects while bricked, then recover; the "remembered generation" path (no NC1/NC2 question
+  after a flash read it); in the car, engine running: connect + Read DTCs sends no 0x10/0x27.
+  These commits are only on the merge branch: the later PR into master must carry them too.
 - **Bench-test #130/#131 on the Tactrix clone (J2534)** (owner: user). Only tested over
   WiCAN so far. Check: ignition OFF → Connect fails in ~3 s, not 60 s; right after a ROM
   read or RAM scan, Flash waits ~6.5 s then reads RPM and voltage (no false refusal);
   pulling the cable mid-session → "ECU not answering" and buttons fail fast. Delete this
   item once done (or open an issue if anything misbehaves).
+- **TCM definitions (after #123):** the older copy in nc-flash-re (`xml/lfg1tf000.xml`, 610 tables) still has
+  the same mistakes (8-bit records declared 16-bit, false tables); the fix was made here because this copy is
+  the newer one (674 tables before, 625 after). The 49 removed entries are real calibration values: bring
+  them back as scalars once their meaning is derived (`docs/internal/tcm_table_evidence.csv`). Table names
+  ending in `_u16` now hold 8-bit data; renaming them is undecided.
 - **ROM definitions (after PR #120, speeps import):**
   - Decided: nc-flash-re is the working copy where definitions are edited; NC Flash holds the
     released copy (copied in, never hand-edited). Check any change with
@@ -65,15 +164,8 @@ Carried over from the old log on Sep 24, 2026. Verify an item is still open befo
   data loss). A real fix needs per-document clean-state tracking across per-table undo stacks.
 - **Unconfirmed, from Jul 6**: retest-on-binary for B2/B5/B15 may already be done; decision D4
   (retire Option-A `WiCANFlasher`?) was still open.
-- **🔴 ECU window "Close anyway? → Yes" aborts a J2534 flash mid-write** (pre-existing, found in
-  the #104 updater review, confirmed by reading the code, not on hardware): `ecu_window.closeEvent` calls
-  `_current_manager.abort()` for ANY op (comment claims read-only only), and `flash_rom`'s ROM program
-  `transfer_data` honours `abort_check` → partly programmed ECU. The window may also be destroyed with
-  the flash QThread still running (`wait(3000)`). Needs its own change + WICAN_MANUAL_TEST-style bench pass.
 - **In-app updater (#104 item 1, shipped in v2.18.0) follow-ups:**
   - Decision pending: `update_check._stream_to_file` duplicates `wican_http.download_to_file`'s read loop
     ("one pipeline copy"). Merging touches `src/ecu` → bench test. `wican_http` likely has the same
     blocking `read()` vs shutdown-wait problem the updater fixed with `read1` (untested).
-  - Low, unfixed: small TOCTOU between the last hash check and `os.startfile` in user-writable %TEMP%;
-    backport tags (e.g. v2.16.1 after v2.17.0) become GitHub "latest" (`make_latest` default);
-    installer.iss has no `[InstallDelete]`, so stale `_internal` files accumulate across upgrades.
+  - Low, unfixed: small TOCTOU between the last hash check and `os.startfile` in user-writable %TEMP%.

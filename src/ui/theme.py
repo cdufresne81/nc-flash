@@ -32,6 +32,23 @@ WARNING_AMBER = "#cc6600"
 # Muted text for an unavailable reading (e.g. an ECU status card showing N/A).
 TEXT_MUTED = "#888"
 
+# Calm informational banner (the ECU window's recovery-mode notice): a steady
+# blue, deliberately not the red/amber of a failure.
+INFO_BANNER_BG = "#22384f"
+INFO_BANNER_BORDER = "#4a7bb0"
+INFO_BANNER_TEXT = "#e6eef8"
+INFO_TEXT = "#6fa8dc"
+
+
+def get_info_banner_stylesheet() -> str:
+    """QSS for a calm informational banner frame and its labels."""
+    return (
+        f"QFrame#infoBanner {{ background: {INFO_BANNER_BG}; "
+        f"border: 1px solid {INFO_BANNER_BORDER}; border-radius: 6px; }} "
+        f"QFrame#infoBanner QLabel {{ color: {INFO_BANNER_TEXT}; border: none; }}"
+    )
+
+
 # --- Table graph (GPU renderer) ----------------------------------------------
 # The graph pane is a dark "stage" inside the light app: a vertical gradient
 # with light text, so the per-cell table colors pop. sRGB hex; the GPU backend
@@ -51,6 +68,19 @@ GRAPH_SPECULAR = "#555555"
 GRAPH_MARKER_RING = "#ffffff"
 GRAPH_CROSSHAIR = "#ffffff"  # row/column guide through the selected cell
 GRAPH_CALLOUT = "#ffffff"  # axis values of the selected cell
+
+# --- Live table cursor (Datalogger values on an open table) -------------------
+# Crosshair through the operating point: dark lines on a white halo read on any
+# cell color; the dot is magenta, which stands apart from the blue-green-red
+# cell colors in the table and the graph. Axis tags are dark chips.
+LIVE_CURSOR = "#ff00e6"  # the dot (table) and the marker (graph)
+LIVE_CURSOR_LINE = "#000000"
+LIVE_CURSOR_HALO = "#ffffff"
+LIVE_TAG_BG = "#1c2029"
+LIVE_TAG_TEXT = "#ffffff"
+LIVE_TAG_OFF = "#ffb340"  # tag text when the value is off the table
+LIVE_CURSOR_EDGE = LIVE_CURSOR_LINE  # classic graph marker edge
+GRAPH_LIVE_MARKER = LIVE_CURSOR
 
 
 def get_graph_readout_stylesheet() -> str:

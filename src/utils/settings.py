@@ -4,6 +4,7 @@ Application Settings Management
 Handles loading, saving, and accessing application settings using QSettings.
 """
 
+import json
 import os
 from pathlib import Path
 
@@ -316,15 +317,20 @@ class AppSettings:
     def set_j2534_dll_path(self, path: str):
         self.settings.setValue("ecu/j2534_dll_path", path)
 
-    # -- Adapter selection (J2534 wired default; WiCAN opt-in) --
+    # -- Adapter selection (J2534 wired default; WiCAN / OBDX opt-in) --
+
+    _ECU_ADAPTERS = ("j2534", "wican", "obdx")
 
     def get_ecu_adapter(self) -> str:
-        """Get the selected ECU adapter kind: ``"j2534"`` (default) or ``"wican"``."""
+        """Get the selected ECU adapter kind: ``"j2534"`` (default), ``"wican"``
+        or ``"obdx"``."""
         value = self.settings.value("ecu/adapter", "j2534")
-        return value if value in ("j2534", "wican") else "j2534"
+        return value if value in self._ECU_ADAPTERS else "j2534"
 
     def set_ecu_adapter(self, kind: str):
-        self.settings.setValue("ecu/adapter", "wican" if kind == "wican" else "j2534")
+        self.settings.setValue(
+            "ecu/adapter", kind if kind in self._ECU_ADAPTERS else "j2534"
+        )
 
     def is_wican_adapter(self) -> bool:
         """True when the WiCAN adapter is selected.
@@ -334,6 +340,15 @@ class AppSettings:
         adapter string.
         """
         return self.get_ecu_adapter() == "wican"
+
+    # -- OBDX Pro (USB serial) settings --
+
+    def get_obdx_port(self) -> str:
+        """COM port of the OBDX Pro adapter; empty = auto-detect over USB."""
+        return self.settings.value("ecu/obdx_port", "") or ""
+
+    def set_obdx_port(self, port: str):
+        self.settings.setValue("ecu/obdx_port", (port or "").strip())
 
     # -- WiCAN (SLCAN-over-TCP) settings --
 
@@ -356,6 +371,31 @@ class AppSettings:
 
     def set_wican_device_id(self, device_id: str):
         self.settings.setValue("ecu/wican_device_id", device_id or "")
+
+    def get_wican_ap_switch(self) -> str:
+        """Whether to offer joining the WiCAN's own Wi-Fi when it can't be
+        reached: ``"ask"`` (default) or ``"off"``."""
+        value = self.settings.value("ecu/wican_ap_switch", "ask", type=str)
+        return value if value in ("ask", "off") else "ask"
+
+    def set_wican_ap_switch(self, mode: str):
+        self.settings.setValue("ecu/wican_ap_switch", "off" if mode == "off" else "ask")
+
+    def get_wican_ap_ssid(self) -> str:
+        """The WiCAN access point's Wi-Fi name ("" = not known yet)."""
+        return self.settings.value("ecu/wican_ap_ssid", "", type=str).strip()
+
+    def set_wican_ap_ssid(self, ssid: str):
+        self.settings.setValue("ecu/wican_ap_ssid", (ssid or "").strip())
+
+    def get_wican_ap_prev_profile(self) -> str:
+        """The Wi-Fi profile NC Flash left to join the WiCAN AP ("" = none).
+
+        Saved at switch time so the offer to rejoin it survives a crash."""
+        return self.settings.value("ecu/wican_ap_prev_profile", "", type=str)
+
+    def set_wican_ap_prev_profile(self, profile: str):
+        self.settings.setValue("ecu/wican_ap_prev_profile", profile or "")
 
     def get_wican_auto_download_logs(self) -> bool:
         """Whether to check the WiCAN for new SD trip logs at launch. The check
@@ -410,6 +450,62 @@ class AppSettings:
 
     def set_offer_open_logs_in_mlv(self, enabled: bool):
         self.settings.setValue("ecu/offer_open_logs_in_mlv", bool(enabled))
+
+    def get_live_datalog_auto_trail(self) -> bool:
+        """Whether a live datalog (any adapter) opens MegaLogViewerHD (Trail
+        Live File mode) on its own when the first capture of a run starts."""
+        return self.settings.value("ecu/live_datalog_auto_trail", True, type=bool)
+
+    def set_live_datalog_auto_trail(self, enabled: bool):
+        self.settings.setValue("ecu/live_datalog_auto_trail", bool(enabled))
+
+    def get_wican_last_backup(self) -> str:
+        """The WiCAN channel file saved before the last "Update WiCAN
+        Channels", kept so Put Back still works after a restart ("" = none)."""
+        return str(self.settings.value("ecu/wican_last_backup", "", type=str) or "")
+
+    def set_wican_last_backup(self, path: str):
+        self.settings.setValue("ecu/wican_last_backup", str(path or ""))
+
+    def get_wican_push_explained(self) -> bool:
+        """Whether the user asked not to see the explanation again when
+        updating the WiCAN's own channel list (the changes are still shown)."""
+        return self.settings.value("ecu/wican_push_explained", False, type=bool)
+
+    def set_wican_push_explained(self, value: bool):
+        self.settings.setValue("ecu/wican_push_explained", bool(value))
+
+    def get_live_cursor_enabled(self) -> bool:
+        """Whether open tables show where the Datalogger's live values fall."""
+        return self.settings.value("ecu/live_cursor_enabled", True, type=bool)
+
+    def set_live_cursor_enabled(self, enabled: bool):
+        self.settings.setValue("ecu/live_cursor_enabled", bool(enabled))
+
+    def get_live_value_estimate(self) -> bool:
+        """Whether the live cursor also shows NC Flash's estimate of the table
+        value at the live point (computed from the open ROM, not read from
+        the ECU)."""
+        return self.settings.value("ecu/live_value_estimate", False, type=bool)
+
+    def set_live_value_estimate(self, enabled: bool):
+        self.settings.setValue("ecu/live_value_estimate", bool(enabled))
+
+    def get_datalog_channels(self) -> dict:
+        """The Datalogger's saved channel list (see
+        :func:`src.core.datalog_channels.channels_to_saved`); {} when unset or
+        unreadable, which means the built-in defaults."""
+        raw = self.settings.value("ecu/datalog_channels", "", type=str)
+        if not raw:
+            return {}
+        try:
+            data = json.loads(raw)
+        except ValueError:
+            return {}
+        return data if isinstance(data, dict) else {}
+
+    def set_datalog_channels(self, saved: dict):
+        self.settings.setValue("ecu/datalog_channels", json.dumps(saved))
 
 
 # Global settings instance

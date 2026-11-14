@@ -23,7 +23,6 @@ from PySide6.QtWidgets import (
     QProgressBar,
     QStackedWidget,
     QMessageBox,
-    QFileDialog,
     QSizePolicy,
 )
 from PySide6.QtCore import Qt, QThread, QObject, QTimer, Signal
@@ -40,11 +39,33 @@ from src.ecu.flash_manager import (
     FlashProgress,
     SECURE_MODULE_AVAILABLE,
 )
-from src.ecu.constants import TIMEOUT_PROBE
-from src.ecu.exceptions import ECUError, FlashAbortedError, ROMValidationError
+from src.ecu.constants import (
+    NRC_REQUEST_OUT_OF_RANGE,
+    NRC_SERVICE_NOT_SUPPORTED,
+    TIMEOUT_PROBE,
+)
+from src.ecu.exceptions import (
+    ECUError,
+    ECUStillProgrammingError,
+    FlashAbortedError,
+    LinkQualityError,
+    NegativeResponseError,
+    ROMValidationError,
+)
+from src.ecu.recovery import EcuMode, RecoveryProbeResult, probe_ecu_mode
 from src.ecu.rom_utils import get_cal_id
 from src.ecu.dtc import dedup_dtcs
+from src.ui.error_helpers import ecu_error_message
+from src.ecu.j2534 import is_automatic_driver
+from src.ecu.openport_setup import detect_openport
 from src.ui.log_console import LogConsole
+from src.ui.wican_ap_switch import WiCANApSwitch
+from src.ui.rom_read_check import (
+    UNVERIFIED,
+    RomReadCheck,
+    check_rom_read,
+    suspect_image_reason,
+)
 from src.ui import theme
 
 logger = logging.getLogger(__name__)
@@ -55,6 +76,16 @@ CONDITION_POLL_INTERVAL = 5000
 # disconnects. The reads run on the UI thread, so polling a silent ECU would
 # freeze the window for each read's timeout, every poll.
 POLL_MISSES_BEFORE_DISCONNECT = 2
+#: Operations that may be aborted: they only READ the ECU, so stopping one
+#: changes nothing on it. Every other operation (a flash, and any operation
+#: added later) changes the ECU and must run to the end: an abort mid-write
+#: leaves a partly programmed ECU that cannot boot until it is reflashed.
+ABORTABLE_OPERATIONS = frozenset({"read", "scan_ram"})
+#: How long closing the window waits for an aborted read to stop. The abort is
+#: checked between blocks, so a healthy link stops in well under a second; a
+#: block stuck in its retries can take longer, and then the close is refused
+#: (the window is never destroyed with the worker thread still running).
+CLOSE_JOIN_MS = 10000
 
 
 # --- Workers ---
@@ -66,6 +97,12 @@ class _FlashWorker(QObject):
     progress = Signal(object)  # FlashProgress
     finished = Signal()
     error = Signal(str)
+    # (rom_generation, rom_cal_id, reason): the ECU's generation could not be
+    # read before the flash. Connected BLOCKING: the window answers via
+    # set_unverified_answer.
+    generation_unverified = Signal(str, str, str)
+    # The pre-flash check READ the ECU's generation (never an operator answer).
+    generation_verified = Signal(str)
 
     def __init__(self, flash_manager: FlashManager, operation: str, **kwargs):
         super().__init__()
@@ -73,10 +110,34 @@ class _FlashWorker(QObject):
         self._operation = operation
         self._kwargs = kwargs
         self._result = None
+        self._unverified_answer: str | None = None
+        # Set when the ECU refused to start because an earlier flash left it in
+        # programming mode; the window then offers a reset.
+        self.needs_ecu_reset = False
+        #: "link" when the pre-flight link check refused the flash (the ECU was
+        #: not touched), else "". Read by the window after ``error``.
+        self.error_kind = ""
 
     @property
     def result(self):
         return self._result
+
+    def ask_unverified_generation(
+        self, rom_generation: str, rom_cal_id: str | None, reason: str
+    ) -> str | None:
+        """Runs on the worker thread mid-flash, before anything is erased. Blocks
+        until the window has asked which car the ECU is from: "NC1", "NC2", or
+        None for cancel."""
+        self._unverified_answer = None
+        self.generation_unverified.emit(rom_generation, rom_cal_id or "", reason)
+        return self._unverified_answer
+
+    def set_unverified_answer(self, answer: str | None) -> None:
+        self._unverified_answer = answer
+
+    def report_generation_verified(self, generation: str) -> None:
+        """Runs on the worker thread; must not block (queued to the window)."""
+        self.generation_verified.emit(generation)
 
     def run(self):
         try:
@@ -103,13 +164,21 @@ class _FlashWorker(QObject):
             self.finished.emit()
         except FlashAbortedError:
             self.error.emit("Operation aborted by user")
+        except LinkQualityError as e:
+            logger.warning("Flash refused by the link check: %s", e)
+            self.error_kind = "link"
+            self.error.emit(str(e))
         except ROMValidationError as e:
             # Not a real error — e.g. "ROMs are identical"
             logger.info("Flash skipped: %s", e)
             self.error.emit(str(e))
+        except ECUStillProgrammingError as e:
+            logger.warning("Flash refused: %s", e)
+            self.needs_ecu_reset = True
+            self.error.emit(str(e))
         except Exception as e:
             logger.error("Flash worker error: %s", e, exc_info=True)
-            self.error.emit(str(e))
+            self.error.emit(ecu_error_message(e))
 
     def _on_progress(self, p: FlashProgress):
         self.progress.emit(p)
@@ -172,6 +241,10 @@ class ECUProgrammingWindow(QMainWindow):
     #: Consumed by the Trip Logs window to hold its download (composed by
     #: main.py; carries its own context — no sender() walks).
     busy_changed = Signal(bool)
+    #: True while an ECU session over the WiCAN exists (connecting or
+    #: connected). It reserves the device's bus, which pauses its trip logger,
+    #: so the Trip Logs window locks its Live Datalog on it.
+    wican_link_changed = Signal(bool)
 
     def __init__(self, main_window, parent=None):
         super().__init__(parent)
@@ -184,13 +257,32 @@ class ECUProgrammingWindow(QMainWindow):
         self._current_manager = None
         self._session_acquired = False
         self._current_operation = None
+        # False after a successful flash: Done then returns to the actions page
+        # without reconnecting (the session was ended so the car can be driven).
+        self._reconnect_on_done = True
         self._ecu_busy = False  # True during any ECU operation
         self._poll_misses = 0
         self._conditions_pending = False  # connect-time load skipped (no reply)
         self._guard_override = False  # operator overrode unreadable flash checks
+        # Boot-loader recovery detection (None = not detected / normal ECU).
+        self._recovery: RecoveryProbeResult | None = None
+        # Set when a recovery flash starts (read again when it ends).
+        self._flash_was_recovery = False
+        # Generation a flash in THIS run read from the ECU's boot code, kept
+        # until a healthy ECU is connected (which may be another one). Never
+        # saved: a value from another ECU must not answer the which-car
+        # question for this one (review 2026-11-11).
+        self._flash_read_generation = ""
         self._poll_timer = QTimer(self)
         self._poll_timer.setInterval(CONDITION_POLL_INTERVAL)
         self._poll_timer.timeout.connect(self._poll_conditions)
+        # Joins the WiCAN's own Wi-Fi when it can't be reached (asks first).
+        self._ap_switch = WiCANApSwitch(self, main_window.settings)
+
+        # App-wide Tactrix driver switch: offered when Windows blocks the cable.
+        self._openport_setup = main_window.openport_setup
+        self._openport_setup.finished.connect(self._on_openport_setup_done)
+        self._openport_fix_offered = False
 
         self.setWindowTitle("ECU Programming")
         self.setMinimumSize(700, 500)
@@ -200,12 +292,17 @@ class ECUProgrammingWindow(QMainWindow):
         # the Trip Logs window locks its download on it, mirroring how this
         # window locks ECU ops on the sync's running_changed.
         self._last_busy_broadcast = None
+        self._last_link_broadcast = None
+        # Connect was disabled for a Datalogger run on a wired adapter; give
+        # it back once the run ends.
+        self._connect_held_by_datalogger = False
 
         self._build_ui()
 
         # Re-lock the ECU op buttons as the main-window-owned trip-log sync
         # starts/stops (Qt auto-disconnects when this window is destroyed).
         main_window.wican_log_sync.running_changed.connect(self._update_action_states)
+        main_window.datalogger.running_changed.connect(self._update_action_states)
 
         self._update_action_states()
 
@@ -259,6 +356,19 @@ class ECUProgrammingWindow(QMainWindow):
         cards_layout.addWidget(self._card_engine)
         cards_layout.addWidget(self._card_ecu)
         root.addLayout(cards_layout)
+
+        # --- Recovery-mode banner (hidden unless the ECU is in its boot loader) ---
+        self._recovery_banner = QFrame()
+        self._recovery_banner.setObjectName("infoBanner")
+        self._recovery_banner.setStyleSheet(theme.get_info_banner_stylesheet())
+        banner_layout = QHBoxLayout(self._recovery_banner)
+        banner_layout.setContentsMargins(12, 8, 12, 8)
+        self._recovery_text = QLabel("")
+        self._recovery_text.setWordWrap(True)
+        self._recovery_text.setTextFormat(Qt.RichText)
+        banner_layout.addWidget(self._recovery_text, stretch=1)
+        self._recovery_banner.setVisible(False)
+        root.addWidget(self._recovery_banner)
 
         # --- Actions / Progress (stacked) ---
         self._stack = QStackedWidget()
@@ -336,6 +446,9 @@ class ECUProgrammingWindow(QMainWindow):
 
         self._progress_detail = QLabel("")
         self._progress_detail.setStyleSheet("color: gray;")
+        # Error explanations run to several sentences; wrap them instead of
+        # stretching the window.
+        self._progress_detail.setWordWrap(True)
         progress_layout.addWidget(self._progress_detail)
 
         btn_row = QHBoxLayout()
@@ -343,10 +456,6 @@ class ECUProgrammingWindow(QMainWindow):
         self._btn_abort = QPushButton("Abort")
         self._btn_abort.setEnabled(False)
         btn_row.addWidget(self._btn_abort)
-        self._btn_done = QPushButton("Done")
-        self._btn_done.setVisible(False)
-        self._btn_done.clicked.connect(self._on_progress_done)
-        btn_row.addWidget(self._btn_done)
         progress_layout.addLayout(btn_row)
         progress_layout.addStretch()
 
@@ -363,9 +472,18 @@ class ECUProgrammingWindow(QMainWindow):
                 "src.ecu",
                 "src.ui.ecu_window",
                 "src.ui.wican_log_sync",
+                "src.ui.wican_live_datalog",
+                "src.ui.datalogger",
                 "__main__",
             ],
             drop_qt_logger=True,
+            # Raw refusals and probe evidence mean nothing to a user; the
+            # window explains the state in plain words. Both stay in the file.
+            hidden_message_prefixes=(
+                "UDS NRC:",
+                "ECU mode check:",
+                "Generation check: could not read",
+            ),
         )
         self._log.setMinimumHeight(150)
         root.addWidget(self._log, stretch=1)
@@ -379,11 +497,17 @@ class ECUProgrammingWindow(QMainWindow):
         """Build the transport config for ECUSession from saved settings."""
         s = self._main_window.settings
         if s.get_ecu_adapter() == "wican":
+            host = self._resolve_wican_host(s)
+            # Never switch Wi-Fi under a running trip-log download.
+            log_sync = getattr(self._main_window, "wican_log_sync", None)
+            may_switch = not (log_sync is not None and log_sync.is_running)
             return {
                 "kind": "wican",
-                "host": self._resolve_wican_host(s),
+                "host": self._ap_switch.reach(host, may_switch=may_switch),
             }
-        return {"kind": "j2534", "dll_path": self._get_dll_path()}
+        from src.ui.datalogger import wired_adapter_config
+
+        return wired_adapter_config(s)
 
     def _resolve_wican_host(self, s) -> str:
         """Return the WiCAN host, re-resolving its IP over mDNS when possible.
@@ -424,6 +548,9 @@ class ECUProgrammingWindow(QMainWindow):
     def _is_wican(self) -> bool:
         return bool(self._session and self._session.adapter_kind == "wican")
 
+    def _is_obdx(self) -> bool:
+        return bool(self._session and self._session.adapter_kind == "obdx")
+
     def _on_connect_progress(self, message: str):
         """Show a connect-step message on the connection label."""
         self._conn_label.setText(message)
@@ -432,8 +559,33 @@ class ECUProgrammingWindow(QMainWindow):
         # returns.
         QApplication.processEvents()
 
+    def holds_ecu_link(self) -> bool:
+        """True while this window has an ECU connection (or is opening one) or
+        an operation running."""
+        session = self._session
+        return bool(
+            self.is_busy
+            or (
+                session is not None
+                and (
+                    session.is_connected
+                    or session.state
+                    in (ECUSessionState.BUSY, ECUSessionState.CONNECTING)
+                )
+            )
+        )
+
     def _on_connect(self):
-        if self._session and self._session.is_connected:
+        if self._session and (
+            self._session.is_connected
+            or self._session.state == ECUSessionState.CONNECTING
+        ):
+            # Connected, or a connect is in flight (WiCAN/OBDX connects pump the
+            # event loop, so a timer or a Done click can land inside one).
+            return
+        if self._openport_setup.is_running:
+            # The cable is being switched to another Windows driver.
+            self._conn_label.setText("Tactrix driver switch running...")
             return
 
         # Tear down any previous (non-connected) session before replacing it, so
@@ -444,9 +596,24 @@ class ECUProgrammingWindow(QMainWindow):
             self._session.cleanup()
             self._session = None
 
+        if self._main_window.datalogger.is_running:
+            # The Datalogger holds the cable (Tactrix/OBDX) or follows the
+            # WiCAN's trip, which an ECU session would pause. Stop it first.
+            logger.info("Stop the Datalogger to connect")
+            self._update_action_states()
+            return
         adapter = self._build_adapter_config()
+        if self._main_window.datalogger.is_running:
+            # Checked again: joining the WiCAN's own Wi-Fi (above) shows dialogs
+            # for up to ~45 s that leave the Datalogger window usable, so a run
+            # can start meanwhile. Connecting would then pause its trip.
+            logger.info("Stop the Datalogger to connect")
+            self._update_action_states()
+            return
         if adapter["kind"] == "wican":
             connecting_msg = "Connecting to WiCAN..."
+        elif adapter["kind"] == "obdx":
+            connecting_msg = "Connecting to OBDX Pro..."
         else:
             connecting_msg = "Connecting..."
         self._conn_label.setText(connecting_msg)
@@ -454,9 +621,9 @@ class ECUProgrammingWindow(QMainWindow):
             "font-weight: bold; font-size: 13px; color: #ccaa44; border: none;"
         )
         self._btn_connect.setEnabled(False)
-        if adapter["kind"] == "wican":
-            # Paint the connecting label before the blocking WiCAN protocol
-            # switch. J2534 connect is fast and stays behaviourally unchanged.
+        if adapter["kind"] in ("wican", "obdx"):
+            # Paint the connecting label before the blocking WiCAN / OBDX open.
+            # J2534 connect is fast and stays behaviourally unchanged.
             QApplication.processEvents()
 
         self._session = ECUSession(adapter_config=adapter, parent=self)
@@ -464,11 +631,39 @@ class ECUProgrammingWindow(QMainWindow):
         self._session.connection_lost.connect(self._on_connection_lost)
         self._session.progress.connect(self._on_connect_progress)
         self._session.connect_ecu()
+        if adapter["kind"] == "j2534" and not self._session.is_connected:
+            self._offer_openport_fix(adapter["dll_path"])
+
+    def _offer_openport_fix(self, dll_path: str):
+        """A Tactrix connect failed: if Windows blocks the cable's driver, offer
+        (once per window) to switch it to NC Flash's driver."""
+        if self._openport_fix_offered or not is_automatic_driver(dll_path):
+            return
+        state = detect_openport()
+        if not state.needs_winusb:
+            return
+        self._openport_fix_offered = True
+        self._openport_setup.offer_fix(state, self, "ecu_window")
+
+    def _on_openport_setup_done(self, ok: bool, message: str, requester: str):
+        if requester != "ecu_window":
+            return
+        if ok:
+            QMessageBox.information(self, "Tactrix OpenPort", message)
+            adapter = self._build_adapter_config()
+            if not self.is_busy and adapter["kind"] == "j2534":
+                self._on_connect()
+        else:
+            QMessageBox.warning(self, "Tactrix OpenPort", message)
 
     def _on_disconnect(self):
         self._poll_timer.stop()
         if self._session:
             self._session.disconnect_ecu()
+        # Only once the session is really closed (disconnect is refused while
+        # an operation runs).
+        if self._session is None or not self._session.is_connected:
+            self._ap_switch.offer_rejoin()
 
     def _on_session_state(self, state: str):
         if state == ECUSessionState.CONNECTED.value:
@@ -493,6 +688,7 @@ class ECUProgrammingWindow(QMainWindow):
             self._poll_timer.stop()
             self._voltage = None
             self._rpm = None
+            self._set_recovery(None)
             self._reset_cards()
             self._update_action_states()
         elif state == ECUSessionState.BUSY.value:
@@ -567,6 +763,16 @@ class ECUProgrammingWindow(QMainWindow):
         except Exception:
             data["rpm"] = None
         self._on_conditions_loaded(data)
+        # Neither OBD nor the VIN read worked although the ECU answers Tester
+        # Present: check for the boot loader's recovery server. A running ECU
+        # answers those reads, so it never reaches the probe.
+        if data.get("rpm") is None and data.get("vin") == "N/A":
+            self._check_recovery_mode()
+        else:
+            # A running ECU: whatever a flash read before may belong to another
+            # ECU from now on, so it can no longer answer the which-car question.
+            self._flash_read_generation = ""
+            self._set_recovery(None)
 
     def _on_conditions_loaded(self, data: dict):
         self._voltage = data.get("voltage")
@@ -635,6 +841,17 @@ class ECUProgrammingWindow(QMainWindow):
             return
 
         uds = self._session.uds
+        if self._in_recovery:
+            # The boot loader refuses the OBD reads, so polling them only fills
+            # the log with refusals. Tester Present alone keeps the session
+            # alive and still notices the ECU going silent (ignition off).
+            try:
+                uds.tester_present(timeout_ms=TIMEOUT_PROBE)
+            except Exception as exc:
+                self._on_poll_no_reply(exc)
+                return
+            self._on_ecu_answered()
+            return
         try:
             # strict: a silent ECU raises (after TIMEOUT_PROBE) instead of
             # looking like "PID not supported"; one failed read skips the other.
@@ -707,7 +924,10 @@ class ECUProgrammingWindow(QMainWindow):
         """The ECU answered again: clear the miss count and the warning."""
         if self._poll_misses:
             self._poll_misses = 0
-            self._show_connected_label()
+            if self._in_recovery:
+                self._set_recovery(self._recovery)  # keeps the recovery label
+            else:
+                self._show_connected_label()
 
     def _show_connected_label(self, answering: bool = True):
         if answering:
@@ -747,6 +967,90 @@ class ECUProgrammingWindow(QMainWindow):
         self._card_ecu.set_value("—", "gray")
         self._card_ecu.set_subtitle("")
 
+    # --- Boot-loader recovery mode ---
+
+    @property
+    def _in_recovery(self) -> bool:
+        return self._recovery is not None and self._recovery.needs_recovery
+
+    @property
+    def _boot_loader_confirmed(self) -> bool:
+        return self._recovery is not None and self._recovery.mode == EcuMode.BOOT_LOADER
+
+    def _check_recovery_mode(self) -> RecoveryProbeResult | None:
+        """Probe for the boot loader's recovery server and show the result.
+
+        Called only when normal reads already failed while the ECU answers
+        Tester Present (connect-time reads, a failed DTC read). The probe never
+        sends a key and never raises.
+        """
+        if not self._session or not self._session.uds:
+            return None
+        QApplication.setOverrideCursor(Qt.WaitCursor)
+        try:
+            result = probe_ecu_mode(self._session.uds)
+        finally:
+            QApplication.restoreOverrideCursor()
+        logger.info(
+            "ECU mode check: %s (%s)", result.mode.value, "; ".join(result.evidence)
+        )
+        self._set_recovery(result)
+        if self._in_recovery:
+            if self._boot_loader_confirmed:
+                logger.info(
+                    "The ECU is in recovery mode (boot loader). Open a known-good "
+                    "ROM and do a full flash."
+                )
+            else:
+                logger.info(
+                    "The ECU answers but refuses normal requests (probably its "
+                    "boot loader). See the notice above."
+                )
+        return result
+
+    def _set_recovery(self, result: RecoveryProbeResult | None):
+        """Store the probe result and update the banner, ECU card and buttons."""
+        if result is not None and not result.needs_recovery:
+            result = None
+        self._recovery = result
+        if result is None:
+            self._recovery_banner.setVisible(False)
+            self._update_action_states()
+            return
+
+        # Recovery is the window's normal flow: open a known-good ROM in the
+        # editor and flash it (both flash buttons write the whole ROM here).
+        if result.mode == EcuMode.BOOT_LOADER:
+            title, status = "Recovery mode", "ECU in recovery mode"
+            text = (
+                "This ECU is stuck in its boot loader, most likely after a failed "
+                "flash. It is not damaged and can be recovered: open a known-good "
+                "ROM, ideally your own backup, and do a full flash."
+            )
+            card = ("RECOVERY MODE", "Boot loader only — flash a full ROM")
+        else:
+            title, status = (
+                "Normal diagnostics unavailable",
+                "normal diagnostics unavailable",
+            )
+            text = (
+                "The ECU answers but refuses normal requests, most likely because "
+                "it is stuck in its boot loader after a failed flash. If so, open a "
+                "known-good ROM and do a full flash."
+            )
+            card = ("NO DIAGNOSTICS", "Possibly boot loader — see the notice")
+
+        self._recovery_text.setText(f"<b>{title}.</b> {text}")
+        self._recovery_banner.setVisible(True)
+        self._card_ecu.set_value(card[0], theme.INFO_TEXT)
+        self._card_ecu.set_subtitle(card[1], theme.INFO_TEXT)
+        self._conn_label.setText(f"Connected — {status}")
+        self._conn_label.setStyleSheet(
+            f"font-weight: bold; font-size: 13px; color: {theme.INFO_TEXT}; "
+            "border: none;"
+        )
+        self._update_action_states()
+
     # --- Action Gating ---
 
     @property
@@ -757,6 +1061,12 @@ class ECUProgrammingWindow(QMainWindow):
             self._flash_thread is not None and self._flash_thread.isRunning()
         )
         return self._ecu_busy or flash_running
+
+    @property
+    def holds_wican(self) -> bool:
+        """Current wican_link_changed state (initial value for a late-created
+        Trip Logs window)."""
+        return bool(self._last_link_broadcast)
 
     def _update_action_states(self):
         connected = self._session and self._session.is_connected
@@ -780,7 +1090,11 @@ class ECUProgrammingWindow(QMainWindow):
         is_wican_adapter = self._main_window.settings.is_wican_adapter()
         log_sync = self._main_window.wican_log_sync
         sync_running = log_sync.is_running
-        wican_contended = is_wican_adapter and sync_running
+        # The Datalogger either holds the cable (Tactrix/OBDX) or follows the
+        # WiCAN's own trip, which an ECU session would pause: never mixed,
+        # whatever the adapter.
+        live_running = self._main_window.datalogger.is_running
+        wican_contended = (is_wican_adapter and sync_running) or live_running
 
         # An ECU connect during a download would contend for the WiCAN's
         # SD/CPU/WiFi (and connecting re-parks the datalogger). Gate Connect
@@ -790,8 +1104,19 @@ class ECUProgrammingWindow(QMainWindow):
         disconnected = self._session is None or (
             getattr(self._session, "state", None) == ECUSessionState.DISCONNECTED
         )
-        if is_wican_adapter and disconnected:
-            self._btn_connect.setEnabled(not sync_running)
+        if disconnected and (
+            is_wican_adapter or live_running or self._connect_held_by_datalogger
+        ):
+            self._btn_connect.setEnabled(not (sync_running or live_running))
+            self._btn_connect.setToolTip(
+                "Stop the Datalogger first" if live_running else ""
+            )
+            self._connect_held_by_datalogger = live_running
+
+        holds_wican = bool(is_wican_adapter and not disconnected)
+        if holds_wican != self._last_link_broadcast:
+            self._last_link_broadcast = holds_wican
+            self.wican_link_changed.emit(holds_wican)
 
         # Nothing works while an operation is in progress, and no ECU
         # operation may start while a download holds the WiCAN.
@@ -802,11 +1127,12 @@ class ECUProgrammingWindow(QMainWindow):
             self._btn_read_rom.setEnabled(False)
             self._btn_scan_ram.setEnabled(False)
             self._btn_flash_current.setEnabled(False)
-            tip = (
-                "Stop the WiCAN trip-log download first"
-                if wican_contended and not busy
-                else ""
-            )
+            if not wican_contended or busy:
+                tip = ""
+            elif live_running:
+                tip = "Stop the Datalogger first"
+            else:
+                tip = "Stop the WiCAN trip-log download first"
             self._btn_full_flash.setToolTip(tip)
             self._btn_read_rom.setToolTip(tip)
             self._btn_scan_ram.setToolTip(tip)
@@ -831,7 +1157,13 @@ class ECUProgrammingWindow(QMainWindow):
         if doc and has_rom:
             rom_path = Path(doc.rom_path).resolve()
             archive_path = rom_path.parent / ARCHIVE_FILENAME
-            if archive_path.is_file():
+            if self._in_recovery:
+                # Never a dynamic flash here: what is on the ECU is unknown.
+                self._btn_flash_current.setText("Flash Current ROM (Full)")
+                self._flash_subtitle.setText(
+                    f"{doc.file_name} — full flash (ECU in recovery mode)"
+                )
+            elif archive_path.is_file():
                 self._btn_flash_current.setText("Flash Current ROM (Dynamic)")
                 self._flash_subtitle.setText(f"{doc.file_name} — only changed blocks")
             else:
@@ -858,6 +1190,19 @@ class ECUProgrammingWindow(QMainWindow):
         self._btn_read_rom.setToolTip(tip)
         self._btn_scan_ram.setToolTip(tip)
         self._btn_flash_current.setToolTip(tip)
+
+        if self._in_recovery:
+            # The boot loader serves none of these; only a flash works (and a
+            # DTC click would only re-run the mode check).
+            na = "Not available while the ECU is in its boot loader"
+            for btn in (
+                self._btn_read_dtcs,
+                self._btn_clear_dtcs,
+                self._btn_read_rom,
+                self._btn_scan_ram,
+            ):
+                btn.setEnabled(False)
+                btn.setToolTip(na)
 
     def _get_current_rom_data(self) -> bytes | None:
         doc = self._main_window.get_current_document()
@@ -1032,14 +1377,37 @@ class ECUProgrammingWindow(QMainWindow):
         self._guard_override = True
         return True
 
-    def _confirm_wican_flash(self) -> bool:
-        """Gate the WiCAN (WiFi) flash path before a write starts.
+    def _confirm_adapter_flash(self) -> bool:
+        """Gate the non-J2534 flash paths before a write starts.
 
-        Returns True for J2534 (no extra prompt). For WiCAN the host-driven write
-        path is hard-disabled (make-safe) until the SD-staged flash ships: show a
-        plain-language explanation and refuse. Once ``WICAN_WRITE_ENABLED`` is
-        flipped on, fall back to the experimental-risk confirmation.
+        Returns True for J2534 (no extra prompt). OBDX (USB) asks once per
+        flash: it is a newer path than J2534. WiCAN shows the SD-staged flash
+        confirmation, or refuses with an explanation if ``WICAN_WRITE_ENABLED``
+        is turned off.
         """
+        if self._is_obdx():
+            transport = self._session.transport
+            untested = (
+                ""
+                if transport.is_tested_model
+                else f"• NC Flash has been tested with the OBDX Pro VX, not the "
+                f"{transport.adapter_name}.\n"
+            )
+            reply = QMessageBox.warning(
+                self,
+                "Flash with OBDX Pro",
+                "Flashing with the OBDX Pro is new in NC Flash.\n\n"
+                f"{untested}"
+                "• Keep the USB cable plugged in and the ignition ON until the "
+                "flash completes. Unplugging it partway leaves the ECU unable "
+                "to start until it is reset and flashed again (NC Flash offers "
+                "the reset).\n"
+                "• Use a battery charger or keep the battery well charged.\n\n"
+                "Proceed?",
+                QMessageBox.Yes | QMessageBox.No,
+                QMessageBox.No,
+            )
+            return reply == QMessageBox.Yes
         if not self._is_wican():
             return True
         from src.ecu.wican_flash import WICAN_WRITE_ENABLED
@@ -1086,7 +1454,7 @@ class ECUProgrammingWindow(QMainWindow):
                 return
             if not self._check_rpm_gate():
                 return
-            if not self._confirm_wican_flash():
+            if not self._confirm_adapter_flash():
                 return
             doc = self._main_window.get_current_document()
             if not doc:
@@ -1107,7 +1475,7 @@ class ECUProgrammingWindow(QMainWindow):
             archive_path = str(rom_path.parent / ARCHIVE_FILENAME)
             source_name = rom_path.name
 
-            if Path(archive_path).is_file():
+            if Path(archive_path).is_file() and not self._in_recovery:
                 if not self._check_rom_compatibility(rom_data, archive_path):
                     return
                 self._start_flash(
@@ -1148,7 +1516,7 @@ class ECUProgrammingWindow(QMainWindow):
                 return
             if not self._check_rpm_gate():
                 return
-            if not self._confirm_wican_flash():
+            if not self._confirm_adapter_flash():
                 return
             doc = self._main_window.get_current_document()
             if not doc:
@@ -1203,6 +1571,48 @@ class ECUProgrammingWindow(QMainWindow):
             return
         self._start_flash("scan_ram")
 
+    def _confirm_flash_image(self, source_name: str | None, rom_data) -> bool:
+        """Warn before flashing a ROM that looks like a corrupt read (issue 169).
+        True = go ahead.
+
+        A read that failed its corruption check is saved with ``SUSPECT`` in its
+        name, and a shifted read leaves a 1 KB block that copies the one before
+        it (this also catches a renamed one). Flashing such a file "works", since
+        the flash corrects the checksums, and puts a broken calibration on the
+        ECU. The user may know better (e.g. compared two reads), so they can
+        continue, but only by choosing to: Cancel is the default.
+        """
+        reason = suspect_image_reason(source_name, bytes(rom_data or b""))
+        if reason is None:
+            return True
+        logger.warning(
+            "Flash of %s held for confirmation: it looks like a corrupt read (%s)",
+            source_name,
+            reason,
+        )
+        reply = QMessageBox.warning(
+            self,
+            "Suspect ROM Read: Do Not Flash",
+            f"{source_name or 'This ROM'} looks like a corrupt ECU read: "
+            f"{reason}.\n\n"
+            "It may hold shifted or corrupt data. Flashing it would put that "
+            "data on the ECU, which can leave the car running badly or not "
+            "at all.\n\n"
+            "Do not flash this file. Read the ECU again and use a read that "
+            "passes the check.\n\n"
+            "Only continue if you have verified this file yourself, for example "
+            "by comparing it with a second, clean read.\n\n"
+            "Flash it anyway?",
+            QMessageBox.Yes | QMessageBox.Cancel,
+            QMessageBox.Cancel,
+        )
+        if reply != QMessageBox.Yes:
+            logger.info("Flash cancelled: suspect ROM read")
+            self._guard_override = False  # an RPM-gate override covers one flash
+            return False
+        logger.warning("Operator chose to flash suspect ROM %s anyway", source_name)
+        return True
+
     def _build_flash_driver(self, operation: str, source_name: str | None = None):
         """Select and prepare the flash/read driver for the current adapter.
 
@@ -1214,6 +1624,7 @@ class ECUProgrammingWindow(QMainWindow):
 
           * J2534: a ``FlashManager`` borrowing the open J2534 session.
           * WiCAN read/scan: a ``FlashManager`` borrowing the WiCAN ``uds``.
+          * OBDX (every operation): a ``FlashManager`` borrowing the OBDX ``uds``.
           * WiCAN flash: a ``WiCANSdFlasher`` (SD-staged, firmware-driven; the
             old host-driven ``WiCANFlasher`` survives only as its pre-flight
             link + battery gate) over the WiCAN transport.
@@ -1224,7 +1635,7 @@ class ECUProgrammingWindow(QMainWindow):
         # Make-safe backstop (Option B Phase 0): the host-driven WiCAN write path
         # soft-bricks the ECU on a mid-flash link drop, so it is hard-disabled at
         # this single choke point until the SD-staged flash ships. Reads / RAM
-        # scan / DTC over WiCAN stay live. _confirm_wican_flash already explains
+        # scan / DTC over WiCAN stay live. _confirm_adapter_flash already explains
         # this to the user before we reach here; this guard catches any other
         # caller. J2534 flashing is never affected.
         from src.ecu.wican_flash import WICAN_WRITE_ENABLED
@@ -1287,6 +1698,14 @@ class ECUProgrammingWindow(QMainWindow):
             manager.use_uds(uds)
             return manager
 
+        if self._is_obdx():
+            if uds is None:
+                logger.error("OBDX %s requested with no open connection", operation)
+                return None
+            manager = FlashManager()
+            manager.use_uds(uds)
+            return manager
+
         # J2534 (default) — unchanged behaviour.
         manager = FlashManager(self._get_dll_path())
         if self._session_acquired:
@@ -1298,7 +1717,16 @@ class ECUProgrammingWindow(QMainWindow):
 
         ``source_name`` (kept out of ``**kwargs`` so it is not forwarded to the
         worker) names the staged SD image for the WiCAN write path.
+
+        Every flash passes here, so this is where a ROM that looks like a
+        corrupt read is stopped (issue 169): see :meth:`_confirm_flash_image`.
         """
+        if operation in ("flash", "dynamic_flash") and not self._confirm_flash_image(
+            source_name, kwargs.get("rom_data")
+        ):
+            self._ecu_busy = False
+            self._update_action_states()
+            return
         # A background trip-log download shares the WiCAN's SD/CPU/WiFi with
         # every ECU operation routed through the device — stop it first (fast
         # abort between chunks; completed files remain, the rest re-fetch on
@@ -1309,6 +1737,10 @@ class ECUProgrammingWindow(QMainWindow):
         if self._is_wican() and log_sync.is_running:
             logger.info("Stopping WiCAN trip-log sync for the ECU operation")
             log_sync.shutdown()
+        live = self._main_window.datalogger
+        if live.is_running:
+            logger.info("Stopping the Datalogger for the ECU operation")
+            live.shutdown()
 
         self._poll_timer.stop()
         self._update_action_states()  # Disable all buttons
@@ -1318,10 +1750,9 @@ class ECUProgrammingWindow(QMainWindow):
         self._progress_state.setStyleSheet("font-weight: bold; font-size: 13px;")
         self._progress_detail.setText("")
         # Only allow abort during read-only ops — aborting a flash risks bricking the ECU
-        allow_abort = operation in ("read", "scan_ram")
+        allow_abort = operation in ABORTABLE_OPERATIONS
         self._btn_abort.setEnabled(allow_abort)
         self._btn_abort.setVisible(allow_abort)
-        self._btn_done.setVisible(False)
 
         manager = self._build_flash_driver(operation, source_name=source_name)
         if manager is None:
@@ -1333,6 +1764,9 @@ class ECUProgrammingWindow(QMainWindow):
 
         self._current_manager = manager
         self._current_operation = operation
+        # Remembered here: the session release on completion clears the
+        # recovery state before the result is shown.
+        self._flash_was_recovery = self._in_recovery and operation == "flash"
 
         worker = _FlashWorker(manager, operation, **kwargs)
         thread = QThread()
@@ -1353,13 +1787,14 @@ class ECUProgrammingWindow(QMainWindow):
         worker.progress.connect(self._on_flash_progress, Qt.QueuedConnection)
         worker.finished.connect(self._on_worker_finished, Qt.QueuedConnection)
         worker.error.connect(self._on_worker_error, Qt.QueuedConnection)
+        self._wire_generation_prompt(worker, manager, operation)
         try:
             self._btn_abort.clicked.disconnect()
         except RuntimeError:
             pass  # No previous connections
         # Only read-only FlashManager ops expose abort; WiCANSdFlasher (write)
         # does not, and abort is disabled for writes anyway (aborting risks a brick).
-        if hasattr(manager, "abort"):
+        if allow_abort and hasattr(manager, "abort"):
             self._btn_abort.clicked.connect(manager.abort)
 
         thread.started.connect(worker.run)
@@ -1371,6 +1806,89 @@ class ECUProgrammingWindow(QMainWindow):
     def _on_worker_finished(self):
         """Worker `finished` slot — runs on the GUI thread (bound-method receiver)."""
         self._on_flash_finished(True, self._flash_thread, self._flash_worker)
+
+    def _wire_generation_prompt(self, worker, manager, operation: str) -> None:
+        """Let a flash ask the operator which car the ECU is from when it can't
+        read the ECU. BLOCKING connection: the worker waits for the answer.
+        Safe because the worker runs on its own thread (a blocking connection
+        within one thread would deadlock)."""
+        worker.generation_unverified.connect(
+            self._on_generation_unverified, Qt.BlockingQueuedConnection
+        )
+        if operation in ("flash", "dynamic_flash") and hasattr(
+            manager, "set_unverified_generation_prompt"
+        ):
+            manager.set_unverified_generation_prompt(worker.ask_unverified_generation)
+            if hasattr(manager, "set_generation_verified_hook"):
+                worker.generation_verified.connect(
+                    self._on_generation_verified, Qt.QueuedConnection
+                )
+                manager.set_generation_verified_hook(worker.report_generation_verified)
+
+    def _on_generation_unverified(
+        self, rom_generation: str, rom_cal_id: str, reason: str
+    ):
+        """Runs on the GUI thread while the worker waits (nothing is erased
+        yet). Stores the operator's answer on the worker."""
+        remembered = self._remembered_generation()
+        if getattr(self, "_flash_was_recovery", False) and remembered == rom_generation:
+            # A recovery flash: the boot loader refuses the boot-code read, but
+            # a flash read this ECU's generation before it was left there.
+            logger.info(
+                "Recovery: using the generation NC Flash read from this ECU "
+                "before the flash that failed (%s), which matches the ROM.",
+                remembered,
+            )
+            answer = rom_generation
+        else:
+            answer = self._ask_car_generation(rom_generation, rom_cal_id, reason)
+        if self._flash_worker is not None:
+            self._flash_worker.set_unverified_answer(answer)
+
+    def _on_generation_verified(self, generation: str):
+        """A flash read the ECU's generation from its boot code: keep it for a
+        recovery flash of the same ECU (its boot loader refuses that read)."""
+        self._flash_read_generation = generation
+
+    def _remembered_generation(self) -> str:
+        return getattr(self, "_flash_read_generation", "")
+
+    def _ask_car_generation(
+        self, rom_generation: str, rom_cal_id: str, reason: str
+    ) -> str | None:
+        """Ask which car the ECU is from: "NC1", "NC2", or None (cancel, the
+        default). The flash compares the answer with the ROM, so a careless
+        click can't flash the wrong generation. The ROM's own generation is NOT
+        shown: the answer has to come from knowing the car, not from copying it
+        (``rom_generation`` is kept for the signature only)."""
+        box = QMessageBox(self)
+        box.setIcon(QMessageBox.Warning)
+        box.setWindowTitle("Which Car Is This ECU From?")
+        rom_name = f" ({rom_cal_id})" if rom_cal_id else ""
+        box.setText(
+            "NC Flash could not check that the ROM you are flashing"
+            f"{rom_name} is for this ECU.\n\n"
+            f"Reason: {reason}.\n\n"
+            "If the ECU did not answer, it is usually stuck in its boot loader "
+            "after a flash that did not finish.\n\n"
+            "NC1 and NC2 ROMs are not compatible: the wrong one can brick the "
+            "ECU.\n\n"
+            "Which car is this ECU from?"
+        )
+        nc1 = box.addButton(
+            "NC1 (2005-2008, before the facelift)", QMessageBox.AcceptRole
+        )
+        nc2 = box.addButton("NC2 (late 2008-2015, facelift)", QMessageBox.AcceptRole)
+        cancel = box.addButton(QMessageBox.Cancel)
+        box.setDefaultButton(cancel)
+        box.setEscapeButton(cancel)
+        box.exec()
+        clicked = box.clickedButton()
+        if clicked is nc1:
+            return "NC1"
+        if clicked is nc2:
+            return "NC2"
+        return None
 
     def _on_worker_error(self, error_msg: str):
         """Worker `error` slot — runs on the GUI thread (bound-method receiver)."""
@@ -1390,7 +1908,6 @@ class ECUProgrammingWindow(QMainWindow):
         QTimer.singleShot(0, lambda: self._cleanup_thread(thread))
 
         self._btn_abort.setEnabled(False)
-        self._btn_done.setVisible(True)
 
         # Release session
         if self._session_acquired and self._session:
@@ -1404,6 +1921,15 @@ class ECUProgrammingWindow(QMainWindow):
             )
             self._session.release(connection_dead=connection_dead)
 
+        # After a successful flash the user goes to drive the car, so Done must
+        # not reconnect (on the WiCAN a reconnect re-reserves the bus and parks
+        # the datalogger for the drive). Every other outcome keeps reconnecting:
+        # a read / RAM scan leaves the ECU in a programming session, and after
+        # a failed flash the user needs the link to retry or recover.
+        self._reconnect_on_done = not (
+            success and self._current_operation in ("flash", "dynamic_flash")
+        )
+
         if success:
             self._progress_state.setText("Complete")
             self._progress_state.setStyleSheet(
@@ -1412,8 +1938,11 @@ class ECUProgrammingWindow(QMainWindow):
             self._progress_bar.setValue(100)
 
             if self._current_operation == "read" and worker.result:
-                saved_path = self._auto_save_rom(worker.result)
-                if saved_path:
+                check = self._check_rom_read(worker.result)
+                saved_path = self._auto_save_rom(worker.result, suspect=check.suspect)
+                if saved_path and check.suspect:
+                    self._show_suspect_read(saved_path, check)
+                elif saved_path:
                     self._progress_detail.setText(
                         f"ROM saved to {saved_path.name}. Reconnecting..."
                     )
@@ -1424,6 +1953,12 @@ class ECUProgrammingWindow(QMainWindow):
                         subprocess.Popen(["explorer", "/select,", str(saved_path)])
                     except Exception:
                         pass  # Non-critical — ROM is saved regardless
+                    unverified_note = (
+                        "\n\nNote: NC Flash could not check this ROM against its "
+                        f"own checksums ({check.detail})."
+                        if check.status == UNVERIFIED
+                        else ""
+                    )
                     # Remind user to keep a backup
                     QTimer.singleShot(
                         500,
@@ -1433,7 +1968,8 @@ class ECUProgrammingWindow(QMainWindow):
                             f"ROM saved to:\n{saved_path.name}\n\n"
                             "Keep a copy of this file somewhere safe.\n"
                             "This is your stock ROM backup — you will need it\n"
-                            "to revert to factory if anything goes wrong.",
+                            "to revert to factory if anything goes wrong."
+                            + unverified_note,
                         ),
                     )
                 else:
@@ -1458,27 +1994,53 @@ class ECUProgrammingWindow(QMainWindow):
                     )
                 QTimer.singleShot(500, self._auto_reconnect)
             elif self._current_operation in ("flash", "dynamic_flash"):
-                # Both adapters finish the flash with an IDENTICAL UDS ECUReset
-                # (0x11 0x01) after RequestTransferExit, which reboots the ECU and
-                # brings up the freshly written calibration on its own — no ignition
-                # cycle is required to finish. Cycling the key afterward is the
-                # recommended (not mandatory) way to be certain the new cal is live,
-                # so frame it as a recommendation rather than a blocking "you MUST".
+                # Both adapters finish with a UDS ECUReset (0x11 0x01), which
+                # restarts the ECU on the new program by itself: bench
+                # 2026-11-11, a connect 9 s after a valid flash (no key cycle)
+                # found it running. A boot loader seen after a flash therefore
+                # means the ROM can't start (recovery mode), never "wait".
+                recovery = getattr(self, "_flash_was_recovery", False)
+                # The flash worked, so the ECU runs: the generation it read can
+                # no longer serve a recovery, and the next ECU connected may be
+                # another car's (review 2026-11-11). Only a FAILED flash keeps it.
+                self._flash_read_generation = ""
+                wican_released = self._end_session_after_flash()
+                self._progress_state.setText(
+                    "Recovery flash complete" if recovery else "Flash complete"
+                )
                 self._progress_detail.setText(
-                    "Flash written & confirmed. The ECU reboots on its own."
+                    "The ECU restarts on its own. NC Flash has disconnected, so "
+                    "you can unplug the adapter. Click Connect to reconnect."
+                )
+                title = "Recovery Flash Complete" if recovery else "Flash Complete"
+                done = (
+                    "The full ROM was written and every block was confirmed by "
+                    "the ECU.\n\n"
+                    if recovery
+                    else "The ROM was written and every block was confirmed by the "
+                    "ECU.\n\n"
+                )
+                after = (
+                    "Click Connect to check the normal readings are back."
+                    if recovery
+                    else "To reconnect, click Connect."
                 )
                 QTimer.singleShot(
                     300,
                     lambda: QMessageBox.information(
                         self,
-                        "Flash Complete",
-                        "The ROM was written and every block was confirmed by the "
-                        "ECU.\n\n"
-                        "The ECU reboots on its own after a valid flash, so you do "
-                        "not need to cycle the ignition — but it is recommended: turn "
-                        "the key OFF, then back ON to be sure the new calibration "
-                        "boots cleanly.\n\n"
-                        "Click Done to reconnect.",
+                        title,
+                        done + "The ECU restarts on its own after a valid flash. "
+                        "To be sure the new calibration is running, turn the key "
+                        "OFF, then back ON, before starting the engine.\n\n"
+                        "NC Flash has disconnected from the ECU"
+                        + (
+                            " and released the WiCAN for its trip logger"
+                            if wican_released
+                            else ""
+                        )
+                        + ". You can unplug the adapter. "
+                        + after,
                     ),
                 )
         else:
@@ -1489,12 +2051,151 @@ class ECUProgrammingWindow(QMainWindow):
                 self._progress_state.setStyleSheet(
                     "font-weight: bold; font-size: 13px; color: #aaaaaa;"
                 )
+            elif getattr(worker, "error_kind", "") == "link":
+                # Not an ECU problem: the link check stops before any ECU
+                # programming step, so the ECU is exactly as it was.
+                self._progress_state.setText("Wi-Fi link not clean enough")
+                self._progress_state.setStyleSheet(
+                    "font-weight: bold; font-size: 13px; "
+                    f"color: {theme.WARNING_AMBER};"
+                )
+                error_msg = (
+                    "The flash did not start: the Wi-Fi link to the WiCAN is "
+                    "dropping packets. The ECU was not touched. Move the computer "
+                    "closer to the adapter (or use its access-point mode) and try "
+                    f"again.\n\nDetails: {error_msg}"
+                )
             else:
                 self._progress_state.setText("Failed")
                 self._progress_state.setStyleSheet(
                     "font-weight: bold; font-size: 13px; color: #cc4444;"
                 )
+                if getattr(self, "_flash_was_recovery", False):
+                    error_msg += (
+                        "\n\nThe ECU stays in recovery mode and can be flashed "
+                        "again: reconnect and retry the full flash."
+                    )
             self._progress_detail.setText(error_msg)
+            flash_failed = (
+                self._current_operation in ("flash", "dynamic_flash")
+                and not is_info
+                and getattr(worker, "error_kind", "") != "link"
+            )
+            if flash_failed:
+                # Never reconnect on our own after a failed flash: on the WiCAN
+                # the firmware may still be writing after the PC lost the link,
+                # and any traffic on the bus then can brick the ECU. The user
+                # clicks Connect when ready (review 2026-11-11).
+                self._reconnect_on_done = False
+                error_msg += "\n\nClick Connect when you are ready to try again."
+            if getattr(worker, "needs_ecu_reset", False):
+                # The reset offer connects by itself if the user accepts; an
+                # automatic reconnect now would race it.
+                self._reconnect_on_done = False
+                QTimer.singleShot(300, self._offer_ecu_reset)
+            elif error_msg != "Operation aborted by user":
+                # The progress page closes right away (no Done step), so the
+                # outcome is told here, BEFORE any reconnect: a modal opened
+                # while a WiCAN connect pumps events would stall that connect.
+                self._show_outcome_later(is_info, worker, error_msg)
+                self._stack.setCurrentIndex(0)
+                self._update_action_states()
+                return
+
+        # No Done step: go straight back to the buttons. A read or RAM scan that
+        # returned data already reconnects on its own; the rest follows
+        # _reconnect_on_done (a read with no data reconnects here).
+        if (
+            success
+            and worker.result
+            and self._current_operation
+            in (
+                "read",
+                "scan_ram",
+            )
+        ):
+            self._stack.setCurrentIndex(0)
+            self._update_action_states()
+        else:
+            self._on_progress_done()
+
+    def _show_outcome_later(self, is_info: bool, worker, message: str) -> None:
+        """Tell the user why an operation stopped, once the page has closed."""
+        op = self._current_operation
+        if is_info:
+            title, show = "Nothing to Flash", QMessageBox.information
+        elif getattr(worker, "error_kind", "") == "link":
+            title, show = "Flash Not Started", QMessageBox.warning
+        elif op in ("read", "scan_ram"):
+            title = "ROM Read Failed" if op == "read" else "RAM Read Failed"
+            show = QMessageBox.warning
+        else:
+            title = (
+                "Recovery Flash Failed"
+                if getattr(self, "_flash_was_recovery", False)
+                else "Flash Failed"
+            )
+            show = QMessageBox.warning
+
+        def tell_then_return() -> None:
+            show(self, title, message)
+            self._on_progress_done()  # reconnects only if _reconnect_on_done
+
+        # Context object: the timer dies with the window (a window closed
+        # within 300 ms must not run this on deleted widgets).
+        QTimer.singleShot(300, self, tell_then_return)
+
+    def _offer_ecu_reset(self):
+        """Offer to reset an ECU an interrupted flash left in programming mode."""
+        reply = QMessageBox.question(
+            self,
+            "ECU Still in Programming Mode",
+            "The ECU refused to start the flash. Nothing was written.\n\n"
+            "This usually means it is still in programming mode from an earlier "
+            "flash that was interrupted. Reset the ECU now? This is the same "
+            "reset NC Flash sends at the end of every flash; it does not write "
+            "or erase anything, and NC Flash will not reset an ECU whose engine "
+            "is running. Then flash again.",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.Yes,
+        )
+        if reply == QMessageBox.Yes:
+            self._reset_programming_ecu()
+
+    def _reset_programming_ecu(self):
+        if self.is_busy or (
+            self._session and self._session.state == ECUSessionState.BUSY
+        ):
+            QMessageBox.warning(
+                self, "ECU Reset", "Another ECU operation is running; try again."
+            )
+            return
+        if not (self._session and self._session.is_connected):
+            self._on_connect()
+        if not (self._session and self._session.is_connected and self._session.uds):
+            QMessageBox.warning(
+                self, "ECU Reset", "Could not connect to the ECU to reset it."
+            )
+            return
+        try:
+            FlashManager().reset_programming_ecu(self._session.uds)
+        except Exception as e:
+            QMessageBox.critical(
+                self,
+                "ECU Reset",
+                f"The ECU did not accept the reset:\n{e}\n\n"
+                "Turning the ignition off for 10 seconds, then on, may also "
+                "clear it.",
+            )
+            return
+        self._session.disconnect_ecu()
+        self._progress_detail.setText("ECU reset. Reconnecting...")
+        QTimer.singleShot(3000, self._on_connect)
+        QMessageBox.information(
+            self,
+            "ECU Reset",
+            "The ECU was reset. Once NC Flash has reconnected, flash again.",
+        )
 
     @staticmethod
     def _cleanup_thread(thread):
@@ -1503,13 +2204,81 @@ class ECUProgrammingWindow(QMainWindow):
             thread.quit()
             thread.wait(3000)
 
+    @property
+    def operation_running(self) -> bool:
+        """True while an operation's worker thread is running."""
+        return self._flash_thread is not None and self._flash_thread.isRunning()
+
+    @property
+    def write_in_progress(self) -> bool:
+        """True while a worker operation that changes the ECU (a flash) runs.
+
+        Anything not in ``ABORTABLE_OPERATIONS`` counts as a write, so an
+        operation added later is protected until it is explicitly marked
+        read-only. Such an operation must never be aborted or have its session
+        torn down, and the window must not close under it.
+        """
+        return (
+            self.operation_running
+            and self._current_operation not in ABORTABLE_OPERATIONS
+        )
+
+    def _join_flash_thread(self, timeout_ms: int) -> bool:
+        """Join the running operation's thread (GUI thread). True once stopped.
+
+        Used after a read-only operation was aborted. ``quit()`` first: the
+        thread's own ``worker.finished -> thread.quit`` hop is queued to this
+        (blocked) thread, so without it ``wait()`` would always time out. The
+        wait is bounded because an abort is only seen between blocks; on a
+        timeout the caller keeps the window, so the QThread is never destroyed
+        while it still runs.
+        """
+        thread = self._flash_thread
+        if thread is None or not thread.isRunning():
+            return True
+        thread.quit()
+        return thread.wait(timeout_ms)
+
     def _on_progress_done(self):
-        """Return to actions page and reconnect if needed."""
+        """Return to the actions page (right after an operation ends; there is
+        no Done button) and reconnect if needed.
+
+        Not after a successful flash: that session was ended on purpose (see
+        ``_end_session_after_flash``), and Connect is one click away.
+        """
         self._stack.setCurrentIndex(0)
-        if not self._session or not self._session.is_connected:
+        if self._reconnect_on_done and (
+            not self._session or not self._session.is_connected
+        ):
             self._on_connect()
         else:
             self._update_action_states()
+
+    def _end_session_after_flash(self) -> bool:
+        """End the ECU session after a successful flash and say so.
+
+        The flash's release has normally closed the session already (the ECU
+        reset drops the link). This makes sure of it, so the adapter is free to
+        unplug and, on the WiCAN, the bus reservation is released and the
+        datalogger resumes for the drive. Returns True for a WiCAN session that
+        is now closed.
+        """
+        self._poll_timer.stop()
+        session = self._session
+        if session is None:
+            return False
+        if session.state != ECUSessionState.DISCONNECTED:
+            # Refused (and logged) while BUSY: never close a link under a
+            # running operation.
+            session.disconnect_ecu()
+        if session.state != ECUSessionState.DISCONNECTED:
+            return False
+        self._conn_label.setText("Disconnected — flash complete")
+        self._conn_label.setStyleSheet(
+            "font-weight: bold; font-size: 13px; "
+            f"color: {theme.TEXT_MUTED}; border: none;"
+        )
+        return session.adapter_kind == "wican"
 
     def _auto_reconnect(self):
         """Try to reconnect after ECU reset."""
@@ -1518,13 +2287,25 @@ class ECUProgrammingWindow(QMainWindow):
             # release() already closed the link without restoring the protocol,
             # so we only need to reopen the transport.
             self._progress_detail.setText("Reconnecting...")
-            QTimer.singleShot(500, self._session.connect_ecu)
+            QTimer.singleShot(500, self._reconnect_wican_session)
             return
         if self._session:
             self._session.disconnect_ecu()
             self._session = None
         self._progress_detail.setText("Reconnecting...")
         QTimer.singleShot(500, self._on_connect)
+
+    def _reconnect_wican_session(self):
+        """Reopen the same WiCAN session after an op, unless a live datalog
+        started in the gap (connecting would pause the trip it follows)."""
+        if self._session is None:
+            return
+        if self._main_window.datalogger.is_running:
+            logger.info("Not reconnecting: the Datalogger is running")
+            self._progress_detail.setText("Not reconnected: Datalogger running")
+            self._update_action_states()
+            return
+        self._session.connect_ecu()
 
     def _auto_save_to_reads_dir(
         self, data: bytes | bytearray, label: str = "", name_override: str | None = None
@@ -1577,10 +2358,16 @@ class ECUProgrammingWindow(QMainWindow):
             logger.error("Failed to save to %s: %s", save_path, e)
             return None
 
-    def _auto_save_rom(self, rom_data: bytearray) -> Path | None:
-        """Auto-save ROM read to ~/.nc-flash/reads/, named by calibration ID."""
+    def _auto_save_rom(self, rom_data: bytearray, suspect: bool = False) -> Path | None:
+        """Auto-save ROM read to ~/.nc-flash/reads/, named by calibration ID.
+
+        A read that failed its checksum check is still saved (better than losing
+        it), with ``SUSPECT`` in the name so it isn't mistaken for a good backup.
+        """
         return self._auto_save_to_reads_dir(
-            rom_data, name_override=self._cal_id_from_rom(rom_data)
+            rom_data,
+            label="SUSPECT" if suspect else "",
+            name_override=self._cal_id_from_rom(rom_data),
         )
 
     @staticmethod
@@ -1606,6 +2393,54 @@ class ECUProgrammingWindow(QMainWindow):
         except Exception:
             # Best-effort naming only — never let a bad/partial ROM abort the save.
             return None
+
+    @staticmethod
+    def _check_rom_read(rom_data: bytes) -> RomReadCheck:
+        """Check a fresh ROM read against its own checksums (issue 169) and log it.
+        Never raises: a failed check must not cost the user the read."""
+        try:
+            check = check_rom_read(bytes(rom_data))
+        except Exception as e:  # pragma: no cover - defensive
+            logger.error("ROM read checksum check failed to run: %s", e)
+            return RomReadCheck(UNVERIFIED, f"the check could not run: {e}")
+        if check.suspect:
+            bad = ", ".join(
+                f"0x{start:06X}-0x{end:06X}" for start, end in check.bad_regions
+            )
+            logger.warning(
+                "ROM read checksum check FAILED: %s%s. The backup may be corrupt; "
+                "do not flash it, read the ROM again.",
+                check.detail,
+                f" ({bad})" if bad else "",
+            )
+        elif check.status == UNVERIFIED:
+            logger.info("ROM read not checked against checksums: %s", check.detail)
+        else:
+            logger.info("ROM read checksum check passed: %s", check.detail)
+        return check
+
+    def _show_suspect_read(self, saved_path: Path, check: RomReadCheck) -> None:
+        """Mark the read as suspect on the progress page and warn the user."""
+        self._progress_state.setText("Read finished: backup may be corrupt")
+        self._progress_state.setStyleSheet(
+            f"font-weight: bold; font-size: 13px; color: {theme.WARNING_AMBER};"
+        )
+        self._progress_detail.setText(
+            f"Saved as {saved_path.name}. Do not flash it. Reconnecting..."
+        )
+        QTimer.singleShot(
+            500,
+            lambda: QMessageBox.warning(
+                self,
+                "ROM Read May Be Corrupt",
+                "The ROM was read, but it failed its checksum check: "
+                f"{check.detail}.\n\n"
+                "This backup may be corrupt. A late reply from the ECU on a "
+                "weak link can shift part of the data.\n\n"
+                "Do NOT flash this file. Read the ROM again.\n\n"
+                f"It was saved anyway, as:\n{saved_path.name}",
+            ),
+        )
 
     def _auto_save_ram_dump(self, ram_data: bytearray) -> Path | None:
         """Auto-save RAM dump to ~/.nc-flash/reads/."""
@@ -1643,10 +2478,32 @@ class ECUProgrammingWindow(QMainWindow):
                 f"DTCs: {len(unique)} stored", "#cc8800" if unique else "#44aa44"
             )
         except ECUError as e:
+            if self._dtc_refusal_means_recovery(e):
+                return
             QMessageBox.critical(self, "Error", f"Failed to read DTCs:\n{e}")
         finally:
             self._ecu_busy = False
             self._update_action_states()
+
+    def _dtc_refusal_means_recovery(self, exc: Exception) -> bool:
+        """A DTC read was refused as unsupported / out of range: check for the
+        boot loader. True (and the notice shown) when recovery is needed."""
+        if not isinstance(exc, NegativeResponseError) or exc.nrc not in (
+            NRC_SERVICE_NOT_SUPPORTED,
+            NRC_REQUEST_OUT_OF_RANGE,
+        ):
+            return False
+        result = self._check_recovery_mode()
+        if result is None or not result.needs_recovery:
+            return False
+        QMessageBox.information(
+            self,
+            "DTCs Not Available",
+            "The ECU refuses the trouble-code read because it is in its boot "
+            "loader (recovery mode). See the notice in this window: flashing a "
+            "full, known-good ROM recovers it.",
+        )
+        return True
 
     def _do_clear_dtcs(self, manager: FlashManager):
         """Send clear-DTC command and update the UI status card."""
@@ -1689,8 +2546,22 @@ class ECUProgrammingWindow(QMainWindow):
     # --- Cleanup ---
 
     def closeEvent(self, event):
+        if self.write_in_progress:
+            # Never abort a write and never tear down the session under it: an
+            # aborted J2534/OBDX flash leaves a partly programmed ECU, and
+            # closing the transport under a WiCAN SD-staged flash cuts its
+            # monitoring and hands the bus back mid-flash. The user waits.
+            QMessageBox.warning(
+                self,
+                "Flash in Progress",
+                "A flash is in progress. Closing now could leave the ECU "
+                "unbootable. Wait for it to finish.",
+            )
+            event.ignore()
+            return
         self._poll_timer.stop()
         if self._flash_thread and self._flash_thread.isRunning():
+            # Only a read-only operation gets here (write_in_progress above).
             reply = QMessageBox.question(
                 self,
                 "Operation in Progress",
@@ -1701,15 +2572,27 @@ class ECUProgrammingWindow(QMainWindow):
             if reply != QMessageBox.Yes:
                 event.ignore()
                 return
-            # Force-stop the running operation (read-only FlashManager ops only;
-            # WiCANSdFlasher writes have no abort — once staged, the firmware
-            # drives the flash to completion on its own).
             if self._current_manager and hasattr(self._current_manager, "abort"):
                 self._current_manager.abort()
-            if self._flash_thread and self._flash_thread.isRunning():
-                self._flash_thread.quit()
-                self._flash_thread.wait(3000)
+            if not self._join_flash_thread(CLOSE_JOIN_MS):
+                # Still inside a block's retries: keep the window (and the
+                # session the worker is using) until the thread has stopped.
+                logger.warning(
+                    "ECU operation did not stop within %d ms; close refused",
+                    CLOSE_JOIN_MS,
+                )
+                QMessageBox.information(
+                    self,
+                    "Still Stopping",
+                    "The ECU operation is still stopping. Close the window "
+                    "again in a moment.",
+                )
+                event.ignore()
+                return
         if self._session:
             self._session.cleanup()
             self._session = None
+        # Not while a "Close anyway" operation is still winding down.
+        if not (self._flash_thread and self._flash_thread.isRunning()):
+            self._ap_switch.offer_rejoin()
         event.accept()

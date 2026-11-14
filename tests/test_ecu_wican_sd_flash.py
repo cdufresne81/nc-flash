@@ -80,6 +80,8 @@ def _make_flasher(transport, uploader=None, datalog=None):
     f._safeguards._gate = MagicMock(name="gate")
     f._verify_readback = MagicMock(name="verify")
     f._authenticate_ecu = MagicMock(name="auth")
+    f._check_ecu_generation = MagicMock(name="gen_check")
+    f._check_flash_counter = MagicMock(name="flash_counter")
     f._safe_uds_teardown = MagicMock(name="uds_teardown")
     return f
 
@@ -173,7 +175,7 @@ class TestRevGate:
         transport = _FakeTransport(marker=b"NCFRv5")
         flasher = _make_flasher(transport)
         order = []
-        flasher._authenticate_ecu.side_effect = lambda: order.append("auth")
+        flasher._authenticate_ecu.side_effect = lambda **k: order.append("auth")
         with (
             patch(
                 "src.ecu.wican_sd_flash.build_flash_package",
@@ -207,7 +209,7 @@ class TestDatalogCoexistence:
         datalog.bus_release = lambda: order.append("bus_release")
         datalog.resume = lambda: order.append("resume")
         flasher = _make_flasher(transport, datalog=datalog)
-        flasher._authenticate_ecu.side_effect = lambda: order.append("auth")
+        flasher._authenticate_ecu.side_effect = lambda **k: order.append("auth")
         transport.fast_write = lambda *a, **k: order.append("flash")
         return flasher, datalog, order
 
@@ -455,6 +457,8 @@ class TestStagedRomCleanup:
         f._safeguards._gate = MagicMock(name="gate")
         f._verify_readback = MagicMock(name="verify")
         f._authenticate_ecu = MagicMock(name="auth")
+        f._check_ecu_generation = MagicMock(name="gen_check")
+        f._check_flash_counter = MagicMock(name="flash_counter")
         f._safe_uds_teardown = MagicMock(name="uds_teardown")
         return f, sd_files, order
 
@@ -593,7 +597,9 @@ class TestReadbackVerify:
             patch("src.ecu.wican_sd_flash.time.sleep"),
         ):
             f._verify_readback(src)  # must NOT raise
-        f._authenticate_ecu.assert_called()  # re-auth before reading back
+        # Re-auth before reading back, WITHOUT the flash counter: after it the
+        # ECU refuses memory reads (bench 2026-10-14).
+        f._authenticate_ecu.assert_called_with(flash_counter=False)
 
     def test_mismatch_outside_counter_raises(self):
         src = bytes(ROM_SIZE)
@@ -654,3 +660,70 @@ class TestEndToEndPackaging:
         corrected = bytearray(rom)
         correct_rom_checksums(corrected)
         assert pkg.corrected_rom == bytes(corrected)
+
+
+class TestGenerationCheck:
+    """The NC1/NC2 check runs after auth and BEFORE the firmware is told to erase."""
+
+    def _run(self, flasher):
+        with (
+            patch(
+                "src.ecu.wican_sd_flash.build_flash_package",
+                return_value=_fake_package(),
+            ),
+            patch("src.ecu.wican_sd_flash.time.sleep"),
+        ):
+            flasher.flash_rom(b"\x00" * 16)
+
+    def test_check_runs_between_auth_and_the_firmware_flash(self):
+        transport = _FakeTransport(marker=b"NCFRv5")
+        flasher = _make_flasher(transport)
+        order = []
+        flasher._authenticate_ecu.side_effect = lambda **k: order.append(("auth", k))
+        flasher._check_ecu_generation.side_effect = lambda pkg: order.append("check")
+        flasher._check_flash_counter.side_effect = lambda: order.append("counter")
+        transport.fast_write = lambda *a, **k: order.append("flash")
+        self._run(flasher)
+        # The ECU refuses memory reads once the flash counter has run, so the
+        # check must come between the unlock and the counter.
+        assert order == [
+            ("auth", {"flash_counter": False}),
+            "check",
+            "counter",
+            "flash",
+        ]
+
+    def test_mismatch_never_triggers_the_firmware_flash(self):
+        from src.ecu.exceptions import ECUGenerationMismatchError
+
+        transport = _FakeTransport(marker=b"NCFRv5")
+        flasher = _make_flasher(transport)
+        flasher._check_ecu_generation.side_effect = ECUGenerationMismatchError(
+            "NC1", "NC2"
+        )
+        with pytest.raises(ECUGenerationMismatchError):
+            self._run(flasher)
+        assert transport.fast_write_calls == []
+        flasher._check_flash_counter.assert_not_called()
+        flasher._safe_uds_teardown.assert_called_once()  # session dropped
+
+    def test_check_uses_the_hardware_generation_and_the_prompt(self):
+        # An early NC1 ROM (byte 0x36): the packager picked the NC2 SBL, but the
+        # check must compare NC1 hardware (#234).
+        from src.ecu.constants import GEN_DETECT_OFFSET, GEN_NC2_A
+
+        flasher = WiCANSdFlasher(
+            _FakeTransport(), uploader=MagicMock(), datalog=MagicMock()
+        )
+        prompt = MagicMock()
+        flasher.set_unverified_generation_prompt(prompt)
+        image = bytearray(GEN_DETECT_OFFSET + 16)
+        image[GEN_DETECT_OFFSET] = GEN_NC2_A
+        pkg = _fake_package(image=bytes(image))
+        pkg.manifest["generation"] = "NC2"
+        generation = "NC1"
+        with patch("src.ecu.wican_sd_flash.verify_ecu_generation") as verify:
+            flasher._check_ecu_generation(pkg)
+        args, kwargs = verify.call_args
+        assert args[1] == generation
+        assert kwargs["confirm_unverified"] is prompt

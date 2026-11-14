@@ -96,3 +96,18 @@ def test_reset_baseline_clears_borders_and_originals():
     assert not st.is_cell_modified("0x100", 0, 0)
     assert not st.is_axis_modified("0x100", "x_axis", 1)
     assert st.get_original("0x100") is None
+
+
+def test_has_modified_covers_cells_and_both_axes():
+    st = TableEditState()
+    assert not st.has_modified("0x100")
+    st.mark_cell_modified("0x100", 0, 0)
+    assert st.has_modified("0x100")
+    assert not st.has_modified("0x200")  # per table
+    st.unmark_cell("0x100", 0, 0)
+    assert not st.has_modified("0x100")  # emptied sets count as unmarked
+    st.mark_axis_modified("0x100", "y_axis", 1)
+    assert st.has_modified("0x100")
+    st.unmark_axis("0x100", "y_axis", 1)
+    st.mark_axis_modified("0x100", "x_axis", 0)
+    assert st.has_modified("0x100")

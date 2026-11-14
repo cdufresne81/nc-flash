@@ -1,0 +1,393 @@
+table,record_address,old_definition,verdict,evidence
+GeneralCal_ShiftPoint_SpeedA_5pt,0x700C8,5-pt axis + 5 x uint16,"1-D record, 8-bit data",0x700C8 passed in r5 to the 1-D byte lookup 0x10764
+GeneralCal_ShiftPoint_SpeedB_5pt,0x700D3,5-pt axis + 5 x uint16,"1-D record, 8-bit data",0x700D3 passed in r5 to the 1-D byte lookup 0x10764
+GeneralCal_ShiftPoint_GearSpeed_Gear0_5pt,0x700DE,5-pt axis + 5 x uint16,"1-D record, 8-bit data",0x700DE passed in r5 to the 1-D byte lookup 0x10764 (base of an indexed record array)
+EngBraking_TCC_SpeedLookup_21pt,0x70331,21-pt axis + 21 x uint16,"1-D record, 8-bit data",0x70331 passed in r5 to the 1-D byte lookup 0x10764
+EngBraking_SpeedTable1_9pt,0x7035C,9-pt axis + 9 x uint16,"1-D record, 8-bit data",0x7035C passed in r5 to the 1-D byte lookup 0x10764
+EngBraking_SpeedTable2_CfgBit2_9pt,0x7036F,9-pt axis + 9 x uint16,"1-D record, 8-bit data",0x7036F passed in r5 to the 1-D byte lookup 0x10764
+Engine_Braking_Map,0x70382,9-pt axis + 9 x uint16,9x2 interleaved 8-bit map,0x70382 passed in r6 to the 2-D byte lookup 0x1078A
+CreepControl_ExitSpeed_2pt,0x703BC,2-pt axis + 2 x uint16,not a table (removed),"read directly at 0x703BC, width 2 byte(s)"
+LockupClutch_EnableThresh_4pt,0x703C0,4-pt axis + 4 x uint16,"1-D record, 8-bit data",0x703C0 passed in r5 to the 1-D byte lookup 0x10764
+CoastBrake_SpeedTable_3pt,0x703CC,3-pt axis + 3 x uint16,"1-D record, 8-bit data",0x703CC passed in r5 to the 1-D byte lookup 0x10764
+ShiftSolenoid2_SpeedThresh_4pt,0x703D4,4-pt axis + 4 x uint16,"1-D record, 8-bit data",0x703D4 passed in r5 to the 1-D byte lookup 0x10764
+ShiftSolenoid2_RampRate_3pt,0x703DD,3-pt axis + 3 x uint16,"1-D record, 8-bit data",0x703DD passed in r5 to the 1-D byte lookup 0x10764
+AdaptiveShift_EnableSpeed_6pt,0x703E4,6-pt axis + 6 x uint16,"1-D record, 8-bit data",0x703E4 passed in r5 to the 1-D byte lookup 0x10764
+SolTest_Upshift_SlipMin_5pt,0x70404,5-pt axis + 5 x uint16,"1-D record, 8-bit data",0x70404 passed in r5 to the 1-D byte lookup 0x10764
+SolTest_Upshift_SlipMax_5pt,0x7040F,5-pt axis + 5 x uint16,"1-D record, 8-bit data",0x7040F passed in r5 to the 1-D byte lookup 0x10764
+SolTest_Downshift_SlipMin_5pt,0x7041A,5-pt axis + 5 x uint16,"1-D record, 8-bit data",0x7041A passed in r5 to the 1-D byte lookup 0x10764
+SolTest_Downshift_SlipMax_5pt,0x70425,5-pt axis + 5 x uint16,"1-D record, 8-bit data",0x70425 passed in r5 to the 1-D byte lookup 0x10764
+ShiftAdapt_UpdateRate_2pt,0x70430,2-pt axis + 2 x uint16,"1-D record, 8-bit data",0x70430 passed in r5 to the 1-D byte lookup 0x10764
+DownshiftProtect_Rate_Gear0_4pt,0x70444,4-pt axis + 4 x uint16,"1-D record, 8-bit data",0x70444 passed in r5 to the 1-D byte lookup 0x10764 (base of an indexed record array)
+DownshiftProtect_Rate_Gear3_4pt,0x7045F,4-pt axis + 4 x uint16,"1-D record, 8-bit data",0x7045F passed in r5 to the 1-D byte lookup 0x10764 (base of an indexed record array)
+SpeedProtect_HystLow_7pt,0x704C8,7-pt axis + 7 x uint16,"1-D record, 8-bit data",0x704C8 passed in r5 to the 1-D byte lookup 0x10764
+SpeedProtect_HystHigh_7pt,0x704D7,7-pt axis + 7 x uint16,"1-D record, 8-bit data",0x704D7 passed in r5 to the 1-D byte lookup 0x10764
+Protect_MultiRange_A_3pt,0x70500,3-pt axis + 3 x uint16,"1-D record, 8-bit data",0x70500 passed in r5 to the 1-D byte lookup 0x10764
+Protect_MultiRange_B_3pt,0x70507,3-pt axis + 3 x uint16,"1-D record, 8-bit data",0x70507 passed in r5 to the 1-D byte lookup 0x10764
+Protect_MultiRange_C_3pt,0x7050E,3-pt axis + 3 x uint16,"1-D record, 8-bit data",0x7050E passed in r5 to the 1-D byte lookup 0x10764
+Protect_MultiRange_D_3pt,0x70515,3-pt axis + 3 x uint16,"1-D record, 8-bit data",0x70515 passed in r5 to the 1-D byte lookup 0x10764
+Protect_GearLogic_AltOutput_5pt,0x70574,5-pt axis + 5 x uint16,"1-D record, 8-bit data",0x70574 passed in r5 to the 1-D byte lookup 0x10764 (base of an indexed record array)
+Protect_Ch11_Default_8pt,0x705E0,8-pt axis + 8 x uint16,"1-D record, 8-bit data",0x705E0 passed in r5 to the 1-D byte lookup 0x10764
+Protect_Ch11_Gear0_8pt,0x705F1,8-pt axis + 8 x uint16,"1-D record, 8-bit data",0x705F1 passed in r5 to the 1-D byte lookup 0x10764 (base of an indexed record array)
+Protect_ActuatorDelta_Normal_5pt,0x7064A,5-pt axis + 5 x uint16,"1-D record, 8-bit data",0x7064A passed in r5 to the 1-D byte lookup 0x10764 (base of an indexed record array)
+Line_Pressure_State2_G0_7pt,0x70766,7-pt axis + 7 x uint16,not a table (removed),no code reference; the byte is a row value inside the 5x5 map at 0x70759
+Shift_ClassifyPhase_Normal_5pt,0x707C8,5-pt axis + 5 x uint16,"1-D record, 8-bit data",0x707C8 passed in r5 to the 1-D byte lookup 0x10764
+Shift_ClassifyPhase_Sport_5pt,0x707D3,5-pt axis + 5 x uint16,"1-D record, 8-bit data",0x707D3 passed in r5 to the 1-D byte lookup 0x10764
+Shift_ProcessMode_PhaseA_5pt,0x707DE,5-pt axis + 5 x uint16,"1-D record, 8-bit data",0x707DE passed in r5 to the 1-D byte lookup 0x10764
+Shift_ProcessMode_PhaseB_5pt,0x707E9,5-pt axis + 5 x uint16,"1-D record, 8-bit data",0x707E9 passed in r5 to the 1-D byte lookup 0x10764
+Shift_CompletionA_5pt,0x707F4,5-pt axis + 5 x uint16,"1-D record, 8-bit data",0x707F4 passed in r5 to the 1-D byte lookup 0x10764
+Shift_CompletionB_5pt,0x707FF,5-pt axis + 5 x uint16,"1-D record, 8-bit data",0x707FF passed in r5 to the 1-D byte lookup 0x10764
+Solenoid_Duty_Idx0,0x7080C,4-pt axis + 4 x uint16,4x2 interleaved 8-bit map,0x7080C passed in r6 to the 2-D byte lookup 0x1078A
+LearnCycle_State56_Thresh_A_3pt,0x7082C,3-pt axis + 3 x uint16,not a table (removed),"read directly at 0x7082C, width 1 byte(s)"
+LearnCycle_CheckGear_3pt,0x70834,3-pt axis + 3 x uint16,"1-D record, 8-bit data",0x70834 passed in r5 to the 1-D byte lookup 0x10764
+LearnCycle_State23_SpeedA_7pt,0x7084C,7-pt axis + 7 x uint16,"1-D record, 8-bit data",0x7084C passed in r5 to the 1-D byte lookup 0x10764
+LearnCycle_State2_SpeedB_7pt,0x7085B,7-pt axis + 7 x uint16,"1-D record, 8-bit data",0x7085B passed in r5 to the 1-D byte lookup 0x10764
+ShiftQuality_RangeLookupA_7pt,0x7087F,7-pt axis + 7 x uint16,"1-D record, 8-bit data",0x7087F passed in r5 to the 1-D byte lookup 0x10764
+ShiftQuality_RangeLookupB_7pt,0x7088E,7-pt axis + 7 x uint16,"1-D record, 8-bit data",0x7088E passed in r5 to the 1-D byte lookup 0x10764
+LearnCycle_State4_Speed_7pt,0x7089D,7-pt axis + 7 x uint16,"1-D record, 8-bit data",0x7089D passed in r5 to the 1-D byte lookup 0x10764
+Shift_Progression_Map,0x708AC,4-pt axis + 4 x uint16,4x2 interleaved 8-bit map,0x708AC passed in r6 to the 2-D byte lookup 0x1078A
+ShiftQuality_PreloadLookup_5pt,0x708DB,5-pt axis + 5 x uint16,"1-D record, 8-bit data",0x708DB passed in r5 to the 1-D byte lookup 0x10764
+LearnCycle_CalcTorque_Speed_7pt,0x708E6,7-pt axis + 7 x uint16,"1-D record, 8-bit data",0x708E6 passed in r5 to the 1-D byte lookup 0x10764
+LearnCycle_CalcTorque_B_5pt,0x708F5,5-pt axis + 5 x uint16,"1-D record, 8-bit data",0x708F5 passed in r5 to the 1-D byte lookup 0x10764
+LearnCycle_CalcTorque_Thresh_4pt,0x70919,4-pt axis + 4 x uint16,"1-D record, 8-bit data",0x70919 passed in r5 to the 1-D byte lookup 0x10764
+LearnCycle_State56_A_3pt,0x70922,3-pt axis + 3 x uint16,"1-D record, 8-bit data",0x70922 passed in r5 to the 1-D byte lookup 0x10764
+LearnCycle_UpdateState_4pt,0x70929,4-pt axis + 4 x uint16,"1-D record, 8-bit data",0x70929 passed in r5 to the 1-D byte lookup 0x10764 (base of an indexed record array)
+LearnCycle_WriteTorque_3pt,0x7093B,3-pt axis + 3 x uint16,"1-D record, 8-bit data",0x7093B passed in r5 to the 1-D byte lookup 0x10764
+Pressure_Comp_Speed,0x70944,4-pt axis + 4 x uint16,4x2 interleaved 8-bit map,0x70944 passed in r6 to the 2-D byte lookup 0x1078A
+ShiftQuality_CalcClamped_4pt,0x70969,4-pt axis + 4 x uint16,"1-D record, 8-bit data",0x70969 passed in r5 to the 1-D byte lookup 0x10764
+ShiftMode1_RangeLookup_3pt,0x70974,3-pt axis + 3 x uint16,"1-D record, 8-bit data",0x70974 passed in r5 to the 1-D byte lookup 0x10764
+Pressure_Comp_Base,0x7097B,4-pt axis + 4 x uint16,4x2 interleaved 8-bit map,0x7097B passed in r6 to the 2-D byte lookup 0x1078A
+ShiftMode1_Process_4pt,0x7098B,4-pt axis + 4 x uint16,"1-D record, 8-bit data",0x7098B passed in r5 to the 1-D byte lookup 0x10764
+ShiftMode1_Lookup_B_3pt,0x70994,3-pt axis + 3 x uint16,3x2 interleaved 8-bit map,0x70994 passed in r6 to the 2-D byte lookup 0x1078A
+ShiftMode2_Lookup_3pt,0x709A4,3-pt axis + 3 x uint16,"1-D record, 8-bit data",0x709A4 passed in r5 to the 1-D byte lookup 0x10764
+TorqueCtrlC_Lookup_2pt,0x709AC,2-pt axis + 2 x uint16,"1-D record, 8-bit data",0x709AC passed in r5 to the 1-D byte lookup 0x10764
+ShiftEngage_Monitor_A_4pt,0x709B4,4-pt axis + 4 x uint16,"1-D record, 8-bit data",0x709B4 passed in r5 to the 1-D byte lookup 0x10764
+ShiftEngage_Monitor_B_4pt,0x709BD,4-pt axis + 4 x uint16,"1-D record, 8-bit data",0x709BD passed in r5 to the 1-D byte lookup 0x10764
+Shift_Point_Thresh_G0_2D,0x709F0,4-pt axis + 4 x uint16,"1-D record, 8-bit data",0x709F0 passed in r5 to the 1-D byte lookup 0x10764 (base of an indexed record array)
+ShiftEngage_TorqueRange_4pt,0x70A02,4-pt axis + 4 x uint16,"1-D record, 8-bit data",0x70A02 passed in r5 to the 1-D byte lookup 0x10764 (base of an indexed record array)
+ShiftPerm_SpeedThresh_4pt,0x70A14,4-pt axis + 4 x uint16,"1-D record, 8-bit data",0x70A14 passed in r5 to the 1-D byte lookup 0x10764
+SolPressure_CalcF_4pt,0x70B24,4-pt axis + 4 x uint16,"1-D record, 8-bit data",0x70B24 passed in r5 to the 1-D byte lookup 0x10764
+SolPressure_CalcG_3pt,0x70B2D,3-pt axis + 3 x uint16,"1-D record, 8-bit data",0x70B2D passed in r5 to the 1-D byte lookup 0x10764
+SolPressure_CalcH_2pt,0x70B34,2-pt axis + 2 x uint16,"1-D record, 8-bit data",0x70B34 passed in r5 to the 1-D byte lookup 0x10764
+SolPressure_Base_3pt,0x70B39,3-pt axis + 3 x uint16,"1-D record, 8-bit data",0x70B39 passed in r5 to the 1-D byte lookup 0x10764
+SolPressure_CalcA_4pt,0x70B40,4-pt axis + 4 x uint16,"1-D record, 8-bit data",0x70B40 passed in r5 to the 1-D byte lookup 0x10764
+SolPressure_CalcC_4pt,0x70B49,4-pt axis + 4 x uint16,"1-D record, 8-bit data",0x70B49 passed in r5 to the 1-D byte lookup 0x10764
+SolPressure_GearState5_A_8pt,0x70B54,8-pt axis + 8 x uint16,8x2 interleaved 8-bit map,0x70B54 passed in r6 to the 2-D byte lookup 0x1078A
+SolPressure_GearState6_A_8pt,0x70B70,8-pt axis + 8 x uint16,8x2 interleaved 8-bit map,0x70B70 passed in r6 to the 2-D byte lookup 0x1078A
+SolPressure_GearStateX_A_8pt,0x70B8C,8-pt axis + 8 x uint16,8x2 interleaved 8-bit map,0x70B8C passed in r6 to the 2-D byte lookup 0x1078A
+SolPressure_GearState5_B_8pt,0x70BA8,8-pt axis + 8 x uint16,8x2 interleaved 8-bit map,0x70BA8 passed in r6 to the 2-D byte lookup 0x1078A
+SolPressure_GearState6_B_8pt,0x70BC4,8-pt axis + 8 x uint16,8x2 interleaved 8-bit map,0x70BC4 passed in r6 to the 2-D byte lookup 0x1078A
+SolPressure_GearStateX_B_8pt,0x70BE0,8-pt axis + 8 x uint16,8x2 interleaved 8-bit map,0x70BE0 passed in r6 to the 2-D byte lookup 0x1078A
+Shift_Point_Base,0x70BFC,8-pt axis + 8 x uint16,8x2 interleaved 8-bit map,0x70BFC passed in r6 to the 2-D byte lookup 0x1078A
+SolPressure_ShiftState18_8pt,0x70C18,8-pt axis + 8 x uint16,8x2 interleaved 8-bit map,0x70C18 passed in r6 to the 2-D byte lookup 0x1078A
+Shift_Point_Correction,0x70C34,8-pt axis + 8 x uint16,8x2 interleaved 8-bit map,0x70C34 passed in r6 to the 2-D byte lookup 0x1078A
+ShiftAdapt_BoundsOutputSpd_Type0_4pt,0x70CF3,4-pt axis + 4 x uint16,"1-D record, 8-bit data",0x70CF3 passed in r5 to the 1-D byte lookup 0x10764
+ShiftAdapt_BoundsOutputSpd_Type1_4pt,0x70CFC,4-pt axis + 4 x uint16,"1-D record, 8-bit data",0x70CFC passed in r5 to the 1-D byte lookup 0x10764
+ShiftAdapt_BoundsOutputSpd_TypeX_4pt,0x70D05,4-pt axis + 4 x uint16,"1-D record, 8-bit data",0x70D05 passed in r5 to the 1-D byte lookup 0x10764
+ShiftAdapt_BoundsTurbineSpd_Type0_4pt,0x70D0E,4-pt axis + 4 x uint16,"1-D record, 8-bit data",0x70D0E passed in r5 to the 1-D byte lookup 0x10764
+ShiftAdapt_BoundsTurbineSpd_Type1_4pt,0x70D17,4-pt axis + 4 x uint16,"1-D record, 8-bit data",0x70D17 passed in r5 to the 1-D byte lookup 0x10764
+ShiftAdapt_BoundsTurbineSpd_TypeX_4pt,0x70D20,4-pt axis + 4 x uint16,"1-D record, 8-bit data",0x70D20 passed in r5 to the 1-D byte lookup 0x10764
+ShiftAdapt_SlipRef_10pt,0x70DF2,10-pt axis + 10 x uint16,"1-D record, 8-bit data",0x70DF2 passed in r5 to the 1-D byte lookup 0x10764
+ShiftAdapt_SlipRef_Slot1_10pt_u16,0x70E07,10-pt axis + 10 x uint16,"1-D record, 8-bit data",0x70E07 passed in r5 to the 1-D byte lookup 0x10764
+ShiftAdapt_SlipRef_Slot2_10pt_u16,0x70E1C,10-pt axis + 10 x uint16,"1-D record, 8-bit data",0x70E1C passed in r5 to the 1-D byte lookup 0x10764
+ShiftAdapt_SlipThreshA_Slot0_10pt_u16,0x70E46,10-pt axis + 10 x uint16,"1-D record, 8-bit data",0x70E46 passed in r5 to the 1-D byte lookup 0x10764
+ShiftAdapt_SlipThreshA_Slot1_10pt_u16,0x70E5B,10-pt axis + 10 x uint16,"1-D record, 8-bit data",0x70E5B passed in r5 to the 1-D byte lookup 0x10764
+ShiftAdapt_SlipThreshA_Slot2_10pt_u16,0x70E70,10-pt axis + 10 x uint16,"1-D record, 8-bit data",0x70E70 passed in r5 to the 1-D byte lookup 0x10764
+ShiftAdapt_SlipThreshB_Slot0_10pt_u16,0x70E85,10-pt axis + 10 x uint16,"1-D record, 8-bit data",0x70E85 passed in r5 to the 1-D byte lookup 0x10764
+ShiftAdapt_SlipThreshB_Slot1_10pt_u16,0x70E9A,10-pt axis + 10 x uint16,"1-D record, 8-bit data",0x70E9A passed in r5 to the 1-D byte lookup 0x10764
+ShiftAdapt_SlipThreshB_Slot2_10pt_u16,0x70EAF,10-pt axis + 10 x uint16,"1-D record, 8-bit data",0x70EAF passed in r5 to the 1-D byte lookup 0x10764
+ShiftAdapt_SlipThreshC_Slot0_10pt_u16,0x70EC4,10-pt axis + 10 x uint16,"1-D record, 8-bit data",0x70EC4 passed in r5 to the 1-D byte lookup 0x10764
+ShiftAdapt_SlipThreshC_Slot1_10pt_u16,0x70ED9,10-pt axis + 10 x uint16,"1-D record, 8-bit data",0x70ED9 passed in r5 to the 1-D byte lookup 0x10764
+ShiftAdapt_SlipThreshC_Slot2_10pt_u16,0x70EEE,10-pt axis + 10 x uint16,"1-D record, 8-bit data",0x70EEE passed in r5 to the 1-D byte lookup 0x10764
+Duty_Rate_Normal,0x7113A,4-pt axis + 4 x uint16,"1-D record, 8-bit data",stack slot loaded into r5 for the 1-D byte lookup 0x10764 at 0x33CDC
+Duty_Rate_Sport,0x71143,4-pt axis + 4 x uint16,"1-D record, 8-bit data",stack slot loaded into r5 for the 1-D byte lookup 0x10764 at 0x33CDC
+Duty_Rate_Cold,0x7114C,4-pt axis + 4 x uint16,"1-D record, 8-bit data",stack slot loaded into r5 for the 1-D byte lookup 0x10764 at 0x33CDC
+DownshiftProtect_Init_Gear0_4pt,0x7119A,4-pt axis + 4 x uint16,"1-D record, 8-bit data",0x7119A passed in r5 to the 1-D byte lookup 0x10764 (base of an indexed record array)
+DownshiftProtect_Threshold_Gear0_3pt,0x711E2,3-pt axis + 3 x uint16,"1-D record, 8-bit data",0x711E2 passed in r5 to the 1-D byte lookup 0x10764 (base of an indexed record array)
+DownshiftProtect_Condition_Gear0_3pt,0x711F7,3-pt axis + 3 x uint16,"1-D record, 8-bit data",0x711F7 passed in r5 to the 1-D byte lookup 0x10764 (base of an indexed record array)
+TCC_LockA_SpeedGear0_7pt,0x7120C,7-pt axis + 7 x uint16,"1-D record, 8-bit data",0x7120C passed in r5 to the 1-D byte lookup 0x10764 (base of an indexed record array)
+TCC_LockA_Thresh_A_6pt,0x71239,6-pt axis + 6 x uint16,"1-D record, 8-bit data",0x71239 passed in r5 to the 1-D byte lookup 0x10764 (base of an indexed record array)
+TCC_LockA_Thresh_B_4pt,0x71260,4-pt axis + 4 x uint16,"1-D record, 8-bit data",0x71260 passed in r5 to the 1-D byte lookup 0x10764 (base of an indexed record array)
+TCC_LockA_Thresh_C_4pt,0x7127B,4-pt axis + 4 x uint16,"1-D record, 8-bit data",0x7127B passed in r5 to the 1-D byte lookup 0x10764
+TCC_LockA_Thresh_D_4pt,0x71284,4-pt axis + 4 x uint16,"1-D record, 8-bit data",0x71284 passed in r5 to the 1-D byte lookup 0x10764 (base of an indexed record array)
+TCC_SlipPressure_A_5pt,0x7129F,5-pt axis + 5 x uint16,"1-D record, 8-bit data",0x7129F passed in r5 to the 1-D byte lookup 0x10764 (base of an indexed record array)
+TCC_SlipPressure_B_5pt,0x712C0,5-pt axis + 5 x uint16,"1-D record, 8-bit data",0x712C0 passed in r5 to the 1-D byte lookup 0x10764 (base of an indexed record array)
+TCC_LockA_Thresh_E_4pt,0x712E1,4-pt axis + 4 x uint16,"1-D record, 8-bit data",0x712E1 passed in r5 to the 1-D byte lookup 0x10764 (base of an indexed record array)
+TCC_LockA_Thresh_F_4pt,0x712FC,4-pt axis + 4 x uint16,"1-D record, 8-bit data",0x712FC passed in r5 to the 1-D byte lookup 0x10764 (base of an indexed record array)
+TCC_DirPressure_Neg_3pt,0x71317,3-pt axis + 3 x uint16,"1-D record, 8-bit data",0x71317 passed in r5 to the 1-D byte lookup 0x10764 (base of an indexed record array)
+TCC_DirPressure_Pos_3pt,0x7132C,3-pt axis + 3 x uint16,"1-D record, 8-bit data",0x7132C passed in r5 to the 1-D byte lookup 0x10764 (base of an indexed record array)
+TCC_SlipPressure_C_3pt,0x71341,3-pt axis + 3 x uint16,"1-D record, 8-bit data",0x71341 passed in r5 to the 1-D byte lookup 0x10764 (base of an indexed record array)
+TCC_SlipPressure_D_3pt,0x71356,3-pt axis + 3 x uint16,"1-D record, 8-bit data",0x71356 passed in r5 to the 1-D byte lookup 0x10764 (base of an indexed record array)
+DSProtect_SpeedThreshGear0_7pt,0x71380,7-pt axis + 7 x uint16,"1-D record, 8-bit data",0x71380 passed in r5 to the 1-D byte lookup 0x10764 (base of an indexed record array)
+TCC_LockB_Thresh_A_7pt,0x713AD,7-pt axis + 7 x uint16,"1-D record, 8-bit data",0x713AD passed in r5 to the 1-D byte lookup 0x10764 (base of an indexed record array)
+TCC_LockB_Thresh_B_4pt,0x713CB,4-pt axis + 4 x uint16,"1-D record, 8-bit data",0x713CB passed in r5 to the 1-D byte lookup 0x10764 (base of an indexed record array)
+TCC_CheckThreshA_3pt,0x713DD,3-pt axis + 3 x uint16,"1-D record, 8-bit data",0x713DD passed in r5 to the 1-D byte lookup 0x10764 (base of an indexed record array)
+TCC_CheckThreshA_Speed_7pt,0x713EB,7-pt axis + 7 x uint16,"1-D record, 8-bit data",0x713EB passed in r5 to the 1-D byte lookup 0x10764 (base of an indexed record array)
+TCC_OverrideB_Thresh_3pt,0x71409,3-pt axis + 3 x uint16,"1-D record, 8-bit data",0x71409 passed in r5 to the 1-D byte lookup 0x10764 (base of an indexed record array)
+TCC_OverrideB_Speed_7pt,0x71417,7-pt axis + 7 x uint16,"1-D record, 8-bit data",0x71417 passed in r5 to the 1-D byte lookup 0x10764 (base of an indexed record array)
+TCC_LockB_Thresh_C_6pt,0x71435,6-pt axis + 6 x uint16,"1-D record, 8-bit data",0x71435 passed in r5 to the 1-D byte lookup 0x10764 (base of an indexed record array)
+TCC_LockB_CondGear0_3pt,0x7144F,3-pt axis + 3 x uint16,"1-D record, 8-bit data",0x7144F passed in r5 to the 1-D byte lookup 0x10764 (base of an indexed record array)
+TCC_LockB_SpeedGear0_7pt,0x7145D,7-pt axis + 7 x uint16,"1-D record, 8-bit data",0x7145D passed in r5 to the 1-D byte lookup 0x10764 (base of an indexed record array)
+TCC_LockB_Thresh_D_4pt,0x7147B,4-pt axis + 4 x uint16,"1-D record, 8-bit data",0x7147B passed in r5 to the 1-D byte lookup 0x10764 (base of an indexed record array)
+TCC_ClutchFilter_8pt,0x714A1,8-pt axis + 8 x uint16,"1-D record, 8-bit data",0x714A1 passed in r5 to the 1-D byte lookup 0x10764 (base of an indexed record array)
+Shift_Time_2to1_Down,0x71518,8-pt axis + 8 x uint16,8x2 interleaved 8-bit map,0x71518 passed in r6 to the 2-D byte lookup 0x1078A
+Shift_Time_3to2_Down,0x71534,8-pt axis + 8 x uint16,8x2 interleaved 8-bit map,0x71534 passed in r6 to the 2-D byte lookup 0x1078A
+Shift_Time_Default_Lo,0x71550,8-pt axis + 8 x uint16,8x2 interleaved 8-bit map,0x71550 passed in r6 to the 2-D byte lookup 0x1078A
+Shift_Time_Default_Hi,0x7156C,8-pt axis + 8 x uint16,8x2 interleaved 8-bit map,0x7156C passed in r6 to the 2-D byte lookup 0x1078A
+Shift_Time_1to2_Up,0x71588,8-pt axis + 8 x uint16,8x2 interleaved 8-bit map,0x71588 passed in r6 to the 2-D byte lookup 0x1078A
+Shift_Time_2to3_Up,0x715A4,8-pt axis + 8 x uint16,8x2 interleaved 8-bit map,0x715A4 passed in r6 to the 2-D byte lookup 0x1078A
+Shift_Time_3to4_Up,0x715C0,8-pt axis + 8 x uint16,8x2 interleaved 8-bit map,0x715C0 passed in r6 to the 2-D byte lookup 0x1078A
+Shift_Time_4to3_Down,0x715DC,8-pt axis + 8 x uint16,8x2 interleaved 8-bit map,0x715DC passed in r6 to the 2-D byte lookup 0x1078A
+Shift_Time_4to5_Up,0x715F8,8-pt axis + 8 x uint16,8x2 interleaved 8-bit map,0x715F8 passed in r6 to the 2-D byte lookup 0x1078A
+Shift_Point_SpeedA,0x71614,8-pt axis + 8 x uint16,8x2 interleaved 8-bit map,0x71614 passed in r6 to the 2-D byte lookup 0x1078A
+Shift_Time_Special,0x71630,8-pt axis + 8 x uint16,8x2 interleaved 8-bit map,0x71630 passed in r6 to the 2-D byte lookup 0x1078A
+Shift_Point_SpeedB,0x7164C,8-pt axis + 8 x uint16,8x2 interleaved 8-bit map,0x7164C passed in r6 to the 2-D byte lookup 0x1078A
+ShiftPressure_CalcShift_SpeedScale_4pt,0x718BC,4-pt axis + 4 x uint16,"1-D record, 8-bit data",0x718BC passed in r5 to the 1-D byte lookup 0x10764 (base of an indexed record array)
+ShiftPressure_CalcShift_LoadFactor_4pt,0x718CE,4-pt axis + 4 x uint16,"1-D record, 8-bit data",0x718CE passed in r5 to the 1-D byte lookup 0x10764
+ShiftPressure_SpeedThresh_4pt,0x718D7,4-pt axis + 4 x uint16,"1-D record, 8-bit data",0x718D7 passed in r5 to the 1-D byte lookup 0x10764 (base of an indexed record array)
+TCC_SlipCorr_GearX_5pt,0x718EC,5-pt axis + 5 x uint16,"1-D record, 8-bit data",0x718EC passed in r5 to the 1-D byte lookup 0x10764 (base of an indexed record array)
+TCC_CheckSlipEntryB_Speed_5pt,0x7190D,5-pt axis + 5 x uint16,"1-D record, 8-bit data",0x7190D passed in r5 to the 1-D byte lookup 0x10764
+TCC_CheckSpeedThreshB_GearX_5pt,0x71918,5-pt axis + 5 x uint16,"1-D record, 8-bit data",0x71918 passed in r5 to the 1-D byte lookup 0x10764 (base of an indexed record array)
+TCC_CheckSlipEntryB_B_5pt,0x71939,5-pt axis + 5 x uint16,"1-D record, 8-bit data",0x71939 passed in r5 to the 1-D byte lookup 0x10764 (base of an indexed record array)
+PressureCtrl_Thresh_2pt,0x71962,2-pt axis + 2 x uint16,"1-D record, 8-bit data",0x71962 passed in r5 to the 1-D byte lookup 0x10764 (base of an indexed record array)
+PressureCtrl_RangeLookup_2pt,0x71971,2-pt axis + 2 x uint16,"1-D record, 8-bit data",0x71971 passed in r5 to the 1-D byte lookup 0x10764
+ShiftQuality_PressMin_Mode6_Slot0_4pt,0x71978,4-pt axis + 4 x uint16,"1-D record, 8-bit data",pointer stored in a local by 0x38F34 and passed in r5 to the 1-D byte lookup 0x10764 at 0x39046
+ShiftQuality_PressMin_Mode6_Slot1_4pt,0x7198A,4-pt axis + 4 x uint16,"1-D record, 8-bit data",pointer stored in a local by 0x38F34 and passed in r5 to the 1-D byte lookup 0x10764 at 0x39046
+ShiftQuality_PressMin_Mode6_Slot2_4pt,0x7199C,4-pt axis + 4 x uint16,"1-D record, 8-bit data",pointer stored in a local by 0x38F34 and passed in r5 to the 1-D byte lookup 0x10764 at 0x39046
+ShiftQuality_PressMin_Mode6_Slot3_4pt,0x719AE,4-pt axis + 4 x uint16,"1-D record, 8-bit data",pointer stored in a local by 0x38F34 and passed in r5 to the 1-D byte lookup 0x10764 at 0x39046
+ShiftQuality_PressMin_Mode6_Slot0_Alt_4pt,0x719C0,4-pt axis + 4 x uint16,"1-D record, 8-bit data",pointer stored in a local by 0x38F34 and passed in r5 to the 1-D byte lookup 0x10764 at 0x39046
+ShiftQuality_PressMin_Mode6_Slot1_Alt_4pt,0x719D2,4-pt axis + 4 x uint16,"1-D record, 8-bit data",pointer stored in a local by 0x38F34 and passed in r5 to the 1-D byte lookup 0x10764 at 0x39046
+ShiftQuality_PressMin_Mode6_Slot2_Alt_4pt,0x719E4,4-pt axis + 4 x uint16,"1-D record, 8-bit data",pointer stored in a local by 0x38F34 and passed in r5 to the 1-D byte lookup 0x10764 at 0x39046
+ShiftQuality_PressMin_Mode6_Slot3_Alt_4pt,0x719F6,4-pt axis + 4 x uint16,"1-D record, 8-bit data",pointer stored in a local by 0x38F34 and passed in r5 to the 1-D byte lookup 0x10764 at 0x39046
+ShiftQuality_PressMin_Gear0_4pt,0x71A08,4-pt axis + 4 x uint16,"1-D record, 8-bit data",pointer stored in a local by 0x38F34 and passed in r5 to the 1-D byte lookup 0x10764 at 0x39046
+ShiftQuality_PressMin_Gear1_4pt,0x71A1A,4-pt axis + 4 x uint16,"1-D record, 8-bit data",pointer stored in a local by 0x38F34 and passed in r5 to the 1-D byte lookup 0x10764 at 0x39046
+ShiftQuality_PressMin_Gear2_4pt,0x71A2C,4-pt axis + 4 x uint16,"1-D record, 8-bit data",pointer stored in a local by 0x38F34 and passed in r5 to the 1-D byte lookup 0x10764 at 0x39046
+SolCtrl_SpeedTargetA_3pt,0x71A40,3-pt axis + 3 x uint16,"1-D record, 8-bit data",0x71A40 passed in r5 to the 1-D byte lookup 0x10764
+SolCtrl_SpeedTargetB_3pt,0x71A47,3-pt axis + 3 x uint16,"1-D record, 8-bit data",0x71A47 passed in r5 to the 1-D byte lookup 0x10764
+TCC_Lockup_Threshold_A,0x71A50,6-pt axis + 6 x uint16,6x2 interleaved 8-bit map,0x71A50 passed in r6 to the 2-D byte lookup 0x1078A
+ShiftAdapt_LookupA_5pt,0x71B35,5-pt axis + 5 x uint16,"1-D record, 8-bit data",0x71B35 passed in r5 to the 1-D byte lookup 0x10764
+ShiftAdapt_LookupB_5pt,0x71B72,5-pt axis + 5 x uint16,"1-D record, 8-bit data",0x71B72 passed in r5 to the 1-D byte lookup 0x10764
+Diag_UDS0x20_ParamRange_2pt,0x7271C,2-pt axis + 2 x uint16,"1-D record, 8-bit data",0x7271C passed in r5 to the 1-D byte lookup 0x10764
+ShiftExec_SpeedConverge_7pt,0x727A6,7-pt axis + 7 x uint16,not a table (removed),"read directly at 0x727A6, width 1 byte(s)"
+TCC_CalcPressSpd_EntryB_5pt,0x727C0,5-pt axis + 5 x uint16,"1-D record, 8-bit data",0x727C0 passed in r5 to the 1-D byte lookup 0x10764 (base of an indexed record array)
+TCC_CalcPressSpd_EntryB_G4_5pt,0x727EC,5-pt axis + 5 x uint16,"1-D record, 8-bit data",0x727EC passed in r5 to the 1-D byte lookup 0x10764 (base of an indexed record array)
+TCC_CalcPressSpd_Normal_5pt,0x72818,5-pt axis + 5 x uint16,"1-D record, 8-bit data",0x72818 passed in r5 to the 1-D byte lookup 0x10764 (base of an indexed record array)
+TCC_CalcPressSpd_TccSlip_5pt,0x72844,5-pt axis + 5 x uint16,"1-D record, 8-bit data",0x72844 passed in r5 to the 1-D byte lookup 0x10764 (base of an indexed record array)
+ShiftAdapt_LearnRate_3pt,0x72862,3-pt axis + 3 x uint16,not a table (removed),"read directly at 0x72862, width 1 byte(s)"
+Diag_UDS0x25_ParamRangeA_5pt,0x7288C,5-pt axis + 5 x uint16,"1-D record, 8-bit data",0x7288C passed in r5 to the 1-D byte lookup 0x10764 (base of an indexed record array)
+Diag_UDS0x25_SlipThresh_5pt,0x728B8,5-pt axis + 5 x uint16,"1-D record, 8-bit data",0x728B8 passed in r5 to the 1-D byte lookup 0x10764 (base of an indexed record array)
+ShiftAdapt_OffsetA_Gear0_5pt,0x728E4,5-pt axis + 5 x uint16,"1-D record, 8-bit data",0x728E4 passed in r5 to the 1-D byte lookup 0x10764 (base of an indexed record array)
+ShiftExec_PressCalcA_Gear0_5pt,0x728FA,5-pt axis + 5 x uint16,"1-D record, 8-bit data",0x728FA passed in r5 to the 1-D byte lookup 0x10764 (base of an indexed record array)
+ShiftExec_TurbineSync_3pt,0x72926,3-pt axis + 3 x uint16,"1-D record, 8-bit data",0x72926 passed in r5 to the 1-D byte lookup 0x10764 (base of an indexed record array)
+ShiftExec_SyncComplete_3pt,0x72942,3-pt axis + 3 x uint16,"1-D record, 8-bit data",0x72942 passed in r5 to the 1-D byte lookup 0x10764 (base of an indexed record array)
+ShiftExec_PressCalcB_Gear0_5pt,0x72B46,5-pt axis + 5 x uint16,"1-D record, 8-bit data",0x72B46 passed in r5 to the 1-D byte lookup 0x10764 (base of an indexed record array)
+ShiftAdapt_OffsetB_Gear0_5pt,0x72B72,5-pt axis + 5 x uint16,"1-D record, 8-bit data",0x72B72 passed in r5 to the 1-D byte lookup 0x10764 (base of an indexed record array)
+ShiftAdapt_OffsetC_5pt,0x72B88,5-pt axis + 5 x uint16,"1-D record, 8-bit data",0x72B88 passed in r5 to the 1-D byte lookup 0x10764 (base of an indexed record array)
+ShiftAdapt_OffsetD_5pt,0x72BB4,5-pt axis + 5 x uint16,"1-D record, 8-bit data",0x72BB4 passed in r5 to the 1-D byte lookup 0x10764 (base of an indexed record array)
+ShiftAdapt_OffsetE_5pt,0x72BE0,5-pt axis + 5 x uint16,"1-D record, 8-bit data",0x72BE0 passed in r5 to the 1-D byte lookup 0x10764 (base of an indexed record array)
+ShiftAdapt_OffsetF_Gear0_5pt,0x72C0C,5-pt axis + 5 x uint16,"1-D record, 8-bit data",0x72C0C passed in r5 to the 1-D byte lookup 0x10764 (base of an indexed record array)
+ShiftSched_Condition_SpeedThresh_5pt,0x72C22,5-pt axis + 5 x uint16,"1-D record, 8-bit data",0x72C22 passed in r5 to the 1-D byte lookup 0x10764 (base of an indexed record array)
+ShiftSched_Condition_Duration_2pt,0x72C46,2-pt axis + 2 x uint16,not a table (removed),"read directly at 0x72C46, width 1 byte(s)"
+Diag_UDS0x27_RangeCheckA_5pt,0x72C51,5-pt axis + 5 x uint16,"1-D record, 8-bit data",0x72C51 passed in r5 to the 1-D byte lookup 0x10764 (base of an indexed record array)
+Diag_UDS0x27_SlipThresh_5pt,0x72C72,5-pt axis + 5 x uint16,"1-D record, 8-bit data",0x72C72 passed in r5 to the 1-D byte lookup 0x10764 (base of an indexed record array)
+ShiftAdapt_GainUpdate_2pt,0x72CE2,2-pt axis + 2 x uint16,not a table (removed),"read directly at 0x72CE2, width 2 byte(s)"
+Diag_UDS0x26_RangeCheck_5pt,0x72CFC,5-pt axis + 5 x uint16,"1-D record, 8-bit data",0x72CFC passed in r5 to the 1-D byte lookup 0x10764 (base of an indexed record array)
+ShiftExec_PhaseA_SpeedThresh_5pt,0x72D0C,5-pt axis + 5 x uint16,"1-D record, 8-bit data",0x72D0C passed in r5 to the 1-D byte lookup 0x10764 (base of an indexed record array)
+ShiftExec_PhaseB_SpeedThresh_5pt,0x72D17,5-pt axis + 5 x uint16,"1-D record, 8-bit data",0x72D17 passed in r5 to the 1-D byte lookup 0x10764 (base of an indexed record array)
+ShiftExec_PhaseC_SpeedThresh_6pt,0x72D22,6-pt axis + 6 x uint16,"1-D record, 8-bit data",0x72D22 passed in r5 to the 1-D byte lookup 0x10764 (base of an indexed record array)
+TCC_SlipTarget_Speed_5pt,0x72DD9,5-pt axis + 5 x uint16,"1-D record, 8-bit data",0x72DD9 passed in r5 to the 1-D byte lookup 0x10764 (base of an indexed record array)
+Diag_UDS0x26_ParamRange_5pt,0x72E03,5-pt axis + 5 x uint16,5x2 interleaved 8-bit map,0x72E03 passed in r6 to the 2-D byte lookup 0x1078A
+TCC_SlipEntry_Thresh_5pt,0x72EC8,5-pt axis + 5 x uint16,"1-D record, 8-bit data",0x72EC8 passed in r5 to the 1-D byte lookup 0x10764
+TCC_LockEnable_SpeedA_6pt,0x72F66,6-pt axis + 6 x uint16,"1-D record, 8-bit data",0x72F66 passed in r5 to the 1-D byte lookup 0x10764
+TCC_LockEnable_SpeedB_6pt,0x72F73,6-pt axis + 6 x uint16,"1-D record, 8-bit data",0x72F73 passed in r5 to the 1-D byte lookup 0x10764
+TCC_SlipTarget_Gear_3pt,0x72FFE,3-pt axis + 3 x uint16,not a table (removed),"read directly at 0x72FFE, width 2 byte(s)"
+PresAdapt_CorrThresh_Gear_2pt,0x7341D,2-pt axis + 2 x uint16,not a table (removed),"read directly at 0x7341D, width 1 byte(s)"
+Diag_UDS0x30_ParamCheck_4pt,0x735A4,4-pt axis + 4 x uint16,"1-D record, 8-bit data",0x735A4 passed in r5 to the 1-D byte lookup 0x10764
+Diag_UDS0x30_RangeA_4pt,0x735AD,4-pt axis + 4 x uint16,"1-D record, 8-bit data",0x735AD passed in r5 to the 1-D byte lookup 0x10764
+Diag_UDS0x30_RangeB_4pt,0x735B6,4-pt axis + 4 x uint16,"1-D record, 8-bit data",0x735B6 passed in r5 to the 1-D byte lookup 0x10764
+Diag_UDS0x30_RangeC_4pt,0x735BF,4-pt axis + 4 x uint16,"1-D record, 8-bit data",0x735BF passed in r5 to the 1-D byte lookup 0x10764
+Diag_UDS0x30_RangeD_4pt,0x735C8,4-pt axis + 4 x uint16,"1-D record, 8-bit data",0x735C8 passed in r5 to the 1-D byte lookup 0x10764
+Diag_UDS0x30_RangeE_4pt,0x735D1,4-pt axis + 4 x uint16,"1-D record, 8-bit data",0x735D1 passed in r5 to the 1-D byte lookup 0x10764
+TCC_AdaptCond_Gear_2pt,0x73682,2-pt axis + 2 x uint16,not a table (removed),"read directly at 0x73682, width 1 byte(s)"
+Diag_UDS0x31_ResultA_5pt,0x736D6,5-pt axis + 5 x uint16,"1-D record, 8-bit data",0x736D6 passed in r5 to the 1-D byte lookup 0x10764 (base of an indexed record array)
+Diag_UDS_SharedSlipThresh_5pt,0x73702,5-pt axis + 5 x uint16,"1-D record, 8-bit data",0x73702 passed in r5 to the 1-D byte lookup 0x10764 (base of an indexed record array)
+TCC_LockCondition_SpeedThresh_5pt,0x73718,5-pt axis + 5 x uint16,"1-D record, 8-bit data",0x73718 passed in r5 to the 1-D byte lookup 0x10764 (base of an indexed record array)
+TCC_UnlockCondition_SpeedThresh_7pt,0x7372E,7-pt axis + 7 x uint16,"1-D record, 8-bit data",0x7372E passed in r5 to the 1-D byte lookup 0x10764 (base of an indexed record array)
+TCC_UnlockRange_Gear0_5pt_u16,0x7374C,5-pt axis + 5 x uint16,"1-D record, 8-bit data",0x7374C passed in r5 to the 1-D byte lookup 0x10764 (base of an indexed record array)
+TCC_CalcPressure_SpeedBase_5pt,0x73894,5-pt axis + 5 x uint16,"1-D record, 8-bit data",0x73894 passed in r5 to the 1-D byte lookup 0x10764 (base of an indexed record array)
+TCC_CalcPressure_EngBrake_3pt,0x738AA,3-pt axis + 3 x uint16,"1-D record, 8-bit data",0x738AA passed in r5 to the 1-D byte lookup 0x10764 (base of an indexed record array)
+TCC_CalcPressure_PhaseCtrl_4pt,0x738B8,4-pt axis + 4 x uint16,"1-D record, 8-bit data",0x738B8 passed in r5 to the 1-D byte lookup 0x10764 (base of an indexed record array)
+TCC_SlipAdapt_ThreshA_9pt,0x738CA,9-pt axis + 9 x uint16,"1-D record, 8-bit data",0x738CA passed in r5 to the 1-D byte lookup 0x10764 (base of an indexed record array)
+TCC_SlipAdapt_ThreshB_9pt,0x738F0,9-pt axis + 9 x uint16,"1-D record, 8-bit data",0x738F0 passed in r5 to the 1-D byte lookup 0x10764 (base of an indexed record array)
+TCC_SlipAdapt_ThreshC_9pt,0x73916,9-pt axis + 9 x uint16,"1-D record, 8-bit data",0x73916 passed in r5 to the 1-D byte lookup 0x10764 (base of an indexed record array)
+SolPress_MinCalc_3pt_u16,0x73C02,3-pt axis + 3 x uint16,"1-D record, 8-bit data",0x73C02 passed in r5 to the 1-D byte lookup 0x10764 (base of an indexed record array)
+Shift_DownshiftTo4_SpeedRng_2pt_u16,0x74044,2-pt axis + 2 x uint16,"1-D record, 8-bit data",0x74044 passed in r5 to the 1-D byte lookup 0x10764
+TCC_LockHyst_SpeedA_6pt,0x75239,6-pt axis + 6 x uint16,"1-D record, 8-bit data",0x75239 passed in r5 to the 1-D byte lookup 0x10764
+TCC_LockHyst_SpeedB_6pt,0x75246,6-pt axis + 6 x uint16,"1-D record, 8-bit data",0x75246 passed in r5 to the 1-D byte lookup 0x10764
+TCC_LockHyst_ThreshA_6pt,0x75253,6-pt axis + 6 x uint16,"1-D record, 8-bit data",0x75253 passed in r5 to the 1-D byte lookup 0x10764 (base of an indexed record array)
+TCC_LockHyst_ThreshB_6pt,0x7526D,6-pt axis + 6 x uint16,"1-D record, 8-bit data",0x7526D passed in r5 to the 1-D byte lookup 0x10764 (base of an indexed record array)
+Shift_GearCond_ThreshA_4pt,0x752A3,4-pt axis + 4 x uint16,"1-D record, 8-bit data",0x752A3 passed in r5 to the 1-D byte lookup 0x10764 (base of an indexed record array)
+Shift_GearCond_ThreshB_4pt,0x752BE,4-pt axis + 4 x uint16,"1-D record, 8-bit data",0x752BE passed in r5 to the 1-D byte lookup 0x10764 (base of an indexed record array)
+Shift_GearCond_ThreshC_4pt,0x752D9,4-pt axis + 4 x uint16,"1-D record, 8-bit data",0x752D9 passed in r5 to the 1-D byte lookup 0x10764 (base of an indexed record array)
+Shift_GearCond_ThreshD_4pt,0x752F4,4-pt axis + 4 x uint16,"1-D record, 8-bit data",0x752F4 passed in r5 to the 1-D byte lookup 0x10764 (base of an indexed record array)
+TorqueCtl_GetRange_9pt,0x75EB6,9-pt axis + 9 x uint16,"1-D record, 8-bit data",0x75EB6 passed in r5 to the 1-D byte lookup 0x10764
+TorqueCtl_Compute_8pt,0x75EEE,8-pt axis + 8 x uint16,"1-D record, 8-bit data",0x75EEE passed in r5 to the 1-D byte lookup 0x10764
+LinePressure_FlagState_14pt_u16,0x761CC,14-pt axis + 14 x uint16,"1-D record, 8-bit data",0x761CC passed in r5 to the 1-D byte lookup 0x10764
+LinePressure_StateM1_14pt_u16,0x761E9,14-pt axis + 14 x uint16,"1-D record, 8-bit data",0x761E9 passed in r5 to the 1-D byte lookup 0x10764
+LinePressure_Normal_GearDef_14pt_u16,0x76206,14-pt axis + 14 x uint16,"1-D record, 8-bit data",0x76206 passed in r5 to the 1-D byte lookup 0x10764
+LinePressure_Normal_Gear1_14pt_u16,0x76223,14-pt axis + 14 x uint16,"1-D record, 8-bit data",0x76223 passed in r5 to the 1-D byte lookup 0x10764
+LinePressure_Normal_Gear2_14pt_u16,0x76240,14-pt axis + 14 x uint16,"1-D record, 8-bit data",0x76240 passed in r5 to the 1-D byte lookup 0x10764
+LinePressure_Normal_Gear3_14pt_u16,0x7625D,14-pt axis + 14 x uint16,"1-D record, 8-bit data",0x7625D passed in r5 to the 1-D byte lookup 0x10764
+LinePressure_Normal_Gear4_14pt_u16,0x7627A,14-pt axis + 14 x uint16,"1-D record, 8-bit data",0x7627A passed in r5 to the 1-D byte lookup 0x10764
+LinePressure_Normal_Gear5_14pt_u16,0x76297,14-pt axis + 14 x uint16,"1-D record, 8-bit data",0x76297 passed in r5 to the 1-D byte lookup 0x10764
+LinePressure_Sport_GearDef_14pt_u16,0x762B4,14-pt axis + 14 x uint16,"1-D record, 8-bit data",0x762B4 passed in r5 to the 1-D byte lookup 0x10764
+LinePressure_Sport_Gear1_14pt_u16,0x762D1,14-pt axis + 14 x uint16,"1-D record, 8-bit data",0x762D1 passed in r5 to the 1-D byte lookup 0x10764
+LinePressure_Sport_Gear2_14pt_u16,0x762EE,14-pt axis + 14 x uint16,"1-D record, 8-bit data",0x762EE passed in r5 to the 1-D byte lookup 0x10764
+LinePressure_Sport_Gear3_14pt_u16,0x7630B,14-pt axis + 14 x uint16,"1-D record, 8-bit data",0x7630B passed in r5 to the 1-D byte lookup 0x10764
+LinePressure_Sport_Gear4_14pt_u16,0x76328,14-pt axis + 14 x uint16,"1-D record, 8-bit data",0x76328 passed in r5 to the 1-D byte lookup 0x10764
+LinePressure_Sport_Gear5_14pt_u16,0x76345,14-pt axis + 14 x uint16,"1-D record, 8-bit data",0x76345 passed in r5 to the 1-D byte lookup 0x10764
+LinePressure_LowGear_Floor_5pt_u16,0x763B6,5-pt axis + 5 x uint16,"1-D record, 8-bit data",0x763B6 passed in r5 to the 1-D byte lookup 0x10764
+SolPress_DualRng_TypeDef_A_5pt_u16,0x76474,5-pt axis + 5 x uint16,"1-D record, 8-bit data",0x76474 passed in r5 to the 1-D byte lookup 0x10764
+SolPress_DualRng_Type6_A_5pt_u16,0x7647F,5-pt axis + 5 x uint16,"1-D record, 8-bit data",0x7647F passed in r5 to the 1-D byte lookup 0x10764
+SolPress_DualRng_Type7_A_5pt_u16,0x7648A,5-pt axis + 5 x uint16,"1-D record, 8-bit data",0x7648A passed in r5 to the 1-D byte lookup 0x10764
+SolPress_DualRng_Type8_A_5pt_u16,0x76495,5-pt axis + 5 x uint16,"1-D record, 8-bit data",0x76495 passed in r5 to the 1-D byte lookup 0x10764
+SolPress_DualRng_Type9_A_5pt_u16,0x764A0,5-pt axis + 5 x uint16,"1-D record, 8-bit data",0x764A0 passed in r5 to the 1-D byte lookup 0x10764
+SolPress_DualRng_Type7Alt_A_5pt_u16,0x764AB,5-pt axis + 5 x uint16,"1-D record, 8-bit data",0x764AB passed in r5 to the 1-D byte lookup 0x10764
+SolPress_DualRng_Type24_A_5pt_u16,0x764B6,5-pt axis + 5 x uint16,"1-D record, 8-bit data",0x764B6 passed in r5 to the 1-D byte lookup 0x10764
+SolPress_DualRng_Type10_A_5pt_u16,0x764C1,5-pt axis + 5 x uint16,"1-D record, 8-bit data",0x764C1 passed in r5 to the 1-D byte lookup 0x10764
+SolPress_DualRng_TypeDef_B_5pt_u16,0x764CC,5-pt axis + 5 x uint16,"1-D record, 8-bit data",0x764CC passed in r5 to the 1-D byte lookup 0x10764
+SolPress_DualRng_Type6_B_5pt_u16,0x764D7,5-pt axis + 5 x uint16,"1-D record, 8-bit data",0x764D7 passed in r5 to the 1-D byte lookup 0x10764
+SolPress_DualRng_Type7_B_5pt_u16,0x764E2,5-pt axis + 5 x uint16,"1-D record, 8-bit data",0x764E2 passed in r5 to the 1-D byte lookup 0x10764
+SolPress_DualRng_Type8_B_5pt_u16,0x764ED,5-pt axis + 5 x uint16,"1-D record, 8-bit data",0x764ED passed in r5 to the 1-D byte lookup 0x10764
+SolPress_DualRng_Type9_B_5pt_u16,0x764F8,5-pt axis + 5 x uint16,"1-D record, 8-bit data",0x764F8 passed in r5 to the 1-D byte lookup 0x10764
+SolPress_DualRng_Type7Alt_B_5pt_u16,0x76503,5-pt axis + 5 x uint16,"1-D record, 8-bit data",0x76503 passed in r5 to the 1-D byte lookup 0x10764
+SolPress_DualRng_Type24_B_5pt_u16,0x7650E,5-pt axis + 5 x uint16,"1-D record, 8-bit data",0x7650E passed in r5 to the 1-D byte lookup 0x10764
+SolPress_DualRng_Type10_B_5pt_u16,0x76519,5-pt axis + 5 x uint16,"1-D record, 8-bit data",0x76519 passed in r5 to the 1-D byte lookup 0x10764
+SolPress_SpeedRng_TypeDef_4pt_u16,0x76524,4-pt axis + 4 x uint16,"1-D record, 8-bit data",0x76524 passed in r5 to the 1-D byte lookup 0x10764
+SolPress_SpeedRng_Type6_4pt_u16,0x7652D,4-pt axis + 4 x uint16,"1-D record, 8-bit data",0x7652D passed in r5 to the 1-D byte lookup 0x10764
+SolPress_SpeedRng_Type7_4pt_u16,0x76536,4-pt axis + 4 x uint16,"1-D record, 8-bit data",0x76536 passed in r5 to the 1-D byte lookup 0x10764
+SolPress_SpeedRng_Type8_4pt_u16,0x7653F,4-pt axis + 4 x uint16,"1-D record, 8-bit data",0x7653F passed in r5 to the 1-D byte lookup 0x10764
+SolPress_SpeedRng_Type9_4pt_u16,0x76548,4-pt axis + 4 x uint16,"1-D record, 8-bit data",0x76548 passed in r5 to the 1-D byte lookup 0x10764
+SolPress_SpeedRng_Type7Alt_4pt_u16,0x76551,4-pt axis + 4 x uint16,"1-D record, 8-bit data",0x76551 passed in r5 to the 1-D byte lookup 0x10764
+SolPress_SpeedRng_Type24_4pt_u16,0x7655A,4-pt axis + 4 x uint16,"1-D record, 8-bit data",0x7655A passed in r5 to the 1-D byte lookup 0x10764
+SolPress_SpeedRng_Type10_4pt_u16,0x76563,4-pt axis + 4 x uint16,"1-D record, 8-bit data",0x76563 passed in r5 to the 1-D byte lookup 0x10764
+Sol_Press_Type6_Adj,0x766FC,4-pt axis + 4 x uint16,"1-D record, 8-bit data",0x766FC passed in r5 to the 1-D byte lookup 0x10764
+Sol_Press_Type8_Adj,0x76705,4-pt axis + 4 x uint16,"1-D record, 8-bit data",0x76705 passed in r5 to the 1-D byte lookup 0x10764
+Sol_Press_Type9_Adj,0x7670E,4-pt axis + 4 x uint16,"1-D record, 8-bit data",0x7670E passed in r5 to the 1-D byte lookup 0x10764
+Sol_Press_Type7_Adj,0x76717,4-pt axis + 4 x uint16,"1-D record, 8-bit data",0x76717 passed in r5 to the 1-D byte lookup 0x10764
+Sol_Press_Type10_Adj,0x76720,4-pt axis + 4 x uint16,"1-D record, 8-bit data",0x76720 passed in r5 to the 1-D byte lookup 0x10764
+SolPress_ShiftSched_4pt_u16,0x7672C,4-pt axis + 4 x uint16,"1-D record, 8-bit data",0x7672C passed in r5 to the 1-D byte lookup 0x10764
+SolPress_SpeedScale_TypeDef_B_4pt_u16,0x7677E,4-pt axis + 4 x uint16,"1-D record, 8-bit data",0x7677E passed in r5 to the 1-D byte lookup 0x10764
+SolPress_SpeedScale_Type1_B_4pt_u16,0x76787,4-pt axis + 4 x uint16,"1-D record, 8-bit data",0x76787 passed in r5 to the 1-D byte lookup 0x10764
+SolPress_SpeedScale_Type2_B_4pt_u16,0x76790,4-pt axis + 4 x uint16,"1-D record, 8-bit data",0x76790 passed in r5 to the 1-D byte lookup 0x10764
+SolPress_SpeedScale_Type3_B_4pt_u16,0x76799,4-pt axis + 4 x uint16,"1-D record, 8-bit data",0x76799 passed in r5 to the 1-D byte lookup 0x10764
+SolPress_SpeedScale_Type4_B_4pt_u16,0x767A2,4-pt axis + 4 x uint16,"1-D record, 8-bit data",0x767A2 passed in r5 to the 1-D byte lookup 0x10764
+SolPress_SpeedScale_TypeDef_A_4pt_u16,0x767AB,4-pt axis + 4 x uint16,"1-D record, 8-bit data",0x767AB passed in r5 to the 1-D byte lookup 0x10764
+SolPress_SpeedScale_Type1_A_4pt_u16,0x767B4,4-pt axis + 4 x uint16,"1-D record, 8-bit data",0x767B4 passed in r5 to the 1-D byte lookup 0x10764
+SolPress_SpeedScale_Type2_A_4pt_u16,0x767BD,4-pt axis + 4 x uint16,"1-D record, 8-bit data",0x767BD passed in r5 to the 1-D byte lookup 0x10764
+SolPress_SpeedScale_Type3_A_4pt_u16,0x767C6,4-pt axis + 4 x uint16,"1-D record, 8-bit data",0x767C6 passed in r5 to the 1-D byte lookup 0x10764
+SolPress_DualOut_TypeDef_4pt_u16,0x767D8,4-pt axis + 4 x uint16,"1-D record, 8-bit data",0x767D8 passed in r5 to the 1-D byte lookup 0x10764
+SolPress_DualOut_Type1_4pt_u16,0x767E1,4-pt axis + 4 x uint16,"1-D record, 8-bit data",0x767E1 passed in r5 to the 1-D byte lookup 0x10764
+SolPress_DualOut_Type2_4pt_u16,0x767EA,4-pt axis + 4 x uint16,"1-D record, 8-bit data",0x767EA passed in r5 to the 1-D byte lookup 0x10764
+SolPress_DualOut_Type3_4pt_u16,0x767F3,4-pt axis + 4 x uint16,"1-D record, 8-bit data",0x767F3 passed in r5 to the 1-D byte lookup 0x10764
+SolPress_DualOut_Type4_4pt_u16,0x767FC,4-pt axis + 4 x uint16,"1-D record, 8-bit data",0x767FC passed in r5 to the 1-D byte lookup 0x10764
+Sol_Press_Gear_Def_Corr,0x76913,4-pt axis + 4 x uint16,"1-D record, 8-bit data",0x76913 passed in r5 to the 1-D byte lookup 0x10764
+Sol_Press_Gear1_Corr,0x7691C,4-pt axis + 4 x uint16,"1-D record, 8-bit data",0x7691C passed in r5 to the 1-D byte lookup 0x10764
+Sol_Press_Gear2_Corr,0x76925,4-pt axis + 4 x uint16,"1-D record, 8-bit data",0x76925 passed in r5 to the 1-D byte lookup 0x10764
+Sol_Press_Gear3_Corr,0x7692E,4-pt axis + 4 x uint16,"1-D record, 8-bit data",0x7692E passed in r5 to the 1-D byte lookup 0x10764
+Sol_Press_Gear4_Corr,0x76937,4-pt axis + 4 x uint16,"1-D record, 8-bit data",0x76937 passed in r5 to the 1-D byte lookup 0x10764
+SolPress_ShiftCtrl_A_3pt_u16,0x76948,3-pt axis + 3 x uint16,not a table (removed),"read directly at 0x76948, width 2 byte(s)"
+SolPress_ShiftCtrl_A_2pt_u16,0x76978,2-pt axis + 2 x uint16,not a table (removed),"read as 16-bit words at 0x4ECBC (mov.w @(r0,r5))"
+SolPress_ShiftCtrl_B_2pt_u16,0x76990,2-pt axis + 2 x uint16,not a table (removed),"read as 16-bit words at 0x4ECBC (mov.w @(r0,r5))"
+SolPress_ShiftCtrl_Gear0_3pt_u16,0x769A0,3-pt axis + 3 x uint16,"1-D record, 8-bit data",0x769A0 passed in r5 to the 1-D byte lookup 0x10764
+SolPress_ShiftCtrl_Gear1_3pt_u16,0x769A7,3-pt axis + 3 x uint16,"1-D record, 8-bit data",0x769A7 passed in r5 to the 1-D byte lookup 0x10764
+SolPress_ShiftCtrl_Gear2_3pt_u16,0x769AE,3-pt axis + 3 x uint16,"1-D record, 8-bit data",0x769AE passed in r5 to the 1-D byte lookup 0x10764
+SolPress_ShiftCtrl_Gear3_3pt_u16,0x769B5,3-pt axis + 3 x uint16,"1-D record, 8-bit data",0x769B5 passed in r5 to the 1-D byte lookup 0x10764
+SolPress_ShiftCtrl_Gear4_3pt_u16,0x769BC,3-pt axis + 3 x uint16,"1-D record, 8-bit data",0x769BC passed in r5 to the 1-D byte lookup 0x10764
+SolPress_ShiftCtrl_Gear5_3pt_u16,0x769C3,3-pt axis + 3 x uint16,"1-D record, 8-bit data",0x769C3 passed in r5 to the 1-D byte lookup 0x10764
+SolPress_ShiftCtrl_Gear6_3pt_u16,0x769CA,3-pt axis + 3 x uint16,"1-D record, 8-bit data",0x769CA passed in r5 to the 1-D byte lookup 0x10764
+SolPress_ShiftCtrl_Gear7_3pt_u16,0x769D1,3-pt axis + 3 x uint16,"1-D record, 8-bit data",0x769D1 passed in r5 to the 1-D byte lookup 0x10764
+SolPress_ShiftCtrl_C_2pt_u16,0x769D8,2-pt axis + 2 x uint16,not a table (removed),"read directly at 0x769D8, width 2 byte(s)"
+SolPress_ShiftCtrl_D_4pt_u16,0x769EA,4-pt axis + 4 x uint16,"1-D record, 8-bit data",0x769EA passed in r5 to the 1-D byte lookup 0x10764
+Pressure_Idx_Type0,0x769F3,2-pt axis + 2 x uint16,2x3 interleaved 8-bit map,0x769F3 passed in r6 to the 2-D byte lookup 0x1078A
+Pressure_Idx_Type1,0x76A00,2-pt axis + 2 x uint16,2x3 interleaved 8-bit map,0x76A00 passed in r6 to the 2-D byte lookup 0x1078A
+Pressure_Idx_Type2,0x76A0D,2-pt axis + 2 x uint16,2x3 interleaved 8-bit map,0x76A0D passed in r6 to the 2-D byte lookup 0x1078A
+Pressure_Idx_Type3,0x76A1A,2-pt axis + 2 x uint16,2x3 interleaved 8-bit map,0x76A1A passed in r6 to the 2-D byte lookup 0x1078A
+Pressure_Idx_Type4,0x76A27,2-pt axis + 2 x uint16,2x3 interleaved 8-bit map,0x76A27 passed in r6 to the 2-D byte lookup 0x1078A
+SolPress_RngLookupA_Mode0_5pt_u16,0x76A34,5-pt axis + 5 x uint16,"1-D record, 8-bit data",0x76A34 passed in r5 to the 1-D byte lookup 0x10764
+SolPress_RngLookupB_Mode0_5pt_u16,0x76A3F,5-pt axis + 5 x uint16,"1-D record, 8-bit data",0x76A3F passed in r5 to the 1-D byte lookup 0x10764
+SolPress_SpeedLookup_Mode0_6pt_u16,0x76A4A,6-pt axis + 6 x uint16,"1-D record, 8-bit data",0x76A4A passed in r5 to the 1-D byte lookup 0x10764
+SolPress_RngLookupA_Mode1_5pt_u16,0x76A64,5-pt axis + 5 x uint16,"1-D record, 8-bit data",0x76A64 passed in r5 to the 1-D byte lookup 0x10764
+SolPress_RngLookupB_Mode1_5pt_u16,0x76A6F,5-pt axis + 5 x uint16,"1-D record, 8-bit data",0x76A6F passed in r5 to the 1-D byte lookup 0x10764
+SolPress_SpeedLookup_Mode1_6pt_u16,0x76A7A,6-pt axis + 6 x uint16,"1-D record, 8-bit data",0x76A7A passed in r5 to the 1-D byte lookup 0x10764
+SolPress_RngLookupA_Mode2_5pt_u16,0x76A94,5-pt axis + 5 x uint16,"1-D record, 8-bit data",0x76A94 passed in r5 to the 1-D byte lookup 0x10764
+SolPress_RngLookupB_Mode2_5pt_u16,0x76A9F,5-pt axis + 5 x uint16,"1-D record, 8-bit data",0x76A9F passed in r5 to the 1-D byte lookup 0x10764
+SolPress_SpeedLookup_Mode2_6pt_u16,0x76AAA,6-pt axis + 6 x uint16,"1-D record, 8-bit data",0x76AAA passed in r5 to the 1-D byte lookup 0x10764
+SolPress_RngLookupA_Mode3_5pt_u16,0x76AD1,5-pt axis + 5 x uint16,"1-D record, 8-bit data",0x76AD1 passed in r5 to the 1-D byte lookup 0x10764
+SolPress_RngLookupB_Mode3_5pt_u16,0x76ADC,5-pt axis + 5 x uint16,"1-D record, 8-bit data",0x76ADC passed in r5 to the 1-D byte lookup 0x10764
+SolPress_SpeedLookup_Mode3_6pt_u16,0x76AE7,6-pt axis + 6 x uint16,"1-D record, 8-bit data",0x76AE7 passed in r5 to the 1-D byte lookup 0x10764
+SolPress_RngLookupA_Mode4_5pt_u16,0x76B1B,5-pt axis + 5 x uint16,"1-D record, 8-bit data",0x76B1B passed in r5 to the 1-D byte lookup 0x10764
+SolPress_RngLookupB_Mode4_5pt_u16,0x76B26,5-pt axis + 5 x uint16,"1-D record, 8-bit data",0x76B26 passed in r5 to the 1-D byte lookup 0x10764
+SolPress_SpeedLookup_Mode4_6pt_u16,0x76B31,6-pt axis + 6 x uint16,"1-D record, 8-bit data",0x76B31 passed in r5 to the 1-D byte lookup 0x10764
+SolPress_SpeedLookupB_Gear0_6pt_u16,0x76B65,6-pt axis + 6 x uint16,"1-D record, 8-bit data",0x76B65 passed in r5 to the 1-D byte lookup 0x10764
+SolPress_SpeedLookupB_Gear1_6pt_u16,0x76B72,6-pt axis + 6 x uint16,"1-D record, 8-bit data",0x76B72 passed in r5 to the 1-D byte lookup 0x10764
+SolPress_SpeedLookupB_Gear2_6pt_u16,0x76B7F,6-pt axis + 6 x uint16,"1-D record, 8-bit data",0x76B7F passed in r5 to the 1-D byte lookup 0x10764
+SolPress_SpeedLookupB_Gear3_6pt_u16,0x76B8C,6-pt axis + 6 x uint16,"1-D record, 8-bit data",0x76B8C passed in r5 to the 1-D byte lookup 0x10764
+SolPress_SpeedLookupB_Gear4_6pt_u16,0x76B99,6-pt axis + 6 x uint16,"1-D record, 8-bit data",0x76B99 passed in r5 to the 1-D byte lookup 0x10764
+SolPress_SeqIdx0_6pt_u16,0x76BB0,6-pt axis + 6 x uint16,"1-D record, 8-bit data",0x76BB0 passed in r5 to the 1-D byte lookup 0x10764
+SolPress_SeqIdx1_6pt_u16,0x76BBD,6-pt axis + 6 x uint16,"1-D record, 8-bit data",0x76BBD passed in r5 to the 1-D byte lookup 0x10764
+SolPress_SeqIdx2_6pt_u16,0x76BCA,6-pt axis + 6 x uint16,"1-D record, 8-bit data",0x76BCA passed in r5 to the 1-D byte lookup 0x10764
+SolPress_SeqIdx3_6pt_u16,0x76BD7,6-pt axis + 6 x uint16,"1-D record, 8-bit data",0x76BD7 passed in r5 to the 1-D byte lookup 0x10764
+SolPress_SeqIdx4_6pt_u16,0x76BE4,6-pt axis + 6 x uint16,"1-D record, 8-bit data",0x76BE4 passed in r5 to the 1-D byte lookup 0x10764
+SolPress_SeqIdx5_6pt_u16,0x76BF1,6-pt axis + 6 x uint16,"1-D record, 8-bit data",0x76BF1 passed in r5 to the 1-D byte lookup 0x10764
+SolPress_SeqIdx6_6pt_u16,0x76BFE,6-pt axis + 6 x uint16,"1-D record, 8-bit data",0x76BFE passed in r5 to the 1-D byte lookup 0x10764
+SolPress_SeqIdx7_6pt_u16,0x76C0B,6-pt axis + 6 x uint16,"1-D record, 8-bit data",0x76C0B passed in r5 to the 1-D byte lookup 0x10764
+SolPress_SeqIdx8_6pt_u16,0x76C18,6-pt axis + 6 x uint16,"1-D record, 8-bit data",0x76C18 passed in r5 to the 1-D byte lookup 0x10764
+SolPress_SeqIdx9_6pt_u16,0x76C25,6-pt axis + 6 x uint16,"1-D record, 8-bit data",0x76C25 passed in r5 to the 1-D byte lookup 0x10764
+SolPress_SeqIdx10_6pt_u16,0x76C32,6-pt axis + 6 x uint16,"1-D record, 8-bit data",0x76C32 passed in r5 to the 1-D byte lookup 0x10764
+SolPress_SeqIdx11_6pt_u16,0x76C3F,6-pt axis + 6 x uint16,"1-D record, 8-bit data",0x76C3F passed in r5 to the 1-D byte lookup 0x10764
+SolPress_SeqIdx12_6pt_u16,0x76C4C,6-pt axis + 6 x uint16,"1-D record, 8-bit data",0x76C4C passed in r5 to the 1-D byte lookup 0x10764
+SolPress_SeqIdx13_6pt_u16,0x76C59,6-pt axis + 6 x uint16,"1-D record, 8-bit data",0x76C59 passed in r5 to the 1-D byte lookup 0x10764
+SolPress_SeqIdx14_6pt_u16,0x76C66,6-pt axis + 6 x uint16,"1-D record, 8-bit data",0x76C66 passed in r5 to the 1-D byte lookup 0x10764
+SolPress_SeqIdx15_6pt_u16,0x76C73,6-pt axis + 6 x uint16,"1-D record, 8-bit data",0x76C73 passed in r5 to the 1-D byte lookup 0x10764
+SolPress_ShiftCompletion_2pt_u16,0x76C81,2-pt axis + 2 x uint16,not a table (removed),"read directly at 0x76C81, width 1 byte(s)"
+Config_TorqueRange_3pt,0x76DC6,3-pt axis + 3 x uint16,not a table (removed),"read directly at 0x76DC6, width 2 byte(s)"
+Config_SolTargetCh0_Bounds_3pt,0x76DCE,3-pt axis + 3 x uint16,not a table (removed),"read directly at 0x76DCE, width 2 byte(s)"
+Config_ShiftPoint_Hyst_2pt,0x76E20,2-pt axis + 2 x uint16,not a table (removed),"read directly at 0x76E20, width 2 byte(s)"
+Config_InputSpeed_Lookup_5pt,0x76E52,5-pt axis + 5 x uint16,not a table (removed),"read directly at 0x76E52, width 2 byte(s)"
+Config_SpeedRatio_3pt,0x76E7C,3-pt axis + 3 x uint16,not a table (removed),"read directly at 0x76E7C, width 2 byte(s)"
+Config_SolThrottle_GearThresh_2pt,0x76E89,2-pt axis + 2 x uint16,not a table (removed),"read directly at 0x76E89, width 1 byte(s)"
+Config_ShiftCtrlAlt_SpeedThresh_3pt,0x76E9C,3-pt axis + 3 x uint16,not a table (removed),"read directly at 0x76E9C, width 2 byte(s)"
+Config_LockupClutch_SpeedOffset_5pt,0x76EBA,5-pt axis + 5 x uint16,not a table (removed),"read directly at 0x76EBA, width 2 byte(s)"
+Config_ShiftSolenoid2_StayThresh_2pt,0x76ECC,2-pt axis + 2 x uint16,not a table (removed),"read directly at 0x76ECC, width 2 byte(s)"
+Config_ShiftSolenoid2_SpeedCheck_3pt,0x76ED6,3-pt axis + 3 x uint16,not a table (removed),"read directly at 0x76ED6, width 2 byte(s)"
+Config_SolOutput_GearThresh_2pt,0x76EF7,2-pt axis + 2 x uint16,not a table (removed),"read directly at 0x76EF7, width 1 byte(s)"
+Const_LearnCycleTorque_Override_2pt,0x77062,2-pt axis + 2 x uint16,not a table (removed),"read directly at 0x77062, width 2 byte(s)"
+Const_Shift_MinClamp_3pt,0x77078,3-pt axis + 3 x uint16,not a table (removed),"read directly at 0x77078, width 2 byte(s)"
+Const_LinePressure_AdjShiftMode_3pt,0x77116,3-pt axis + 3 x uint16,not a table (removed),"read directly at 0x77116, width 2 byte(s)"
+Const_LinePressure_AdjGear2_3pt,0x7711A,3-pt axis + 3 x uint16,not a table (removed),"read directly at 0x7711A, width 2 byte(s)"
+Const_LinePressure_BaseRange_3pt,0x77120,3-pt axis + 3 x uint16,not a table (removed),"read directly at 0x77120, width 2 byte(s)"
+Const_LinePressure_ScaleChannel_2pt,0x77173,2-pt axis + 2 x uint16,not a table (removed),"read directly at 0x77173, width 1 byte(s)"
+Const_SpeedLimit_Shared_3pt,0x771F6,3-pt axis + 3 x uint16,not a table (removed),"read directly at 0x771F6, width 2 byte(s)"
+Const_SolCtrl_SlipHyst_3pt,0x77204,3-pt axis + 3 x uint16,not a table (removed),"read directly at 0x77204, width 2 byte(s)"
+Const_ShiftAdapt_EvalThresh_2pt,0x7721E,2-pt axis + 2 x uint16,not a table (removed),"read directly at 0x7721E, width 2 byte(s)"
+Const_Pressure_CountThresh_3pt,0x7725C,3-pt axis + 3 x uint16,not a table (removed),"read directly at 0x7725C, width 1 byte(s)"
+Const_ShiftSched_TimingCount_2pt,0x772D9,2-pt axis + 2 x uint16,not a table (removed),"read directly at 0x772D9, width 1 byte(s)"
+Misc_StallDetect_WheelSpeedRange_5pt,0x77396,5-pt axis + 5 x uint16,not a table (removed),"read directly at 0x77396, width 1 byte(s)"
+Misc_LinePressure_ClampMin2nd_3pt,0x773D8,3-pt axis + 3 x uint16,not a table (removed),"read directly at 0x773D8, width 2 byte(s)"
+Misc_Actuator_ThreshPair_ShiftType3_2pt,0x773F3,2-pt axis + 2 x uint16,not a table (removed),"read directly at 0x773F3, width 1 byte(s)"
+ShiftAdapt_RateGrid_4x38_T0,0x7113A,4x38 interleaved map,not a table (removed),"these bytes are the 4-pt record Duty_Rate_Normal (0x7113A passed to the 1-D byte lookup 0x10764 at 0x33CDC); 0x26 is its first axis value, not a row count"
+ShiftAdapt_RateGrid_4x38_T1,0x71143,4x38 interleaved map,not a table (removed),same bytes as the 4-pt record Duty_Rate_Sport
+ShiftAdapt_RateGrid_4x38_T2,0x7114C,4x38 interleaved map,not a table (removed),same bytes as the 4-pt record Duty_Rate_Cold
+PresAdapt_ShiftA_23pt_u16,0x72FB8,23-pt uint16 axis + data,not a table (removed),"0x72FB8 is read directly as 16-bit words; the bytes are a list of consecutive IDs (0x17, 0x18, ...), 0x17 is not a count"
+PresAdapt_ShiftB_25pt_u16,0x72FBC,25-pt uint16 axis + data,not a table (removed),0x72FBC is read directly as 16-bit words; same ID list
+Misc_DispatchFuncTable_Count_3pt,0x7744C,3-pt uint16 axis + data,not a table (removed),"0x7744C and 0x7744E are read directly as single 16-bit words, 0x77450-52 as bytes; the rest is 0xFF padding"
+Misc_SolControl_DispatchCount_4pt,0x7744E,4-pt uint16 axis + data,not a table (removed),same scalars as above
+PressureMulti_PoolD_3pt,0x73ECE,3-pt uint16 record,duplicate (removed),same record as PressureMulti_PoolD_Gear0 once that one is corrected
+DownshiftProtect_PressureF_6pt,0x704BB,6-pt uint8 record,not a table (removed),0x704BB is 0xFF padding; 0x704BC and 0x704C2 are read directly as 16-bit words
+PressureMulti_PoolC_Gear3,0x73EA6,4-pt uint16 record at the wrong offset,"4-pt uint16 record, re-based",record 3 of the array indexed into the 1-D word lookup 0x108E6 (count word 4 at 0x73EA6)
+PressureMulti_PoolC_Gear4,0x73EBA,4-pt uint16 record at the wrong offset,"4-pt uint16 record, re-based",record 4 of the array indexed into the 1-D word lookup 0x108E6 (count word 4 at 0x73EBA)
+PressureMulti_PoolD_Gear0,0x73ECE,4-pt uint16 record at the wrong offset,"3-pt uint16 record, re-based",record 0 of the array indexed into the 1-D word lookup 0x108E6 (count word 3 at 0x73ECE)
+PressureMulti_PoolD_Gear1,0x73EDE,4-pt uint16 record at the wrong offset,"3-pt uint16 record, re-based",record 1 of the array indexed into the 1-D word lookup 0x108E6 (count word 3 at 0x73EDE)
+PressureMulti_PoolD_Gear2,0x73EEE,4-pt uint16 record at the wrong offset,"3-pt uint16 record, re-based",record 2 of the array indexed into the 1-D word lookup 0x108E6 (count word 3 at 0x73EEE)
+PressureMulti_PoolD_Gear3,0x73EFE,4-pt uint16 record at the wrong offset,"3-pt uint16 record, re-based",record 3 of the array indexed into the 1-D word lookup 0x108E6 (count word 3 at 0x73EFE)
+PressureMulti_PoolD_Gear4,0x73F0E,4-pt uint16 record at the wrong offset,"3-pt uint16 record, re-based",record 4 of the array indexed into the 1-D word lookup 0x108E6 (count word 3 at 0x73F0E)

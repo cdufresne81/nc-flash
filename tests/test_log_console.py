@@ -190,3 +190,41 @@ class TestAllowlist:
             assert any("info kept" in m for m, _ in captured)
         finally:
             console.unregister_logging()
+
+
+class TestMessageText:
+    """Messages are shown as plain text, not parsed as HTML (#202)."""
+
+    def test_angle_brackets_and_ampersand_shown_as_written(self, qapp):
+        console = LogConsole(auto_register=False)
+        console.append_log(
+            "state: OpenPortState(driver=<OpenPortDriver.WINUSB: 'winusb'>) & more",
+            logging.INFO,
+        )
+        assert (
+            "state: OpenPortState(driver=<OpenPortDriver.WINUSB: 'winusb'>) & more"
+            in console.console.toPlainText()
+        )
+
+    def test_line_breaks_kept(self, qapp):
+        console = LogConsole(auto_register=False)
+        console.append_log("first line\nsecond line", logging.INFO)
+        assert "first line\nsecond line" in console.console.toPlainText()
+
+
+def test_long_lines_keep_the_log_scrolled_left(qapp):
+    """A long last line used to scroll the log sideways to its end, hiding the
+    start of every line (bench 2026-11-10)."""
+    console = LogConsole(auto_register=False)
+    console.resize(300, 200)
+    console.show()
+    try:
+        for i in range(30):
+            console.append_log(f"line {i} " + "x" * 400, logging.INFO)
+        qapp.processEvents()
+        assert console.console.horizontalScrollBar().maximum() > 0  # really long
+        assert console.console.horizontalScrollBar().value() == 0
+        vbar = console.console.verticalScrollBar()
+        assert vbar.value() == vbar.maximum()  # still follows the newest line
+    finally:
+        console.close()

@@ -34,6 +34,7 @@ Reference these before modifying related functionality:
 - `docs/internal/LOGGING.md` - Logging configuration and exception hierarchy
 - `docs/internal/RELEASE_CHANNELS.md` - Stable (`master`, `vX.Y.Z`) vs experimental (`dev`, `vX.Y.Z-beta.N`) branches, tags and updater channels; reference before tagging a release, choosing a PR's base branch, or touching the updater's version logic
 - `docs/internal/ROM_DEFINITION_FORMAT.md` - XML format for ROM definitions
+- `docs/internal/TCM_TABLE_LAYOUTS.md` - The three record layouts the TCM uses for its lookup tables, the routines that read them, and why a count byte alone doesn't prove a table (per-table evidence in `tcm_table_evidence.csv`); reference before adding or changing a table in the TCM definitions
 - `docs/internal/ROM_COMPARISON_TOOL.md` - Spec for the side-by-side ROM comparison tool; reference before touching compare/diff code
 - `docs/internal/WINDOWS_SETUP.md` - Windows dev environment setup
 - `docs/internal/UI_TESTING.md` - GUI test runner, screenshots, and test scripts
@@ -44,7 +45,10 @@ Reference these before modifying related functionality:
 - `docs/internal/WICAN_SLCAN_COEXISTENCE_PLAN.md` - Sequencing plan to replace the protocol-switch reboot with an always-on dedicated SLCAN port that coexists with the datalogger (FLASH_ACTIVE_BIT single-CAN interlock, FWD→FWB merge order, RPM-gated datalog/flash); reference before merging the datalogger firmware branch or building the no-reboot SLCAN port
 - `docs/internal/WICAN_DEADMAN_AUTORESUME.md` - Validated design for brick-safe datalog auto-resume when NC-Flash vanishes (lid close / crash / Wi-Fi drop): the HOST_BUS_CLAIM_BIT auth-window fence + firmware dead-man reaper, plus the missing #36 RX-forward fix. Reference before touching datalog pause/resume, the `/datalog` endpoint, the FLASH_ACTIVE_BIT/DATALOG_PARK_BIT interlock, or the host flash auth window
 - `docs/internal/WICAN_FLASH_SEQUENCE.md` - Step-by-step diagram of the SD-staged WiCAN flash (PC → SD upload → firmware CAN flash) plus a table of which failures can brick the ECU; reference before touching the WiCAN write path or explaining it
+- `docs/internal/WICAN_LIVE_STREAM.md` - WiCAN live datalog (port 35002, NCDLv1 wire protocol, tail-only, capture-file rules, interlocks, MegaLogViewerHD trail); reference before touching `wican_stream.py`, `wican_live_datalog.py` or the Live Datalog controls
+- `docs/internal/WICAN_SESSION_CHANNELS.md` - How Start Logging gives the WiCAN its channels for one run only (temporary list: firmware contract, run lifecycle, fallbacks, open bench checks); reference before touching the Datalogger's WiCAN start/stop, `/datalog_session`, or the "Save as WiCAN's Own List" push
 - `docs/internal/WICAN_SLCAN_STRAND_INVESTIGATION.md` - Historical (path since removed): why the adapter got stranded in Bench SLCAN mode (#92), with bench evidence; reference only for the reasoning behind the single-mode trim
+- `docs/internal/WICAN_AP_AUTOSWITCH.md` - Joining the WiCAN's own Wi-Fi when it's unreachable (#129): AP name/address/password facts from the firmware, the Windows Wi-Fi API approach, how the Connect-time switch and the rejoin work, and what is still unverified; reference before touching `wifi_switch.py` / `wican_ap_switch.py`
 
 **Rule:** When creating new documentation in `docs/`, add it to this list with a brief description of when to reference it.
 

@@ -2074,44 +2074,44 @@
     <scaling name="tqdf_tis_clamp" units="" toexpr="x" frexpr="x" format="%0.1f" min="0.000" max="1000.000" inc="1" storagetype="float" endian="big"/>
     <scaling name="tqdf_tis_wmax" units="" toexpr="x" frexpr="x" format="%0.1f" min="0.000" max="100.000" inc="0.5" storagetype="float" endian="big"/>
     <scaling name="tqdf_tis_wmin" units="" toexpr="x" frexpr="x" format="%0.1f" min="0.000" max="100.000" inc="0.5" storagetype="float" endian="big"/>
-    <table level="4" type="3D" category="Torque Request - Driveline Damping Filter" swapxy="true" name="Driveline Damping Filter - Coefficient b0 (Current Input) (pair with 0xFA23C)" address="cf43c" elements="48" scaling="tqdf_coef_b0">
+    <table level="4" type="3D" category="Torque Request - Driveline Damping Filter" swapxy="true" name="Driveline Damping Filter - Coefficient b0 (Current Input) (pair with 0xFA23C) - DO NOT EDIT (filter disabled on this ROM by Mazda)" address="cf43c" elements="48" scaling="tqdf_coef_b0">
       <table name="Filter Q" address="cf424" elements="6" scaling="tqdf_coef_b0_ax0" type="X Axis"/>
       <table name="Driveline Shuffle Frequency Hz (per gear)" address="cf404" elements="8" scaling="tqdf_coef_b0_ax1" type="Y Axis"/>
     </table>
-    <table level="4" type="3D" category="Torque Request - Driveline Damping Filter" swapxy="true" name="Driveline Damping Filter - Coefficient b1 (Previous Input) (pair with 0xFA334)" address="cf534" elements="48" scaling="tqdf_coef_b1">
+    <table level="4" type="3D" category="Torque Request - Driveline Damping Filter" swapxy="true" name="Driveline Damping Filter - Coefficient b1 (Previous Input) (pair with 0xFA334) - DO NOT EDIT (filter disabled on this ROM by Mazda)" address="cf534" elements="48" scaling="tqdf_coef_b1">
       <table name="Filter Q" address="cf51c" elements="6" scaling="tqdf_coef_b1_ax0" type="X Axis"/>
       <table name="Driveline Shuffle Frequency Hz (per gear)" address="cf4fc" elements="8" scaling="tqdf_coef_b1_ax1" type="Y Axis"/>
     </table>
-    <table level="4" type="3D" category="Torque Request - Driveline Damping Filter" swapxy="true" name="Driveline Damping Filter - Coefficient b2 (Input Two Passes Ago) (pair with 0xFA42C)" address="cf62c" elements="48" scaling="tqdf_coef_b2">
+    <table level="4" type="3D" category="Torque Request - Driveline Damping Filter" swapxy="true" name="Driveline Damping Filter - Coefficient b2 (Input Two Passes Ago) (pair with 0xFA42C) - DO NOT EDIT (filter disabled on this ROM by Mazda)" address="cf62c" elements="48" scaling="tqdf_coef_b2">
       <table name="Filter Q" address="cf614" elements="6" scaling="tqdf_coef_b2_ax0" type="X Axis"/>
       <table name="Driveline Shuffle Frequency Hz (per gear)" address="cf5f4" elements="8" scaling="tqdf_coef_b2_ax1" type="Y Axis"/>
     </table>
-    <table level="4" type="3D" category="Torque Request - Driveline Damping Filter" swapxy="true" name="Driveline Damping Filter - Coefficient a1 (Previous Output) (stability: a2 &lt; 1, |a1| &lt; 1 + a2) (pair with 0xFA524)" address="cf724" elements="48" scaling="tqdf_coef_a1">
+    <table level="4" type="3D" category="Torque Request - Driveline Damping Filter" swapxy="true" name="Driveline Damping Filter - Coefficient a1 (Previous Output) (stability: a2 &lt; 1, |a1| &lt; 1 + a2) (pair with 0xFA524) - DO NOT EDIT (filter disabled on this ROM by Mazda)" address="cf724" elements="48" scaling="tqdf_coef_a1">
       <table name="Filter Q" address="cf70c" elements="6" scaling="tqdf_coef_a1_ax0" type="X Axis"/>
       <table name="Driveline Shuffle Frequency Hz (per gear)" address="cf6ec" elements="8" scaling="tqdf_coef_a1_ax1" type="Y Axis"/>
     </table>
-    <table level="4" type="3D" category="Torque Request - Driveline Damping Filter" swapxy="true" name="Driveline Damping Filter - Coefficient a2 (Output Two Passes Ago) (stability: a2 &lt; 1, |a1| &lt; 1 + a2) (pair with 0xFA61C)" address="cf81c" elements="48" scaling="tqdf_coef_a2">
+    <table level="4" type="3D" category="Torque Request - Driveline Damping Filter" swapxy="true" name="Driveline Damping Filter - Coefficient a2 (Output Two Passes Ago) (stability: a2 &lt; 1, |a1| &lt; 1 + a2) (pair with 0xFA61C) - DO NOT EDIT (filter disabled on this ROM by Mazda)" address="cf81c" elements="48" scaling="tqdf_coef_a2">
       <table name="Filter Q" address="cf804" elements="6" scaling="tqdf_coef_a2_ax0" type="X Axis"/>
       <table name="Driveline Shuffle Frequency Hz (per gear)" address="cf7e4" elements="8" scaling="tqdf_coef_a2_ax1" type="Y Axis"/>
     </table>
-    <table level="4" type="3D" category="Torque Request - Driveline Damping Filter" swapxy="true" name="Driveline Damping Filter - Gain | Estimated Gear x Tip-In Size (pair with 0xFA708)" address="cf908" elements="28" scaling="tqdf_gain3d">
+    <table level="4" type="3D" category="Torque Request - Driveline Damping Filter" swapxy="true" name="Driveline Damping Filter - Gain | Estimated Gear x Tip-In Size (pair with 0xFA708) - DO NOT EDIT (filter disabled on this ROM by Mazda)" address="cf908" elements="28" scaling="tqdf_gain3d">
       <table name="Tip-In Size class (0 = idle)" address="cf8f8" elements="4" scaling="tqdf_gain3d_ax0" type="X Axis"/>
       <table name="Estimated Gear (0 = low RPM)" address="cf8dc" elements="7" scaling="tqdf_gain3d_ax1" type="Y Axis"/>
     </table>
-    <table level="4" type="2D" category="Torque Request - Driveline Damping Filter" swapxy="true" name="Driveline Damping Filter - Gain Multiplier | Spark Retard Correction (pair with 0xF815C)" address="cdc1c" elements="15" scaling="tqdf_gain_retard">
+    <table level="4" type="2D" category="Torque Request - Driveline Damping Filter" swapxy="true" name="Driveline Damping Filter - Gain Multiplier | Spark Retard Correction (pair with 0xF815C) - DO NOT EDIT (filter disabled on this ROM by Mazda)" address="cdc1c" elements="15" scaling="tqdf_gain_retard">
       <table name="Spark Retard Correction" address="cdbe0" elements="15" scaling="tqdf_gain_retard_ax0" type="Y Axis"/>
     </table>
-    <table level="4" type="2D" category="Torque Request - Driveline Damping Filter" swapxy="true" name="Driveline Damping Filter - Gain Multiplier | RPM (pair with 0xF81CC)" address="cdc8c" elements="13" scaling="tqdf_gain_rpm">
+    <table level="4" type="2D" category="Torque Request - Driveline Damping Filter" swapxy="true" name="Driveline Damping Filter - Gain Multiplier | RPM (pair with 0xF81CC) - DO NOT EDIT (filter disabled on this ROM by Mazda)" address="cdc8c" elements="13" scaling="tqdf_gain_rpm">
       <table name="RPM" address="cdc58" elements="13" scaling="tqdf_gain_rpm_ax0" type="Y Axis"/>
     </table>
     <table level="4" type="2D" category="Torque Request - Driveline Damping Filter" swapxy="true" name="Driveline Damping Filter - Shuffle Frequency Hz | Gear Ratio (step table: edit every cell of a gear band; SHARED: its output also feeds the spark tip-in logic)" address="c85fc" elements="12" scaling="tqdf_shuffle_hz">
       <table name="Gear Ratio rpm / output shaft (SHARED with another table - do not edit)" address="e775c" elements="12" scaling="tqdf_shuffle_hz_ax0" type="Y Axis"/>
     </table>
-    <table level="1" type="1D" category="Torque Request - Driveline Damping Filter" swapxy="true" name="Driveline Damping Filter - Bypass (0 = filter active, 1 = off) (pair with 0xF7C8A)" address="cd93d" elements="1" scaling="tqdf_bypass"/>
-    <table level="1" type="1D" category="Torque Request - Driveline Damping Filter" swapxy="true" name="Driveline Damping Filter - Filter Q (row of the coefficient tables; damping ratio = 0.5 / Q) (pair with 0xF7CCC)" address="cd954" elements="1" scaling="tqdf_q"/>
-    <table level="1" type="1D" category="Torque Request - Driveline Damping Filter" swapxy="true" name="Driveline Damping Filter - Gain | Mode A (pair with 0xF7CD8)" address="cd958" elements="1" scaling="tqdf_mode_a"/>
-    <table level="1" type="1D" category="Torque Request - Driveline Damping Filter" swapxy="true" name="Driveline Damping Filter - Gain | Mode B (pair with 0xF7CDC)" address="cd95c" elements="1" scaling="tqdf_mode_b"/>
-    <table level="1" type="1D" category="Torque Request - Driveline Damping Filter" swapxy="true" name="Driveline Damping Filter - Gain | Mode C (pair with 0xF7CE0)" address="cd960" elements="1" scaling="tqdf_mode_c"/>
+    <table level="1" type="1D" category="Torque Request - Driveline Damping Filter" swapxy="true" name="Driveline Damping Filter - Bypass (0 = filter active, 1 = off) (pair with 0xF7C8A) - DO NOT EDIT (filter disabled on this ROM by Mazda)" address="cd93d" elements="1" scaling="tqdf_bypass"/>
+    <table level="1" type="1D" category="Torque Request - Driveline Damping Filter" swapxy="true" name="Driveline Damping Filter - Filter Q (row of the coefficient tables; damping ratio = 0.5 / Q) (pair with 0xF7CCC) - DO NOT EDIT (filter disabled on this ROM by Mazda)" address="cd954" elements="1" scaling="tqdf_q"/>
+    <table level="1" type="1D" category="Torque Request - Driveline Damping Filter" swapxy="true" name="Driveline Damping Filter - Gain | Mode A (pair with 0xF7CD8) - DO NOT EDIT (filter disabled on this ROM by Mazda)" address="cd958" elements="1" scaling="tqdf_mode_a"/>
+    <table level="1" type="1D" category="Torque Request - Driveline Damping Filter" swapxy="true" name="Driveline Damping Filter - Gain | Mode B (pair with 0xF7CDC) - DO NOT EDIT (filter disabled on this ROM by Mazda)" address="cd95c" elements="1" scaling="tqdf_mode_b"/>
+    <table level="1" type="1D" category="Torque Request - Driveline Damping Filter" swapxy="true" name="Driveline Damping Filter - Gain | Mode C (pair with 0xF7CE0) - DO NOT EDIT (filter disabled on this ROM by Mazda)" address="cd960" elements="1" scaling="tqdf_mode_c"/>
     <table level="1" type="1D" category="Torque Request - Driveline Damping Filter" swapxy="true" name="Driveline Damping Filter - Gain Multiplier | AC On (SHARED: also scales the spark tip-in retard) (pair with 0xF7CE4)" address="c85f0" elements="1" scaling="tqdf_mult_ac"/>
     <table level="1" type="1D" category="Torque Request - Driveline Damping Filter" swapxy="true" name="Driveline Damping Filter - Gain Multiplier | High Det (SHARED: also scales the spark tip-in retard) (pair with 0xF7CE8)" address="c85f4" elements="1" scaling="tqdf_mult_hd"/>
     <table level="1" type="1D" category="Torque Request - Driveline Damping Filter" swapxy="true" name="Driveline Damping Filter - Gain Multiplier | Flag (SHARED: also scales the spark tip-in retard)" address="c85f8" elements="1" scaling="tqdf_mult_flag"/>
@@ -2126,41 +2126,41 @@
     <table level="1" type="1D" category="Torque Request - Tip-In Shaping (Data Integrity)" swapxy="true" name="Tip-In Shaping (Data Integrity) - Correction Clamp (pair with 0xCD950)" address="f7cc8" elements="1" scaling="tqdf_tis_clamp"/>
     <table level="1" type="1D" category="Torque Request - Tip-In Shaping (Data Integrity)" swapxy="true" name="Tip-In Shaping (Data Integrity) - TP Window Max (%) - DO NOT EDIT (primary is a code literal, not exposed)" address="f7cd0" elements="1" scaling="tqdf_tis_wmax"/>
     <table level="1" type="1D" category="Torque Request - Tip-In Shaping (Data Integrity)" swapxy="true" name="Tip-In Shaping (Data Integrity) - TP Window Min (%) - DO NOT EDIT (primary is a code literal, not exposed)" address="f7cd4" elements="1" scaling="tqdf_tis_wmin"/>
-    <table level="4" type="2D" category="Torque Request - Driveline Damping Filter (Data Integrity)" swapxy="true" name="Driveline Damping Filter (Data Integrity) - Gain Multiplier | Spark Retard Correction (pair with 0xCDC1C)" address="f815c" elements="15" scaling="tqdf_gain_retard">
+    <table level="4" type="2D" category="Torque Request - Driveline Damping Filter (Data Integrity)" swapxy="true" name="Driveline Damping Filter (Data Integrity) - Gain Multiplier | Spark Retard Correction (pair with 0xCDC1C) - DO NOT EDIT (filter disabled on this ROM by Mazda)" address="f815c" elements="15" scaling="tqdf_gain_retard">
       <table name="Spark Retard Correction" address="f8120" elements="15" scaling="tqdf_gain_retard_ax0" type="Y Axis"/>
     </table>
-    <table level="4" type="2D" category="Torque Request - Driveline Damping Filter (Data Integrity)" swapxy="true" name="Driveline Damping Filter (Data Integrity) - Gain Multiplier | RPM (pair with 0xCDC8C)" address="f81cc" elements="13" scaling="tqdf_gain_rpm">
+    <table level="4" type="2D" category="Torque Request - Driveline Damping Filter (Data Integrity)" swapxy="true" name="Driveline Damping Filter (Data Integrity) - Gain Multiplier | RPM (pair with 0xCDC8C) - DO NOT EDIT (filter disabled on this ROM by Mazda)" address="f81cc" elements="13" scaling="tqdf_gain_rpm">
       <table name="RPM" address="f8198" elements="13" scaling="tqdf_gain_rpm_ax0" type="Y Axis"/>
     </table>
-    <table level="4" type="3D" category="Torque Request - Driveline Damping Filter (Data Integrity)" swapxy="true" name="Driveline Damping Filter (Data Integrity) - Coefficient b0 (Current Input) (pair with 0xCF43C)" address="fa23c" elements="48" scaling="tqdf_coef_b0">
+    <table level="4" type="3D" category="Torque Request - Driveline Damping Filter (Data Integrity)" swapxy="true" name="Driveline Damping Filter (Data Integrity) - Coefficient b0 (Current Input) (pair with 0xCF43C) - DO NOT EDIT (filter disabled on this ROM by Mazda)" address="fa23c" elements="48" scaling="tqdf_coef_b0">
       <table name="Filter Q" address="fa224" elements="6" scaling="tqdf_coef_b0_ax0" type="X Axis"/>
       <table name="Driveline Shuffle Frequency Hz (per gear)" address="fa204" elements="8" scaling="tqdf_coef_b0_ax1" type="Y Axis"/>
     </table>
-    <table level="4" type="3D" category="Torque Request - Driveline Damping Filter (Data Integrity)" swapxy="true" name="Driveline Damping Filter (Data Integrity) - Coefficient b1 (Previous Input) (pair with 0xCF534)" address="fa334" elements="48" scaling="tqdf_coef_b1">
+    <table level="4" type="3D" category="Torque Request - Driveline Damping Filter (Data Integrity)" swapxy="true" name="Driveline Damping Filter (Data Integrity) - Coefficient b1 (Previous Input) (pair with 0xCF534) - DO NOT EDIT (filter disabled on this ROM by Mazda)" address="fa334" elements="48" scaling="tqdf_coef_b1">
       <table name="Filter Q" address="fa31c" elements="6" scaling="tqdf_coef_b1_ax0" type="X Axis"/>
       <table name="Driveline Shuffle Frequency Hz (per gear)" address="fa2fc" elements="8" scaling="tqdf_coef_b1_ax1" type="Y Axis"/>
     </table>
-    <table level="4" type="3D" category="Torque Request - Driveline Damping Filter (Data Integrity)" swapxy="true" name="Driveline Damping Filter (Data Integrity) - Coefficient b2 (Input Two Passes Ago) (pair with 0xCF62C)" address="fa42c" elements="48" scaling="tqdf_coef_b2">
+    <table level="4" type="3D" category="Torque Request - Driveline Damping Filter (Data Integrity)" swapxy="true" name="Driveline Damping Filter (Data Integrity) - Coefficient b2 (Input Two Passes Ago) (pair with 0xCF62C) - DO NOT EDIT (filter disabled on this ROM by Mazda)" address="fa42c" elements="48" scaling="tqdf_coef_b2">
       <table name="Filter Q" address="fa414" elements="6" scaling="tqdf_coef_b2_ax0" type="X Axis"/>
       <table name="Driveline Shuffle Frequency Hz (per gear)" address="fa3f4" elements="8" scaling="tqdf_coef_b2_ax1" type="Y Axis"/>
     </table>
-    <table level="4" type="3D" category="Torque Request - Driveline Damping Filter (Data Integrity)" swapxy="true" name="Driveline Damping Filter (Data Integrity) - Coefficient a1 (Previous Output) (stability: a2 &lt; 1, |a1| &lt; 1 + a2) (pair with 0xCF724)" address="fa524" elements="48" scaling="tqdf_coef_a1">
+    <table level="4" type="3D" category="Torque Request - Driveline Damping Filter (Data Integrity)" swapxy="true" name="Driveline Damping Filter (Data Integrity) - Coefficient a1 (Previous Output) (stability: a2 &lt; 1, |a1| &lt; 1 + a2) (pair with 0xCF724) - DO NOT EDIT (filter disabled on this ROM by Mazda)" address="fa524" elements="48" scaling="tqdf_coef_a1">
       <table name="Filter Q" address="fa50c" elements="6" scaling="tqdf_coef_a1_ax0" type="X Axis"/>
       <table name="Driveline Shuffle Frequency Hz (per gear)" address="fa4ec" elements="8" scaling="tqdf_coef_a1_ax1" type="Y Axis"/>
     </table>
-    <table level="4" type="3D" category="Torque Request - Driveline Damping Filter (Data Integrity)" swapxy="true" name="Driveline Damping Filter (Data Integrity) - Coefficient a2 (Output Two Passes Ago) (stability: a2 &lt; 1, |a1| &lt; 1 + a2) (pair with 0xCF81C)" address="fa61c" elements="48" scaling="tqdf_coef_a2">
+    <table level="4" type="3D" category="Torque Request - Driveline Damping Filter (Data Integrity)" swapxy="true" name="Driveline Damping Filter (Data Integrity) - Coefficient a2 (Output Two Passes Ago) (stability: a2 &lt; 1, |a1| &lt; 1 + a2) (pair with 0xCF81C) - DO NOT EDIT (filter disabled on this ROM by Mazda)" address="fa61c" elements="48" scaling="tqdf_coef_a2">
       <table name="Filter Q" address="fa604" elements="6" scaling="tqdf_coef_a2_ax0" type="X Axis"/>
       <table name="Driveline Shuffle Frequency Hz (per gear)" address="fa5e4" elements="8" scaling="tqdf_coef_a2_ax1" type="Y Axis"/>
     </table>
-    <table level="4" type="3D" category="Torque Request - Driveline Damping Filter (Data Integrity)" swapxy="true" name="Driveline Damping Filter (Data Integrity) - Gain | Estimated Gear x Tip-In Size (pair with 0xCF908)" address="fa708" elements="28" scaling="tqdf_gain3d">
+    <table level="4" type="3D" category="Torque Request - Driveline Damping Filter (Data Integrity)" swapxy="true" name="Driveline Damping Filter (Data Integrity) - Gain | Estimated Gear x Tip-In Size (pair with 0xCF908) - DO NOT EDIT (filter disabled on this ROM by Mazda)" address="fa708" elements="28" scaling="tqdf_gain3d">
       <table name="Tip-In Size class (0 = idle)" address="fa6f8" elements="4" scaling="tqdf_gain3d_ax0" type="X Axis"/>
       <table name="Estimated Gear (0 = low RPM)" address="fa6dc" elements="7" scaling="tqdf_gain3d_ax1" type="Y Axis"/>
     </table>
-    <table level="1" type="1D" category="Torque Request - Driveline Damping Filter (Data Integrity)" swapxy="true" name="Driveline Damping Filter (Data Integrity) - Bypass (0 = filter active, 1 = off) (pair with 0xCD93D)" address="f7c8a" elements="1" scaling="tqdf_bypass"/>
-    <table level="1" type="1D" category="Torque Request - Driveline Damping Filter (Data Integrity)" swapxy="true" name="Driveline Damping Filter (Data Integrity) - Filter Q (row of the coefficient tables; damping ratio = 0.5 / Q) (pair with 0xCD954)" address="f7ccc" elements="1" scaling="tqdf_q"/>
-    <table level="1" type="1D" category="Torque Request - Driveline Damping Filter (Data Integrity)" swapxy="true" name="Driveline Damping Filter (Data Integrity) - Gain | Mode A (pair with 0xCD958)" address="f7cd8" elements="1" scaling="tqdf_mode_a"/>
-    <table level="1" type="1D" category="Torque Request - Driveline Damping Filter (Data Integrity)" swapxy="true" name="Driveline Damping Filter (Data Integrity) - Gain | Mode B (pair with 0xCD95C)" address="f7cdc" elements="1" scaling="tqdf_mode_b"/>
-    <table level="1" type="1D" category="Torque Request - Driveline Damping Filter (Data Integrity)" swapxy="true" name="Driveline Damping Filter (Data Integrity) - Gain | Mode C (pair with 0xCD960)" address="f7ce0" elements="1" scaling="tqdf_mode_c"/>
+    <table level="1" type="1D" category="Torque Request - Driveline Damping Filter (Data Integrity)" swapxy="true" name="Driveline Damping Filter (Data Integrity) - Bypass (0 = filter active, 1 = off) (pair with 0xCD93D) - DO NOT EDIT (filter disabled on this ROM by Mazda)" address="f7c8a" elements="1" scaling="tqdf_bypass"/>
+    <table level="1" type="1D" category="Torque Request - Driveline Damping Filter (Data Integrity)" swapxy="true" name="Driveline Damping Filter (Data Integrity) - Filter Q (row of the coefficient tables; damping ratio = 0.5 / Q) (pair with 0xCD954) - DO NOT EDIT (filter disabled on this ROM by Mazda)" address="f7ccc" elements="1" scaling="tqdf_q"/>
+    <table level="1" type="1D" category="Torque Request - Driveline Damping Filter (Data Integrity)" swapxy="true" name="Driveline Damping Filter (Data Integrity) - Gain | Mode A (pair with 0xCD958) - DO NOT EDIT (filter disabled on this ROM by Mazda)" address="f7cd8" elements="1" scaling="tqdf_mode_a"/>
+    <table level="1" type="1D" category="Torque Request - Driveline Damping Filter (Data Integrity)" swapxy="true" name="Driveline Damping Filter (Data Integrity) - Gain | Mode B (pair with 0xCD95C) - DO NOT EDIT (filter disabled on this ROM by Mazda)" address="f7cdc" elements="1" scaling="tqdf_mode_b"/>
+    <table level="1" type="1D" category="Torque Request - Driveline Damping Filter (Data Integrity)" swapxy="true" name="Driveline Damping Filter (Data Integrity) - Gain | Mode C (pair with 0xCD960) - DO NOT EDIT (filter disabled on this ROM by Mazda)" address="f7ce0" elements="1" scaling="tqdf_mode_c"/>
     <table level="1" type="1D" category="Torque Request - Driveline Damping Filter (Data Integrity)" swapxy="true" name="Driveline Damping Filter (Data Integrity) - Gain Multiplier | AC On (read only by the monitor filter) (pair with 0xC85F0)" address="f7ce4" elements="1" scaling="tqdf_mult_ac"/>
     <table level="1" type="1D" category="Torque Request - Driveline Damping Filter (Data Integrity)" swapxy="true" name="Driveline Damping Filter (Data Integrity) - Gain Multiplier | High Det (read only by the monitor filter) (pair with 0xC85F4)" address="f7ce8" elements="1" scaling="tqdf_mult_hd"/>
     <table level="1" type="1D" category="Torque Request - Tip-In Shaping (Data Integrity)" swapxy="true" name="Tip-In Shaping (Data Integrity) - VSS Reference Ramp Rate (per pass) (pair with 0xCD948)" address="f7cbc" elements="1" scaling="tqdf_tis_vss"/>

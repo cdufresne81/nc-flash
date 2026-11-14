@@ -10,7 +10,7 @@ operation sends its own Tester Present as needed. Connect verifies the ECU is
 reachable with a single Tester Present, then holds the link open for
 subsequent operations.
 
-Two adapters share this one seam (the rest of the app is transport-agnostic):
+Three adapters share this one seam (the rest of the app is transport-agnostic):
 
   * **J2534** (default, wired) — opens a ``J2534Device``/ISO-TP channel. This
     path is byte-for-byte unchanged from the original implementation.
@@ -19,6 +19,8 @@ Two adapters share this one seam (the rest of the app is transport-agnostic):
     (``WICAN_DEDICATED_SLCAN_PORT``). The firmware has one mode and one CAN
     socket, so the host never reconfigures or reboots the adapter; it reserves
     the CAN bus from the datalogger for the life of the session instead.
+  * **OBDX** (opt-in, USB) — opens an ``ObdxTransport`` on the OBDX Pro's
+    virtual COM port; the adapter does ISO-TP in its own firmware.
 """
 
 import logging
@@ -77,6 +79,8 @@ class ECUSession(QObject):
         session = ECUSession(dll_path)
         # WiCAN (opt-in):
         session = ECUSession(adapter_config={"kind": "wican", "host": ...})
+        # OBDX Pro over USB (opt-in; empty port = auto-detect):
+        session = ECUSession(adapter_config={"kind": "obdx", "port": "COM7"})
 
         session.state_changed.connect(on_state_changed)
         session.connect_ecu()
@@ -99,9 +103,11 @@ class ECUSession(QObject):
         # Copy the relevant fields out of the config so the session never holds
         # a shared mutable dict (architecture rule).
         cfg = dict(adapter_config or {})
-        self._adapter_kind = "wican" if cfg.get("kind") == "wican" else "j2534"
+        kind = cfg.get("kind")
+        self._adapter_kind = kind if kind in ("wican", "obdx") else "j2534"
         self._dll_path = cfg.get("dll_path") or dll_path
         self._wican_host = cfg.get("host")
+        self._obdx_port = cfg.get("port") or ""
 
         self._state = ECUSessionState.DISCONNECTED
         self._device = None
@@ -109,7 +115,7 @@ class ECUSession(QObject):
         self._filter_id = None
         self._uds = None
 
-        # WiCAN-only state
+        # WiCAN / OBDX state
         self._transport = None
         # No-reboot coexistence (#36): the WHOLE-session bus reservation. On the
         # dedicated coexist port the datalogger owns the single CAN bus and eats the
@@ -127,7 +133,7 @@ class ECUSession(QObject):
 
     @property
     def adapter_kind(self) -> str:
-        """``"j2534"`` or ``"wican"`` — which transport this session drives."""
+        """``"j2534"``, ``"wican"`` or ``"obdx"`` — which transport this session drives."""
         return self._adapter_kind
 
     @property
@@ -152,7 +158,7 @@ class ECUSession(QObject):
 
     @property
     def transport(self):
-        """The open ``EcuTransport`` (WiCAN sessions only; ``None`` for J2534)."""
+        """The open ``EcuTransport`` (WiCAN/OBDX sessions; ``None`` for J2534)."""
         return self._transport
 
     @property
@@ -166,7 +172,7 @@ class ECUSession(QObject):
         """
         Open the transport and verify the ECU responds with one Tester Present.
 
-        Dispatches to the J2534 or WiCAN connect path by adapter kind. The
+        Dispatches to the J2534, WiCAN or OBDX connect path by adapter kind. The
         connection remains open for subsequent operations.
         """
         if self._state != ECUSessionState.DISCONNECTED:
@@ -176,6 +182,8 @@ class ECUSession(QObject):
         try:
             if self._adapter_kind == "wican":
                 self._connect_wican()
+            elif self._adapter_kind == "obdx":
+                self._connect_obdx()
             else:
                 self._connect_j2534()
             self._set_state(ECUSessionState.CONNECTED)
@@ -211,6 +219,19 @@ class ECUSession(QObject):
         # Single Tester Present to verify ECU is alive
         self._uds.tester_present(timeout_ms=TIMEOUT_PROBE)
         logger.info("ECU session established (J2534)")
+
+    def _connect_obdx(self):
+        """Open the OBDX Pro on its USB COM port, verify ECU."""
+        from .protocol import UDSConnection
+        from .transport import create_ecu_transport
+
+        self.progress.emit("Opening OBDX Pro…")
+        transport = create_ecu_transport({"kind": "obdx", "port": self._obdx_port})
+        self._transport = transport
+        transport.open()
+        self._uds = UDSConnection(transport)
+        self._uds.tester_present(timeout_ms=TIMEOUT_PROBE)
+        logger.info("ECU session established (%s)", transport.description)
 
     def _connect_wican(self):
         """Open the WiCAN link on the dedicated SLCAN port, verify ECU.
@@ -467,8 +488,10 @@ class ECUSession(QObject):
         if connection_dead:
             # ECU rebooted — tear down the dead connection. Teardown still runs
             # so the whole-session bus reservation is released and the
-            # datalogger resumes; the window auto-reconnects (and re-reserves)
-            # after a connection-dead release.
+            # datalogger resumes. The window reconnects (and re-reserves) after
+            # a read / RAM scan, and on Done after a failed flash; it stays
+            # disconnected after a successful flash so the logger keeps the bus
+            # for the drive.
             self._teardown()
             self._set_state(ECUSessionState.DISCONNECTED)
             logger.info("ECU session released (connection dead after reset)")
@@ -499,6 +522,8 @@ class ECUSession(QObject):
         """Close the transport (error-tolerant) and release the bus reservation."""
         if self._adapter_kind == "wican":
             self._teardown_wican()
+        elif self._adapter_kind == "obdx":
+            self._teardown_obdx()
         else:
             self._teardown_j2534()
         self._uds = None
@@ -526,6 +551,15 @@ class ECUSession(QObject):
             except Exception:
                 pass
             self._device = None
+
+    def _teardown_obdx(self):
+        """Close the OBDX transport (error-tolerant)."""
+        if self._transport is not None:
+            try:
+                self._transport.close()
+            except Exception:
+                pass
+            self._transport = None
 
     def _teardown_wican(self):
         """Release the bus reservation, then close the WiCAN transport."""

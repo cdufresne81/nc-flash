@@ -480,3 +480,78 @@ class TestDeleteAfterDownload:
         assert [p.name for p in blk.args[0].downloaded] == ["a.csv"]
         assert "Deleting trip logs from the WiCAN skipped" in caplog.text
         assert "WiCAN trip-log check skipped" not in caplog.text
+
+
+class TestWorkerTeardown:
+    """A finished worker thread is joined before its worker is let go.
+
+    ``QThread.finished`` is emitted by the worker thread just before it exits,
+    so the GUI-thread handler can run while that thread is still shutting
+    down. The thread is held inside that window here. The old teardown
+    ``deleteLater()``-ed the worker from that handler, so the exiting worker
+    thread destroyed it (the crash seen in the app updater) or, far more
+    often, it was never deleted at all (a leak per sync or check).
+    """
+
+    @pytest.mark.parametrize("job", ["download", "check"])
+    def test_worker_is_released_on_the_gui_thread_after_its_thread_stops(
+        self, qtbot, fake_settings, qt_thread_guard, monkeypatch, job
+    ):
+        import time
+        import weakref
+        from types import SimpleNamespace
+
+        from PySide6.QtCore import Qt
+
+        import src.ui.wican_log_sync as log_sync
+
+        gate = threading.Event()
+
+        def download_new(*a, **k):
+            gate.wait(5)
+            return SimpleNamespace(
+                downloaded=[], skipped=[], cleanup=None, cancelled=False
+            )
+
+        def classify(*a, **k):
+            gate.wait(5)
+            return []
+
+        # A plain object, not a MagicMock: a mock records its call arguments,
+        # and the worker's bound progress callback would keep it alive.
+        client = SimpleNamespace(download_new=download_new, classify=classify)
+        monkeypatch.setattr(log_sync._DeviceWorker, "_make_client", lambda s: client)
+
+        sync = WiCANLogSync(fake_settings)
+        if job == "download":
+            assert sync.start() is True
+            thread, worker = sync._thread, sync._worker
+        else:
+            assert sync.refresh_inventory() is True
+            thread, worker = sync._check_thread, sync._check_worker
+
+        released_on = []
+        worker_ref = weakref.ref(
+            worker, lambda _ref: released_on.append(threading.get_ident())
+        )
+        del worker
+        # Runs on the worker thread after the owner's handler was queued, so
+        # the thread is still shutting down while the GUI thread handles it.
+        shutdown_done = threading.Event()
+
+        def slow_shutdown():
+            time.sleep(0.3)
+            shutdown_done.set()
+
+        thread.finished.connect(slow_shutdown, Qt.DirectConnection)
+        del thread  # deleted by the owner; never touched again here
+
+        gate.set()
+        qtbot.waitUntil(
+            lambda: sync._thread is None and sync._check_thread is None,
+            timeout=5000,
+        )
+        assert shutdown_done.is_set(), "handler finished before the thread stopped"
+        assert not (sync.is_running or sync.is_checking)
+        qtbot.waitUntil(lambda: worker_ref() is None, timeout=2000)
+        assert released_on == [threading.get_ident()], "worker not freed on GUI thread"

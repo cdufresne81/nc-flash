@@ -9,14 +9,15 @@ import json
 import logging
 import math
 from pathlib import Path
-from typing import TYPE_CHECKING, Optional, Tuple
+from typing import TYPE_CHECKING, List, Optional, Tuple
 
 from PySide6.QtCore import QMimeData, Qt, QUrl
 from PySide6.QtGui import QBrush, QDesktopServices
-from PySide6.QtWidgets import QApplication
+from PySide6.QtWidgets import QApplication, QMessageBox
 
 from ...utils.formatting import parse_cell_text
 from .context import TableViewerContext, frozen_table_updates
+from .operations import selected_cells
 
 if TYPE_CHECKING:
     from .display import TableDisplayHelper
@@ -26,6 +27,19 @@ logger = logging.getLogger(__name__)
 
 # Exact cell values (JSON grid of floats / null) placed next to text/plain.
 CELLS_MIME = "application/x-ncflash-cells"
+
+
+def _bounds(cells) -> Tuple[int, int, int, int]:
+    """(min_row, max_row, min_col, max_col) around a list of (row, col)."""
+    rows = [row for row, _col in cells]
+    cols = [col for _row, col in cells]
+    return min(rows), max(rows), min(cols), max(cols)
+
+
+def _is_rectangle(cells) -> bool:
+    """True when the cells fill their outline (one plain block selection)."""
+    min_row, max_row, min_col, max_col = _bounds(cells)
+    return len(cells) == (max_row - min_row + 1) * (max_col - min_col + 1)
 
 
 class TableClipboardHelper:
@@ -42,29 +56,37 @@ class TableClipboardHelper:
         self.edit = edit
 
     def copy_selection(self):
-        """Copy selected cells to clipboard as tab-separated values"""
+        """Copy the selected cells to the clipboard.
+
+        A Ctrl+click selection copies the rectangle around it with the cells
+        in between left blank (empty text, no exact value). Pasting it back
+        then writes only the cells that were selected, and a blank never
+        overwrites anything.
+        """
         selected = self.ctx.table_widget.selectedRanges()
         if not selected:
             return
 
-        # Get the bounding rectangle of selection
-        min_row = min(r.topRow() for r in selected)
-        max_row = max(r.bottomRow() for r in selected)
-        min_col = min(r.leftColumn() for r in selected)
-        max_col = max(r.rightColumn() for r in selected)
+        cells = selected_cells(selected)
+        min_row, max_row, min_col, max_col = _bounds(cells)
+        only = None if _is_rectangle(cells) else set(cells)
 
-        self._put_on_clipboard(min_row, max_row, min_col, max_col)
+        self._put_on_clipboard(min_row, max_row, min_col, max_col, only)
         logger.debug(
-            f"Copied {max_row - min_row + 1}x{max_col - min_col + 1} cells to clipboard"
+            f"Copied {len(cells)} cell(s) "
+            f"({max_row - min_row + 1}x{max_col - min_col + 1}) to clipboard"
         )
 
-    def _put_on_clipboard(self, min_row, max_row, min_col, max_col):
+    def _put_on_clipboard(self, min_row, max_row, min_col, max_col, only=None):
         """Put a block of cells on the clipboard, twice over.
 
         text/plain carries the displayed text (for Excel and other apps).
         CELLS_MIME carries the exact stored values: the displayed text is
         rounded to the scaling format, so pasting it back would silently
         change the ROM (e.g. a 0.0625 breakpoint shown as 0.062).
+
+        ``only``: when given, the (row, col) cells to copy; every other cell
+        of the block is left blank (empty text, null exact value).
         """
         rows_text = []
         rows_exact = []
@@ -73,6 +95,8 @@ class TableClipboardHelper:
             row_exact = []
             for col in range(min_col, max_col + 1):
                 item = self.ctx.table_widget.item(row, col)
+                if only is not None and (row, col) not in only:
+                    item = None  # gap in a Ctrl+click selection
                 row_values.append(item.text() if item else "")
                 row_exact.append(
                     self._stored_value(item.data(Qt.UserRole)) if item else None
@@ -145,6 +169,46 @@ class TableClipboardHelper:
             return None
         return value
 
+    def _paste_targets(self, rows_data, cells) -> Optional[List[tuple]]:
+        """(row, col, source) for every cell a paste may write, or None to refuse.
+
+        The paste never writes a cell the user did not ask for:
+          - One copied value goes into every selected cell (like Excel).
+          - A single-rectangle selection takes the copied block from its
+            top-left cell (the block may run past a smaller selection, as in
+            Excel; it stops at the table edge).
+          - A Ctrl+click selection takes a block only when it is exactly the
+            size of the selection's outline, and then only the selected
+            cells change. Any other shape is refused: there is no telling
+            where the user meant it to go.
+        Blank / null clipboard cells are listed but change nothing.
+        """
+        if len(rows_data) == 1 and len(rows_data[0]) == 1:
+            return [(row, col, rows_data[0][0]) for row, col in cells]
+
+        min_row, max_row, min_col, max_col = _bounds(cells)
+        if _is_rectangle(cells):
+            return [
+                (min_row + r, min_col + c, source)
+                for r, row_values in enumerate(rows_data)
+                for c, source in enumerate(row_values)
+                if min_row + r < self.ctx.table_widget.rowCount()
+                and min_col + c < self.ctx.table_widget.columnCount()
+            ]
+
+        width = max(len(row_values) for row_values in rows_data)
+        if (len(rows_data), width) != (
+            max_row - min_row + 1,
+            max_col - min_col + 1,
+        ):
+            return None
+        targets = []
+        for row, col in cells:
+            row_values = rows_data[row - min_row]
+            if col - min_col < len(row_values):
+                targets.append((row, col, row_values[col - min_col]))
+        return targets
+
     def paste_selection(self):
         """Paste clipboard content into selected cells"""
         if self.ctx.read_only:
@@ -154,103 +218,102 @@ class TableClipboardHelper:
         if not rows_data:
             return
 
-        # Get current selection start
         selected = self.ctx.table_widget.selectedRanges()
         if not selected:
             return
 
-        start_row = min(r.topRow() for r in selected)
-        start_col = min(r.leftColumn() for r in selected)
+        targets = self._paste_targets(rows_data, selected_cells(selected))
+        if targets is None:
+            QMessageBox.information(
+                self.ctx.viewer,
+                "Paste",
+                "Nothing was pasted.\n\n"
+                "To paste into cells picked with Ctrl+click, copy a single "
+                "value (it goes into every picked cell) or a block exactly "
+                "the size of the area the picked cells span (only the "
+                "picked cells change).",
+            )
+            return
 
         # Paste values
         changes_made = []
         axis_changes = []
 
         with frozen_table_updates(self.ctx.table_widget):
-            for row_offset, row_values in enumerate(rows_data):
-                for col_offset, source in enumerate(row_values):
-                    target_row = start_row + row_offset
-                    target_col = start_col + col_offset
+            for target_row, target_col, source in targets:
+                item = self.ctx.table_widget.item(target_row, target_col)
+                if not item:
+                    continue
 
-                    # Check bounds
-                    if target_row >= self.ctx.table_widget.rowCount():
-                        continue
-                    if target_col >= self.ctx.table_widget.columnCount():
-                        continue
+                data_indices = item.data(Qt.UserRole)
+                if data_indices is None:
+                    continue  # No data behind this cell
 
-                    item = self.ctx.table_widget.item(target_row, target_col)
-                    if not item:
-                        continue
+                new_value = self._pasted_value(source, exact, item, data_indices)
+                if new_value is None:
+                    continue
 
-                    data_indices = item.data(Qt.UserRole)
-                    if data_indices is None:
-                        continue  # No data behind this cell
+                # Axis cell: ('x_axis' | 'y_axis', index)
+                if isinstance(data_indices[0], str):
+                    change = self.edit.apply_axis_value(
+                        item, data_indices[0], data_indices[1], new_value
+                    )
+                    if change is not None:
+                        axis_changes.append(change)
+                    continue
 
-                    new_value = self._pasted_value(source, exact, item, data_indices)
-                    if new_value is None:
-                        continue
+                data_row, data_col = data_indices
 
-                    # Axis cell: ('x_axis' | 'y_axis', index)
-                    if isinstance(data_indices[0], str):
-                        change = self.edit.apply_axis_value(
-                            item, data_indices[0], data_indices[1], new_value
-                        )
-                        if change is not None:
-                            axis_changes.append(change)
-                        continue
+                # Get old value
+                values = self.ctx.current_data["values"]
+                if values.ndim == 1:
+                    old_value = float(values[data_row])
+                else:
+                    old_value = float(values[data_row, data_col])
+                new_value = self.edit.fit_to_array(values, new_value)
 
-                    data_row, data_col = data_indices
+                # Skip if no change
+                if abs(new_value - old_value) < 1e-10:
+                    continue
 
-                    # Get old value
-                    values = self.ctx.current_data["values"]
-                    if values.ndim == 1:
-                        old_value = float(values[data_row])
-                    else:
-                        old_value = float(values[data_row, data_col])
-                    new_value = self.edit.fit_to_array(values, new_value)
+                # Note: intentionally no scaling min/max clamp here. The
+                # XML-declared min/max is unreliable (some definitions use
+                # min=0/max=0 as placeholders, and sibling tables legitimately
+                # hold raw bytes outside the stated range). display_to_raw
+                # below is the real safety net — it rejects values that
+                # cannot be encoded in the storage type.
 
-                    # Skip if no change
-                    if abs(new_value - old_value) < 1e-10:
-                        continue
+                # Convert to raw values
+                old_raw = self.edit.display_to_raw(old_value, current=True)
+                new_raw = self.edit.display_to_raw(new_value)
+                if old_raw is None or new_raw is None:
+                    continue
 
-                    # Note: intentionally no scaling min/max clamp here. The
-                    # XML-declared min/max is unreliable (some definitions use
-                    # min=0/max=0 as placeholders, and sibling tables legitimately
-                    # hold raw bytes outside the stated range). display_to_raw
-                    # below is the real safety net — it rejects values that
-                    # cannot be encoded in the storage type.
+                # Update the internal data
+                if values.ndim == 1:
+                    self.ctx.current_data["values"][data_row] = new_value
+                else:
+                    self.ctx.current_data["values"][data_row, data_col] = new_value
 
-                    # Convert to raw values
-                    old_raw = self.edit.display_to_raw(old_value)
-                    new_raw = self.edit.display_to_raw(new_value)
-                    if old_raw is None or new_raw is None:
-                        continue
+                # Update cell display
+                self.ctx.editing_in_progress = True
+                try:
+                    value_fmt = self.display.get_value_format()
+                    item.setText(self.display.format_value(new_value, value_fmt))
+                    color = self.display.get_cell_color(
+                        new_value,
+                        self.ctx.current_data["values"],
+                        data_row,
+                        data_col,
+                    )
+                    item.setBackground(QBrush(color))
+                finally:
+                    self.ctx.editing_in_progress = False
 
-                    # Update the internal data
-                    if values.ndim == 1:
-                        self.ctx.current_data["values"][data_row] = new_value
-                    else:
-                        self.ctx.current_data["values"][data_row, data_col] = new_value
-
-                    # Update cell display
-                    self.ctx.editing_in_progress = True
-                    try:
-                        value_fmt = self.display.get_value_format()
-                        item.setText(self.display.format_value(new_value, value_fmt))
-                        color = self.display.get_cell_color(
-                            new_value,
-                            self.ctx.current_data["values"],
-                            data_row,
-                            data_col,
-                        )
-                        item.setBackground(QBrush(color))
-                    finally:
-                        self.ctx.editing_in_progress = False
-
-                        # Record change for signaling
-                        changes_made.append(
-                            (data_row, data_col, old_value, new_value, old_raw, new_raw)
-                        )
+                    # Record change for signaling
+                    changes_made.append(
+                        (data_row, data_col, old_value, new_value, old_raw, new_raw)
+                    )
 
             # Emit single bulk signal for atomic undo (matches operations.py pattern)
             if changes_made:

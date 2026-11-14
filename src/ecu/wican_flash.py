@@ -26,7 +26,7 @@ import logging
 from typing import Callable, Optional
 
 from .constants import BATTERY_VOLTAGE_WARNING
-from .exceptions import FlashError, GuardReadError
+from .exceptions import FlashError, GuardReadError, LinkQualityError
 from .link_quality import (
     DEFAULT_MAX_P95_MS,
     DEFAULT_PINGS,
@@ -111,7 +111,7 @@ class WiCANFlasher:
         """Pre-flight link-quality gate + battery guard. Raises on failure."""
         lq = self.preflight()
         if not lq.ok:
-            raise FlashError(
+            raise LinkQualityError(
                 f"Pre-flight link-quality gate FAILED: {lq.reason}. A flash needs a "
                 "clean link — the write path cannot resend a dropped block. Improve "
                 "the WiFi (move closer / AP mode) and retry. (Reads are unaffected.)"

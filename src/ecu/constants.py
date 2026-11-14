@@ -20,6 +20,15 @@ GEN_DETECT_OFFSET = 0x2030
 GEN_NC1 = 0x35
 GEN_NC2_A = 0x36
 GEN_NC2_B = 0x37
+# The ECU's boot block (0x0000-0x1FFF) is never written by a flash, so it tells
+# the ECU's real generation even when its program came from the wrong one (the
+# byte at GEN_DETECT_OFFSET is the "200x" of the program's copyright string and
+# is rewritten by every full flash). Its first 8 bytes are the reset vector and
+# initial stack pointer; they split cleanly by generation across every NC ROM
+# checked (21 distinct images, 2026-10-15).
+BOOT_SIGNATURE_LEN = 8
+BOOT_SIGNATURE_NC1 = bytes.fromhex("00000aacffffbfa0")
+BOOT_SIGNATURE_NC2 = bytes.fromhex("00000c0cffffbfa0")
 
 # --- Checksum ---
 CHECKSUM_MAGIC = 0x5AA5A55A
@@ -65,6 +74,18 @@ WICAN_DEDICATED_SLCAN_PORT = 35001
 #: adapter at all — the user is told to update the firmware. Both sides share
 #: this one contract.
 COEXIST_MIN_FW_REV = 6
+
+# --- WiCAN live datalog stream (firmware issue #3) ---
+#: TCP port of the read-only live tail of the trip CSV (wire protocol NCDLv1).
+#: The device only serves; NC Flash connects and reads. One client at a time and
+#: the NEWEST connection wins, so never open a second one as a "probe" while a
+#: stream runs. A stream connection is NOT host-presence and never touches the
+#: park/claim/lease machinery. MUST match firmware main/datalog_stream.h.
+WICAN_DATALOG_STREAM_PORT = 35002
+#: First line the device sends on every stream connection
+#: (``#hello NCDLv1 fw=<git_version>``). A refused connect or a different first
+#: line means firmware without the live stream.
+NCDL_BANNER_PREFIX = "#hello NCDLv1"
 #: Probe connect timeout (ms) for the coexist-port capability check. Short so a
 #: device WITHOUT the port fails fast instead of stalling the connect; a refusal
 #: that needs longer than this to surface is caught by the one confirming retry
@@ -112,6 +133,7 @@ SID_ECU_RESET = 0x11
 SID_CLEAR_DTC = 0x14
 SID_READ_DTC_STATUS = 0x18
 SID_READ_DTC_COUNT = 0x22
+SID_READ_DATA_BY_IDENTIFIER = 0x22  # same SID; datalog channel reads
 SID_READ_MEM_BY_ADDR = 0x23
 SID_SECURITY_ACCESS = 0x27
 SID_REQUEST_DOWNLOAD = 0x34
@@ -125,10 +147,18 @@ DIAG_SESSION_PROGRAMMING = 0x85
 RESET_HARD = 0x01
 SECURITY_REQUEST_SEED = 0x01
 SECURITY_SEND_KEY = 0x02
+SECURITY_SEED_LEN = 3  # NC seeds and keys are 3 bytes
+# The fixed SecurityAccess seed of the boot loader's recovery server (an ECU
+# whose application is missing or invalid). The running application answers
+# with a varying seed instead. Bench-proven 2026-11-09; the normal key
+# algorithm computes the right key for it, so the ordinary flash recovers it.
+BOOT_LOADER_SEED = bytes([0x55, 0xAA, 0x55])
 TESTER_PRESENT_SUB = 0x01
 
 # --- UDS Negative Response ---
+NRC_SERVICE_NOT_SUPPORTED = 0x11
 NRC_CONDITIONS_NOT_CORRECT = 0x22
+NRC_REQUEST_OUT_OF_RANGE = 0x31
 NRC_RESPONSE_PENDING = 0x78
 
 # --- J2534 Constants ---

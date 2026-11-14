@@ -68,6 +68,10 @@ def prepare_flash_image(
             f"ROM must be exactly {ROM_SIZE} bytes, got {len(rom_data)}"
         )
 
+    # Picks the SBL. Byte 0x36 maps to NC2 here ON PURPOSE, as RomDrop does,
+    # although 0x36 ROMs are NC1 hardware: that is how those cars have been
+    # flashed for years. Do not change this to rom_hardware_generation; that one
+    # is for the pre-flash generation check only (#234).
     generation = detect_vehicle_generation(rom_data)
 
     # --- Checksum-correct on a copy, then verify zero residual (defense-in-depth) ---
