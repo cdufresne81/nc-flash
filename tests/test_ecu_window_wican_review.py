@@ -527,3 +527,47 @@ def test_unknown_record_never_matters_on_a_cable():
     win = _kernel_on_wican({})
     win._is_wican = lambda: False
     assert win._wican_reset_status_unknown() is False
+
+
+# --- beta.1 field bug: caps asked for while the session was still connecting -----
+
+
+def test_caps_asked_before_the_link_exists_are_read_once_connected(monkeypatch):
+    """The buttons refresh while the session is CONNECTING (no transport yet).
+    That must not record a give-up: once connected, /host_caps is read and the
+    block compare is offered. beta.1 recorded "gave up" and every click fell
+    back silently to the SD-staged flash."""
+    reads = []
+
+    def fake_read(host, holder):
+        reads.append(host)
+        holder["caps"] = {"fast_flash": 1, "ncfr_rev": 6, "ff_live": 1}
+
+    from src.ui import ecu_window as ew
+
+    monkeypatch.setattr(ew, "_read_wican_caps", fake_read)
+    session = SimpleNamespace(adapter_kind="wican", transport=None)
+    win = SimpleNamespace(_session=session, is_busy=False)
+    win._wican_fast_flash_caps = ECUProgrammingWindow._wican_fast_flash_caps.__get__(
+        win
+    )
+    win._wican_caps_pending = ECUProgrammingWindow._wican_caps_pending.__get__(win)
+
+    assert win._wican_fast_flash_caps() is None  # CONNECTING: nothing to read
+    assert getattr(win, "_wican_caps_cache", None) is None  # nothing recorded
+    session.transport = SimpleNamespace(host="192.0.2.1")  # CONNECTED
+    win._wican_fast_flash_caps()
+    for _ in range(50):
+        if reads:
+            break
+        time.sleep(0.01)
+    assert reads == ["192.0.2.1"]
+    assert win._wican_fast_flash_caps()["fast_flash"] == 1
+
+
+def test_status_record_asked_before_the_link_exists_is_not_cached():
+    session = SimpleNamespace(transport=None)
+    win = SimpleNamespace(_session=session)
+    win._wican_status_holder = ECUProgrammingWindow._wican_status_holder.__get__(win)
+    assert win._wican_status_holder() == {}
+    assert getattr(win, "_wican_status_cache", None) is None
