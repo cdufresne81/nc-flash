@@ -40,7 +40,7 @@ import logging
 import select
 import socket
 import time
-from typing import Optional, Tuple
+from typing import Callable, Optional, Sequence, Tuple
 
 from .constants import CAN_REQUEST_ID, CAN_RESPONSE_ID
 from .exceptions import ECUError
@@ -927,6 +927,80 @@ class WiCANTransport(EcuTransport):
         end = tail.find(b"\n", idx)
         line = bytes(tail[idx : end if end >= 0 else len(tail)])
         return " | firmware: " + line.decode("ascii", "replace").strip()
+
+    def fast_flash(
+        self,
+        command: bytes,
+        on_line: Callable[[str], bool],
+        *,
+        start_markers: Sequence[bytes] = (b"NCFFSYNC", b"FFERR"),
+        idle_timeout_s: float = 30.0,
+        op_timeout_s: float = 45 * 60.0,
+        clock: Callable[[], float] = time.monotonic,
+        select_s: float = 0.25,
+    ) -> bool:
+        """Send a raw firmware command (the fast flash's ``K``) and feed every
+        status line to ``on_line`` until it returns True (the op ended).
+
+        Lines before the first ``start_markers`` hit are skipped (CAN frames
+        left in the socket). The socket is read continuously: before its point
+        of no return the firmware gives up when the PC does not take a line for
+        2 s, so ``on_line`` must return quickly. Returns True when ``on_line``
+        ended the op; raises :class:`WiCANError` when the link drops, goes
+        silent for ``idle_timeout_s`` or passes ``op_timeout_s``. Observe-only:
+        closing the socket never stops the firmware.
+        """
+        sock = self._sock
+        if sock is None:
+            raise WiCANError("WiCAN socket is not open")
+        self._drain_frames()
+        self._send_raw(command)
+        buf = bytearray()
+        synced = False
+        start = last = clock()
+        try:
+            while True:
+                now = clock()
+                if now - start > op_timeout_s:
+                    raise WiCANError("fast flash: no end after the op ceiling")
+                if now - last > idle_timeout_s:
+                    raise WiCANError(f"fast flash: no line for {idle_timeout_s:.0f} s")
+                try:
+                    readable, _, _ = select.select([sock], [], [], select_s)
+                except OSError as e:
+                    raise WiCANError(f"fast flash select failed: {e}") from e
+                if not readable:
+                    continue
+                try:
+                    chunk = sock.recv(4096)
+                except (BlockingIOError, InterruptedError):
+                    continue
+                except OSError as e:
+                    raise WiCANError(f"fast flash recv failed: {e}") from e
+                if chunk == b"":
+                    raise WiCANError(
+                        "socket closed by the adapter during the fast flash"
+                    )
+                buf.extend(chunk)
+                last = clock()
+                if not synced:
+                    hits = [i for i in (buf.find(m) for m in start_markers) if i >= 0]
+                    if not hits:
+                        if len(buf) > 64 * 1024:
+                            del buf[:-16]
+                        continue
+                    del buf[: min(hits)]
+                    synced = True
+                while True:
+                    nl = buf.find(b"\n")
+                    if nl < 0:
+                        break
+                    line = bytes(buf[:nl]).decode("ascii", "replace")
+                    del buf[: nl + 1]
+                    if on_line(line):
+                        return True
+        finally:
+            self._after_raw_read()
 
     def fast_write(
         self,

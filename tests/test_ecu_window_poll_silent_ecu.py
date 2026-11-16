@@ -168,6 +168,9 @@ def _action_fake(answers):
         _update_action_states=MagicMock(),
         _main_window=SimpleNamespace(get_current_document=lambda: None),
         _get_dll_path=lambda: None,
+        _fast_kernel_running=False,
+        _fast_flash_offer=lambda rom_data: (None, "off"),
+        _get_current_rom_data=lambda: None,
     )
     return fake, calls
 

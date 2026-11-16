@@ -24,6 +24,11 @@ service), and only then is the seed asked for. A healthy
 application answers OBD Mode 0x01, so it never gets past the first request: no
 programming session, no seed request. No key is ever sent by the probe.
 
+A fast-flash kernel left running (the PC lost the link or the app closed during
+a fast flash, without an ignition cycle) refuses all three with NRC 0x11. Only
+then is it asked to identify itself (``31 00``); the identify request is never
+sent to anything that answered one of the three, or refused it otherwise.
+
 Headless: no PySide6.
 """
 
@@ -48,6 +53,7 @@ from .constants import (
     TIMEOUT_PROBE,
 )
 from .exceptions import NegativeResponseError
+from .fast_flash import KernelInfo, probe_kernel
 
 logger = logging.getLogger(__name__)
 
@@ -74,6 +80,9 @@ class EcuMode(Enum):
     BOOT_LOADER = "boot_loader"
     #: Refusal pattern, but no seed was obtained (refused or no reply). Normal diagnostics are unavailable; cause not proven.
     SUSPECT = "suspect"
+    #: Every service refused as unsupported AND the fast-flash kernel
+    #: identified itself: a fast flash was interrupted with the kernel running.
+    FAST_FLASH_KERNEL = "fast_flash_kernel"
     #: Inconclusive (no reply, another NRC, a link error): say nothing.
     UNKNOWN = "unknown"
 
@@ -82,13 +91,19 @@ class EcuMode(Enum):
 class RecoveryProbeResult:
     mode: EcuMode
     seed: Optional[bytes] = None
+    #: The running fast-flash kernel (FAST_FLASH_KERNEL only).
+    kernel: Optional[KernelInfo] = None
     #: One short line per step, for the Activity Log / a field report.
     evidence: list[str] = field(default_factory=list)
 
     @property
     def needs_recovery(self) -> bool:
         """True when normal diagnostics are unavailable (confirmed or not)."""
-        return self.mode in (EcuMode.BOOT_LOADER, EcuMode.SUSPECT)
+        return self.mode in (
+            EcuMode.BOOT_LOADER,
+            EcuMode.SUSPECT,
+            EcuMode.FAST_FLASH_KERNEL,
+        )
 
 
 def is_boot_loader_seed(seed: Optional[bytes]) -> bool:
@@ -131,7 +146,9 @@ def probe_ecu_mode(uds) -> RecoveryProbeResult:
 
     1. OBD Mode 0x01 PID 0x0C. Answered -> NORMAL. NRC 0x11 -> go on.
     2. VIN block (0x21 0x00). Answered -> NORMAL. NRC 0x11 -> go on.
-    3. ROM-ID read (0x22 0xE6 0x11). Answered -> NORMAL. NRC 0x31 -> go on.
+    3. ROM-ID read (0x22 0xE6 0x11). Answered -> NORMAL. NRC 0x31 -> go on
+       to step 4. NRC 0x11 -> kernel identify (``31 00``): a fast-flash
+       kernel's answer -> FAST_FLASH_KERNEL, anything else -> UNKNOWN.
     4. Programming session (0x10 0x85) + seed request (0x27 0x01) -- the exact
        opening of the normal flash, which the boot loader is proven to accept.
        Seed ``55 AA 55`` -> BOOT_LOADER; no seed obtained -> SUSPECT; any
@@ -166,6 +183,12 @@ def probe_ecu_mode(uds) -> RecoveryProbeResult:
             if refused(exc, sid):
                 result.evidence.append(f"{name}: refused (NRC 0x{exc.nrc:02X})")
                 continue
+            if sid == SID_READ_ROM_ID and _refused_as_unsupported(exc, sid):
+                # All three refused as unsupported: the boot loader would have
+                # refused this one out of range. Only now may the fast-flash
+                # kernel be asked who it is.
+                result.evidence.append(f"{name}: refused (NRC 0x{exc.nrc:02X})")
+                return _identify_kernel(uds, result)
             result.evidence.append(f"{name}: {exc}")
             logger.debug("Recovery probe inconclusive at %s: %s", name, exc)
             return result
@@ -194,4 +217,20 @@ def probe_ecu_mode(uds) -> RecoveryProbeResult:
         result.evidence.append(
             f"seed {seed.hex() if seed else '(none)'}: not the boot-loader seed"
         )
+    return result
+
+
+def _identify_kernel(uds, result: RecoveryProbeResult) -> RecoveryProbeResult:
+    """Every normal service was refused as unsupported: ask the fast-flash
+    kernel to identify itself. Never followed by a session or seed request."""
+    kernel = probe_kernel(uds)
+    if kernel is None:
+        result.evidence.append("kernel identify: no Dynamic Flash program answered")
+        return result
+    result.mode = EcuMode.FAST_FLASH_KERNEL
+    result.kernel = kernel
+    result.evidence.append(
+        f"kernel identify: Dynamic Flash program v{kernel.version} "
+        f"(chip class {kernel.chip_class}) is running"
+    )
     return result

@@ -98,6 +98,11 @@ workspace.json
 src/ecu/_secure/_security.py
 src/ecu/_secure/_sbl.py
 src/ecu/_secure/__init__.py
+src/ecu/_secure/_fastflash.py
+
+# Fast-flash kernel for bench/development use (release builds take it from the
+# private security module)
+/fast_flash/
 
 
 # Third-party bug-report attachments + generated correction deliverables

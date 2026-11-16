@@ -105,6 +105,7 @@ class UDSConnection:
         pending_max: Optional[int] = None,
         quiet_nrcs: Optional[set[int]] = None,
         accept: Optional[Callable[[bytes], bool]] = None,
+        match_nrc_sid: bool = False,
     ) -> bytes:
         """
         Send a UDS request and return the positive response payload.
@@ -133,6 +134,10 @@ class UDSConnection:
                 read continues: the Datalogger uses it to pass over a late
                 reply to an earlier, timed-out request (its PID/DID echo does
                 not match). Default ``None`` accepts the first positive reply.
+            match_nrc_sid: Ignore a negative response that names another
+                service (the answer to another tester's request on the same
+                bus) and keep waiting for ours. Off by default: every existing
+                caller keeps its behaviour.
 
         Returns:
             Response payload bytes (after the positive response SID)
@@ -191,6 +196,15 @@ class UDSConnection:
                         f"Malformed negative response for SID 0x{service_id:02X}: "
                         f"expected >= 3 bytes, got {len(resp_data)}"
                     )
+                if match_nrc_sid and resp_data[1] != service_id:
+                    logger.debug(
+                        "UDS: negative response for another service 0x%02X "
+                        "while waiting for SID 0x%02X; ignored",
+                        resp_data[1],
+                        service_id,
+                    )
+                    elapsed = int((time.monotonic() - start) * 1000)
+                    continue
                 nrc = resp_data[2]
                 if nrc == NRC_RESPONSE_PENDING:
                     logger.debug(

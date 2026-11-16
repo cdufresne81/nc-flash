@@ -109,7 +109,7 @@ def test_reason_for_renamed_shifted_read(genuine_rom):
 # --- the flash path -----------------------------------------------------------
 
 
-@pytest.mark.parametrize("operation", ["flash", "dynamic_flash"])
+@pytest.mark.parametrize("operation", ["flash", "dynamic_flash", "fast_flash"])
 def test_suspect_named_file_asks_and_cancel_is_default(
     genuine_rom, no_real_dialogs, operation
 ):
@@ -175,6 +175,8 @@ def test_flash_buttons_reach_the_guard(tmp_path, genuine_rom, handler):
     fake._main_window.get_current_document.return_value = SimpleNamespace(
         rom_path=str(rom_file), is_modified=lambda: False
     )
+    fake._fast_kernel_running = False
+    fake._fast_flash_offer.return_value = (None, "fast flash is turned off")
     getattr(ECUProgrammingWindow, handler)(fake)
     fake._start_flash.assert_called_once()
     kwargs = fake._start_flash.call_args.kwargs

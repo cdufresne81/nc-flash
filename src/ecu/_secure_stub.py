@@ -16,3 +16,8 @@ def compute_security_key(seed: bytes) -> bytes:
 def get_sbl_data(flash_start_index: int, vehicle_generation: str) -> bytes:
     """Stub: raises SecureModuleNotAvailable."""
     raise SecureModuleNotAvailable()
+
+
+def get_fast_flash_kernel() -> bytes:
+    """Stub: raises SecureModuleNotAvailable (no fast-flash kernel bundled)."""
+    raise SecureModuleNotAvailable()
