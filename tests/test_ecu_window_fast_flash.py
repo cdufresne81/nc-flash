@@ -109,6 +109,7 @@ def _click_window(tmp_path, rom, *, enabled=True, adapter="j2534", recovery=None
         _offer_kernel_reset=MagicMock(),
         _start_flash=MagicMock(),
         _wican_fast_flash_caps=lambda: None,  # an old WiCAN: no block compare
+        _wican_caps_pending=lambda: False,  # it answered (no fast_flash key)
     )
 
 

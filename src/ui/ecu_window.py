@@ -1428,12 +1428,13 @@ class ECUProgrammingWindow(QMainWindow):
         session = self._session
         if cache is not None and cache[0] is session:
             return cache[1]
-        holder: dict = {}
-        self._wican_status_cache = (session, holder)
         transport = getattr(session, "transport", None)
         if transport is None:
-            holder["interrupted"] = False
-            return holder
+            # Not connected yet: nothing is recorded, so the read starts once
+            # the session has its link (a cached empty record never refreshed).
+            return {}
+        holder: dict = {}
+        self._wican_status_cache = (session, holder)
         import threading
 
         threading.Thread(
@@ -1501,25 +1502,27 @@ class ECUProgrammingWindow(QMainWindow):
             wait = WICAN_CAPS_RETRY_S[min(tries, len(WICAN_CAPS_RETRY_S)) - 1]
             if _time.monotonic() - holder.get("at", 0.0) < wait:
                 return None
+        host = getattr(getattr(session, "transport", None), "host", None)
+        if not host:
+            # Not connected yet (the buttons refresh while the session is still
+            # CONNECTING): nothing can be read and nothing is recorded, so the
+            # read starts once the session has its link. Recording a give-up
+            # here made every later click fall back silently (beta.1 bug).
+            return None
         holder = {"tries": tries + 1, "at": _time.monotonic()}
         self._wican_caps_cache = (session, holder)
-        host = getattr(getattr(session, "transport", None), "host", None)
-        if host:
-            import threading
+        import threading
 
-            threading.Thread(
-                target=_read_wican_caps,
-                args=(host, holder),
-                name="wican-host-caps",
-                daemon=True,
-            ).start()
-            # Refresh the buttons once the answer is likely in (UI thread). The
-            # window is the timer's context: it never fires on a closed window.
-            if isinstance(self, QObject) and QApplication.instance() is not None:
-                QTimer.singleShot(2500, self, self._update_action_states)
-        else:
-            holder["caps"] = None
-            holder["tries"] = WICAN_CAPS_TRIES
+        threading.Thread(
+            target=_read_wican_caps,
+            args=(host, holder),
+            name="wican-host-caps",
+            daemon=True,
+        ).start()
+        # Refresh the buttons once the answer is likely in (UI thread). The
+        # window is the timer's context: it never fires on a closed window.
+        if isinstance(self, QObject) and QApplication.instance() is not None:
+            QTimer.singleShot(2500, self, self._update_action_states)
         return None
 
     def _wican_caps_gave_up(self) -> bool:
@@ -1815,9 +1818,29 @@ class ECUProgrammingWindow(QMainWindow):
             archive_path = str(rom_path.parent / ARCHIVE_FILENAME)
             source_name = rom_path.name
             fast_kernel, why_not_fast = self._fast_flash_offer(rom_data)
+            if (
+                fast_kernel is None
+                and self._is_wican()
+                and self._main_window.settings.get_fast_flash_enabled() is True
+                and self._wican_caps_pending()
+            ):
+                # The WiCAN has not said yet whether it can run the block
+                # compare: never fall back silently to the slow method for that.
+                QMessageBox.information(
+                    self,
+                    "Dynamic Flash",
+                    "NC Flash is still checking what the WiCAN supports. "
+                    "Click again in a moment.",
+                )
+                return
             if fast_kernel is None:
                 # Silent fallback to the archive-based Dynamic Flash (or full).
-                logger.debug("Block-compare Dynamic Flash not used: %s", why_not_fast)
+                log = (
+                    logger.info
+                    if self._main_window.settings.get_fast_flash_enabled() is True
+                    else logger.debug
+                )
+                log("Dynamic Flash block compare not used: %s", why_not_fast)
 
             if self._fast_kernel_running:
                 if fast_kernel is None:

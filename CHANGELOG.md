@@ -7,6 +7,9 @@ All notable changes to NC Flash are documented here.
 ### Changed
 - **Dynamic Flash can now compare the ECU block by block (experimental, off by default).** Turn on "Dynamic Flash: use the new block-compare method" in Settings > ECU > Flashing. Dynamic Flash then checks each block of the ECU against your ROM, rewrites only the blocks that changed, and checks every block against the ECU before the ECU is allowed to start. It no longer depends on the saved copy of the last flash, so it also works when there is none. On the test bench a one-block change took about 4 seconds instead of 8, and a change in the middle of the ROM about 15 seconds instead of 49. It works with the Tactrix and the OBDX Pro, and with a WiCAN whose firmware supports it (the WiCAN then runs it by itself), on ECUs it has been tested on; otherwise Dynamic Flash works as before. Full Flash is unchanged. If such a flash is interrupted, NC Flash recognises it on the next connect and offers to finish it or to reset the ECU.
 
+### Fixed
+- **Over a WiCAN, Dynamic Flash's block compare was never used (beta.1).** NC Flash asked the WiCAN what it supports while the connection was still opening, recorded that it had no answer, and never asked again, so every flash used the older method. It now asks once connected; if you click before the WiCAN has answered, NC Flash says so instead of quietly using the slower method, and the log says why when the block compare is not used.
+
 ## [v2.24.0] - 2026-11-14
 
 ### Added
