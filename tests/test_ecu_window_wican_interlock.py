@@ -22,6 +22,8 @@ class _FakeECUWindow(SimpleNamespace):
     is_busy = ECUProgrammingWindow.is_busy
     _in_recovery = ECUProgrammingWindow._in_recovery
     _boot_loader_confirmed = ECUProgrammingWindow._boot_loader_confirmed
+    _fast_kernel_running = ECUProgrammingWindow._fast_kernel_running
+    _fast_flash_offer = ECUProgrammingWindow._fast_flash_offer
 
 
 def _fake_window(

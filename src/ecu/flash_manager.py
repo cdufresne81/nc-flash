@@ -46,6 +46,7 @@ from .exceptions import (
     ECUGenerationMismatchError,
     ECUGenerationUnverifiedError,
     ECUStillProgrammingError,
+    FastFlashUnavailable,
     FlashError,
     FlashAbortedError,
     EngineRunningError,
@@ -66,6 +67,9 @@ from .rom_utils import (
 )
 from .flash_prep import prepare_flash_image
 from .dtc import dedup_dtcs
+from . import fast_flash as ff
+from .fast_flash_kernel import ALLOWED_GENERATIONS, LoadedKernel, kernel_policy
+from .recovery import EcuMode, probe_ecu_mode
 
 # Security module: try private, fall back to stub
 try:
@@ -114,6 +118,45 @@ READ_BLOCK_RETRY_BACKOFF_MAX_S = 1.0
 #: honours sizes above 0x400 must be probed on hardware before raising the
 #: default (see tools/wican_bench_read.py --probe).
 MAX_ISOTP_READ_SIZE = 0xFFE
+
+
+#: Suffix of the archive set aside during a block-compare Dynamic Flash.
+ARCHIVE_ASIDE_SUFFIX = ".before-dynamic-flash"
+
+
+def _set_archive_aside(archive_path: Optional[str]) -> Optional[str]:
+    """Rename the archive out of the way (never deleted). Returns where it went,
+    or None if there was none. Raises FlashError if it can't be moved: the
+    flash must not start with an archive that may go stale."""
+    import os
+    from pathlib import Path
+
+    if not archive_path or not Path(archive_path).is_file():
+        return None
+    aside = archive_path + ARCHIVE_ASIDE_SUFFIX
+    try:
+        os.replace(archive_path, aside)
+    except OSError as e:
+        raise FlashError(
+            f"Could not set the ECU archive aside before flashing ({e}). Nothing "
+            "was sent to the ECU."
+        ) from e
+    logger.info("ECU archive set aside until the flash is verified: %s", aside)
+    return aside
+
+
+def _restore_archive(aside: str, archive_path: str) -> None:
+    """Nothing was erased: the ECU still holds what the archive says."""
+    import os
+    from pathlib import Path
+
+    if Path(archive_path).exists():
+        return  # rewritten meanwhile ("identical": the ECU holds that image)
+    try:
+        os.replace(aside, archive_path)
+        logger.info("ECU archive put back (nothing was erased)")
+    except OSError as e:
+        logger.warning("Could not put the ECU archive back (%s): %s", aside, e)
 
 
 @contextmanager
@@ -544,6 +587,12 @@ class FlashState(Enum):
     TRANSFERRING_SBL = "transferring_sbl"
     TRANSFERRING_PROGRAM = "transferring_program"
     FINALIZING = "finalizing"
+    # Fast flash (kernel that rewrites only the blocks that differ)
+    UPLOADING_KERNEL = "uploading_kernel"
+    COMPARING = "comparing"
+    PROGRAMMING = "programming"
+    VERIFYING = "verifying"
+    COMMITTING = "committing"
     RESETTING = "resetting"
     COMPLETE = "complete"
     ERROR = "error"
@@ -553,14 +602,22 @@ class FlashState(Enum):
 # Valid state transitions
 _TRANSITIONS = {
     FlashState.IDLE: {FlashState.CONNECTING},
-    FlashState.CONNECTING: {FlashState.AUTHENTICATING, FlashState.ERROR},
+    # Fast flash resuming a kernel left running: CONNECTING -> COMPARING
+    # (the kernel refuses the session and security services).
+    FlashState.CONNECTING: {
+        FlashState.AUTHENTICATING,
+        FlashState.COMPARING,
+        FlashState.ERROR,
+    },
     # Flash path: AUTHENTICATING -> PREPARING_SBL
     # Read path:  AUTHENTICATING -> READING
     # Scan path:  AUTHENTICATING -> SCANNING_RAM
+    # Fast flash: AUTHENTICATING -> UPLOADING_KERNEL
     FlashState.AUTHENTICATING: {
         FlashState.PREPARING_SBL,
         FlashState.READING,
         FlashState.SCANNING_RAM,
+        FlashState.UPLOADING_KERNEL,
         FlashState.ERROR,
     },
     FlashState.READING: {FlashState.COMPLETE, FlashState.ERROR, FlashState.ABORTED},
@@ -582,7 +639,32 @@ _TRANSITIONS = {
         FlashState.ABORTED,
     },
     FlashState.FINALIZING: {FlashState.RESETTING, FlashState.ERROR},
+    # Fast flash: upload -> compare -> (nothing to do: reset) or program ->
+    # verify -> commit -> reset. Never aborted once PROGRAMMING starts.
+    FlashState.UPLOADING_KERNEL: {
+        FlashState.COMPARING,
+        FlashState.ERROR,
+        FlashState.ABORTED,
+    },
+    FlashState.COMPARING: {
+        FlashState.PROGRAMMING,
+        FlashState.RESETTING,
+        FlashState.ERROR,
+        FlashState.ABORTED,
+    },
+    FlashState.PROGRAMMING: {FlashState.VERIFYING, FlashState.ERROR},
+    FlashState.VERIFYING: {FlashState.COMMITTING, FlashState.ERROR},
+    FlashState.COMMITTING: {FlashState.RESETTING, FlashState.ERROR},
     FlashState.RESETTING: {FlashState.COMPLETE, FlashState.ERROR},
+}
+
+#: The fast-flash module's stages, as flash states.
+_FAST_FLASH_STAGES = {
+    "upload": FlashState.UPLOADING_KERNEL,
+    "compare": FlashState.COMPARING,
+    "program": FlashState.PROGRAMMING,
+    "verify": FlashState.VERIFYING,
+    "commit": FlashState.COMMITTING,
 }
 
 
@@ -897,6 +979,21 @@ class FlashManager:
         path.write_bytes(rom_data)
         logger.info(f"ROM archive saved: {path}")
 
+    def _update_archive(
+        self,
+        rom_buf: bytes,
+        archive_path: str | None,
+        callback: Optional[ProgressCallback],
+    ) -> None:
+        """Record what is now on the ECU (non-fatal if it can't be saved)."""
+        if not archive_path:
+            return
+        try:
+            self._save_archive(bytes(rom_buf), archive_path)
+            self._notify(callback, "Archive updated", percent=94.0)
+        except Exception as e:
+            logger.warning(f"Archive save failed (non-fatal): {e}")
+
     def flash_rom(
         self,
         rom_data: bytes,
@@ -1162,12 +1259,7 @@ class FlashManager:
         self._uds.request_transfer_exit()
 
         # --- Save archive (what's now on the ECU) ---
-        if archive_path:
-            try:
-                self._save_archive(bytes(rom_buf), archive_path)
-                self._notify(callback, "Archive updated", percent=94.0)
-            except Exception as e:
-                logger.warning(f"Archive save failed (non-fatal): {e}")
+        self._update_archive(rom_buf, archive_path, callback)
 
         # --- Phase 7: Reset ECU ---
         self._set_state(FlashState.RESETTING)
@@ -1189,6 +1281,296 @@ class FlashManager:
         self._set_state(FlashState.COMPLETE)
         self._notify(callback, "Flash complete!", percent=100.0)
         logger.info("Flash operation completed successfully")
+
+    def fast_flash(
+        self,
+        rom_data: bytes,
+        archive_path: str | None = None,
+        progress_cb: Optional[ProgressCallback] = None,
+        *,
+        kernel: LoadedKernel,
+        resume: bool = False,
+        rewrite_all: bool = False,
+        compress: bool = True,
+        chunk: int = ff.DEFAULT_CHUNK,
+        wait_out_outages: bool = False,
+    ) -> ff.FastFlashResult:
+        """Flash only the blocks that differ, checked against the ECU itself.
+
+        Same preparation and checks as :meth:`flash_rom` (one image prep,
+        authentication, generation check, flash counter), then the fast-flash
+        kernel instead of Mazda's: it compares every block by CRC, rewrites
+        the ones that differ (the last block first and its final page last)
+        and verifies everything before that final page makes the ECU bootable.
+        Writes are never aborted. The archive is updated like after a normal
+        flash.
+
+        ``resume`` finishes a fast flash whose kernel is still running (the
+        window recognised it by its refusal pattern): every block is
+        rewritten. ``wait_out_outages`` waits out a silent link for minutes
+        (WiCAN only; a wired adapter never needs it).
+
+        Raises:
+            FastFlashUnavailable: Fast flash can't run on this ECU (raised
+                before anything is erased; the kernel was told to stop).
+            ROMValidationError: The ECU already holds this ROM ("identical").
+            ECUStillProgrammingError: An interrupted normal flash's loader is
+                still running (nothing sent).
+            FlashError: Anything else; after the first erase the ECU waits
+                for a new flash.
+        """
+        return self._run_fast(
+            rom_data,
+            archive_path,
+            progress_cb,
+            kernel=kernel,
+            resume=resume,
+            rewrite_all=rewrite_all or resume,
+            compress=compress,
+            chunk=chunk,
+            wait_out_outages=wait_out_outages,
+            compare_only=False,
+        )
+
+    def fast_compare(
+        self,
+        rom_data: bytes,
+        progress_cb: Optional[ProgressCallback] = None,
+        *,
+        kernel: LoadedKernel,
+        resume: bool = False,
+        wait_out_outages: bool = False,
+    ) -> ff.FastFlashResult:
+        """Upload the fast-flash kernel and compare the ECU with ``rom_data``
+        block by block. Erases and writes nothing; the kernel is reset at the
+        end. Bench use (``tools/fast_flash_bench.py``)."""
+        return self._run_fast(
+            rom_data,
+            None,
+            progress_cb,
+            kernel=kernel,
+            resume=resume,
+            rewrite_all=False,
+            compress=True,
+            chunk=ff.DEFAULT_CHUNK,
+            wait_out_outages=wait_out_outages,
+            compare_only=True,
+        )
+
+    def _run_fast(self, rom_data, archive_path, progress_cb, **kw):
+        if not SECURE_MODULE_AVAILABLE:
+            raise SecureModuleNotAvailable()
+        if self.is_busy:
+            raise FlashError("Flash operation already in progress")
+        self._abort_event.clear()
+        self._state = FlashState.IDLE
+        try:
+            return self._fast_inner(rom_data, archive_path, progress_cb, **kw)
+        except FlashAbortedError:
+            self._set_state(FlashState.ABORTED)
+            self._notify(progress_cb, "Flash aborted by user")
+            raise
+        except Exception as e:
+            self._set_state(FlashState.ERROR)
+            self._notify(progress_cb, f"Flash failed: {e}")
+            raise
+        finally:
+            self._cleanup()
+
+    def _fast_inner(
+        self,
+        rom_data: bytes,
+        archive_path: str | None,
+        callback: Optional[ProgressCallback],
+        *,
+        kernel: LoadedKernel,
+        resume: bool,
+        rewrite_all: bool,
+        compress: bool,
+        chunk: int,
+        wait_out_outages: bool,
+        compare_only: bool,
+    ) -> ff.FastFlashResult:
+        # --- Prepare the image: the ONE shared prep (BEFORE touching the ECU) ---
+        self._notify(callback, "Validating ROM...", percent=0.0)
+        rom_buf, _sbl, generation, corrections = prepare_flash_image(
+            rom_data, ROM_FLASH_START_MIN
+        )
+        logger.info(f"Vehicle generation: {generation}")
+        if corrections:
+            logger.info(f"Corrected {len(corrections)} checksums")
+        hardware = rom_hardware_generation(rom_data)
+        if hardware not in ALLOWED_GENERATIONS:
+            raise FastFlashUnavailable(
+                f"Dynamic Flash can't compare blocks for an {hardware} ROM: it has not "
+                "been tested on that generation yet. Nothing was changed."
+            )
+        policy = None if compare_only else kernel_policy(kernel, hardware)
+        logger.info(
+            "Dynamic Flash program: %s, %d bytes%s",
+            kernel.source,
+            len(kernel.data),
+            "" if kernel.pin else " (NOT pinned: bench use)",
+        )
+        if ff._is_blank(rom_buf[ff.ENTRY_POINTER : ff.ENTRY_POINTER + 4]):
+            raise FlashError(
+                "This ROM has no start address (0xFFFFC is blank): the ECU could "
+                "never start it. Nothing was sent to the ECU."
+            )
+        self._notify(callback, f"ROM valid ({generation})", percent=2.0)
+
+        # The archive says what the ECU holds; from the first erase on, it no
+        # longer does. Set it aside now (before any contact) and write it again
+        # only after a verified flash, so a flash that does not finish cleanly
+        # can never leave a stale archive for the archive-based Dynamic Flash.
+        aside = None if compare_only else _set_archive_aside(archive_path)
+        erase_started = []
+        try:
+            return self._fast_session(
+                rom_buf,
+                rom_data,
+                archive_path,
+                callback,
+                kernel=kernel,
+                hardware=hardware,
+                policy=policy,
+                resume=resume,
+                rewrite_all=rewrite_all,
+                compress=compress,
+                chunk=chunk,
+                wait_out_outages=wait_out_outages,
+                compare_only=compare_only,
+                erase_started=erase_started,
+            )
+        except BaseException:
+            # A resume never puts it back: an earlier session may already
+            # have erased, so the ECU no longer matches it.
+            if aside is not None and not erase_started and not resume:
+                _restore_archive(aside, archive_path)
+            raise
+
+    def _fast_session(
+        self,
+        rom_buf,
+        rom_data,
+        archive_path,
+        callback,
+        *,
+        kernel,
+        hardware,
+        policy,
+        resume,
+        rewrite_all,
+        compress,
+        chunk,
+        wait_out_outages,
+        compare_only,
+        erase_started,
+    ) -> ff.FastFlashResult:
+        self._connect(callback)
+        if resume:
+            # The window recognised the kernel at connect time; check again by
+            # its refusal pattern (identify is never sent to a running ECU).
+            probe = probe_ecu_mode(self._uds)
+            if probe.mode != EcuMode.FAST_FLASH_KERNEL:
+                raise FlashError(
+                    "The ECU is no longer waiting for the interrupted Dynamic Flash "
+                    f"({'; '.join(probe.evidence)}). Nothing was changed; click "
+                    "Connect and try again."
+                )
+        else:
+            self._authenticate(callback)
+            self._notify(callback, "Checking the ROM matches the ECU...", percent=20.5)
+            verify_ecu_generation(
+                self._uds,
+                hardware,
+                rom_cal_id_text(rom_data),
+                confirm_unverified=self._confirm_unverified_generation,
+                on_verified=self._on_generation_verified,
+            )
+            self._notify(callback, "Checking flash counter...", percent=21.0)
+            with _still_programming_guard():
+                self._uds.check_flash_counter()
+
+        def progress(message: str, percent: float) -> None:
+            # The fast-flash module counts 0-100 from the kernel upload; the
+            # session steps above already used 0-22.
+            self._notify(callback, message, percent=22.0 + percent * 0.76)
+
+        def stage(name: str) -> None:
+            if name == "program":
+                erase_started.append(True)
+            self._set_state(_FAST_FLASH_STAGES[name])
+
+        try:
+            # Only the kernel upload can see NRC 0x22 here (an interrupted
+            # normal flash's loader still running): after the first erase the
+            # fast-flash module turns every refusal into a FlashError.
+            with _still_programming_guard():
+                if compare_only:
+                    result = ff.compare_only(
+                        self._uds,
+                        kernel.data,
+                        bytes(rom_buf),
+                        progress,
+                        resume,
+                        on_stage=stage,
+                        wait_out_outages=wait_out_outages,
+                    )
+                else:
+                    result = ff.fast_flash(
+                        self._uds,
+                        kernel.data,
+                        bytes(rom_buf),
+                        progress,
+                        None,  # writes are never aborted
+                        chunk,
+                        resume,
+                        compress,
+                        rewrite_all,
+                        policy=policy,
+                        on_stage=stage,
+                        wait_out_outages=wait_out_outages,
+                    )
+        except NegativeResponseError as e:
+            raise FlashError(
+                f"The ECU refused the Dynamic Flash program ({e}). Nothing was erased "
+                "or written. Turn the ignition off and on, then flash again."
+            ) from e
+
+        if compare_only or not result.rewritten:
+            if not compare_only:
+                # Checked block by block: the ECU holds exactly this image.
+                self._update_archive(rom_buf, archive_path, callback)
+            self._set_state(FlashState.RESETTING)
+            self._notify(callback, "Restarting the ECU...", percent=98.0)
+            result.restart_confirmed = ff.reset_ecu(self._uds)
+            if compare_only:
+                self._set_state(FlashState.COMPLETE)
+                return result
+            raise ROMValidationError(
+                "ROMs are identical: the ECU already holds this ROM (checked "
+                "block by block). Nothing was written."
+            )
+
+        logger.info(
+            "Dynamic Flash wrote blocks %s (%d bytes sent), verified by CRC",
+            result.rewritten,
+            result.bytes_sent,
+        )
+        self._update_archive(rom_buf, archive_path, callback)
+        self._set_state(FlashState.RESETTING)
+        self._notify(callback, "Restarting the ECU...", percent=98.0)
+        result.restart_confirmed = ff.reset_ecu(self._uds)
+        if not result.restart_confirmed:
+            logger.warning(
+                "The ECU did not confirm its restart after Dynamic Flash. Turn the "
+                "ignition OFF, then ON, before starting the engine."
+            )
+        self._set_state(FlashState.COMPLETE)
+        self._notify(callback, "Flash complete!", percent=100.0)
+        logger.info("Dynamic Flash completed successfully")
+        return result
 
     def _read_block_with_retry(self, offset: int, size: int) -> bytes:
         """Read one memory block with :func:`read_memory_with_retry`, counting
@@ -1297,13 +1679,19 @@ class FlashManager:
         finally:
             self._cleanup()
 
-    def reset_programming_ecu(self, uds) -> None:
+    def reset_programming_ecu(self, uds, *, fast_flash_kernel: bool = False) -> None:
         """Reset an ECU left in programming mode by an interrupted flash.
 
         Programming session, security access, then ECUReset: the same reset a
         successful flash ends with. Writes and erases nothing. A default-session
         reset is refused (NRC 0x22) in this state; bench-proven 2026-10-17.
         The connection is dead afterwards; the caller reconnects.
+
+        ``fast_flash_kernel``: the ECU runs the fast-flash kernel (recognised by
+        its refusal pattern), which refuses the session and security services.
+        It is recognised again, then sent a bare ECUReset (``11 01``). The ECU
+        restarts its application, or its boot loader's recovery server if the
+        interrupted flash had already erased part of it.
 
         Refuses when the engine is running: a 0x22 that looked like "still
         programming" can also come from a healthy ECU, and resetting that one
@@ -1317,6 +1705,16 @@ class FlashManager:
         rpm = uds.read_engine_rpm(strict=False)
         if rpm is not None and rpm >= RPM_FLASH_GATE:
             raise EngineRunningError(rpm)
+        if fast_flash_kernel:
+            probe = probe_ecu_mode(uds)
+            if probe.mode != EcuMode.FAST_FLASH_KERNEL:
+                raise FlashError(
+                    "The ECU no longer answers as the Dynamic Flash program; nothing "
+                    "was sent. Reconnect to see its state."
+                )
+            ff.reset_kernel(uds)
+            logger.info("Dynamic Flash program reset")
+            return
         uds.diagnostic_session()
         security_unlock(uds)
         uds.ecu_reset()

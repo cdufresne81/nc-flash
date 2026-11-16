@@ -105,6 +105,20 @@ class TestWiCANWriteRouting:
             assert _build(fake, operation) is None
         fake._session.acquire.assert_not_called()
 
+    def test_fast_flash_routes_to_the_wican_block_compare(self):
+        # Dynamic Flash by block compare runs in the WiCAN firmware; the
+        # make-safe gate still refuses it before any session is acquired.
+        fake = _FakeWindow(wican=True)
+        with (
+            patch("src.ecu.wican_fast_flash.WiCANFastFlasher") as Driver,
+            patch("src.ecu.wican_sd_flash.WiCANSdFlasher"),
+        ):
+            assert _build(fake, "fast_flash") is Driver.return_value
+        fake = _FakeWindow(wican=True)
+        with patch("src.ecu.wican_flash.WICAN_WRITE_ENABLED", False):
+            assert _build(fake, "fast_flash") is None
+        fake._session.acquire.assert_not_called()
+
     @pytest.mark.parametrize("operation", ["read", "scan_ram"])
     def test_wican_read_still_builds_a_manager(self, operation):
         fake = _FakeWindow(wican=True)
@@ -113,7 +127,7 @@ class TestWiCANWriteRouting:
         assert driver is MockFM.return_value
         MockFM.return_value.use_uds.assert_called_once()
 
-    @pytest.mark.parametrize("operation", ["flash", "dynamic_flash"])
+    @pytest.mark.parametrize("operation", ["flash", "dynamic_flash", "fast_flash"])
     def test_j2534_flash_is_never_blocked(self, operation):
         # Non-WiCAN adapter: the gate must not touch the J2534 path.
         fake = _FakeWindow(wican=False)
@@ -133,7 +147,7 @@ def _obdx_window(name, tested):
 
 class TestObdxRouting:
     @pytest.mark.parametrize(
-        "operation", ["flash", "dynamic_flash", "read", "scan_ram"]
+        "operation", ["flash", "dynamic_flash", "fast_flash", "read", "scan_ram"]
     )
     def test_obdx_borrows_the_session_uds(self, operation):
         fake = _FakeWindow(wican=False, obdx=True)

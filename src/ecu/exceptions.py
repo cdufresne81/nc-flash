@@ -124,6 +124,13 @@ class ECUStillProgrammingError(FlashError):
         )
 
 
+class FastFlashUnavailable(FlashError):
+    """The fast flash cannot run on this ECU or setup (no accepted kernel, a
+    chip class or generation not proven, the kernel not ready). Raised before
+    anything is erased: nothing on the ECU was changed, and the normal flash
+    can be used instead."""
+
+
 class LinkQualityError(FlashError):
     """The pre-flight link check refused the flash: the adapter link (usually
     WiCAN Wi-Fi) drops or delays too many frames. Raised BEFORE any ECU
