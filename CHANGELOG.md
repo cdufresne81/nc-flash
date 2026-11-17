@@ -4,6 +4,9 @@ All notable changes to NC Flash are documented here.
 
 ## [Unreleased]
 
+### Fixed
+- **Select All (Ctrl+A) now selects every cell of a table.** The top-left cell was left out, so Set Value, Add, Multiply and the other bulk edits skipped it. Select All from the Edit menu selected only that one cell.
+
 ## [v2.24.0] - 2026-11-14
 
 ### Added

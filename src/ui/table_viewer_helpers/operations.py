@@ -8,7 +8,7 @@ import logging
 import math
 from typing import TYPE_CHECKING, List, Tuple, Callable
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QItemSelectionModel, Qt
 from PySide6.QtGui import QBrush
 from PySide6.QtWidgets import QDialog, QMessageBox, QTableWidgetSelectionRange
 
@@ -532,11 +532,17 @@ class TableOperationsHelper:
 
         table_type = self.ctx.current_table.type
 
+        # Moving the current cell must not touch the selection: with Ctrl
+        # still held (Ctrl+A), Qt's default command toggles the cell, which
+        # dropped the top-left cell from the selection; with no modifier it
+        # cleared everything but that cell. Hence NoUpdate below.
+        self.ctx.table_widget.clearSelection()
+
         if table_type == TableType.ONE_D:
             # Single cell at (0, 0)
             selection = QTableWidgetSelectionRange(0, 0, 0, 0)
             self.ctx.table_widget.setRangeSelected(selection, True)
-            self.ctx.table_widget.setCurrentCell(0, 0)
+            self.ctx.table_widget.setCurrentCell(0, 0, QItemSelectionModel.NoUpdate)
 
         elif table_type == TableType.TWO_D:
             # Select value column (skip Y axis in column 0)
@@ -545,7 +551,7 @@ class TableOperationsHelper:
                 # Column 1 is the value column
                 selection = QTableWidgetSelectionRange(0, 1, num_rows - 1, 1)
                 self.ctx.table_widget.setRangeSelected(selection, True)
-                self.ctx.table_widget.setCurrentCell(0, 1)
+                self.ctx.table_widget.setCurrentCell(0, 1, QItemSelectionModel.NoUpdate)
 
         elif table_type == TableType.THREE_D:
             # Select data region
@@ -558,7 +564,7 @@ class TableOperationsHelper:
                 # Data starts at row 1, col 1
                 selection = QTableWidgetSelectionRange(1, 1, num_rows - 1, num_cols - 1)
                 self.ctx.table_widget.setRangeSelected(selection, True)
-                self.ctx.table_widget.setCurrentCell(1, 1)
+                self.ctx.table_widget.setCurrentCell(1, 1, QItemSelectionModel.NoUpdate)
 
     def smooth_selection(self):
         """
