@@ -60,3 +60,7 @@ Every image is checked against its hash in `manifest.json` before use.
 - A tune from before the Data Integrity copies were exposed often has a table edited without its copy. The checks refuse it and name the table; the tool does not make the two halves equal on its own.
 - The original ROM ID is recorded in the report only. Nothing in the converted image says what the car ran before.
 - No converted ROM has been run on a car. Treat the result as something to review, not something cleared to flash.
+
+## Files with a header
+
+Some reading tools save the 1 MB image behind a header of tagged blocks (4-letter tag, 4-byte big-endian length, data): `INFO`, `DRMI`, `MEML`, then `MEMD` holding the image to the end of the file (324 bytes of header on the sample seen). `unwrap_rom` returns the image inside such a file and a note for the report; any other file is used as it is. Only the dialog's input goes through it. The converted ROM is always written as a plain 1 MB image.
