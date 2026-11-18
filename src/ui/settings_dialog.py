@@ -672,6 +672,26 @@ SETTINGS_REGISTRY = [
         widget_options={"min": 1, "max": 100, "suffix": " ROMs"},
         keywords=["wican", "rom", "staged", "keep", "newest", "retention", "sd"],
     ),
+    # -- ECU > Flashing --
+    SettingDescriptor(
+        key="ecu.flash.fast_flash",
+        label="Dynamic Flash: use the new block-compare method (experimental)",
+        description=(
+            "Dynamic Flash compares the ECU with the ROM block by block, "
+            "rewrites only the blocks that changed, and checks every block "
+            "against the ECU. It is faster, and works even without a saved "
+            "copy of the last flash. Tactrix and OBDX Pro only, on ECUs it has "
+            "been tested on; otherwise Dynamic Flash uses its standard method. "
+            "Full Flash is not affected. Experimental: keep a backup of your "
+            "ROM."
+        ),
+        category="ECU",
+        subcategory="Flashing",
+        widget_type="checkbox",
+        getter="get_fast_flash_enabled",
+        setter="set_fast_flash_enabled",
+        keywords=["dynamic", "flash", "fast", "block", "compare", "experimental"],
+    ),
     # -- ECU > Flash Security --
     SettingDescriptor(
         key="ecu.security.status",

@@ -341,6 +341,16 @@ class AppSettings:
         """
         return self.get_ecu_adapter() == "wican"
 
+    # -- Dynamic Flash by block compare (experimental, opt-in) --
+
+    def get_fast_flash_enabled(self) -> bool:
+        """Whether Dynamic Flash may use the experimental block-compare method
+        (Tactrix / OBDX only; off by default)."""
+        return self.settings.value("ecu/fast_flash_enabled", False, type=bool)
+
+    def set_fast_flash_enabled(self, enabled: bool):
+        self.settings.setValue("ecu/fast_flash_enabled", bool(enabled))
+
     # -- OBDX Pro (USB serial) settings --
 
     def get_obdx_port(self) -> str:

@@ -129,6 +129,7 @@ python main.py
 - Read and clear Diagnostic Trouble Codes (DTCs)
 - **OBDX Pro (USB)** adapter: read, flash, RAM scan and DTCs over an OBDX Pro (tested on the VX), no driver needed (select it in Settings > ECU > Adapter)
 - **Recover a "bricked" ECU** — an ECU left without a valid program (e.g. after an interrupted flash) waits in its boot loader. NC Flash recognises this on connect, explains it, and offers a full flash of a known-good ROM (ideally your own backup) to bring it back
+- **Dynamic Flash by block compare (experimental, off by default)** — with "Dynamic Flash: use the new block-compare method" on (Settings > ECU > Flashing), Dynamic Flash compares the ECU with your ROM block by block, rewrites only the blocks that changed and checks every block against the ECU (seconds for a small change, no saved copy of the last flash needed). Tactrix, OBDX Pro, and WiCAN with supporting firmware, on ECUs it has been tested on; otherwise Dynamic Flash works as before. An interrupted one is recognised on connect and can be finished or reset
 - Seed-key security access authentication
 - SBL (Secondary Boot Loader) upload for programming session
 - 1 KB block transfers with CRC32 validation

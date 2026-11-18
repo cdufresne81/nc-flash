@@ -144,7 +144,7 @@ def _mocks(session):
 
 
 @pytest.mark.parametrize("adapter", ["wican", "j2534"])
-@pytest.mark.parametrize("operation", ["flash", "dynamic_flash"])
+@pytest.mark.parametrize("operation", ["flash", "dynamic_flash", "fast_flash"])
 def test_successful_flash_ends_session_and_done_does_not_reconnect(
     qtbot, connects, no_dialogs, adapter, operation
 ):
@@ -212,7 +212,7 @@ def test_successful_flash_never_closes_a_busy_session(qtbot, connects):
 
 
 @pytest.mark.parametrize("adapter", ["wican", "j2534"])
-@pytest.mark.parametrize("operation", ["flash", "dynamic_flash"])
+@pytest.mark.parametrize("operation", ["flash", "dynamic_flash", "fast_flash"])
 def test_failed_flash_says_why_and_never_reconnects_on_its_own(
     qtbot, connects, no_dialogs, adapter, operation
 ):
@@ -304,8 +304,13 @@ class _FakeFlashManager:
     def dynamic_flash(self, rom_data, archive_path, progress_cb=None):
         time.sleep(0.05)
 
+    def fast_flash(
+        self, rom_data, archive_path=None, progress_cb=None, *, kernel, resume=False
+    ):
+        time.sleep(0.05)
 
-@pytest.mark.parametrize("operation", ["flash", "dynamic_flash"])
+
+@pytest.mark.parametrize("operation", ["flash", "dynamic_flash", "fast_flash"])
 def test_flash_on_a_real_thread_ends_session_without_reconnect(
     qtbot, connects, monkeypatch, operation
 ):
@@ -320,7 +325,7 @@ def test_flash_on_a_real_thread_ends_session_without_reconnect(
         return _FakeFlashManager()
 
     monkeypatch.setattr(ECUProgrammingWindow, "_build_flash_driver", build)
-    kwargs = {"rom_data": b"\x00" * 16, "archive_path": "unused.rda"}
+    kwargs = {"rom_data": b"\x00" * 16, "archive_path": "unused.rda", "kernel": None}
     window._start_flash(operation, **kwargs)
     thread = window._flash_thread
     assert thread is not None
@@ -353,4 +358,145 @@ def test_failed_flash_keeps_the_generation_it_read(qtbot, connects, no_dialogs):
     window._flash_read_generation = "NC2"
     _finish(window, "flash", success=False, error="Block 3 not acknowledged")
     assert window._flash_read_generation == "NC2"
+    qtbot.wait(400)
+
+
+# --- Fast flash outcomes ---
+
+
+def test_successful_block_compare_flash_says_only_the_changes_were_written(
+    qtbot, connects, no_dialogs
+):
+    session = _session("j2534")
+    window = _window(qtbot, connects, "j2534", session)
+    _finish(window, "fast_flash", success=True)
+    qtbot.waitUntil(lambda: bool(no_dialogs), timeout=2000)
+    kind, args = no_dialogs[0]
+    assert kind == "information" and args[1] == "Flash Complete"
+    assert "rewrote only the blocks that differed" in args[2]
+    assert "fast" not in args[2].lower()
+    assert "restarts on its own" in args[2]
+
+
+def test_fast_flash_not_available_falls_back_next_time(qtbot, connects, no_dialogs):
+    session = _session("j2534")
+    window = _window(qtbot, connects, "j2534", session)
+    window._session_acquired = True
+    window._current_operation = "fast_flash"
+    window._stack.setCurrentIndex(1)
+    worker = MagicMock(
+        result=None, needs_ecu_reset=False, error_kind="", fast_flash_unavailable=True
+    )
+    window._on_flash_finished(
+        False,
+        None,
+        worker,
+        "Fast flash is not available on this ECU: x. Nothing was changed.",
+    )
+    assert window._fast_flash_refused is True
+    assert window._progress_state.text() == "Nothing was changed"
+    qtbot.waitUntil(lambda: bool(no_dialogs), timeout=2000)
+    kind, args = no_dialogs[0]
+    assert kind == "information" and args[1] == "Dynamic Flash"
+    assert "standard method" in args[2]
+    # The kernel was told to stop and the ECU restarts: no automatic reconnect.
+    qtbot.wait(300)
+    assert connects == []
+
+
+def test_identical_after_a_fast_flash_does_not_reconnect_on_its_own(
+    qtbot, connects, no_dialogs
+):
+    session = _session("j2534")
+    window = _window(qtbot, connects, "j2534", session)
+    _finish(window, "fast_flash", success=False, error="ROMs are identical")
+    assert window._progress_state.text() == "Nothing to flash"
+    qtbot.waitUntil(lambda: bool(no_dialogs), timeout=2000)
+    assert no_dialogs[0][0] == "information"
+    assert "Click Connect" in no_dialogs[0][1][2]
+    qtbot.wait(300)
+    assert connects == []
+
+
+def _finish_fast(window, worker_result=None, resume=False):
+    window._session_acquired = True
+    window._current_operation = "fast_flash"
+    window._flash_was_resume = resume
+    window._stack.setCurrentIndex(1)
+    worker = MagicMock(result=worker_result, needs_ecu_reset=False, error_kind="")
+    window._on_flash_finished(True, None, worker, "")
+
+
+def test_unconfirmed_restart_tells_the_user_to_cycle_the_ignition(
+    qtbot, connects, no_dialogs
+):
+    """Review finding 3: no 51 after two tries."""
+    from types import SimpleNamespace
+
+    window = _window(qtbot, connects, "j2534", _session("j2534"))
+    _finish_fast(window, SimpleNamespace(restart_confirmed=False))
+    qtbot.waitUntil(lambda: bool(no_dialogs), timeout=2000)
+    assert "did not confirm that it restarted" in no_dialogs[0][1][2]
+
+
+def test_finished_resume_does_not_say_only_the_differences(qtbot, connects, no_dialogs):
+    """Review finding 7: a resume rewrites every block."""
+    window = _window(qtbot, connects, "j2534", _session("j2534"))
+    _finish_fast(window, resume=True)
+    qtbot.waitUntil(lambda: bool(no_dialogs), timeout=2000)
+    text = no_dialogs[0][1][2]
+    assert "every block was rewritten" in text
+    assert "only the blocks that differed" not in text
+    assert "did not confirm" not in text
+
+
+def test_refused_resume_does_not_say_nothing_was_changed(qtbot, connects, no_dialogs):
+    """Re-review R2: a resume may follow a session that already erased."""
+    window = _window(qtbot, connects, "j2534", _session("j2534"))
+    window._session_acquired = True
+    window._current_operation = "fast_flash"
+    window._flash_was_resume = True
+    window._stack.setCurrentIndex(1)
+    worker = MagicMock(
+        result=None, needs_ecu_reset=False, error_kind="", fast_flash_unavailable=True
+    )
+    window._on_flash_finished(
+        False, None, worker, "Dynamic Flash can't finish the interrupted flash: x."
+    )
+    assert window._progress_state.text() == "Flash not finished"
+    qtbot.waitUntil(lambda: bool(no_dialogs), timeout=2000)
+    text = no_dialogs[0][1][2]
+    assert "Nothing was changed" not in text and "standard method" not in text
+    assert "recovery mode" in text
+
+
+@pytest.mark.parametrize(
+    "stage, ponr, due", [(26, False, True), (42, True, True), (31, False, False)]
+)
+def test_wican_failure_that_needs_a_resume_is_remembered(
+    qtbot, connects, no_dialogs, stage, ponr, due
+):
+    """The adapter's verdict (resume_recommended): stage 26, or past the point
+    of no return, means the next click resumes (mode R)."""
+    from src.ecu.wican_fast_flash import FFEvent, WiCANFastFlashError, ecu_state
+
+    window = _window(qtbot, connects, "wican", _session("wican"))
+    event = FFEvent(
+        "err", "", {"st": str(stage), "ponr": "1" if ponr else "0", "app": "1"}
+    )
+    err = WiCANFastFlashError(
+        "Dynamic Flash: x", event=event, state=ecu_state(event), ponr=ponr
+    )
+    window._session_acquired = True
+    window._current_operation = "fast_flash"
+    window._stack.setCurrentIndex(1)
+    worker = MagicMock(
+        result=None,
+        needs_ecu_reset=False,
+        error_kind="",
+        fast_flash_unavailable=False,
+        wican_ff_error=err,
+    )
+    window._on_flash_finished(False, None, worker, "Dynamic Flash: x")
+    assert window._wican_resume_pending is due
     qtbot.wait(400)

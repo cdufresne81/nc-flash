@@ -175,6 +175,53 @@ def test_no_session_is_unknown():
     assert probe_ecu_mode(None).mode == EcuMode.UNKNOWN
 
 
+# --- A fast-flash kernel left running (interrupted fast flash, no key cycle) ---
+
+
+def _kernel_left_running(identify=b"\x00NF\x03\x01\x01"):
+    return _FakeEcu(
+        {
+            0x01: _nrc(0x11, 0x01),
+            0x21: _nrc(0x11, 0x21),
+            0x22: _nrc(0x11, 0x22),  # the boot loader says 0x31 here
+            0x31: identify,
+        }
+    )
+
+
+def test_running_fast_flash_kernel_is_recognised():
+    ecu = _kernel_left_running()
+    result = probe_ecu_mode(ecu)
+    assert result.mode == EcuMode.FAST_FLASH_KERNEL
+    assert result.needs_recovery
+    assert result.kernel.version == 3 and result.kernel.chip_class == 1
+    # Identify only after all three refusals; never a session, seed or key.
+    assert ecu.sent == [
+        (0x01, b"\x0c"),
+        (0x21, b"\x00"),
+        (0x22, b"\xe6\x11"),
+        (0x31, b"\x00"),
+    ]
+
+
+@pytest.mark.parametrize(
+    "identify", [b"\x00XX\x03\x01\x01", UDSTimeoutError("no reply"), _nrc(0x11, 0x31)]
+)
+def test_same_refusals_without_the_kernel_answer_are_unknown(identify):
+    ecu = _kernel_left_running(identify)
+    result = probe_ecu_mode(ecu)
+    assert result.mode == EcuMode.UNKNOWN and not result.needs_recovery
+    assert 0x10 not in ecu.sids and 0x27 not in ecu.sids
+
+
+def test_identify_is_never_sent_to_the_boot_loader_or_a_running_ecu():
+    boot = _boot_loader()
+    probe_ecu_mode(boot)
+    running = _FakeEcu({0x01: b"\x0c\x00\x00"})
+    probe_ecu_mode(running)
+    assert 0x31 not in boot.sids and 0x31 not in running.sids
+
+
 def test_probe_over_real_uds_connection_quiet_nrcs():
     """Through UDSConnection.send_request: the expected NRCs are logged quietly
     and the probe reads the seed from the positive 0x67 reply."""

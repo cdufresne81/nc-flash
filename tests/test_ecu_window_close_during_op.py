@@ -91,6 +91,11 @@ class _FakeDriver:
     def dynamic_flash(self, rom_data, archive_path, progress_cb=None):
         self._run()
 
+    def fast_flash(
+        self, rom_data, archive_path=None, progress_cb=None, *, kernel, resume=False
+    ):
+        self._run()
+
     def read_rom(self, progress_cb=None):
         self._run()
 
@@ -137,12 +142,20 @@ def _start(qtbot, win, operation, driver, **kwargs):
     assert win._flash_thread.isRunning()
 
 
-@pytest.mark.parametrize("operation", ["flash", "dynamic_flash"])
+@pytest.mark.parametrize("operation", ["flash", "dynamic_flash", "fast_flash"])
 def test_close_during_flash_is_refused_and_never_aborts(
     qtbot, window, qt_thread_guard, operation
 ):
     driver = _FakeDriver()
-    _start(qtbot, window, operation, driver, rom_data=b"\x00", archive_path="a.bin")
+    _start(
+        qtbot,
+        window,
+        operation,
+        driver,
+        rom_data=b"\x00",
+        archive_path="a.bin",
+        kernel=None,
+    )
     assert window.write_in_progress
     session = window._session
 
