@@ -84,6 +84,14 @@ class AppSettings:
     def set_roms_directory(self, path: str):
         self._set_path("paths/roms_directory", path)
 
+    def get_standard_pack_directory(self) -> str:
+        """Folder of the standard ROM pack (empty until the user picks one)."""
+        value = self.settings.value("paths/standard_pack_directory", "")
+        return os.path.normpath(value) if value else ""
+
+    def set_standard_pack_directory(self, path: str):
+        self._set_path("paths/standard_pack_directory", path)
+
     def get_screenshots_directory(self) -> str:
         """Get the screenshots directory (defaults to {workspace}/screenshots)."""
         return self._get_workspace_path("paths/screenshots_directory", "screenshots")
