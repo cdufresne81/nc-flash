@@ -4,6 +4,14 @@ All notable changes to NC Flash are documented here.
 
 ## [Unreleased]
 
+### Added
+- **Move a ROM to its standard ROM (Tools > Move ROM to Its Standard ROM..., experimental).** The 78 factory ROM IDs reduce to 13 standard ROMs: the latest software Mazda issued for each line, plus a small preset for your gearbox, market or engine. Pick your ROM, stock or tuned, and NC Flash tells you which standard it belongs to. It can then move the tables you edited onto that standard and save the result as a new file with a report of what was moved and what was not. Your ROM is never changed.
+  - A table is moved only when Mazda's own values for it are the same in both ROMs. If Mazda changed it between revisions, it is listed for you to decide.
+  - A table and its Data Integrity copy move together. Feature settings and anything outside a defined table are not copied.
+  - The result is checked before it is saved; if a check fails, nothing is written and the report names the table.
+  - Needs the standard ROM pack folder (built from the nc-flash-re project). A few variants that Mazda never shipped on their standard can't be converted yet.
+  - No converted ROM has been tested on a car yet: review the report before flashing.
+
 ## [v2.24.0] - 2026-11-14
 
 ### Added

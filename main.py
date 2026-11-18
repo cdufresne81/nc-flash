@@ -556,6 +556,9 @@ class MainWindow(
         patch_action = tools_menu.addAction("&Patch ROM...")
         patch_action.triggered.connect(self._on_patch_rom)
 
+        standard_action = tools_menu.addAction("Move ROM to Its &Standard ROM...")
+        standard_action.triggered.connect(self._on_standard_rom)
+
         tools_menu.addSeparator()
 
         self.mcp_action = tools_menu.addAction("&MCP Server")
@@ -1594,6 +1597,18 @@ class MainWindow(
                 "The failed changes were rolled back.",
             )
         self._update_tab_title(document)
+
+    def _on_standard_rom(self):
+        """Identify a ROM's standard ROM and move its edits onto it."""
+        from src.ui.standard_rom_dialog import StandardRomDialog
+
+        document = self.get_current_document()
+        dlg = StandardRomDialog(
+            parent=self, rom_path=document.rom_path if document else ""
+        )
+        dlg.exec()
+        if dlg.open_requested and dlg.converted_rom_path:
+            self._open_rom_file(dlg.converted_rom_path)
 
     def _on_compare_roms(self):
         """Open the ROM comparison window."""
