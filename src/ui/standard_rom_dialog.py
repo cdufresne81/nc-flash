@@ -26,7 +26,12 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
 )
 
-from src.core.standard_rom import StandardPack, StandardPackError, convert
+from src.core.standard_rom import (
+    PACK_FILE_SUFFIX,
+    StandardPack,
+    StandardPackError,
+    convert,
+)
 from src.utils.settings import get_settings
 
 logger = logging.getLogger(__name__)
@@ -50,6 +55,8 @@ class StandardRomDialog(QDialog):
         # Result handed back to the caller after exec().
         self.converted_rom_path = None
         self.open_requested = False
+        self._pack = None
+        self._pack_path = ""
 
         layout = QVBoxLayout(self)
         intro = QLabel(_INTRO)
@@ -66,11 +73,17 @@ class StandardRomDialog(QDialog):
         self._rom_edit.setReadOnly(True)
         form.addRow("Your ROM:", self._row(self._rom_edit, self._browse_rom))
 
-        self._pack_edit = QLineEdit(get_settings().get_standard_pack_directory())
+        self._pack_edit = QLineEdit(get_settings().get_standard_pack_path())
         self._pack_edit.setObjectName("standard_rom_pack")
-        self._pack_edit.setPlaceholderText("Select the standard ROM pack folder...")
+        self._pack_edit.setPlaceholderText("Select the standard ROM pack file...")
         self._pack_edit.setReadOnly(True)
-        form.addRow("Standard pack:", self._row(self._pack_edit, self._browse_pack))
+        pack_row = self._row(self._pack_edit, self._browse_pack)
+        folder_btn = QPushButton("Folder...")
+        folder_btn.setFixedWidth(80)
+        folder_btn.setToolTip("Use a pack that is a folder instead of one file")
+        folder_btn.clicked.connect(self._browse_pack_folder)
+        pack_row.addWidget(folder_btn)
+        form.addRow("Standard pack:", pack_row)
         layout.addWidget(files)
 
         self._report = QPlainTextEdit()
@@ -78,7 +91,7 @@ class StandardRomDialog(QDialog):
         self._report.setReadOnly(True)
         self._report.setMinimumHeight(260)
         self._report.setPlaceholderText(
-            "Pick a ROM and the pack folder to see where the ROM belongs."
+            "Pick a ROM and the standard pack to see where the ROM belongs."
         )
         layout.addWidget(self._report)
 
@@ -117,19 +130,35 @@ class StandardRomDialog(QDialog):
             self._refresh()
 
     def _browse_pack(self):
+        path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Select the Standard ROM Pack",
+            self._pack_edit.text(),
+            f"Standard ROM Pack (*{PACK_FILE_SUFFIX});;All Files (*)",
+        )
+        self._set_pack(path)
+
+    def _browse_pack_folder(self):
         path = QFileDialog.getExistingDirectory(
             self, "Select the Standard ROM Pack Folder", self._pack_edit.text()
         )
+        self._set_pack(path)
+
+    def _set_pack(self, path: str):
         if path:
             self._pack_edit.setText(path)
-            get_settings().set_standard_pack_directory(path)
+            get_settings().set_standard_pack_path(path)
             self._refresh()
 
     def _load(self):
         """(pack, rom bytes) for the current selection; raises on a bad pick."""
-        pack = StandardPack(self._pack_edit.text())
+        path = self._pack_edit.text()
+        if self._pack is None or self._pack_path != path:
+            # A pack file is unpacked in memory: do it once per pick.
+            self._pack = StandardPack(path)
+            self._pack_path = path
         rom = Path(self._rom_edit.text()).read_bytes()
-        return pack, rom
+        return self._pack, rom
 
     def _refresh(self):
         """Show where the selected ROM belongs; enable Convert if it can move."""

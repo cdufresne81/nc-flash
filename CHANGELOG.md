@@ -9,7 +9,7 @@ All notable changes to NC Flash are documented here.
   - A table is moved only when Mazda's own values for it are the same in both ROMs. If Mazda changed it between revisions, it is listed for you to decide.
   - A table and its Data Integrity copy move together. Feature settings and anything outside a defined table are not copied.
   - The result is checked before it is saved; if a check fails, nothing is written and the report names the table.
-  - Needs the standard ROM pack folder (built from the nc-flash-re project). A few variants that Mazda never shipped on their standard can't be converted yet.
+  - Needs the standard ROM pack: one small file (about 2 MB) built from the nc-flash-re project. A pack that is a folder works too. A few variants that Mazda never shipped on their standard can't be converted yet.
   - No converted ROM has been tested on a car yet: review the report before flashing.
 
 ## [v2.24.0] - 2026-11-14
