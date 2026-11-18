@@ -45,8 +45,8 @@ ROMID = """
 class TestBundledMetadata:
     def test_bundled_set_is_present(self):
         # 102 NC calibrations from speeps' set (his Mazda6 l3r3ee left out)
-        # + our lf9veb + 2 TCM definitions.
-        assert len(BUNDLED) >= 105
+        # + our lf9veb. No TCM definitions (removed 2026-11-17).
+        assert len(BUNDLED) >= 103
 
     def test_lint_finds_no_new_issues(self):
         new = lint.new_issues(lint.check(BUNDLED), lint.load_baseline())

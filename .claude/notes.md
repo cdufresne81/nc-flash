@@ -122,11 +122,9 @@ What is on `dev` awaiting `master`: run `python tools/dev_status.py` (asks GitHu
   read or RAM scan, Flash waits ~6.5 s then reads RPM and voltage (no false refusal);
   pulling the cable mid-session → "ECU not answering" and buttons fail fast. Delete this
   item once done (or open an issue if anything misbehaves).
-- **TCM definitions (after #123):** the older copy in nc-flash-re (`xml/lfg1tf000.xml`, 610 tables) still has
-  the same mistakes (8-bit records declared 16-bit, false tables); the fix was made here because this copy is
-  the newer one (674 tables before, 625 after). The 49 removed entries are real calibration values: bring
-  them back as scalars once their meaning is derived (`docs/internal/tcm_table_evidence.csv`). Table names
-  ending in `_u16` now hold 8-bit data; renaming them is undecided.
+- **No TCM definitions in NC Flash (owner decision 2026-11-17).** The bundled LFG1TF000_v02 / LFG1TG000_v02 were
+  removed; TCM work stays in nc-flash-re. Their layout notes and per-table evidence are in git history
+  (`docs/internal/TCM_TABLE_LAYOUTS.md`, `tcm_table_evidence.csv`, removed with them) if ever needed there.
 - **ROM definitions (after PR #120, speeps import):**
   - Decided: nc-flash-re is the working copy where definitions are edited; NC Flash holds the
     released copy (copied in, never hand-edited). Check any change with

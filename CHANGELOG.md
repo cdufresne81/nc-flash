@@ -4,6 +4,9 @@ All notable changes to NC Flash are documented here.
 
 ## [Unreleased]
 
+### Removed
+- **Transmission (TCM) definitions.** NC Flash no longer ships the two 6-speed automatic TCM definitions (LFG1TF000, LFG1TG000) or the example TCM ROM. Their table names described the shift schedule, which later analysis showed is actually the torque-converter lockup schedule. New installs won't get them; an install that already has them keeps its copies.
+
 ## [v2.24.0] - 2026-11-14
 
 ### Added
