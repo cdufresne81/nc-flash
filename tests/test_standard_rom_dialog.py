@@ -7,13 +7,18 @@ from unittest.mock import patch
 from PySide6.QtWidgets import QApplication, QMessageBox
 
 from src.ui.standard_rom_dialog import StandardRomDialog
-from test_standard_rom import SHIFT, _stock, pack_dir  # noqa: F401 (fixture)
+from test_standard_rom import (  # noqa: F401 (fixture)
+    SHIFT,
+    _pack_file,
+    _stock,
+    pack_dir,
+)
 
 _app = QApplication.instance() or QApplication([])
 
 
 def _dialog(pack_dir, rom_path, isolated_settings):  # noqa: F811
-    isolated_settings.set_standard_pack_directory(str(pack_dir))
+    isolated_settings.set_standard_pack_path(str(pack_dir))
     return StandardRomDialog(rom_path=str(rom_path))
 
 
@@ -25,6 +30,17 @@ def test_shows_the_standard_and_enables_convert(
     dlg = _dialog(pack_dir, rom, isolated_settings)
     text = dlg._report.toPlainText()
     assert "Standard ROM: NEWAEB" in text and "Image to use: NEWBEB" in text
+    assert dlg._convert_btn.isEnabled()
+
+
+def test_reads_a_one_file_pack(
+    pack_dir, tmp_path_factory, tmp_path, isolated_settings  # noqa: F811
+):
+    packed = _pack_file(pack_dir, tmp_path_factory.mktemp("p") / "std.ncpack")
+    rom = tmp_path / "mine.bin"
+    rom.write_bytes(_stock(pack_dir, "OLDBEA"))
+    dlg = _dialog(packed, rom, isolated_settings)
+    assert "Image to use: NEWBEB" in dlg._report.toPlainText()
     assert dlg._convert_btn.isEnabled()
 
 

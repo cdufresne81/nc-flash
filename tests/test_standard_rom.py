@@ -7,8 +7,11 @@ real revision moves its layout.
 """
 
 import hashlib
+import io
 import json
+import lzma
 import struct
+import tarfile
 
 import pytest
 
@@ -277,6 +280,63 @@ class TestBuildBase:
     def test_missing_pack_file(self, tmp_path):
         with pytest.raises(StandardPackError):
             StandardPack(tmp_path)
+
+
+def _pack_file(folder, path):
+    """The folder pack as one file, the way nc-flash-re writes it."""
+    with lzma.open(path, "wb") as z, tarfile.open(fileobj=z, mode="w") as tar:
+        for item in sorted(p for p in folder.rglob("*") if p.is_file()):
+            if item == path:
+                continue
+            data = item.read_bytes()
+            info = tarfile.TarInfo(item.relative_to(folder).as_posix())
+            info.size = len(data)
+            tar.addfile(info, io.BytesIO(data))
+    return path
+
+
+class TestPackFile:
+    def test_gives_the_same_result_as_the_folder(self, pack_dir, tmp_path_factory):
+        packed = _pack_file(pack_dir, tmp_path_factory.mktemp("p") / "std.ncpack")
+        src = _stock(pack_dir, "OLDBEA")
+        struct.pack_into(">f", src, 0x2904, 2.5)
+        from_folder, report_a = convert(StandardPack(pack_dir), bytes(src))
+        from_file, report_b = convert(StandardPack(packed), bytes(src))
+        assert report_a.ok and from_folder is not None
+        assert from_file == from_folder
+        assert report_b.to_dict() == report_a.to_dict()
+
+    def test_reads_every_id(self, pack_dir, tmp_path_factory):
+        packed = _pack_file(pack_dir, tmp_path_factory.mktemp("p") / "std.ncpack")
+        pack = StandardPack(packed)
+        for rom_id in pack.rom_ids:
+            assert pack.image(rom_id) == bytes(_stock(pack_dir, rom_id))
+            assert pack.definition(rom_id).tables
+
+    def test_a_file_that_is_not_a_pack_is_refused(self, tmp_path):
+        bad = tmp_path / "bad.ncpack"
+        bad.write_bytes(b"not a pack" * 100)
+        with pytest.raises(StandardPackError, match="could not be read"):
+            StandardPack(bad)
+
+    def test_a_cut_off_file_is_refused(self, pack_dir, tmp_path_factory):
+        packed = _pack_file(pack_dir, tmp_path_factory.mktemp("p") / "std.ncpack")
+        packed.write_bytes(packed.read_bytes()[:-200])
+        with pytest.raises(StandardPackError):
+            StandardPack(packed)
+
+    def test_a_changed_image_is_refused(self, pack_dir, tmp_path_factory):
+        image = pack_dir / "NEWAEB" / "newaeb_ncf_1.0.0.bin"
+        data = bytearray(image.read_bytes())
+        data[0x2A00] ^= 1
+        image.write_bytes(data)
+        packed = _pack_file(pack_dir, tmp_path_factory.mktemp("p") / "std.ncpack")
+        with pytest.raises(StandardPackError, match="does not match"):
+            StandardPack(packed).image("NEWAEB")
+
+    def test_a_path_that_does_not_exist_is_refused(self, tmp_path):
+        with pytest.raises(StandardPackError, match="not a pack file or folder"):
+            StandardPack(tmp_path / "nothing.ncpack")
 
 
 class TestConvert:

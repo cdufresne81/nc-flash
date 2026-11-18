@@ -31,11 +31,15 @@ So patches and definitions only need to target the 13.
 
 ## The standard pack
 
-The feature reads everything from a folder the user picks (remembered in settings). NC Flash ships no ROM images. The pack is built in nc-flash-re:
+The feature reads everything from one pack file the user picks (remembered in settings). NC Flash ships no ROM images. The pack is built in nc-flash-re:
 
 ```bash
-python tools/standard_manifest.py --pack <folder>
+python tools/standard_manifest.py --pack-file standard.ncpack
 ```
+
+The file is about 2 MB. It is a tar of the layout below, xz-compressed, and is read into memory (about 110 MB while the dialog is open); nothing is extracted to disk except one definition at a time, for as long as it takes to parse. A pack can also be a plain folder with the same layout (`--pack <folder>`, about 110 MB), picked with the **Folder...** button.
+
+All 78 images are in the pack, not only the 13 standards: an edit is found by comparing a ROM with the factory image of its own ID.
 
 Layout:
 

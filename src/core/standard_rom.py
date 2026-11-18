@@ -15,7 +15,8 @@ This module does three things, none of which touches an ECU:
 3. ``convert``: move the user's edited tables onto that base, by table name,
    then run the release checks on the result.
 
-It reads everything from a "standard pack" folder (see ``StandardPack``) built
+It reads everything from a "standard pack" (one file, or a folder; see
+``StandardPack``) built
 by the nc-flash-re project. Rules of the conversion, all on the cautious side:
 
 - An edit is a table whose bytes differ from the factory values of the ROM's
@@ -35,8 +36,11 @@ Checksums are left as they are: the flash path recomputes them
 
 import hashlib
 import json
+import lzma
 import re
 import struct
+import tarfile
+import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
@@ -46,6 +50,9 @@ from .rom_definition import RomDefinition, Table, TableLayout
 
 BOOT_BLOCK_END = 0x2000
 MANIFEST_FORMAT = "ncflash-standard-manifest/1"
+PACK_FILE_SUFFIX = ".ncpack"
+# A real pack unpacks to about 110 MB; refuse anything far beyond that.
+PACK_FILE_MAX_BYTES = 512 * 1024 * 1024
 PRESET_FORMAT = "ncflash-standard-preset/1"
 
 _PAIR_SUFFIX = re.compile(r"\s*\(pair with [^()]*\)")
@@ -64,7 +71,7 @@ WHY_STOCK = (
 
 
 class StandardPackError(Exception):
-    """The standard pack folder is missing, incomplete or inconsistent."""
+    """The standard pack is missing, incomplete or inconsistent."""
 
 
 def sha256(data: bytes) -> str:
@@ -208,20 +215,49 @@ class ConversionReport:
 # --------------------------------------------------------------------------- #
 
 
-class StandardPack:
-    """A folder with everything the conversion needs.
+def _read_pack_file(path: Path) -> Dict[str, bytes]:
+    """Every file of a one-file pack, read into memory. Nothing is extracted."""
+    files: Dict[str, bytes] = {}
+    total = 0
+    try:
+        with tarfile.open(path, "r:xz") as tar:
+            for member in tar:
+                if not member.isfile():
+                    continue
+                total += member.size
+                if total > PACK_FILE_MAX_BYTES:
+                    raise StandardPackError(f"{path.name} is too large to be a pack")
+                files[member.name] = tar.extractfile(member).read()
+    except (OSError, EOFError, tarfile.TarError, lzma.LZMAError) as exc:
+        raise StandardPackError(f"{path.name} could not be read: {exc}") from None
+    return files
 
-    Layout (written by nc-flash-re ``tools/standard_manifest.py --pack``)::
+
+class StandardPack:
+    """Everything the conversion needs: one pack file, or the same as a folder.
+
+    Layout (written by nc-flash-re ``tools/standard_manifest.py``, as one
+    ``.ncpack`` file with ``--pack-file`` or as a folder with ``--pack``)::
 
         manifest.json               release manifest (hashes, checks, ...)
         standard_manifest.json      ROM ID -> standard / image / preset
         presets/<image>_on_<standard>.json
         <ROMID>/<romid>_ncf_<release>.bin
         <ROMID>/<romid>.xml
+
+    The pack file is that folder as a tar, xz-compressed. It is read into
+    memory; nothing is written to disk except a definition, for the moment it
+    takes to parse it.
     """
 
-    def __init__(self, folder):
-        self.folder = Path(folder)
+    def __init__(self, source):
+        self.source = Path(source)
+        # None = a folder, read file by file; else the pack file's contents.
+        self._files: Optional[Dict[str, bytes]] = None
+        if self.source.is_file():
+            self._files = _read_pack_file(self.source)
+        elif not self.source.is_dir():
+            raise StandardPackError(f"{self.source} is not a pack file or folder")
         self._release = self._load_json("manifest.json")
         self._standard = self._load_json("standard_manifest.json")
         if self._standard.get("format") != MANIFEST_FORMAT:
@@ -233,12 +269,33 @@ class StandardPack:
         self._images: Dict[str, bytes] = {}
         self._definitions: Dict[str, RomDefinition] = {}
 
+    def _names(self, folder: str) -> List[str]:
+        """Names of the files directly inside one folder of the pack."""
+        if self._files is not None:
+            prefix = folder + "/"
+            return sorted(
+                name[len(prefix) :]
+                for name in self._files
+                if name.startswith(prefix) and "/" not in name[len(prefix) :]
+            )
+        path = self.source / folder
+        if not path.is_dir():
+            return []
+        return sorted(p.name for p in path.iterdir() if p.is_file())
+
+    def _read(self, name: str) -> Optional[bytes]:
+        """One file of the pack by its relative name; None if it is not there."""
+        if self._files is not None:
+            return self._files.get(name)
+        path = self.source / name
+        return path.read_bytes() if path.is_file() else None
+
     def _load_json(self, name: str) -> dict:
-        path = self.folder / name
         try:
-            return json.loads(path.read_text(encoding="utf-8"))
-        except FileNotFoundError:
-            raise StandardPackError(f"{name} is missing from {self.folder}") from None
+            data = self._read(name)
+            if data is None:
+                raise StandardPackError(f"{name} is missing from {self.source}")
+            return json.loads(data.decode("utf-8"))
         except (OSError, ValueError) as exc:
             raise StandardPackError(f"{name} could not be read: {exc}") from None
 
@@ -258,12 +315,21 @@ class StandardPack:
         """The release image of an ID, verified against the manifest hash."""
         if rom_id not in self._images:
             entry = self.release_entry(rom_id)
-            folder = self.folder / rom_id
-            found = sorted(folder.glob(f"{rom_id.lower()}_ncf_*.bin"))
+            start = f"{rom_id.lower()}_ncf_"
+            found = [
+                name
+                for name in self._names(rom_id)
+                if name.startswith(start) and name.endswith(".bin")
+            ]
             if len(found) != 1:
-                raise StandardPackError(f"no single image for {rom_id} in {folder}")
-            data = found[0].read_bytes()
-            if sha256(data) != entry.get("image_sha256"):
+                raise StandardPackError(f"no single image for {rom_id} in the pack")
+            try:
+                data = self._read(f"{rom_id}/{found[0]}")
+            except OSError as exc:
+                raise StandardPackError(
+                    f"the {rom_id} image could not be read: {exc}"
+                ) from None
+            if data is None or sha256(data) != entry.get("image_sha256"):
                 raise StandardPackError(
                     f"the {rom_id} image does not match the pack's manifest"
                 )
@@ -272,10 +338,21 @@ class StandardPack:
 
     def definition(self, rom_id: str) -> RomDefinition:
         if rom_id not in self._definitions:
-            path = self.folder / rom_id / f"{rom_id.lower()}.xml"
-            if not path.is_file():
-                raise StandardPackError(f"no definition for {rom_id} in the pack")
-            self._definitions[rom_id] = load_definition(str(path))
+            name = f"{rom_id}/{rom_id.lower()}.xml"
+            if self._files is None:
+                path = self.source / name
+                if not path.is_file():
+                    raise StandardPackError(f"no definition for {rom_id} in the pack")
+                self._definitions[rom_id] = load_definition(str(path))
+            else:
+                data = self._files.get(name)
+                if data is None:
+                    raise StandardPackError(f"no definition for {rom_id} in the pack")
+                # The parser reads a file: give it one for as long as it parses.
+                with tempfile.TemporaryDirectory() as tmp:
+                    path = Path(tmp) / f"{rom_id.lower()}.xml"
+                    path.write_bytes(data)
+                    self._definitions[rom_id] = load_definition(str(path))
         return self._definitions[rom_id]
 
     def no_transfer_ranges(self, rom_id: str) -> List[Tuple[int, int]]:
