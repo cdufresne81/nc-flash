@@ -10,6 +10,7 @@ from src.ui.standard_rom_dialog import StandardRomDialog
 from test_standard_rom import (  # noqa: F401 (fixture)
     SHIFT,
     _pack_file,
+    _wrapped,
     _stock,
     pack_dir,
 )
@@ -29,7 +30,11 @@ def test_shows_the_standard_and_enables_convert(
     rom.write_bytes(_stock(pack_dir, "OLDBEA"))
     dlg = _dialog(pack_dir, rom, isolated_settings)
     text = dlg._report.toPlainText()
-    assert "Standard ROM: NEWAEB" in text and "Image to use: NEWBEB" in text
+    assert (
+        "Standard ROM: NEWAEB" in text
+        and "Image to use: NEWAEB with the 5MT preset (the same as Mazda's NEWBEB)"
+        in text
+    )
     assert dlg._convert_btn.isEnabled()
 
 
@@ -40,7 +45,10 @@ def test_reads_a_one_file_pack(
     rom = tmp_path / "mine.bin"
     rom.write_bytes(_stock(pack_dir, "OLDBEA"))
     dlg = _dialog(packed, rom, isolated_settings)
-    assert "Image to use: NEWBEB" in dlg._report.toPlainText()
+    assert (
+        "Image to use: NEWAEB with the 5MT preset (the same as Mazda's NEWBEB)"
+        in dlg._report.toPlainText()
+    )
     assert dlg._convert_btn.isEnabled()
 
 
@@ -53,6 +61,28 @@ def test_a_standard_rom_has_nothing_to_convert(
         dlg = _dialog(pack_dir, rom, isolated_settings)
         assert "nothing to move" in dlg._report.toPlainText()
         assert not dlg._convert_btn.isEnabled()
+
+
+def test_reads_a_rom_saved_behind_a_tool_header(
+    pack_dir, tmp_path, isolated_settings  # noqa: F811
+):
+    rom = tmp_path / "wrapped.bin"
+    rom.write_bytes(_wrapped(bytes(_stock(pack_dir, "OLDBEA"))))
+    dlg = _dialog(pack_dir, rom, isolated_settings)
+    text = dlg._report.toPlainText()
+    assert "header from the tool that saved it" in text
+    assert "ROM ID: OLDBEA" in text
+    assert dlg._convert_btn.isEnabled()
+
+
+def test_a_file_of_the_wrong_size_says_so(
+    pack_dir, tmp_path, isolated_settings  # noqa: F811
+):
+    rom = tmp_path / "short.bin"
+    rom.write_bytes(b"\x00" * 1000)
+    dlg = _dialog(pack_dir, rom, isolated_settings)
+    assert "it is 1,000 bytes" in dlg._report.toPlainText()
+    assert not dlg._convert_btn.isEnabled()
 
 
 def test_carried_id_cannot_be_converted(

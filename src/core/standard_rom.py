@@ -50,6 +50,7 @@ from .rom_definition import RomDefinition, Table, TableLayout
 
 BOOT_BLOCK_END = 0x2000
 MANIFEST_FORMAT = "ncflash-standard-manifest/1"
+ROM_SIZE = 0x100000
 PACK_FILE_SUFFIX = ".ncpack"
 # A real pack unpacks to about 110 MB; refuse anything far beyond that.
 PACK_FILE_MAX_BYTES = 512 * 1024 * 1024
@@ -92,6 +93,42 @@ def pair_key(name: str) -> str:
     return normalized_name(name).replace(_INTEGRITY_TAG, "")
 
 
+def _engine_text(engine_cc: str) -> str:
+    return "1.8 L" if str(engine_cc).startswith("17") else "2.0 L"
+
+
+WRAPPED_DATA_TAG = b"MEMD"
+
+
+def unwrap_rom(data: bytes) -> Tuple[bytes, str]:
+    """The ROM image inside a file, and a note if something was removed.
+
+    Some reading tools save the 1 MB image behind a short header made of
+    tagged blocks (4-letter tag, 4-byte big-endian length, data): "INFO",
+    "DRMI", "MEML", then "MEMD" holding the image to the end of the file.
+    Such a file gives the image alone; any other file is returned as it is.
+    """
+    if data[:4] != b"INFO":
+        return data, ""
+    pos = 0
+    while pos + 8 <= len(data):
+        tag = data[pos : pos + 4]
+        size = struct.unpack_from(">I", data, pos + 4)[0]
+        start = pos + 8
+        if tag == WRAPPED_DATA_TAG:
+            if size and start + size == len(data):
+                return (
+                    data[start:],
+                    f"The file has a {start}-byte header from the tool that "
+                    "saved it; the ROM inside it was read.",
+                )
+            break
+        if not tag.isalpha() or not tag.isupper():
+            break
+        pos = start + size
+    return data, ""
+
+
 @dataclass(frozen=True)
 class Identity:
     """What a ROM is and where it goes under the standard-ROM plan."""
@@ -104,6 +141,9 @@ class Identity:
     method: str  # "standard", "standard_image", "factory" or "carried"
     target: Optional[str]  # ID of the image the car would run; None if carried
     moves_revision: bool
+    # How the target differs from the standard ("5MT", "market 10", "1.8 L");
+    # empty when the target is the standard image itself.
+    preset_traits: Tuple[str, ...] = ()
 
     @property
     def convertible(self) -> bool:
@@ -114,11 +154,18 @@ class Identity:
         """True when the ROM belongs on another image than its own."""
         return self.target is not None and self.target != self.rom_id
 
+    def _image_text(self) -> str:
+        """The image the car would run, said in terms of its standard."""
+        if self.target == self.standard:
+            return self.standard
+        traits = ", ".join(self.preset_traits)
+        preset = f"the {traits} preset" if traits else "its preset"
+        return f"{self.standard} with {preset} " f"(the same as Mazda's {self.target})"
+
     def summary(self) -> str:
-        engine = "1.8 L" if self.engine_cc.startswith("17") else "2.0 L"
         lines = [
-            f"ROM ID: {self.rom_id} ({engine}, {self.gearbox}, "
-            f"market {self.market_code})",
+            f"ROM ID: {self.rom_id} ({_engine_text(self.engine_cc)}, "
+            f"{self.gearbox}, market {self.market_code})",
             f"Standard ROM: {self.standard}",
         ]
         if self.target is None:
@@ -128,8 +175,10 @@ class Identity:
             )
         elif self.target == self.rom_id:
             lines.append("This ROM is already the image to use: nothing to move.")
+            if self.target != self.standard:
+                lines.append(f"It is {self._image_text()}.")
         else:
-            lines.append(f"Image to use: {self.target}")
+            lines.append(f"Image to use: {self._image_text()}")
         if self.moves_revision and self.needs_move:
             lines.append(
                 "This is a newer software revision than the one this ROM runs."
@@ -392,6 +441,21 @@ class StandardPack:
             return None
         rom_id = max(hits, key=len)
         e = self._standard["ids"][rom_id]
+        traits: Tuple[str, ...] = ()
+        target = e.get("target")
+        std = self._standard["ids"].get(e["standard"])
+        aim = self._standard["ids"].get(target) if target else None
+        if std and aim and target != e["standard"]:
+            found = []
+            if aim.get("gearbox") != std.get("gearbox"):
+                found.append(str(aim.get("gearbox", "")))
+            if aim.get("market_code") != std.get("market_code"):
+                found.append(f"market {aim.get('market_code', '')}")
+            if _engine_text(aim.get("engine_cc", "")) != _engine_text(
+                std.get("engine_cc", "")
+            ):
+                found.append(_engine_text(aim.get("engine_cc", "")))
+            traits = tuple(found)
         return Identity(
             rom_id=rom_id,
             engine_cc=str(e.get("engine_cc", "")),
@@ -401,6 +465,7 @@ class StandardPack:
             method=e["method"],
             target=e.get("target"),
             moves_revision=bool(e.get("moves_revision")),
+            preset_traits=traits,
         )
 
     def build_base(self, identity: Identity) -> bytes:

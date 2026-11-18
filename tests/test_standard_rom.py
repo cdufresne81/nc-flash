@@ -26,6 +26,7 @@ from src.core.standard_rom import (
     normalized_name,
     pair_key,
     run_release_checks,
+    unwrap_rom,
 )
 
 SIZE = 0x3000
@@ -293,6 +294,60 @@ def _pack_file(folder, path):
             info.size = len(data)
             tar.addfile(info, io.BytesIO(data))
     return path
+
+
+def _block(tag: bytes, data: bytes) -> bytes:
+    return tag + struct.pack(">I", len(data)) + data
+
+
+def _wrapped(image: bytes) -> bytes:
+    """An image behind the header some reading tools write."""
+    return (
+        _block(b"INFO", b"\x00" * 0x80)
+        + _block(b"DRMI", b"\x5a" * 0x80)
+        + _block(b"MEML", b"\x00" * 0x24)
+        + _block(b"MEMD", image)
+    )
+
+
+class TestUnwrap:
+    def test_a_plain_image_is_returned_as_it_is(self):
+        data = bytes(range(256)) * 16
+        assert unwrap_rom(data) == (data, "")
+
+    def test_the_image_behind_a_header_is_found(self):
+        image = bytes(range(256)) * 16
+        rom, note = unwrap_rom(_wrapped(image))
+        assert rom == image
+        assert "324-byte header" in note
+
+    def test_a_header_that_does_not_add_up_is_left_alone(self):
+        data = _wrapped(b"\x01" * 4096)[:-10]  # data block shorter than it says
+        assert unwrap_rom(data) == (data, "")
+        junk = b"INFO" + b"\xff" * 600
+        assert unwrap_rom(junk) == (junk, "")
+
+
+class TestIdentityText:
+    def test_a_variant_is_named_by_its_standard_and_preset(self, pack_dir):
+        pack = StandardPack(pack_dir)
+        text = pack.identify(bytes(_stock(pack_dir, "OLDBEA"))).summary()
+        assert (
+            "Image to use: NEWAEB with the 5MT preset "
+            "(the same as Mazda's NEWBEB)" in text
+        )
+
+    def test_an_older_revision_goes_to_the_standard_itself(self, pack_dir):
+        pack = StandardPack(pack_dir)
+        text = pack.identify(bytes(_stock(pack_dir, "OLDAEA"))).summary()
+        assert "Image to use: NEWAEB\n" in text + "\n"
+        assert "preset" not in text
+
+    def test_a_variant_already_on_its_image_says_what_it_is(self, pack_dir):
+        pack = StandardPack(pack_dir)
+        text = pack.identify(bytes(_stock(pack_dir, "NEWBEB"))).summary()
+        assert "nothing to move" in text
+        assert "It is NEWAEB with the 5MT preset" in text
 
 
 class TestPackFile:

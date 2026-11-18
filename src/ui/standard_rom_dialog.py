@@ -28,9 +28,11 @@ from PySide6.QtWidgets import (
 
 from src.core.standard_rom import (
     PACK_FILE_SUFFIX,
+    ROM_SIZE,
     StandardPack,
     StandardPackError,
     convert,
+    unwrap_rom,
 )
 from src.utils.settings import get_settings
 
@@ -57,6 +59,7 @@ class StandardRomDialog(QDialog):
         self.open_requested = False
         self._pack = None
         self._pack_path = ""
+        self._file_note = ""
 
         layout = QVBoxLayout(self)
         intro = QLabel(_INTRO)
@@ -157,8 +160,12 @@ class StandardRomDialog(QDialog):
             # A pack file is unpacked in memory: do it once per pick.
             self._pack = StandardPack(path)
             self._pack_path = path
-        rom = Path(self._rom_edit.text()).read_bytes()
+        rom, self._file_note = unwrap_rom(Path(self._rom_edit.text()).read_bytes())
         return self._pack, rom
+
+    def _with_note(self, text: str) -> str:
+        """The report text, after the note about the file if there is one."""
+        return f"{self._file_note}\n\n{text}" if self._file_note else text
 
     def _refresh(self):
         """Show where the selected ROM belongs; enable Convert if it can move."""
@@ -173,11 +180,19 @@ class StandardRomDialog(QDialog):
             self._report.setPlainText(f"Could not read the selection:\n{exc}")
             return
         if identity is None:
-            self._report.setPlainText(
-                "This ROM's ID is not one of the IDs the pack knows."
-            )
+            if len(rom) != ROM_SIZE:
+                self._report.setPlainText(
+                    f"This file is not a ROM image: it is {len(rom):,} bytes, "
+                    f"and a ROM is exactly {ROM_SIZE:,}."
+                )
+            else:
+                self._report.setPlainText(
+                    self._with_note(
+                        "This ROM's ID is not one of the IDs the pack knows."
+                    )
+                )
             return
-        self._report.setPlainText(identity.summary())
+        self._report.setPlainText(self._with_note(identity.summary()))
         self._convert_btn.setEnabled(identity.needs_move)
 
     def _convert(self):
@@ -187,7 +202,7 @@ class StandardRomDialog(QDialog):
         except (StandardPackError, OSError) as exc:
             QMessageBox.warning(self, "Conversion Failed", str(exc))
             return
-        self._report.setPlainText(report.summary())
+        self._report.setPlainText(self._with_note(report.summary()))
         if image is None:
             QMessageBox.warning(
                 self,

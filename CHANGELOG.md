@@ -11,6 +11,8 @@ All notable changes to NC Flash are documented here.
   - The result is checked before it is saved; if a check fails, nothing is written and the report names the table.
   - Needs the standard ROM pack: one small file (about 2 MB) built from the nc-flash-re project. A pack that is a folder works too. A few variants that Mazda never shipped on their standard can't be converted yet.
   - When a ROM is already on the right image (a standard, or a variant Mazda built on it), the dialog says there is nothing to move and Convert stays off.
+  - The image to use is named by its standard, for example "LFG2EP with the market 10 preset (the same as Mazda's LFN4EP)".
+  - A ROM saved behind a short header by the tool that read it (a file slightly larger than 1 MB) is read directly. A file that is not a ROM image is reported with its size.
   - No converted ROM has been tested on a car yet: review the report before flashing.
 
 ### Changed
