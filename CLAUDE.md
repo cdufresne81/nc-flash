@@ -35,6 +35,7 @@ Reference these before modifying related functionality:
 - `docs/internal/RELEASE_CHANNELS.md` - Stable (`master`, `vX.Y.Z`) vs experimental (`dev`, `vX.Y.Z-beta.N`) branches, tags and updater channels; reference before tagging a release, choosing a PR's base branch, or touching the updater's version logic
 - `docs/internal/ROM_DEFINITION_FORMAT.md` - XML format for ROM definitions
 - `docs/internal/ROM_COMPARISON_TOOL.md` - Spec for the side-by-side ROM comparison tool; reference before touching compare/diff code
+- `docs/internal/STANDARD_ROMS.md` - Moving a ROM onto the standard ROM of its line (the 13 standards, the pack folder, the rules for moving edited tables, what is refused); reference before touching `src/core/standard_rom.py` or the Standard ROM dialog
 - `docs/internal/WINDOWS_SETUP.md` - Windows dev environment setup
 - `docs/internal/UI_TESTING.md` - GUI test runner, screenshots, and test scripts
 - `docs/internal/CODE_AUDIT.md` - Codebase audit snapshot from 2026-04-03 (bugs, dead code, duplication, test gaps); predates the Jul 2026 architecture hardening, so verify a finding still holds before acting on it

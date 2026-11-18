@@ -150,6 +150,11 @@ python main.py
 - Keyboard navigation: `↑`/`↓` tables, `T` toggle, `Esc` close
 - Export the full comparison to CSV or Markdown (`Ctrl+E` or toolbar **Export…**) — every changed cell and axis breakpoint across all modified tables, one row per change
 
+### Standard ROMs (experimental)
+- **Tools > Move ROM to Its Standard ROM...**: the 78 factory ROM IDs reduce to 13 standard ROMs. Pick a stock or tuned ROM to see which standard it belongs to, then move the tables you edited onto it and save a new file with a report
+- A table is moved only when Mazda's own values for it are the same in both ROMs; anything else is listed for you to decide. Your ROM is never changed
+- Needs the standard ROM pack folder built from the nc-flash-re project; not yet tested on a car
+
 ### Project Management
 - Create tuning projects with version-controlled ROM snapshots
 - Named commits with auto-generated tuning log (`TUNING_LOG.md`)
@@ -226,6 +231,7 @@ nc-flash/
 │   │   ├── definition_parser.py       # XML parser for ROM definitions
 │   │   ├── rom_reader.py              # Binary ROM reader/writer
 │   │   ├── patch_check.py             # Unpatched / patch-revision check on open
+│   │   ├── standard_rom.py            # Move a ROM onto the standard ROM of its line
 │   │   ├── rom_detector.py            # Automatic ROM ID detection
 │   │   ├── exceptions.py              # Custom exception hierarchy
 │   │   ├── storage_types.py           # Storage type constants
@@ -270,6 +276,7 @@ nc-flash/
 │   │   ├── graph_model.py             # Engine-neutral graph math (colors, ticks)
 │   │   ├── gpu_runtime.py             # Engine choice + GPU probe (GUI thread)
 │   │   ├── patch_dialog.py            # ROM patching dialog
+│   │   ├── standard_rom_dialog.py     # Standard ROM identify / convert dialog
 │   │   ├── table_browser.py           # Category tree browser
 │   │   ├── rom_document.py            # Single ROM tab widget
 │   │   ├── history_viewer.py          # Version history dialog
