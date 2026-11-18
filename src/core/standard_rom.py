@@ -109,6 +109,11 @@ class Identity:
     def convertible(self) -> bool:
         return self.target is not None
 
+    @property
+    def needs_move(self) -> bool:
+        """True when the ROM belongs on another image than its own."""
+        return self.target is not None and self.target != self.rom_id
+
     def summary(self) -> str:
         engine = "1.8 L" if self.engine_cc.startswith("17") else "2.0 L"
         lines = [
@@ -122,10 +127,10 @@ class Identity:
                 "so it cannot be converted."
             )
         elif self.target == self.rom_id:
-            lines.append("This ROM is already the image to use.")
+            lines.append("This ROM is already the image to use: nothing to move.")
         else:
             lines.append(f"Image to use: {self.target}")
-        if self.moves_revision:
+        if self.moves_revision and self.needs_move:
             lines.append(
                 "This is a newer software revision than the one this ROM runs."
             )
