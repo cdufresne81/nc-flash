@@ -178,7 +178,7 @@ class StandardRomDialog(QDialog):
             )
             return
         self._report.setPlainText(identity.summary())
-        self._convert_btn.setEnabled(identity.convertible)
+        self._convert_btn.setEnabled(identity.needs_move)
 
     def _convert(self):
         try:
