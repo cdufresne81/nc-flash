@@ -44,6 +44,17 @@ def test_reads_a_one_file_pack(
     assert dlg._convert_btn.isEnabled()
 
 
+def test_a_standard_rom_has_nothing_to_convert(
+    pack_dir, tmp_path, isolated_settings  # noqa: F811
+):
+    for rom_id in ("NEWAEB", "NEWBEB"):  # the standard, and a variant on it
+        rom = tmp_path / f"{rom_id}.bin"
+        rom.write_bytes(_stock(pack_dir, rom_id))
+        dlg = _dialog(pack_dir, rom, isolated_settings)
+        assert "nothing to move" in dlg._report.toPlainText()
+        assert not dlg._convert_btn.isEnabled()
+
+
 def test_carried_id_cannot_be_converted(
     pack_dir, tmp_path, isolated_settings  # noqa: F811
 ):
@@ -51,6 +62,7 @@ def test_carried_id_cannot_be_converted(
     rom.write_bytes(_stock(pack_dir, "CARREA"))
     dlg = _dialog(pack_dir, rom, isolated_settings)
     assert "cannot be converted" in dlg._report.toPlainText()
+    assert "newer software revision" not in dlg._report.toPlainText()
     assert not dlg._convert_btn.isEnabled()
 
 
