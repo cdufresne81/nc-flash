@@ -11,6 +11,9 @@ All notable changes to NC Flash are documented here.
 - **Over a WiCAN, Dynamic Flash's block compare was never used (beta.1).** NC Flash asked the WiCAN what it supports while the connection was still opening, recorded that it had no answer, and never asked again, so every flash used the older method. It now asks once connected; if you click before the WiCAN has answered, NC Flash says so instead of quietly using the slower method, and the log says why when the block compare is not used.
 - **Select All (Ctrl+A) now selects every cell of a table.** The top-left cell was left out, so Set Value, Add, Multiply and the other bulk edits skipped it. Select All from the Edit menu selected only that one cell.
 
+### Removed
+- **Transmission (TCM) definitions.** NC Flash no longer ships the two 6-speed automatic TCM definitions (LFG1TF000, LFG1TG000) or the example TCM ROM. Their table names described the shift schedule, which later analysis showed is actually the torque-converter lockup schedule. New installs won't get them; an install that already has them keeps its copies.
+
 ## [v2.24.0] - 2026-11-14
 
 ### Added

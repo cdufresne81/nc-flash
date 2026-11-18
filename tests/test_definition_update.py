@@ -548,10 +548,10 @@ def test_io_failure_keeps_the_version_unmarked(app, tmp_path, monkeypatch):
 
 
 def test_bundled_definitions_merge_with_themselves():
-    # A sample (every 10th file, plus the TCM ones): all 105 take ~20 s
+    # A sample (every 10th file): all of them take ~20 s
     root = Path(__file__).resolve().parent.parent / "examples"
     files = sorted((root / "metadata").glob("*.xml"))
-    for p in files[::10] + [f for f in files if "_v02" in f.name]:
+    for p in files[::10]:
         data = p.read_bytes()
         result = du.merge(data, data, data)
         assert du.file_hash(result.data) == du.file_hash(data), p.name

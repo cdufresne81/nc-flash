@@ -21,7 +21,4 @@ The reverse-engineering work behind these tables is speeps'. Thank you.
 - `lf9veb.xml` is not speeps' file. It is NC Flash's own, extended version
   (built from speeps' file, maintained in nc-flash-re).
 
-Not from speeps: `LFG1TF000_v02.xml`, `LFG1TG000_v02.xml` (TCM definitions from
-the NC_TCM project).
-
 Check any edit with `python tools/metadata_lint.py check`.

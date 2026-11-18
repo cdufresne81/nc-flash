@@ -76,7 +76,6 @@ python main.py
 - Definitions for about 100 NC ECU calibrations included (from speeps' RomDrop set, with permission)
 - New and corrected definitions reach existing installs on update; your own edits and added tables are kept, and the previous files are backed up
 - Read NC Miata ECU ROM binary files
-- Read NC Miata TCM (transmission) ROMs via the V2 TCM definitions — read/inspect only; TCM flashing is not supported
 - View 1D, 2D, and 3D tables with proper axis labels
 - Interleaved 3D table support for TCM-style ROMs
 - Save modified ROM files
@@ -308,11 +307,9 @@ nc-flash/
 │   ├── metadata/                      # ROM metadata XML files
 │   │   ├── NOTICE.md                  # Origin of the bundled definitions (speeps' RomDrop set)
 │   │   ├── l*.xml                     # NC ECU definitions, one per calibration
-│   │   ├── lf9veb.xml                 # NC Flash's extended LF9VEB definition (master in nc-flash-re)
-│   │   └── *_v02.xml                  # V2 TCM definitions (LFG1TF000, LFG1TG000)
+│   │   └── lf9veb.xml                 # NC Flash's extended LF9VEB definition (master in nc-flash-re)
 │   ├── metadata_history.json          # Entries shipped in past releases (unedited = safe to update)
-│   ├── lf9veb.bin                     # Stock NC Miata ECU ROM binary
-│   └── LFG1TF000.bin                  # Example NC TCM ROM dump
+│   └── lf9veb.bin                     # Stock NC Miata ECU ROM binary
 ├── packaging/                         # Build & installer scripts
 │   ├── build.bat                      # Windows build script
 │   ├── installer.iss                  # Inno Setup installer script
