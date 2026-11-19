@@ -34,15 +34,31 @@ from src.core.standard_rom import (
     convert,
     unwrap_rom,
 )
+from src.utils.paths import get_app_root
 from src.utils.settings import get_settings
 
 logger = logging.getLogger(__name__)
 
 _INTRO = (
-    "The 78 factory ROM IDs reduce to 13 standard ROMs. This moves the tables "
+    "The 78 factory ROM IDs reduce to 18 standard ROMs. This moves the tables "
     "you edited onto the standard ROM for your car and writes a new file. "
     "Your ROM is not changed. Review the report before flashing the result."
 )
+
+BUNDLED_PACK = Path("examples") / "nc_standard_roms.ncpack"
+
+
+def default_pack_path() -> str:
+    """The pack to start with: the user's own choice, else the one shipped.
+
+    The shipped pack's location changes with each install, so it is never
+    stored in settings; a stored path that no longer exists is ignored.
+    """
+    chosen = get_settings().get_standard_pack_path()
+    if chosen and Path(chosen).exists():
+        return chosen
+    shipped = get_app_root() / BUNDLED_PACK
+    return str(shipped) if shipped.is_file() else ""
 
 
 class StandardRomDialog(QDialog):
@@ -76,7 +92,7 @@ class StandardRomDialog(QDialog):
         self._rom_edit.setReadOnly(True)
         form.addRow("Your ROM:", self._row(self._rom_edit, self._browse_rom))
 
-        self._pack_edit = QLineEdit(get_settings().get_standard_pack_path())
+        self._pack_edit = QLineEdit(default_pack_path())
         self._pack_edit.setObjectName("standard_rom_pack")
         self._pack_edit.setPlaceholderText("Select the standard ROM pack file...")
         self._pack_edit.setReadOnly(True)

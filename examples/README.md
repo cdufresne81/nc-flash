@@ -23,3 +23,7 @@ Load the ROM in the application:
 ## Note
 
 These are example files for development and testing. Always keep backups of your actual ECU ROM files.
+
+### nc_standard_roms.ncpack
+
+The standard ROM pack read by **Tools > Move ROM to Its Standard ROM...**: the release images and definitions of the 78 manual-gearbox ROM IDs, the manifest that maps each ID to one of the 18 standard ROMs, and the presets. One tar file, xz-compressed. Built by `tools/standard_manifest.py --pack-file` in the nc-flash-re project; see `docs/internal/STANDARD_ROMS.md`.

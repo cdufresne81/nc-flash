@@ -5,11 +5,11 @@ All notable changes to NC Flash are documented here.
 ## [Unreleased]
 
 ### Added
-- **Move a ROM to its standard ROM (Tools > Move ROM to Its Standard ROM..., experimental).** The 78 factory ROM IDs reduce to 13 standard ROMs: the latest software Mazda issued for each line, plus a small preset for your gearbox, market or engine. Pick your ROM, stock or tuned, and NC Flash tells you which standard it belongs to. It can then move the tables you edited onto that standard and save the result as a new file with a report of what was moved and what was not. Your ROM is never changed.
+- **Move a ROM to its standard ROM (Tools > Move ROM to Its Standard ROM..., experimental).** The 78 factory ROM IDs reduce to 18 standard ROMs: the latest software Mazda issued for each line (plus 5 older revisions for the cars Mazda never updated), plus a small preset for your gearbox, market or engine. Pick your ROM, stock or tuned, and NC Flash tells you which standard it belongs to. It can then move the tables you edited onto that standard and save the result as a new file with a report of what was moved and what was not. Your ROM is never changed.
   - A table is moved only when Mazda's own values for it are the same in both ROMs. If Mazda changed it between revisions, it is listed for you to decide.
   - A table and its Data Integrity copy move together. Feature settings and anything outside a defined table are not copied.
   - The result is checked before it is saved; if a check fails, nothing is written and the report names the table.
-  - Needs the standard ROM pack: one small file (about 2 MB) built from the nc-flash-re project. A pack that is a folder works too. A few variants that Mazda never shipped on their standard can't be converted yet.
+  - The standard ROM pack now comes with NC Flash (about 2 MB), so there is nothing to set up. You can still pick another pack file or folder. Every one of the 78 IDs has a standard.
   - When a ROM is already on the right image (a standard, or a variant Mazda built on it), the dialog says there is nothing to move and Convert stays off.
   - The image to use is named by its standard, for example "LFG2EP with the market 10 preset (the same as Mazda's LFN4EP)".
   - A ROM saved behind a short header by the tool that read it (a file slightly larger than 1 MB) is read directly. A file that is not a ROM image is reported with its size.
