@@ -5,12 +5,14 @@ The analysis behind it lives in the nc-flash-re project (issue #30, `analysis/ro
 
 ## The idea
 
-The MX-5 NC factory images come as 78 ROM IDs. They reduce to 13 standards: the latest revision Mazda issued for each software line. Every other ID is one of:
+The MX-5 NC factory images come as 78 ROM IDs. They reduce to 18 standards: the latest revision Mazda issued for each of the 13 software lines, plus 5 older revisions kept for the variants Mazda never built on the latest one. Every other ID is one of:
 
 - an older revision of a standard (same car, earlier software), or
 - a variant of it (gearbox, market, engine) that differs by a small byte preset.
 
-So patches and definitions only need to target the 13.
+So patches and definitions only need to target the 18.
+
+The 5 older revisions are LF9HED, LFDJEA, LFGJED, LFLMEC and LFLMEA. A car whose variant exists on the latest revision of its line still goes there; only the 9 IDs with no such factory image (for example a 2010 federal 6-speed, LFDJEA) stay on the older revision, and so do not get Mazda's later changes. The number is not in the code: NC Flash follows whatever the pack's manifest says.
 
 ## What the feature does
 
@@ -25,7 +27,7 @@ So patches and definitions only need to target the 13.
 - A table moves only if its name is unambiguous in both definitions, its size and scaling are the same on both sides, and **Mazda's factory values for it are the same in both programs**. If Mazda changed the table between the two revisions, it is listed as not moved and the user decides.
 - A table and its "(Data Integrity)" copy move together or not at all. The "(pair with ...)" suffix is ignored when matching names because it holds an address.
 - Nothing outside defined tables is copied: no patch code, no feature blocks, no unnamed bytes. Feature settings (the release manifest's `no_transfer` ranges) are never copied.
-- An ID whose variant has no factory image on the standard ("carried" in the manifest) is refused.
+- An ID whose variant has no factory image on its standard ("carried" in the manifest) is refused. The current pack has none; a pack built before the 18-standard plan has 9.
 - The boot block is never changed.
 - Checksums are not recomputed here; the flash path does that.
 
@@ -39,7 +41,7 @@ python tools/standard_manifest.py --pack-file standard.ncpack
 
 The file is about 2 MB. It is a tar of the layout below, xz-compressed, and is read into memory (about 110 MB while the dialog is open); nothing is extracted to disk except one definition at a time, for as long as it takes to parse. A pack can also be a plain folder with the same layout (`--pack <folder>`, about 110 MB), picked with the **Folder...** button.
 
-All 78 images are in the pack, not only the 13 standards: an edit is found by comparing a ROM with the factory image of its own ID.
+All 78 images are in the pack, not only the 18 standards: an edit is found by comparing a ROM with the factory image of its own ID.
 
 Layout:
 

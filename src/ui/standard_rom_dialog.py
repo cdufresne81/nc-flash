@@ -39,7 +39,7 @@ from src.utils.settings import get_settings
 logger = logging.getLogger(__name__)
 
 _INTRO = (
-    "The 78 factory ROM IDs reduce to 13 standard ROMs. This moves the tables "
+    "The 78 factory ROM IDs reduce to 18 standard ROMs. This moves the tables "
     "you edited onto the standard ROM for your car and writes a new file. "
     "Your ROM is not changed. Review the report before flashing the result."
 )
