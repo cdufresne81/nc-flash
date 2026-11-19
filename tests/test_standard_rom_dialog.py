@@ -6,7 +6,10 @@ from unittest.mock import patch
 
 from PySide6.QtWidgets import QApplication, QMessageBox
 
-from src.ui.standard_rom_dialog import StandardRomDialog
+import src.ui.standard_rom_dialog as dialog_module
+from src.core.standard_rom import StandardPack
+from src.ui.standard_rom_dialog import BUNDLED_PACK, StandardRomDialog
+from src.utils.paths import get_app_root
 from test_standard_rom import (  # noqa: F401 (fixture)
     SHIFT,
     _pack_file,
@@ -96,12 +99,43 @@ def test_carried_id_cannot_be_converted(
     assert not dlg._convert_btn.isEnabled()
 
 
-def test_no_pack_chosen_yet(tmp_path, isolated_settings):
+def test_no_pack_at_all(tmp_path, isolated_settings, monkeypatch):
+    monkeypatch.setattr(dialog_module, "get_app_root", lambda: tmp_path)
     rom = tmp_path / "mine.bin"
     rom.write_bytes(b"\x00" * 16)
     dlg = StandardRomDialog(rom_path=str(rom))
+    assert dlg._pack_edit.text() == ""
     assert dlg._report.toPlainText() == ""
     assert not dlg._convert_btn.isEnabled()
+
+
+def test_starts_with_the_shipped_pack(tmp_path, isolated_settings):
+    dlg = StandardRomDialog()
+    assert dlg._pack_edit.text().endswith("nc_standard_roms.ncpack")
+    # the shipped pack is never written to settings
+    assert isolated_settings.get_standard_pack_path() == ""
+
+
+def test_the_users_own_pack_wins_over_the_shipped_one(
+    pack_dir, tmp_path, isolated_settings  # noqa: F811
+):
+    isolated_settings.set_standard_pack_path(str(pack_dir))
+    assert StandardRomDialog()._pack_edit.text() == str(pack_dir)
+    # a stored path that is gone falls back to the shipped pack
+    isolated_settings.set_standard_pack_path(str(tmp_path / "gone.ncpack"))
+    assert StandardRomDialog()._pack_edit.text().endswith("nc_standard_roms.ncpack")
+
+
+def test_the_shipped_pack_is_whole():
+    """Every ID has a standard, and every image matches the pack's hashes."""
+    pack = StandardPack(get_app_root() / BUNDLED_PACK)
+    assert len(pack.rom_ids) == 78
+    for rom_id in pack.rom_ids:
+        identity = pack.identify(pack.image(rom_id))
+        assert identity is not None and identity.rom_id == rom_id
+        assert identity.convertible
+        if identity.needs_move:
+            pack.build_base(identity)  # standard + preset == Mazda's image
 
 
 def test_convert_writes_rom_and_report_and_asks_to_open(

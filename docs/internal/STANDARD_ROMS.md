@@ -33,7 +33,7 @@ The 5 older revisions are LF9HED, LFDJEA, LFGJED, LFLMEC and LFLMEA. A car whose
 
 ## The standard pack
 
-The feature reads everything from one pack file the user picks (remembered in settings). NC Flash ships no ROM images. The pack is built in nc-flash-re:
+The feature reads everything from one pack file. NC Flash ships one, `examples/nc_standard_roms.ncpack` (bundled with the whole `examples` folder); the dialog starts with it unless the user picked another pack that still exists. The shipped pack's path is never stored in settings, because it changes with each install. The pack holds the factory-based release images of all 78 IDs. It is built in nc-flash-re, and the copy here is replaced by hand when the manifest changes:
 
 ```bash
 python tools/standard_manifest.py --pack-file standard.ncpack
