@@ -151,7 +151,7 @@ python main.py
 - Export the full comparison to CSV or Markdown (`Ctrl+E` or toolbar **Export…**) — every changed cell and axis breakpoint across all modified tables, one row per change
 
 ### Standard ROMs (experimental)
-- **Tools > Move ROM to Its Standard ROM...**: the 78 factory ROM IDs reduce to 13 standard ROMs. Pick a stock or tuned ROM to see which standard it belongs to, then move the tables you edited onto it and save a new file with a report
+- **Tools > Move ROM to Its Standard ROM...**: the 78 factory ROM IDs reduce to 18 standard ROMs. Pick a stock or tuned ROM to see which standard it belongs to, then move the tables you edited onto it and save a new file with a report
 - A table is moved only when Mazda's own values for it are the same in both ROMs; anything else is listed for you to decide. Your ROM is never changed
 - Needs the standard ROM pack, one small file built from the nc-flash-re project; not yet tested on a car
 
